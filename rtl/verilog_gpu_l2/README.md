@@ -1,15 +1,18 @@
-# Verilog GPU L2 Cache (Stage-C)
+# Verilog GPU L2 Cache (staging inside `swayhrl/gpgpu-sim`)
 
-This folder documents the Verilog GPU L2 cache work added in this task.
+This directory tracks the migration-prep state for the Verilog GPU L2 cache work currently hosted in the `swayhrl/gpgpu-sim` fork branch `hrl/gpu-l2-cache-verilog`.
+
+> Current state: **still in gpgpu-sim fork branch**.  
+> Planned state: migrate to a standalone repo (candidate: `swayhrl/gpu-l2-cache-verilog`).
 
 ## Scope
-- Classic cache implementation in `rtl/classic_cache/`
-- Decoupled (renamed) cache implementation in `rtl/decouple_cache/`
-- Directed testbenches in `rtl/benchmarks/`
-- Regression driver script `rtl/benchmarks/run_stage_c_regression.sh`
-- CI workflow `.github/workflows/rtl-regression.yml`
+- Classic cache RTL: `rtl/classic_cache/`
+- Decoupled cache RTL: `rtl/decouple_cache/`
+- Directed testbenches/regression: `rtl/benchmarks/`
+- CI workflow: `.github/workflows/rtl-regression.yml`
+- Migration docs: `rtl/verilog_gpu_l2/`
 
-## Implemented Modules
+## Implemented modules
 ### Classic cache
 - `gpu_l2_cache.v`
 - `gpu_l2_tag_array.v`
@@ -23,26 +26,24 @@ This folder documents the Verilog GPU L2 cache work added in this task.
 - `gpu_l2_freelist.v`
 - `gpu_l2_hazard_table.v`
 
-## Address-to-Index Hashing
-Both classic and decoupled top modules support `INDEX_HASH_MODE`:
+## Address-to-index hashing
+`INDEX_HASH_MODE` is supported in top modules:
 - `0`: direct index (default)
 - `1`: fermi-like XOR hashing
 - `2`: ipoly-like lightweight mixing
 
-## How to Run Simulation
-From repo root:
+## Simulation commands (current repo layout)
+From gpgpu-sim repo root:
 
 ```bash
 rtl/benchmarks/run_stage_c_regression.sh quick
 rtl/benchmarks/run_stage_c_regression.sh full
 ```
 
-## Dependencies
-- Required: **Icarus Verilog** (`iverilog`, `vvp`)
-- Optional: Verilator (not required by current regression script)
+## Migration references
+- Export decision list: `rtl/verilog_gpu_l2/EXPORT_MANIFEST.md`
+- Target standalone layout: `rtl/verilog_gpu_l2/MIGRATION_PLAN.md`
 
-## Known Issues / Limitations
-- Current `full` benchmark path runs classic cache benchmark; decoupled perf analysis relies on directed testbenches such as `tb_gpu_l2_cache_perf_p34.v`.
-- Hash-mode validation beyond directed tests may need additional workload generators.
-- RTL is functional for Stage-C style validation but not yet packaged as a standalone reusable IP repo.
-
+## Known limitations
+- `full` currently emphasizes classic benchmark path; decoupled perf still relies on directed benches.
+- Packaging/layout work is in progress; standalone-repo path conventions are not yet applied in this branch.
