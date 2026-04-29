@@ -1,0 +1,276 @@
+# GPGPU-Sim Baseline Run Notes
+
+Date: 2026-04-28  
+Author: auto-generated via Claude Code  
+Purpose: Reproducible baseline for cache/MMU/memory-system experiments
+
+---
+
+## 1. Repository State
+
+| Item | Value |
+|------|-------|
+| Path | `/workspace/repos/gpgpu-sim_distribution` |
+| Branch | `dev` |
+| HEAD commit | `a4ce3fe` (Merge pull request #314 from tgrogers/dev) |
+| Tracked files | Clean — no staged or modified tracked files |
+| Untracked files | `.claude/`, `CLAUDE.md`, `GPGPU-Sim_深度阅读分析报告.md` (all non-source) |
+| Simulator version | 4.2.0 `[build gpgpu-sim_git-commit-a4ce3fe_modified_0.0]` |
+
+Reproduction rule: any future experiment must branch from `a4ce3fe` or record the diff against it.
+
+---
+
+## 2. Environment Setup
+
+```bash
+export CUDA_INSTALL_PATH=/usr/local/cuda-11.8
+export PATH=$CUDA_INSTALL_PATH/bin:$PATH
+export LD_LIBRARY_PATH=$CUDA_INSTALL_PATH/lib64:$CUDA_INSTALL_PATH/lib:$LD_LIBRARY_PATH
+source /workspace/repos/gpgpu-sim_distribution/setup_environment release
+```
+
+One-liner wrapper (preferred):
+
+```bash
+source /workspace/repos/load_gpgpusim.sh
+```
+
+After sourcing, `setup_environment` appends the simulator `.so` directory to `LD_LIBRARY_PATH` so `libcudart.so` intercepts CUDA API calls.
+
+| Variable | Value |
+|----------|-------|
+| `CUDA_INSTALL_PATH` | `/usr/local/cuda-11.8` |
+| Compiler | GCC 11.4.0 |
+| CUDA toolkit version | 11.8 (internal ID: 11080) |
+
+---
+
+## 3. Build Status
+
+**Status: ALREADY BUILT — no rebuild needed.**
+
+| Item | Value |
+|------|-------|
+| Library | `lib/gcc-11.4.0/cuda-11080/release/libcudart.so` |
+| Size | 57 MB |
+| Build timestamp | 2026-04-28 06:22 |
+| Build log | `/workspace/repos/gpgpu-sim-build.log` (1550 lines, no errors) |
+| Linked components | libcuda, cuda-sim, gpgpu-sim, intersim2, accelwattch |
+
+Rebuild command (if source changes):
+
+```bash
+cd /workspace/repos/gpgpu-sim_distribution
+source /workspace/repos/load_gpgpusim.sh
+make -j$(nproc)
+```
+
+Expected: warnings only (`-Wreorder` in `gpu-cache.h`, benign).
+
+---
+
+## 4. Benchmark Selection
+
+**Selected: `vecadd` — vector addition, 256 float elements, 1 kernel, 1 CTA.**
+
+Rationale: shortest possible simulation (5569 cycles, 1 second wall time), zero external dependencies, correctness is self-verifying (PASS/FAIL), output is deterministic.
+
+| Item | Path |
+|------|------|
+| Source | `/workspace/repos/test_vecadd/vecadd.cu` |
+| Binary | `/workspace/repos/test_vecadd/vecadd` (23 KB ELF x86-64) |
+| Config dir | `/workspace/repos/test_vecadd/` (config files pre-copied) |
+
+Kernel signature: `__global__ void vecAdd(float *a, float *b, float *c, int n)` — `n=256`, launch config `<<<1, 256>>>`.
+
+---
+
+## 5. Baseline Command
+
+Config files are **already present** in the benchmark directory from a prior run. No copy step needed.
+
+```bash
+cd /workspace/repos/test_vecadd
+source /workspace/repos/load_gpgpusim.sh
+./vecadd 2>&1 | tee /workspace/repos/gpgpu-sim-baseline.log
+```
+
+To re-run from scratch (explicit config copy):
+
+```bash
+cd /workspace/repos/test_vecadd
+cp /workspace/repos/gpgpu-sim_distribution/configs/tested-cfgs/SM7_QV100/gpgpusim.config .
+cp /workspace/repos/gpgpu-sim_distribution/configs/tested-cfgs/SM7_QV100/config_volta_islip.icnt .
+source /workspace/repos/load_gpgpusim.sh
+./vecadd 2>&1 | tee /workspace/repos/gpgpu-sim-baseline.log
+```
+
+Expected last lines:
+
+```
+gpu_sim_cycle = 5569
+vecAdd result: PASS
+GPGPU-Sim: *** exit detected ***
+```
+
+---
+
+## 6. Config Files
+
+**GPU model: Volta QV100 (`SM7_QV100`)**
+
+| File | Source | Copied to |
+|------|--------|-----------|
+| `gpgpusim.config` | `configs/tested-cfgs/SM7_QV100/gpgpusim.config` | `/workspace/repos/test_vecadd/` |
+| `config_volta_islip.icnt` | `configs/tested-cfgs/SM7_QV100/config_volta_islip.icnt` | `/workspace/repos/test_vecadd/` |
+
+Key architecture parameters from `gpgpusim.config`:
+
+| Parameter | Value | Meaning |
+|-----------|-------|---------|
+| `gpgpu_n_clusters` | 80 | Number of SM clusters |
+| `gpgpu_n_cores_per_cluster` | 1 | SMs per cluster → 80 SMs total |
+| `gpgpu_n_mem` | 32 | Memory partitions (L2 banks) |
+| `gpgpu_cache:dl1` | `S:4:128:64,L:T:m:L:L,A:512:8,16:0,32` | L1D: 4-way, 128B sector, 64 sets |
+| `gpgpu_cache:dl2` | `S:32:128:24,L:B:m:L:P,A:192:4,32:0,32` | L2: 32-way, 128B sector, 24 sets/bank |
+| `gpgpu_shmem_size` | 98304 (96 KB) | Shared memory per SM |
+| `gpgpu_unified_l1d_size` | 128 KB | Unified L1D + shmem per SM |
+| `gpgpu_shader_core_pipeline` | `2048:32` | Max 2048 threads, 32 threads/warp |
+| `gpgpu_num_sched_per_core` | 4 | Warp schedulers per SM |
+| `gpgpu_scheduler` | `lrr` | Round-robin warp scheduling |
+
+---
+
+## 7. Output Files
+
+| File | Description |
+|------|-------------|
+| `/workspace/repos/gpgpu-sim-run.log` | Existing run log (3249 lines, from 2026-04-28) |
+| `/workspace/repos/test_vecadd/gpgpu_inst_stats.txt` | Per-kernel instruction statistics (1.2 KB) |
+| `/workspace/repos/test_vecadd/vecadd.1.sm_52.ptx` | Extracted PTX (974 B, auto-generated by simulator) |
+| `/workspace/repos/test_vecadd/vecadd.1.sm_52.ptxas` | PTX assembler output (277 B) |
+| `/workspace/repos/test_vecadd/checkpoint_files/` | Checkpoint directory (created by simulator) |
+
+All statistics below are sourced from `/workspace/repos/gpgpu-sim-run.log`.
+
+---
+
+## 8. Key Statistics
+
+### 8.1 Top-level Performance
+
+| Metric | Value | Source |
+|--------|-------|--------|
+| GPGPU-Sim version | 4.2.0 | terminal output |
+| Kernel name | `_Z6vecAddPfS_S_i` | terminal output |
+| Kernel count | 1 | terminal output |
+| Total CTAs issued | 1 | `gpu_tot_issued_cta = 1` |
+| `gpu_tot_sim_cycle` | **5569** | run log |
+| `gpu_tot_sim_insn` | **5376** | run log |
+| `gpu_tot_ipc` | **0.9653** | run log |
+| Wall time | 1 second | `gpgpu_simulation_time` |
+| Simulation rate | 5376 inst/sec, 5569 cycle/sec | run log |
+| Silicon slowdown | **203268×** | `gpgpu_silicon_slowdown` |
+
+### 8.2 L1D Cache (per SM core)
+
+| Core | Access | Miss | Miss Rate | Reservation Fails |
+|------|--------|------|-----------|-------------------|
+| core[0] | 96 | 96 | 1.000 | 79 |
+| core[1..79] | 0 | 0 | — | 0 |
+
+Note: 100% L1D miss rate is expected — the 256-element array fits in L2 but L1D is cold. 79 reservation failures indicate L1 MSHR contention on the single active SM.
+
+### 8.3 L2 Cache
+
+| Metric | Value |
+|--------|-------|
+| `L2_total_cache_accesses` | 96 |
+| `L2_total_cache_misses` | 32 |
+| `L2_total_cache_miss_rate` | 0.3333 |
+| `L2_total_cache_pending_hits` | 0 |
+| `L2_total_cache_reservation_fails` | 0 |
+
+Breakdown by access type:
+
+| Access Type | HIT | MISS | SECTOR_MISS | TOTAL |
+|-------------|-----|------|-------------|-------|
+| `GLOBAL_ACC_R` | 64 | 0 | — | 64 |
+| `GLOBAL_ACC_W` | 0 | 8 | 24 | 32 |
+
+Interpretation: all reads hit L2 (data loaded on first read and reused); writes fully miss L2 (write-allocate with sector granularity).
+
+### 8.4 DRAM / Memory Partition
+
+| Metric | Value |
+|--------|-------|
+| `gpu_stall_dramfull` | 0 |
+| DRAM channel activity | minimal (all counters zero) |
+
+DRAM sees almost no traffic because L2 absorbs all reads; only initial compulsory misses reach DRAM.
+
+### 8.5 Memory Latency
+
+| Metric | Value |
+|--------|-------|
+| `maxmflatency` (mem-fetch latency) | 235 cycles |
+| `averagemflatency` | 211 cycles |
+| `max_icnt2mem_latency` | 71 cycles |
+| `avg_icnt2mem_latency` | 63 cycles |
+| `max_icnt2sh_latency` | 2 cycles |
+
+### 8.6 Interconnect
+
+| Metric | Value |
+|--------|-------|
+| `Req_Network_injected_packets_num` | 96 |
+| `Reply_Network_injected_packets_num` | 96 |
+| `Req_Network_cycles` | 5569 |
+| `Req_Network_injected_packets_per_cycle` | 0.0172 |
+
+### 8.7 Memory Traffic Breakdown
+
+| Direction | Access Type | Bytes |
+|-----------|-------------|-------|
+| Core→Mem | `GLOBAL_ACC_R` | 512 B (8 × 64B lines) |
+| Core→Mem | `GLOBAL_ACC_W` | 1280 B (40 × 32B) |
+| Mem→Core | `GLOBAL_ACC_R` | 2560 B (40 × 64B) |
+| Mem→Core | `GLOBAL_ACC_W` | 256 B (8 × 32B) |
+
+### 8.8 Warp Occupancy Distribution (core[0])
+
+```
+Stall: 84     W0_Idle: 858    W0_Scoreboard: 1154
+W32: 176      (all other warp counts: 0)
+```
+
+Single-issue slots per scheduler: WS0–WS3 each = 44. No dual-issue observed.
+
+---
+
+## 9. Current Issues / Risks
+
+| Issue | Severity | Detail |
+|-------|----------|--------|
+| Extremely small benchmark | Low | vecadd touches only 1 SM, 1 CTA, 256 elements — not representative of real workloads; suitable only for smoke testing simulator functionality |
+| L1D 100% miss rate | Expected | Cold-start artifact of single short kernel; not a simulator bug |
+| 79 L1D reservation fails | Note | MSHR saturation on core[0]; expected for memory-bound micro-kernel |
+| Silicon slowdown 203268× | Inherent | ~3 minutes wall time per 1M simulated cycles; keep kernels small for experiments |
+| No real GPU | Inherent | Cannot cross-validate with hardware PMC counters in this environment |
+| `_modified_0.0` in build string | Note | Indicates build system detected local uncommitted state (untracked files); harmless |
+
+---
+
+## 10. Next Steps
+
+1. **Re-run to confirm reproducibility** — execute the baseline command above, verify `gpu_tot_sim_cycle = 5569` and `vecAdd result: PASS`.
+2. **Select a second benchmark** — consider a matrix-multiply or rodinia kernel to exercise more SMs and produce non-trivial cache behavior; keep array sizes small (≤ 256×256 fp32) to stay within simulation time budget.
+3. **Define experiment diff protocol** — for any cache/MMU change, record the diff of `gpgpusim.config` (or source patch) alongside the run log; compare `gpu_tot_sim_cycle`, `L2_total_cache_miss_rate`, and `averagemflatency` against this baseline.
+4. **Automated stat extraction** — a one-liner to snapshot the metrics:
+   ```bash
+   grep -E "gpu_tot_sim_cycle|gpu_tot_sim_insn|gpu_tot_ipc|gpgpu_silicon_slowdown|\
+   L2_total_cache_miss_rate|averagemflatency|gpgpu_simulation_time" \
+   /workspace/repos/gpgpu-sim-baseline.log
+   ```
+5. **Power stats (optional)** — if `accelwattch_ptx_sim.xml` is needed, add `-power_simulation_enabled 1` to config and run again; check `gpgpusim_power_report.log`.
