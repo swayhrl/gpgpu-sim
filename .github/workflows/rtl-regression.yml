@@ -1,0 +1,23 @@
+name: rtl-regression
+
+on:
+  push:
+    paths:
+      - 'rtl/**'
+      - '.github/workflows/rtl-regression.yml'
+  pull_request:
+    paths:
+      - 'rtl/**'
+      - '.github/workflows/rtl-regression.yml'
+
+jobs:
+  stage-c-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install iverilog
+        run: sudo apt-get update && sudo apt-get install -y iverilog
+      - name: Run quick regression
+        run: rtl/benchmarks/run_stage_c_regression.sh quick
+      - name: Run full regression
+        run: rtl/benchmarks/run_stage_c_regression.sh full
