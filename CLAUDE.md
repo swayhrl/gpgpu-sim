@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-04-30 — Round Q complete; paper reproduction & idea development workflow infrastructure established._
+_Last updated: 2026-04-30 — Round R complete; CCWS repro plan written._
 
 ## Git 工作流
 
@@ -210,8 +210,9 @@ Four days of deep read-through of the PTX functional simulation → timing model
 - [x] **Round G**：Rodinia 4 benchmarks（pathfinder/hotspot/srad_v2/lud）带入，全部在 GPGPU-Sim 跑通；14 workload 全部 ready
 - [x] **Round O**：Cache passive instrumentation 完成，tag `cache-inst-v0`，分支 `hrl/cache-instrumentation-v0`
 - [x] **Round Q**：Paper reproduction & idea development workflow 基础设施建立，分支 `hrl/repro-infra-v0`
-- [ ] **Round R（下一步）**：选择第一篇 cache 论文，填写 `docs/papers/<paper-key>_repro_plan.md`，不改代码
-- [ ] **Round S+**：第一篇论文 minimal implementation → quick_pass → standard_pass
+- [x] **Round R**：选择 CCWS 作为第一篇 cache 论文；论文深度阅读；写 repro plan；源码 mapping
+- [ ] **Round S（下一步）**：创建 `hrl/paper/ccws-repro-v0`；先 audit `swl_scheduler`；加 config knobs + no-op flag；feature_off quick pass
+- [ ] **Round S+**：CCWS 渐进实现（instrumentation → VTA/LLD → load gating → validation）
 - [ ] **Round V（后置）**：至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
 
 ## Workload Management Framework（Round B 新增）
@@ -465,3 +466,44 @@ CFLAGS = -O2 -arch=sm_52 -cudart shared --ptxas-options=-v
 选择第一篇 cache 论文，填写 `docs/papers/<paper-key>_repro_plan.md`，**不改代码**。
 
 候选方向：CCWS / DAWS / PCAL / Linebacker / RRIP。
+
+## Round R: CCWS Paper Reproduction Plan（2026-04-30）
+
+### 本轮目标
+
+选择 CCWS（Cache-Conscious Wavefront Scheduling，Rogers/O'Connor/Aamodt，MICRO 2012）作为第一篇 cache 论文。深度阅读论文，映射到 GPGPU-Sim 源码，写 repro plan。**不修改 src/，不运行 workload，不编译。**
+
+### 关键发现（恢复上下文用）
+
+| 发现 | 细节 |
+|------|------|
+| `swl_scheduler` 已存在 | `shader.cc:1678`，config key `warp_limiting:<prio>:<limit>`，目前只支持 GTO，是 SWL 直接实现 |
+| LOAD_OP gating 候选点 | `shader.cc:1344` 的 `if ((pI->op == LOAD_OP)||...)` 判断处 |
+| `issue_warp` 调用前插入点 | `shader.cc:1352`，`warp_id` 在作用域内 |
+| `evicted_block_info` 无 warp_id | `gpu-cache.h:82`，faithful VTA 需要修改此结构，是最高风险点 |
+| `mf->get_wid()` 可用 | `mem_fetch.h:98`，miss 时可获取 warp_id |
+| SM7_QV100 当前 scheduler | `lrr`（config line 134），不是 gto |
+| CCWS K_THROTTLE 最优值 | `8`（单一静态值，对所有 HCS workload 有效） |
+
+### 本轮新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `docs/papers/ccws_reading_notes.md` | 论文深度阅读笔记 |
+| `docs/papers/ccws_repro_plan.md` | CCWS 复现计划（从模板填写）|
+| `experiments/paper-ccws/README.md` | 实验元数据目录说明 |
+| `experiments/paper-ccws/config_matrix.csv` | Config 矩阵（baseline/off/on） |
+| `experiments/paper-ccws/result_manifest.csv` | 结果 manifest 表头 |
+
+### Round S 建议路线
+
+1. 创建 `hrl/paper/ccws-repro-v0`（base: `hrl/repro-infra-v0`）
+2. **Stage S1**：审计 `swl_scheduler`，确认语义与论文 SWL 一致
+3. **Stage S2**：只加 config knobs + no-op feature flag，编译通过
+4. **Stage S3**：feature_off quick pass，确认 ≈ baseline
+5. **Stage S4+**：渐进实现 instrumentation → VTA/LLD → load gating
+6. 不立即全量实现完整 CCWS
+
+### 自研扩展规则
+
+CCWS paper branch **只做忠实复现**。任何对 CCWS 的自研改进或扩展必须放到 `hrl/idea/<idea-key>-from-ccws-v0`，不得混入 paper branch。

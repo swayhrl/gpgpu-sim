@@ -37,9 +37,14 @@ Template: `docs/paper_repro_template.md`
 
 ## Current Papers
 
-| Paper Key | Title / Description | Stage | Branch |
-|-----------|---------------------|-------|--------|
-| _(Round R: TBD)_ | First cache paper — to be selected | `planned` | — |
+| Paper Key | Title / Description | Stage | Branch | Plan | Notes |
+|-----------|---------------------|-------|--------|------|-------|
+| `ccws` | Cache-Conscious Wavefront Scheduling (Rogers/O'Connor/Aamodt, MICRO 2012) | `mapped` | `hrl/paper/ccws-repro-v0` (create in Round S) | [ccws_repro_plan.md](ccws_repro_plan.md) | [ccws_reading_notes.md](ccws_reading_notes.md) |
+
+### CCWS Next Milestone
+
+Tag `ccws-plan-v0` after committing this plan.  
+Round S Step 1: audit existing `swl_scheduler` / `warp_limiting` in `shader.cc:1678`.
 
 ---
 

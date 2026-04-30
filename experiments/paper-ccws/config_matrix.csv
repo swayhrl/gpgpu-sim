@@ -1,0 +1,4 @@
+config_name,branch,base_config,feature_state,expected_behavior,notes
+baseline_cache_inst,cache-inst-v0,SM7_QV100,baseline,cache instrumentation baseline,no CCWS; reference numbers
+ccws_feature_off,hrl/paper/ccws-repro-v0,SM7_QV100,feature_off,should match baseline,gpgpu_enable_ccws=0; all paper_ccws_* stats = 0
+ccws_feature_on,hrl/paper/ccws-repro-v0,SM7_QV100,feature_on,enable CCWS; HCS-like workloads should show fewer L1D misses,gpgpu_enable_ccws=1 k_throttle=8 base_score=100 vta_epw=16

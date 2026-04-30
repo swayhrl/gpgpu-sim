@@ -1,0 +1,285 @@
+# CCWS Reproduction Plan
+
+_Created: 2026-04-30 (Round R). Based on paper reading and GPGPU-Sim 4.2.0 source mapping._  
+_Template: docs/paper_repro_template.md_
+
+---
+
+## 1. Paper Metadata
+
+| Field | Value |
+|-------|-------|
+| **Paper key** | `ccws` |
+| **Title** | Cache-Conscious Wavefront Scheduling |
+| **Authors** | Timothy G. Rogers, Mike O'Connor, Tor M. Aamodt |
+| **Venue / Year** | MICRO 2012 |
+| **Link / DOI** | DOI: 10.1109/MICRO.2012.16 |
+| **Target mechanism category** | Cache-conscious warp/wavefront scheduling (load-issue gating) |
+| **Expected GPGPU-Sim modules** | `shader.h`, `shader.cc`, `gpu-cache.h`, `gpu-sim.cc` |
+
+---
+
+## 2. One-sentence Summary
+
+CCWS dynamically limits which warps may issue load instructions by tracking lost intra-warp L1D locality via a per-warp victim tag array, assigning locality scores, and gating low-score warps from issuing loads.
+
+---
+
+## 3. Problem and Motivation
+
+- **Problem**: On GPU cores with many concurrent active warps, the aggregate memory footprint of all warps exceeds L1D capacity, causing thrashing and destroying intra-warp locality.
+- **Root cause**: The wavefront issue arbiter (scheduler) determines which memory accesses enter the L1D. Standard schedulers (LRR, GTO) are cache-oblivious and can interleave accesses from many warps, evicting data before the issuing warp can re-use it.
+- **Evidence metric**: MPKI (misses per thousand instructions) and normalized IPC on HCS benchmarks. Figure 3 shows that peak IPC occurs at 4–7 active warps, not max concurrency (32).
+- **Key insight**: Even Belady-optimal replacement fails to recover from a bad scheduler. Scheduling policy dominates replacement policy for HCS workloads.
+
+---
+
+## 4. Mechanism Summary
+
+CCWS operates in three layers:
+
+**Layer 1 — VTA (Victim Tag Array) + LLD**: When a warp W misses in L1D and reserves a cache line, W's warp ID is stored with the line. When that line is later evicted (by another warp's miss), its tag is written to VTA[W]. On W's next L1D miss, VTA[W] is probed. A VTA hit signals "lost locality"—W could have hit if it had more exclusive L1D access.
+
+**Layer 2 — LSS (Locality Scoring System)**: Each warp has a lost-locality score (LLS). LLS starts at `BaseScore` (100), jumps to LLDS on a VTA hit (capped at LLDS), and decays by 1/cycle back to `BaseScore`. LLDS is computed as:
+```
+LLDS = (VTAHitsTotal / InstIssuedTotal) × K_THROTTLE × CumLLSCutoff
+CumLLSCutoff = NumActiveWarps × BaseScore
+```
+K_THROTTLE = 8 is a single static constant that works well across all workloads.
+
+**Layer 3 — Can Issue gating**: Warps are sorted by LLS (max-heap). The prefix sum is computed. Warps whose LLS falls below the cutoff (`CumLLSCutoff`) in the sorted order have their "Can Issue" bit cleared, preventing them from issuing **load instructions** (non-load instructions are unaffected).
+
+---
+
+## 5. Mapping to GPGPU-Sim
+
+| Paper concept | GPGPU-Sim candidate | Files / functions | Confidence | Notes |
+|---|---|---|---|---|
+| Wavefront Issue Arbiter (WIA) | `scheduler_unit::cycle()` | `shader.cc:1259` | **High** | Main scheduling loop; iterates `m_next_cycle_prioritized_warps` |
+| Baseline priority logic | `lrr_scheduler`, `gto_scheduler`, `swl_scheduler` | `shader.h:492–636`, `shader.cc:1592–1710` | **High** | Three subclasses of `scheduler_unit`; SM7_QV100 uses `lrr` |
+| SWL (Static Wavefront Limiting) | `swl_scheduler` | `shader.h:619`, `shader.cc:1678` | **High** | **Already implemented!** Config: `warp_limiting:<prio>:<limit>`. Currently only GTO prioritization. Audit before reimplementing. |
+| Can Issue bit vector | New per-scheduler gate | `shader.cc:1344` (before `LOAD_OP` issue) | **High** | `warp_id` already available as local var; gate by `ccws_can_issue[warp_id]` |
+| Load instruction detection | `pI->op == LOAD_OP` | `shader.cc:1344` | **High** | Condition already exists; also `TENSOR_CORE_LOAD_OP` |
+| Warp ID at scheduler | `warp_id` local variable | `scheduler_unit::cycle()`, `shader.cc:1280` | **High** | Available as `unsigned warp_id = (*iter)->get_warp_id()` |
+| L1D miss feedback | `cache_request_status::MISS` + `mf->get_wid()` | `gpu-cache.h:52`, `mem_fetch.h:98` | **Medium** | mf carries wid; routing from ldst_unit back to scheduler needs plumbing |
+| Cache line eviction feedback | `evicted_block_info` | `gpu-cache.h:82` | **Medium-Low** | **`evicted_block_info` does NOT currently store warp_id.** Faithful VTA requires adding `m_warp_id` to `cache_block_t` and `evicted_block_info`. This is the highest-risk change. |
+| VTA per-warp tag store | New `ccws_vta_t` struct | `shader.h` (new per-scheduler member) | **Low-Medium** | Novel data structure; can be simplified to miss-side tracking first |
+| LLS score array per warp | New `unsigned ccws_lls[MAX_WARPS]` | `shader.h` (new per-scheduler member) | **Medium** | Per-scheduler state, indexed by warp_id |
+| Score decay per cycle | New logic in `scheduler_unit::cycle()` | `shader.cc:1259` | **Medium** | Decrement all LLS by 1 per cycle call; bounded at `BaseScore` |
+| LLDS computation | New function in scheduler | `shader.cc` (new method) | **Medium** | Requires tracking `VTAHitsTotal` and `InstIssuedTotal` counters |
+| Cumulative LLS cutoff test | New logic in `scheduler_unit::cycle()` | `shader.cc:1344` | **Medium** | Sort LLS, prefix sum, compute cutoff; can be pipelined |
+| Config knob parsing | `option_parser_register()` | `gpu-sim.cc` or `gpgpu-sim.cc` | **High** | Standard GPGPU-Sim pattern |
+| Stats printing | Existing `print_stats()` | `gpu-sim.cc` or `shader.cc` | **High** | Add `paper_ccws_*` counters to existing stats infrastructure |
+| Cache instrumentation baseline | `cacheinst_*` counters | `gpu-cache.h:1261` | **High** | Round O already added passive instrumentation; use as baseline |
+
+### Key confirmed facts from source reading
+
+- `swl_scheduler` already exists at `shader.cc:1678`; config format: `warp_limiting:<prioritization>:<num_warps_to_limit>`; currently only GTO prioritization.
+- Load/store issue branch in scheduler at `shader.cc:1344–1358`; CCWS gate would be an additional `&&` condition before `m_shader->issue_warp(...)` at `shader.cc:1352`.
+- `evicted_block_info` (gpu-cache.h:82) fields: `m_block_addr`, `m_modified_size`, `m_byte_mask`, `m_sector_mask`. **No warp_id field.** Must add for faithful VTA.
+- `mf->get_wid()` is available from `mem_fetch.h:98` — warp_id accessible at miss time.
+- SM7_QV100 current scheduler: `lrr` (config line 134).
+
+---
+
+## 6. Implementation Scope
+
+### A. Must implement for minimal CCWS
+
+- [ ] Config flag `gpgpu_enable_ccws` default `0` — no behavior change when off
+- [ ] Audit and document existing `swl_scheduler` / `warp_limiting` (Stage S1)
+- [ ] No-op CCWS feature flag: compiles, `feature_off` passes quick set (Stage S2)
+- [ ] Per-scheduler LLS array indexed by warp_id (Stage S5)
+- [ ] VTA-like prototype (simplified: miss-side tracking if eviction-side is too risky) (Stage S5)
+- [ ] Score update on VTA hit (Stage S5)
+- [ ] Score decay per cycle (Stage S5)
+- [ ] Load-issue gating through Can Issue bit in `scheduler_unit::cycle()` (Stage S6)
+- [ ] `paper_ccws_*` instrumentation stats (Stage S4)
+
+### B. Nice to have
+
+- [ ] Faithful VTA with eviction-side warp_id (requires `cache_block_t` modification)
+- [ ] K_THROTTLE parameter sweep across HCS-like workloads
+- [ ] SWL sweep comparison with CCWS
+- [ ] Two-level scheduler comparison (2LVL-GTO)
+- [ ] Per-workload config matrix in `experiments/paper-ccws/`
+- [ ] Area estimate note (0.17% from paper — no simulation needed)
+
+### C. Out of scope for first implementation
+
+- Exact GPGPU-Sim 3.1.0 baseline reproduction
+- Exact original benchmark suite (BFS GPU / MEMC / GC — not in workload repo)
+- Belady-optimal replacement comparison
+- Hardware area modeling
+- Power-tuned CCWS configuration
+- Changing cache replacement policy
+- Any self-developed improvements to CCWS (→ `hrl/idea/*` branch only)
+
+---
+
+## 7. Config Knobs
+
+| Parameter | Type | Default | Off behavior | On behavior | Suggested values |
+|-----------|------|---------|-------------|-------------|-----------------|
+| `gpgpu_enable_ccws` | `int` | `0` | No CCWS; simulation identical to baseline | Enable full CCWS | `0` or `1` |
+| `gpgpu_ccws_enable_swl` | `int` | `0` | No SWL limit | Enable static warp limit | `0` or `1` |
+| `gpgpu_ccws_swl_limit` | `int` | `32` | N/A | Limit active warps per scheduler to this value | `4`–`32` |
+| `gpgpu_ccws_base_locality_score` | `int` | `100` | N/A | Base LLS value; also controls score floor | `100` (paper default) |
+| `gpgpu_ccws_k_throttle` | `float` | `8.0` | N/A | LLDS multiplier; larger = more throttling | `8.0` (paper default) |
+| `gpgpu_ccws_vta_entries_per_warp` | `int` | `16` | N/A | VTA size per warp | `16` (paper default) |
+| `gpgpu_ccws_score_decay_interval` | `int` | `1` | N/A | Cycles between score decay steps | `1` (per-cycle decay) |
+| `gpgpu_ccws_gate_loads_only` | `int` | `1` | N/A | If 0, gate all mem ops (not recommended) | `1` |
+| `gpgpu_ccws_debug` | `int` | `0` | N/A | Print per-cycle CCWS decision trace | `0` |
+
+**Rule**: All default to off or to paper-recommended values. `gpgpu_enable_ccws=0` must produce identical results to `cache-inst-v0` baseline.
+
+---
+
+## 8. Instrumentation Plan
+
+All stats gated by `gpgpu_enable_ccws`. Prefix: `paper_ccws_`.
+
+| Stat | Description | Expected value |
+|------|-------------|----------------|
+| `paper_ccws_enabled` | Binary: was CCWS enabled for this run | 0 or 1 |
+| `paper_ccws_vta_probe` | Times VTA was probed on L1D miss | High for HCS; ~0 for CI |
+| `paper_ccws_vta_hit` | VTA hits (lost locality events) | High for HCS; ~0 for CI |
+| `paper_ccws_lost_locality_event` | VTA hits that triggered score update | = vta_hit |
+| `paper_ccws_score_update` | Times any warp's LLS was increased | = lost_locality_event |
+| `paper_ccws_score_decay` | Total score decrements across all warps | Proportional to cycles × warps |
+| `paper_ccws_load_gate_attempt` | Times a warp tried to issue a load | All load instructions |
+| `paper_ccws_load_gate_block` | Times load was blocked by Can Issue = 0 | High for HCS with CCWS on |
+| `paper_ccws_load_gate_allow` | Times load was allowed | = attempt - block |
+| `paper_ccws_active_warp_limit` | Effective avg active warps per scheduler | Should decrease for HCS |
+| `paper_ccws_avg_allowed_warps` | Mean warps with Can Issue = 1 | |
+| `paper_ccws_total_blocked_loads` | Cumulative blocked load instructions | |
+
+---
+
+## 9. Behavior Change Plan
+
+### Stage breakdown
+
+| Stage | Description | Branch | Expected risk |
+|-------|-------------|--------|--------------|
+| **S0** | Repro plan only (current stage) | `hrl/repro-infra-v0` | None |
+| **S1** | Audit `swl_scheduler` / `warp_limiting`; document behavior | `hrl/paper/ccws-repro-v0` | None (read-only) |
+| **S2** | Add config knobs (`option_parser_register`); no-op feature flag; compile | `hrl/paper/ccws-repro-v0` | Low |
+| **S3** | Confirm `feature_off` quick set pass (≈ baseline) | `hrl/paper/ccws-repro-v0` | Low |
+| **S4** | Add `paper_ccws_*` instrumentation counters (no behavior change) | `hrl/paper/ccws-repro-v0` | Low |
+| **S5** | VTA-like prototype + LLD; score update + decay | `hrl/paper/ccws-repro-v0` | Medium |
+| **S6** | LSS Can Issue gating in `scheduler_unit::cycle()` for LOAD_OP | `hrl/paper/ccws-repro-v0` | High |
+| **S7** | Quick set validation: `feature_off ≈ baseline`, `feature_on` triggers | `hrl/paper/ccws-repro-v0` | Medium |
+| **S8** | Standard / `cache_focus` set validation | `hrl/paper/ccws-repro-v0` | Low |
+| **S9** | K_THROTTLE sweep; result notes | `hrl/paper/ccws-repro-v0` | Low |
+
+**Rules**:
+- Feature flag **always default 0**.
+- Never commit with CCWS behavior-altering code while `gpgpu_enable_ccws` defaults to 1.
+- `baseline ≈ feature_off` must hold before proceeding to `feature_on` testing.
+
+---
+
+## 10. Validation Plan
+
+| Group | Config | Workload set | Pass criteria |
+|-------|--------|-------------|---------------|
+| **baseline** | `cache-inst-v0` tag | quick | Reference numbers established |
+| **feature_off** | `ccws` branch, `gpgpu_enable_ccws=0` | quick | sim_cycle ≈ baseline ±1%; `paper_ccws_load_gate_block = 0` |
+| **feature_on** | `ccws` branch, `gpgpu_enable_ccws=1` | quick | `paper_ccws_vta_hit > 0` for HCS-like; mechanism triggers |
+| **feature_on** | `ccws` branch, `gpgpu_enable_ccws=1` | cache_focus | L1D miss rate decreases for HCS-like workloads |
+| **feature_on** | `ccws` branch, `gpgpu_enable_ccws=1` | irregular_focus | Mechanism triggers; no significant regression |
+| **feature_on** | `ccws` branch, `gpgpu_enable_ccws=1` | standard | No significant regression on CI workloads |
+
+**Validation order**: compile → quick feature_off → quick feature_on → cache_focus → irregular_focus → standard.
+
+---
+
+## 11. Workload Mapping
+
+### HCS-like (expected to benefit from CCWS)
+
+| Our workload | Analogue in paper | Rationale |
+|---|---|---|
+| `rodinia_srad_v2` | SRAD (CI in paper, but high L1D miss in our setup) | L1D miss rate 0.79, cache-sensitive stencil |
+| `page_stride_access` | BFS (synthetic irregular) | Cross-page irregular access, maximum TLB+cache footprint |
+| `strided_access` | — (synthetic) | Coalescing degradation + L2 miss spike |
+| `rodinia_bfs` (if added) | BFS | Direct analogue |
+| `parboil_spmv` | SpMV-like irregular | Irregular row access pattern |
+| `irregular_focus` set overall | HCS in paper | Our irregular_focus set targets similar workloads |
+
+### CI-like / control (should not regress)
+
+| Our workload | Analogue in paper | Rationale |
+|---|---|---|
+| `mutual_tiled` | LUD | Dense tiled compute; low L1D miss |
+| `polybench_gemm` | — | Dense GEMM; L2 miss 0, compute-bound |
+| `rodinia_lud` | LUD | Direct analogue |
+| `rodinia_backprop` (if added) | BACKP | CI in paper |
+| `rodinia_hotspot` | — | Stencil with high L1D miss but regular access |
+
+### Quick sanity set (smoke regression)
+
+`vecadd`, `strided_access`, `page_stride_access`, `atomic_contention`, `mutual_tiled`, `polybench_2dconv`, `rodinia_hotspot`.
+
+---
+
+## 12. Expected Outcomes
+
+| Metric | feature_off | feature_on (HCS-like) | feature_on (CI) |
+|--------|-------------|----------------------|-----------------|
+| `sim_cycle` vs baseline | ≈ same (±1%) | Decrease for HCS-like | ≈ same |
+| `cacheinst_L1D_miss_rate` | ≈ baseline | Decrease expected | ≈ same |
+| `W0_Scoreboard` | ≈ baseline | May decrease | ≈ same |
+| `paper_ccws_vta_hit` | 0 | > 0 for HCS-like; ~0 for CI | ~0 |
+| `paper_ccws_load_gate_block` | 0 | > 0 for HCS-like | ~0 |
+
+**Caveat**: Our results will not match paper values because: GPGPU-Sim version differs (4.2.0 vs 3.1.0), GPU config differs (SM7_QV100 Volta vs paper's GPGPU-Sim default), workloads differ (no MEMC/GC/BFS-large), and input sizes are tiny (to keep sim time tractable).
+
+Goal: Reproduce **mechanism behavior trend** — not exact numbers.
+
+---
+
+## 13. Risks and Known Gaps
+
+| Risk | Severity | Mitigation |
+|------|---------|------------|
+| `evicted_block_info` has no warp_id | **High** | Stage 1: use miss-side VTA (approximation); Stage 2: add warp_id to `cache_block_t` |
+| Load gating affects scheduler/scoreboard interaction | **High** | Test feature_off strictly; add assert that blocked load is re-tried next cycle |
+| `swl_scheduler` already exists — risk of conflict or confusion | **Medium** | Audit in S1 before writing new SWL code; use existing class if compatible |
+| GPGPU-Sim 4.2.0 vs 3.1.0 scheduler interface differences | **Medium** | Focus on behavioral equivalence, not code-level equivalence |
+| Tiny workloads may not show CCWS effect | **Medium** | Use `irregular_focus` set; may need larger BFS/SpMV inputs |
+| SM7_QV100 uses `lrr` baseline, not `gto` | **Low** | CCWS paper uses GTO baseline; CCWS is compatible with any base scheduler |
+| Multiple schedulers per core (SM7_QV100 has 2) | **Low** | CCWS state should be per-scheduler, not per-core; verify in S1 |
+| LLDS formula requires per-core instruction counter | **Low** | `InstIssuedTotal` can be maintained in `scheduler_unit` |
+| Self-developed cache policy mixed into paper branch | **Low** | Policy: never mix; self-developed ideas go to `hrl/idea/*` |
+
+---
+
+## 14. Commit / Tag Milestones
+
+| Milestone | Tag | Content |
+|-----------|-----|---------|
+| Plan complete | `ccws-plan-v0` | This file + reading notes, no code change |
+| SWL audit done | `ccws-swl-audit` | Docs/notes on existing `swl_scheduler` behavior |
+| Config knobs + no-op flag | `ccws-config-noop` | Config parsing only; compile pass; feature_off = baseline |
+| Instrumentation only | `ccws-instrumentation-only` | Stats counters, no behavior; feature_off = baseline |
+| VTA + LLD prototype | `ccws-vta-lld-prototype` | VTA and LLD; vta_hit > 0 for HCS |
+| Load gating prototype | `ccws-load-gating-prototype` | Can Issue gating; feature_on alters scheduling |
+| Quick set pass | `ccws-quick-pass` | feature_off ≈ baseline; feature_on triggers |
+| Standard set result | `ccws-standard-pass` | Standard + cache_focus results documented |
+
+---
+
+## 15. Round S Recommendation
+
+**Do not attempt full CCWS in Round S.**
+
+Round S plan:
+1. Create branch `hrl/paper/ccws-repro-v0` from `hrl/repro-infra-v0`.
+2. **Stage S1**: Read `swl_scheduler` carefully. Confirm: does it match paper SWL semantics? Document the answer. Decide: reuse as-is, extend, or implement separately.
+3. **Stage S2**: Add `gpgpu_enable_ccws` config knob and all other knobs via `option_parser_register`. No behavior change. Compile.
+4. **Stage S3**: Run quick set with `gpgpu_enable_ccws=0`. Confirm `feature_off ≈ baseline`. Tag `ccws-config-noop`.
+5. Only after S3 passes: proceed to S4 (instrumentation) and beyond.
+
+**Reminder**: Any self-developed improvement on top of CCWS must go to `hrl/idea/<idea-key>-from-ccws-v0`, not into this paper branch.
