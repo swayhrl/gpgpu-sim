@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-04-30 — Round T complete; CCWS no-op behavior check passed; config override automation added._
+_Last updated: 2026-05-01 — Round U complete; SWL static baseline configs created and validated._
 
 ## Git 工作流
 
@@ -213,7 +213,8 @@ Four days of deep read-through of the PTX functional simulation → timing model
 - [x] **Round R**：选择 CCWS 作为第一篇 cache 论文；论文深度阅读；写 repro plan；源码 mapping
 - [x] **Round S**：创建 `hrl/paper/ccws-repro-v0`；audit `swl_scheduler`（`ccws_swl_audit.md`）；加 CCWS config knobs（9 个，全 default 0）；`paper_ccws_*` no-op stats；编译 pass；feature_off ≈ baseline 4 workload 验证 ✓；tag `ccws-config-noop` 打好
 - [x] **Round T**：no-op behavior check；创建 `hrl-repro` config 副本（off/on_noop）；`GPGPUSIM_CONFIG_OVERRIDE` env var 支持加入 `run_one.sh`；quick set 7/7 通过（off + on_noop 两组）；`paper_ccws_enabled` 区分验证 ✓；behavior 计数器全 0 ✓
-- [ ] **Round U**：SWL controllable baseline（wire `gpgpu_ccws_enable_swl`）或 Stage S5 VTA 原型
+- [x] **Round U**：SWL static baseline；基于已有 `swl_scheduler` / `warp_limiting` 创建 limit_4/8/16 hrl-repro config 副本；quick set 3×7=21 workload 全部通过；**发现 quick workload 太小**，所有 limit 结果完全相同（<1 warp/scheduler），差异来自 LRR→GTO，非 warp limiting；`paper_ccws_*` 全 0 ✓；不修改 src/
+- [ ] **Round V**：扩大 workload（cache_focus 或 irregular_focus）以验证 SWL 效果；或直接 Stage S5 VTA 原型
 - [ ] **Round V（后置）**：至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
 
 ## Workload Management Framework（Round B 新增）
@@ -605,5 +606,68 @@ git tag ccws-config-noop   # 在 commit 后打（Round S 提交打的）
 2. **Stage S5 VTA 原型**：miss-side VTA + LLS array + score decay；`paper_ccws_vta_hit > 0` 应在 HCS 上出现
 
 **严格规则**：自研 cache policy 不得进入 `hrl/paper/ccws-repro-v0`。
+
+## Round U: CCWS SWL Static Baseline（2026-05-01）
+
+### 本轮目标
+
+将现有 `swl_scheduler` / `warp_limiting` 纳入复现流程，建立可重复的 SWL 对照组。**不修改 src/。**
+
+### 完成内容
+
+| 内容 | 结果 |
+|------|------|
+| 确认 SWL 语义 | `warp_limiting:2:<limit>`；GTO-only（assert）；每 scheduler 限制 prioritized warp 数 |
+| `SM7_QV100_ccws_swl_limit_4` | ✓ 创建；`warp_limiting:2:4` |
+| `SM7_QV100_ccws_swl_limit_8` | ✓ 创建；`warp_limiting:2:8` |
+| `SM7_QV100_ccws_swl_limit_16` | ✓ 创建；`warp_limiting:2:16`（= GTO reference，无实际 limit） |
+| quick set 3×7 workloads | ✓ 21 runs，failed=0 |
+| src/ 修改 | **无** |
+| 编译 | 无需（配置改动） |
+
+### 关键发现：quick workload 太小
+
+SM7_QV100 每 scheduler 约 16 warps。**quick set 的 tiny workloads 每 scheduler 只有 <1 warp 激活**，所以 limit_4/8/16 结果完全相同。差异（0.1–0.4%）来自 LRR→GTO 调度策略，非 warp limiting 效果。
+
+需要更大 workload（cache_focus / irregular_focus set）才能观察 SWL 效果。
+
+### sim_cycle 摘要（7 quick workloads）
+
+| Workload | LRR baseline | SWL 任意 limit | 差异来源 |
+|----------|-------------|---------------|---------|
+| vecadd | 5569 | 5558 | GTO vs LRR |
+| strided_access | 5825 | 5824 | GTO vs LRR |
+| page_stride_access | 5851 | 5850 | GTO vs LRR |
+| atomic_contention | 5414 | 5407 | GTO vs LRR |
+| mutual_tiled | 7479 | 7451 | GTO vs LRR |
+| polybench_2dconv | 6652 | 6660 | GTO vs LRR |
+| rodinia_hotspot | 6931 | 6917 | GTO vs LRR |
+
+### 新增文件（本轮，待 commit）
+
+| 文件 | 内容 |
+|------|------|
+| `configs/hrl-repro/SM7_QV100_ccws_swl_limit_4/` | SWL config（limit=4） |
+| `configs/hrl-repro/SM7_QV100_ccws_swl_limit_8/` | SWL config（limit=8） |
+| `configs/hrl-repro/SM7_QV100_ccws_swl_limit_16/` | SWL config（limit=16 / GTO ref） |
+| `experiments/paper-ccws/swl_baseline_check.csv` | 3 limit × 7 wl 运行结果 |
+| `experiments/paper-ccws/config_matrix.csv` | 更新（+3 行） |
+| `docs/papers/ccws_round_u_swl_baseline.md` | Round U 文档 |
+| `docs/papers/ccws_repro_plan.md` | Stage 状态更新 |
+| `CLAUDE.md` | Round U 摘要 |
+
+### workload 仓库
+
+- `runs/latest_summary.csv`：有改动，**不建议提交**
+- 其他文件：无改动（workload 脚本 `run_one.sh` 已在 Round T 提交）
+
+### 下一步：Round V
+
+优先：
+1. **cache_focus set SWL 验证**：用 `rodinia_srad_v2` 等更大 workload 验证 SWL 效果可见
+2. **Stage S5 VTA 原型**：miss-side VTA + LLS score array + decay，使 `paper_ccws_vta_hit > 0`
+
+**严格规则**：自研 cache policy 不得进入 `hrl/paper/ccws-repro-v0`。
+
 
 

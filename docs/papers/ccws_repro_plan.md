@@ -1,6 +1,6 @@
 # CCWS Reproduction Plan
 
-_Created: 2026-04-30 (Round R). Updated: 2026-04-30 (Round S — S1/S2/S3/S4 complete)._  
+_Created: 2026-04-30 (Round R). Updated: 2026-05-01 (Round U — SWL static baseline complete)._  
 _Template: docs/paper_repro_template.md_
 
 ---
@@ -163,6 +163,7 @@ All stats gated by `gpgpu_enable_ccws`. Prefix: `paper_ccws_`.
 | **S3** | Confirm `feature_off` quick set pass (≈ baseline) | `hrl/paper/ccws-repro-v0` | ✓ Done (Round S) | Low |
 | **S4** | Add `paper_ccws_*` instrumentation counters (no behavior change) | `hrl/paper/ccws-repro-v0` | ✓ Done (Round S) | Low |
 | **T** | No-op behavior check: off/on_noop both ≈ baseline; config override automation | `hrl/paper/ccws-repro-v0` | ✓ Done (Round T) | Low |
+| **U** | SWL static baseline: create limit_4/8/16 hrl-repro configs; quick set pass | `hrl/paper/ccws-repro-v0` | ✓ Done (Round U) | Low |
 | **S5** | VTA-like prototype + LLD; score update + decay | `hrl/paper/ccws-repro-v0` | — | Medium |
 | **S6** | LSS Can Issue gating in `scheduler_unit::cycle()` for LOAD_OP | `hrl/paper/ccws-repro-v0` | — | High |
 | **S7** | Quick set validation: `feature_off ≈ baseline`, `feature_on` triggers | `hrl/paper/ccws-repro-v0` | — | Medium |
@@ -171,6 +172,12 @@ All stats gated by `gpgpu_enable_ccws`. Prefix: `paper_ccws_`.
 
 **Round T note**: `GPGPUSIM_CONFIG_OVERRIDE` env var added to `run_one.sh`; config override confirmed
 working. `feature_on_noop` ≡ `feature_off` across all 7 quick-set workloads.
+
+**Round U note**: SWL configs created (`limit_4/8/16`). All three produce **identical results** to
+each other on quick-set workloads because tiny workloads have fewer active warps than even
+`limit=4`. Difference vs LRR baseline (0.1–0.4%) is from GTO vs LRR scheduling, not warp limiting.
+Key finding: quick-set workloads are insufficient to show SWL discriminating effect; larger
+workloads (cache_focus / irregular_focus) are needed before CCWS comparison is meaningful.
 
 **Rules**:
 - Feature flag **always default 0**.
