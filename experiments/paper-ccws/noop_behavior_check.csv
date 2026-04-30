@@ -1,0 +1,15 @@
+run_group,feature_state,workload,result_status,sim_cycle,ipc,cacheinst_L1D_miss_rate,cacheinst_L2_miss_rate,paper_ccws_enabled,paper_ccws_load_gate_block,notes
+round_t,feature_off,vecadd,pass,5569,,,,,0,sim_cycle matches baseline
+round_t,feature_on_noop,vecadd,pass,5569,,,,,0,sim_cycle matches baseline; paper_ccws_enabled=1
+round_t,feature_off,strided_access,pass,5825,,,,,0,sim_cycle matches baseline
+round_t,feature_on_noop,strided_access,pass,5825,,,,,0,sim_cycle matches baseline; paper_ccws_enabled=1
+round_t,feature_off,page_stride_access,pass,5851,,,,,0,sim_cycle matches baseline
+round_t,feature_on_noop,page_stride_access,pass,5851,,,,,0,sim_cycle matches baseline; paper_ccws_enabled=1
+round_t,feature_off,atomic_contention,pass,5414,,,,,0,sim_cycle matches baseline
+round_t,feature_on_noop,atomic_contention,pass,5414,,,,,0,sim_cycle matches baseline; paper_ccws_enabled=1
+round_t,feature_off,mutual_tiled,pass,7479,,,,,0,sim_cycle matches baseline
+round_t,feature_on_noop,mutual_tiled,pass,7479,,,,,0,sim_cycle matches baseline; paper_ccws_enabled=1
+round_t,feature_off,polybench_2dconv,pass,6652,,,,,0,sim_cycle matches baseline
+round_t,feature_on_noop,polybench_2dconv,pass,6652,,,,,0,sim_cycle matches baseline; paper_ccws_enabled=1
+round_t,feature_off,rodinia_hotspot,pass,6931,,,,,0,sim_cycle matches baseline
+round_t,feature_on_noop,rodinia_hotspot,pass,6931,,,,,0,sim_cycle matches baseline; paper_ccws_enabled=1

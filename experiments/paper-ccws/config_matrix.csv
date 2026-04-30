@@ -2,3 +2,5 @@ config_name,branch,base_config,feature_state,expected_behavior,notes
 baseline_cache_inst,cache-inst-v0,SM7_QV100,baseline,cache instrumentation baseline,no CCWS; reference numbers
 ccws_feature_off,hrl/paper/ccws-repro-v0,SM7_QV100,feature_off,should match baseline,gpgpu_enable_ccws=0; all paper_ccws_* stats = 0
 ccws_feature_on,hrl/paper/ccws-repro-v0,SM7_QV100,feature_on,enable CCWS; HCS-like workloads should show fewer L1D misses,gpgpu_enable_ccws=1 k_throttle=8 base_score=100 vta_epw=16
+ccws_noop_off,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_noop_off,feature_off,identical to baseline; paper_ccws_enabled=0,Round T explicit off config
+ccws_noop_on,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_noop_on,feature_on_noop,no behavior change; paper_ccws_enabled=1; all counters 0,Round T no-op on config; VTA/LLS not yet implemented

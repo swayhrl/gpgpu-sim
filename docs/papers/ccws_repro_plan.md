@@ -155,18 +155,22 @@ All stats gated by `gpgpu_enable_ccws`. Prefix: `paper_ccws_`.
 
 ### Stage breakdown
 
-| Stage | Description | Branch | Expected risk |
-|-------|-------------|--------|--------------|
-| **S0** | Repro plan only (current stage) | `hrl/repro-infra-v0` | None |
-| **S1** | Audit `swl_scheduler` / `warp_limiting`; document behavior | `hrl/paper/ccws-repro-v0` | None (read-only) |
-| **S2** | Add config knobs (`option_parser_register`); no-op feature flag; compile | `hrl/paper/ccws-repro-v0` | Low |
-| **S3** | Confirm `feature_off` quick set pass (≈ baseline) | `hrl/paper/ccws-repro-v0` | Low |
-| **S4** | Add `paper_ccws_*` instrumentation counters (no behavior change) | `hrl/paper/ccws-repro-v0` | Low |
-| **S5** | VTA-like prototype + LLD; score update + decay | `hrl/paper/ccws-repro-v0` | Medium |
-| **S6** | LSS Can Issue gating in `scheduler_unit::cycle()` for LOAD_OP | `hrl/paper/ccws-repro-v0` | High |
-| **S7** | Quick set validation: `feature_off ≈ baseline`, `feature_on` triggers | `hrl/paper/ccws-repro-v0` | Medium |
-| **S8** | Standard / `cache_focus` set validation | `hrl/paper/ccws-repro-v0` | Low |
-| **S9** | K_THROTTLE sweep; result notes | `hrl/paper/ccws-repro-v0` | Low |
+| Stage | Description | Branch | Status | Expected risk |
+|-------|-------------|--------|--------|--------------|
+| **S0** | Repro plan only | `hrl/repro-infra-v0` | ✓ Done (Round R) | None |
+| **S1** | Audit `swl_scheduler` / `warp_limiting`; document behavior | `hrl/paper/ccws-repro-v0` | ✓ Done (Round S) | None |
+| **S2** | Add config knobs (`option_parser_register`); no-op feature flag; compile | `hrl/paper/ccws-repro-v0` | ✓ Done (Round S) | Low |
+| **S3** | Confirm `feature_off` quick set pass (≈ baseline) | `hrl/paper/ccws-repro-v0` | ✓ Done (Round S) | Low |
+| **S4** | Add `paper_ccws_*` instrumentation counters (no behavior change) | `hrl/paper/ccws-repro-v0` | ✓ Done (Round S) | Low |
+| **T** | No-op behavior check: off/on_noop both ≈ baseline; config override automation | `hrl/paper/ccws-repro-v0` | ✓ Done (Round T) | Low |
+| **S5** | VTA-like prototype + LLD; score update + decay | `hrl/paper/ccws-repro-v0` | — | Medium |
+| **S6** | LSS Can Issue gating in `scheduler_unit::cycle()` for LOAD_OP | `hrl/paper/ccws-repro-v0` | — | High |
+| **S7** | Quick set validation: `feature_off ≈ baseline`, `feature_on` triggers | `hrl/paper/ccws-repro-v0` | — | Medium |
+| **S8** | Standard / `cache_focus` set validation | `hrl/paper/ccws-repro-v0` | — | Low |
+| **S9** | K_THROTTLE sweep; result notes | `hrl/paper/ccws-repro-v0` | — | Low |
+
+**Round T note**: `GPGPUSIM_CONFIG_OVERRIDE` env var added to `run_one.sh`; config override confirmed
+working. `feature_on_noop` ≡ `feature_off` across all 7 quick-set workloads.
 
 **Rules**:
 - Feature flag **always default 0**.

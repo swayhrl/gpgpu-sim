@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-04-30 — Round S complete; CCWS no-op config knobs added, feature_off ≈ baseline verified._
+_Last updated: 2026-04-30 — Round T complete; CCWS no-op behavior check passed; config override automation added._
 
 ## Git 工作流
 
@@ -211,8 +211,9 @@ Four days of deep read-through of the PTX functional simulation → timing model
 - [x] **Round O**：Cache passive instrumentation 完成，tag `cache-inst-v0`，分支 `hrl/cache-instrumentation-v0`
 - [x] **Round Q**：Paper reproduction & idea development workflow 基础设施建立，分支 `hrl/repro-infra-v0`
 - [x] **Round R**：选择 CCWS 作为第一篇 cache 论文；论文深度阅读；写 repro plan；源码 mapping
-- [x] **Round S**：创建 `hrl/paper/ccws-repro-v0`；audit `swl_scheduler`（`ccws_swl_audit.md`）；加 CCWS config knobs（9 个，全 default 0）；`paper_ccws_*` no-op stats；编译 pass；feature_off ≈ baseline 4 workload 验证 ✓；tag `ccws-config-noop` 待打
-- [ ] **Round S+**：CCWS 渐进实现（Stage S5: VTA/LLD prototype → Stage S6: load gating → Stage S7: quick set pass）
+- [x] **Round S**：创建 `hrl/paper/ccws-repro-v0`；audit `swl_scheduler`（`ccws_swl_audit.md`）；加 CCWS config knobs（9 个，全 default 0）；`paper_ccws_*` no-op stats；编译 pass；feature_off ≈ baseline 4 workload 验证 ✓；tag `ccws-config-noop` 打好
+- [x] **Round T**：no-op behavior check；创建 `hrl-repro` config 副本（off/on_noop）；`GPGPUSIM_CONFIG_OVERRIDE` env var 支持加入 `run_one.sh`；quick set 7/7 通过（off + on_noop 两组）；`paper_ccws_enabled` 区分验证 ✓；behavior 计数器全 0 ✓
+- [ ] **Round U**：SWL controllable baseline（wire `gpgpu_ccws_enable_swl`）或 Stage S5 VTA 原型
 - [ ] **Round V（后置）**：至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
 
 ## Workload Management Framework（Round B 新增）
@@ -537,7 +538,7 @@ CCWS paper branch **只做忠实复现**。任何对 CCWS 的自研改进或扩�
 ### Tag 待打
 
 ```bash
-git tag ccws-config-noop   # 在 commit 后打
+git tag ccws-config-noop   # 在 commit 后打（Round S 提交打的）
 ```
 
 ### 下一步：Round S+ (Stage S5)
@@ -547,4 +548,62 @@ git tag ccws-config-noop   # 在 commit 后打
 - LLS score decay（per-cycle -1，floor = BaseScore）
 - LLS score update（VTA hit → jump to LLDS）
 - 此时 `paper_ccws_vta_hit > 0` 应在 HCS workload（如 `page_stride_access`）上出现
+
+## Round T: CCWS No-op Feature Behavior Check（2026-04-30）
+
+### 本轮目标
+
+验证 CCWS no-op 阶段（Round S 添加的 config knobs + stats）不改变行为：
+- `feature_off`（`gpgpu_enable_ccws=0`）≈ baseline  
+- `feature_on_noop`（`gpgpu_enable_ccws=1`，无 VTA/LLS/gating）≈ feature_off
+
+### 完成内容
+
+| 内容 | 结果 |
+|------|------|
+| 创建 `configs/hrl-repro/SM7_QV100_ccws_noop_off/` | ✓ SM7_QV100 + `-gpgpu_enable_ccws 0` |
+| 创建 `configs/hrl-repro/SM7_QV100_ccws_noop_on/` | ✓ SM7_QV100 + `-gpgpu_enable_ccws 1` |
+| `GPGPUSIM_CONFIG_OVERRIDE` env var 加入 `run_one.sh` | ✓ 6行改动，复制 config 到 exec dir |
+| feature_off quick set 7/7 | ✓ failed=0；sim_cycle 全匹配 baseline |
+| feature_on_noop quick set 7/7 | ✓ failed=0；sim_cycle 全匹配 feature_off |
+| `paper_ccws_enabled` 区分 0/1 | ✓ |
+| 行为计数器全 0 | ✓ vta_hit=0, load_gate_block=0, lost_locality=0 |
+
+### feature_off / feature_on_noop sim_cycle 比较（7 workloads）
+
+| Workload | feature_off | feature_on_noop | Match |
+|----------|-------------|-----------------|-------|
+| vecadd | 5569 | 5569 | ✓ |
+| strided_access | 5825 | 5825 | ✓ |
+| page_stride_access | 5851 | 5851 | ✓ |
+| atomic_contention | 5414 | 5414 | ✓ |
+| mutual_tiled | 7479 | 7479 | ✓ |
+| polybench_2dconv | 6652 | 6652 | ✓ |
+| rodinia_hotspot | 6931 | 6931 | ✓ |
+
+### 新增/修改文件
+
+| 文件 | 类型 |
+|------|------|
+| `configs/hrl-repro/SM7_QV100_ccws_noop_off/` | 新增（GPGPU-Sim 仓库） |
+| `configs/hrl-repro/SM7_QV100_ccws_noop_on/` | 新增（GPGPU-Sim 仓库） |
+| `experiments/paper-ccws/config_matrix.csv` | 更新（加 2 行） |
+| `experiments/paper-ccws/noop_behavior_check.csv` | 新增（运行结果） |
+| `docs/papers/ccws_round_t_noop_behavior_check.md` | 新增（behavior check 报告） |
+| `docs/papers/ccws_repro_plan.md` | 更新（Round T 状态） |
+| `/workspace/repos/gpgpu-workloads/scripts/run_one.sh` | 更新（config override） |
+
+### workload 仓库注意
+
+- `runs/latest_summary.csv` 有改动：**不建议提交**（每次运行都会改，属于本地输出）
+- `scripts/run_one.sh` 有改动：建议单独提交到 workload 仓库
+
+### 下一步：Round U
+
+优先方案（先选一个）：
+1. **SWL controllable baseline**：wire `gpgpu_ccws_enable_swl` 到 `swl_scheduler`，实现可控的 SWL 对照组
+2. **Stage S5 VTA 原型**：miss-side VTA + LLS array + score decay；`paper_ccws_vta_hit > 0` 应在 HCS 上出现
+
+**严格规则**：自研 cache policy 不得进入 `hrl/paper/ccws-repro-v0`。
+
 
