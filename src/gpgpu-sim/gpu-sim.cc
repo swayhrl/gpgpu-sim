@@ -1598,6 +1598,8 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
       l2_stats.print_fail_stats(stdout, streamID,
                                 "L2_cache_stats_fail_breakdown");
       total_l2_css.print_port_stats(stdout, "L2_cache");
+      // cacheinst: per-access-type L2 breakdown (Round O instrumentation)
+      print_cacheinst_stats(stdout, l2_stats, "L2");
     }
   }
 

@@ -1258,6 +1258,11 @@ class cache_stats {
   unsigned long long m_cache_fill_port_busy_cycles;
 };
 
+// Print per-access-type cache instrumentation stats (cacheinst_* prefix).
+// Passive read-only: does not modify cs or any cache state.
+void print_cacheinst_stats(FILE *fout, const cache_stats &cs,
+                           const char *cache_name);
+
 class cache_t {
  public:
   virtual ~cache_t() {}

@@ -1142,6 +1142,91 @@ void cache_stats::sample_cache_port_utility(bool data_port_busy,
   }
 }
 
+// ---------------------------------------------------------------------------
+// print_cacheinst_stats — Round O passive instrumentation
+// Reads the existing cache_stats breakdown and emits cacheinst_* key=value
+// lines.  Does NOT modify any cache state or counters.
+// ---------------------------------------------------------------------------
+void print_cacheinst_stats(FILE *fout, const cache_stats &cs,
+                           const char *cache_name) {
+  // Access-type groups (non-const arrays required by get_stats signature)
+  enum mem_access_type t_global_rd[]  = {GLOBAL_ACC_R};
+  enum mem_access_type t_global_wr[]  = {GLOBAL_ACC_W};
+  enum mem_access_type t_local_rd[]   = {LOCAL_ACC_R};
+  enum mem_access_type t_local_wr[]   = {LOCAL_ACC_W};
+  enum mem_access_type t_wrbk[]       = {L1_WRBK_ACC, L2_WRBK_ACC};
+  enum mem_access_type t_wr_alloc[]   = {L1_WR_ALLOC_R, L2_WR_ALLOC_R};
+  // All data types (excludes INST_ACC_R so L1D totals are data-only)
+  enum mem_access_type t_all_data[]   = {GLOBAL_ACC_R, LOCAL_ACC_R,
+                                         CONST_ACC_R,  TEXTURE_ACC_R,
+                                         GLOBAL_ACC_W, LOCAL_ACC_W,
+                                         L1_WRBK_ACC,  L2_WRBK_ACC,
+                                         L1_WR_ALLOC_R, L2_WR_ALLOC_R};
+  const unsigned n_all = 10;
+
+  // Request-status groups
+  enum cache_request_status s_acc[]   = {HIT, HIT_RESERVED, MISS, SECTOR_MISS};
+  enum cache_request_status s_hit[]   = {HIT};
+  enum cache_request_status s_miss[]  = {MISS, SECTOR_MISS};
+  enum cache_request_status s_pend[]  = {HIT_RESERVED};
+  enum cache_request_status s_rfail[] = {RESERVATION_FAIL};
+  enum cache_request_status s_sect[]  = {SECTOR_MISS};
+
+  // --- aggregate totals ---
+  unsigned long long total_acc   = cs.get_stats(t_all_data, n_all, s_acc,   4);
+  unsigned long long total_hit   = cs.get_stats(t_all_data, n_all, s_hit,   1);
+  unsigned long long total_miss  = cs.get_stats(t_all_data, n_all, s_miss,  2);
+  unsigned long long total_pend  = cs.get_stats(t_all_data, n_all, s_pend,  1);
+  unsigned long long total_rfail = cs.get_stats(t_all_data, n_all, s_rfail, 1);
+  unsigned long long total_sect  = cs.get_stats(t_all_data, n_all, s_sect,  1);
+
+  // --- per-type counts ---
+  unsigned long long grd_acc  = cs.get_stats(t_global_rd, 1, s_acc,   4);
+  unsigned long long grd_hit  = cs.get_stats(t_global_rd, 1, s_hit,   1);
+  unsigned long long grd_miss = cs.get_stats(t_global_rd, 1, s_miss,  2);
+  unsigned long long grd_fail = cs.get_stats(t_global_rd, 1, s_rfail, 1);
+
+  unsigned long long gwr_acc  = cs.get_stats(t_global_wr, 1, s_acc,   4);
+  unsigned long long gwr_hit  = cs.get_stats(t_global_wr, 1, s_hit,   1);
+  unsigned long long gwr_miss = cs.get_stats(t_global_wr, 1, s_miss,  2);
+  unsigned long long gwr_fail = cs.get_stats(t_global_wr, 1, s_rfail, 1);
+
+  unsigned long long loc_acc  = cs.get_stats(t_local_rd,  1, s_acc, 4)
+                              + cs.get_stats(t_local_wr,  1, s_acc, 4);
+  unsigned long long wrbk_acc = cs.get_stats(t_wrbk,      2, s_acc, 4)
+                              + cs.get_stats(t_wrbk,      2, s_rfail, 1);
+  unsigned long long wra_acc  = cs.get_stats(t_wr_alloc,  2, s_acc, 4);
+
+  // --- print ---
+  fprintf(fout, "cacheinst_%s_access_total = %llu\n",         cache_name, total_acc);
+  fprintf(fout, "cacheinst_%s_hit = %llu\n",                  cache_name, total_hit);
+  fprintf(fout, "cacheinst_%s_miss = %llu\n",                 cache_name, total_miss);
+  fprintf(fout, "cacheinst_%s_pending_hit = %llu\n",          cache_name, total_pend);
+  fprintf(fout, "cacheinst_%s_reservation_fail = %llu\n",     cache_name, total_rfail);
+  fprintf(fout, "cacheinst_%s_sector_miss = %llu\n",          cache_name, total_sect);
+  if (total_acc > 0) {
+    fprintf(fout, "cacheinst_%s_miss_rate = %.4lf\n",
+            cache_name, (double)total_miss / (double)total_acc);
+    fprintf(fout, "cacheinst_%s_reservation_fail_rate = %.4lf\n",
+            cache_name,
+            (double)total_rfail / (double)(total_acc + total_rfail));
+  } else {
+    fprintf(fout, "cacheinst_%s_miss_rate = 0.0000\n",             cache_name);
+    fprintf(fout, "cacheinst_%s_reservation_fail_rate = 0.0000\n", cache_name);
+  }
+  fprintf(fout, "cacheinst_%s_global_load_access = %llu\n",    cache_name, grd_acc);
+  fprintf(fout, "cacheinst_%s_global_load_hit = %llu\n",       cache_name, grd_hit);
+  fprintf(fout, "cacheinst_%s_global_load_miss = %llu\n",      cache_name, grd_miss);
+  fprintf(fout, "cacheinst_%s_global_load_rfail = %llu\n",     cache_name, grd_fail);
+  fprintf(fout, "cacheinst_%s_global_store_access = %llu\n",   cache_name, gwr_acc);
+  fprintf(fout, "cacheinst_%s_global_store_hit = %llu\n",      cache_name, gwr_hit);
+  fprintf(fout, "cacheinst_%s_global_store_miss = %llu\n",     cache_name, gwr_miss);
+  fprintf(fout, "cacheinst_%s_global_store_rfail = %llu\n",    cache_name, gwr_fail);
+  fprintf(fout, "cacheinst_%s_local_access = %llu\n",          cache_name, loc_acc);
+  fprintf(fout, "cacheinst_%s_writeback_access = %llu\n",      cache_name, wrbk_acc);
+  fprintf(fout, "cacheinst_%s_write_allocate_access = %llu\n", cache_name, wra_acc);
+}
+
 baseline_cache::bandwidth_management::bandwidth_management(cache_config &config)
     : m_config(config) {
   m_data_port_occupied_cycles = 0;

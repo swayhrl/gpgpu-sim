@@ -1854,6 +1854,9 @@ void ldst_unit::get_cache_stats(cache_stats &cs) {
 void ldst_unit::get_L1D_sub_stats(struct cache_sub_stats &css) const {
   if (m_L1D) m_L1D->get_sub_stats(css);
 }
+void ldst_unit::get_L1D_cache_stats(cache_stats &cs) const {
+  if (m_L1D) cs += m_L1D->get_stats();
+}
 void ldst_unit::get_L1C_sub_stats(struct cache_sub_stats &css) const {
   if (m_L1C) m_L1C->get_sub_stats(css);
 }
@@ -3136,6 +3139,13 @@ void gpgpu_sim::shader_print_cache_stats(FILE *fout) const {
     fprintf(fout, "\tL1D_total_cache_reservation_fails = %llu\n",
             total_css.res_fails);
     total_css.print_port_stats(fout, "\tL1D_cache");
+    // cacheinst: per-access-type L1D breakdown (Round O instrumentation)
+    cache_stats l1d_cs;
+    l1d_cs.clear();
+    for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++) {
+      m_cluster[i]->get_L1D_cache_stats(l1d_cs);
+    }
+    print_cacheinst_stats(fout, l1d_cs, "L1D");
   }
 
   // L1C
@@ -4057,6 +4067,9 @@ void shader_core_ctx::get_L1I_sub_stats(struct cache_sub_stats &css) const {
 void shader_core_ctx::get_L1D_sub_stats(struct cache_sub_stats &css) const {
   m_ldst_unit->get_L1D_sub_stats(css);
 }
+void shader_core_ctx::get_L1D_cache_stats(cache_stats &cs) const {
+  m_ldst_unit->get_L1D_cache_stats(cs);
+}
 void shader_core_ctx::get_L1C_sub_stats(struct cache_sub_stats &css) const {
   m_ldst_unit->get_L1C_sub_stats(css);
 }
@@ -4857,6 +4870,11 @@ void simt_core_cluster::get_L1D_sub_stats(struct cache_sub_stats &css) const {
     total_css += temp_css;
   }
   css = total_css;
+}
+void simt_core_cluster::get_L1D_cache_stats(cache_stats &cs) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i) {
+    m_core[i]->get_L1D_cache_stats(cs);
+  }
 }
 void simt_core_cluster::get_L1C_sub_stats(struct cache_sub_stats &css) const {
   struct cache_sub_stats temp_css;
