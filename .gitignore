@@ -62,3 +62,7 @@ accel-sim-framework/
 gpu-app-collection/
 
 setup
+
+# Local paper PDFs / source documents
+/docs/papers/source/*.pdf
+/docs/papers/source/*.PDF
