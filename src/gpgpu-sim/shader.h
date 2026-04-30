@@ -1717,6 +1717,18 @@ class shader_core_config : public core_config {
   char *specialized_unit_string[SPECIALIZED_UNIT_NUM];
   mutable std::vector<specialized_unit_params> m_specialized_unit;
   unsigned m_specialized_unit_num;
+
+  // CCWS: Cache-Conscious Wavefront Scheduling (Rogers/O'Connor/Aamodt MICRO 2012)
+  // All default off (0). gpgpu_enable_ccws=0 → zero behavior change vs. baseline.
+  int gpgpu_enable_ccws;
+  int gpgpu_ccws_enable_swl;
+  unsigned gpgpu_ccws_swl_limit;
+  unsigned gpgpu_ccws_base_locality_score;
+  float gpgpu_ccws_k_throttle;
+  unsigned gpgpu_ccws_vta_entries_per_warp;
+  unsigned gpgpu_ccws_score_decay_interval;
+  int gpgpu_ccws_gate_loads_only;
+  int gpgpu_ccws_debug;
 };
 
 struct shader_core_stats_pod {

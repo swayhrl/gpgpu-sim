@@ -1,6 +1,6 @@
 # CCWS Reproduction Plan
 
-_Created: 2026-04-30 (Round R). Based on paper reading and GPGPU-Sim 4.2.0 source mapping._  
+_Created: 2026-04-30 (Round R). Updated: 2026-04-30 (Round S — S1/S2/S3/S4 complete)._  
 _Template: docs/paper_repro_template.md_
 
 ---
@@ -86,15 +86,10 @@ K_THROTTLE = 8 is a single static constant that works well across all workloads.
 
 ### A. Must implement for minimal CCWS
 
-- [ ] Config flag `gpgpu_enable_ccws` default `0` — no behavior change when off
-- [ ] Audit and document existing `swl_scheduler` / `warp_limiting` (Stage S1)
-- [ ] No-op CCWS feature flag: compiles, `feature_off` passes quick set (Stage S2)
-- [ ] Per-scheduler LLS array indexed by warp_id (Stage S5)
-- [ ] VTA-like prototype (simplified: miss-side tracking if eviction-side is too risky) (Stage S5)
-- [ ] Score update on VTA hit (Stage S5)
-- [ ] Score decay per cycle (Stage S5)
-- [ ] Load-issue gating through Can Issue bit in `scheduler_unit::cycle()` (Stage S6)
-- [ ] `paper_ccws_*` instrumentation stats (Stage S4)
+- [x] Config flag `gpgpu_enable_ccws` default `0` — no behavior change when off
+- [x] Audit and document existing `swl_scheduler` / `warp_limiting` (Stage S1) → `ccws_swl_audit.md`
+- [x] No-op CCWS feature flag: compiles, `feature_off` passes quick set (Stage S2/S3) → `ccws-config-noop` tag
+- [x] `paper_ccws_*` instrumentation stats (Stage S4) — no-op zero output confirmed
 
 ### B. Nice to have
 

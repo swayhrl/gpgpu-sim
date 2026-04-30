@@ -662,6 +662,36 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                            "OC_SPEC>:<OC_EX_SPEC>,<NAME>}",
                            "0,4,4,4,4,BRA");
   }
+
+  // CCWS: Cache-Conscious Wavefront Scheduling (Rogers/O'Connor/Aamodt MICRO 2012)
+  option_parser_register(opp, "-gpgpu_enable_ccws", OPT_INT32,
+                         &gpgpu_enable_ccws,
+                         "Enable CCWS load-issue gating (0=off, 1=on)", "0");
+  option_parser_register(opp, "-gpgpu_ccws_enable_swl", OPT_INT32,
+                         &gpgpu_ccws_enable_swl,
+                         "Enable CCWS static warp limit baseline (0=off, 1=on)",
+                         "0");
+  option_parser_register(opp, "-gpgpu_ccws_swl_limit", OPT_UINT32,
+                         &gpgpu_ccws_swl_limit,
+                         "CCWS SWL: max active warps per scheduler", "32");
+  option_parser_register(opp, "-gpgpu_ccws_base_locality_score", OPT_UINT32,
+                         &gpgpu_ccws_base_locality_score,
+                         "CCWS BaseScore: floor and initial LLS value", "100");
+  option_parser_register(opp, "-gpgpu_ccws_k_throttle", OPT_FLOAT,
+                         &gpgpu_ccws_k_throttle,
+                         "CCWS K_THROTTLE multiplier for LLDS computation", "8.0");
+  option_parser_register(opp, "-gpgpu_ccws_vta_entries_per_warp", OPT_UINT32,
+                         &gpgpu_ccws_vta_entries_per_warp,
+                         "CCWS VTA entries per warp", "16");
+  option_parser_register(opp, "-gpgpu_ccws_score_decay_interval", OPT_UINT32,
+                         &gpgpu_ccws_score_decay_interval,
+                         "CCWS cycles between LLS decay steps (1=per-cycle)", "1");
+  option_parser_register(opp, "-gpgpu_ccws_gate_loads_only", OPT_INT32,
+                         &gpgpu_ccws_gate_loads_only,
+                         "CCWS gate loads only (1) or all mem ops (0)", "1");
+  option_parser_register(opp, "-gpgpu_ccws_debug", OPT_INT32,
+                         &gpgpu_ccws_debug,
+                         "CCWS per-cycle debug trace (0=off)", "0");
 }
 
 void gpgpu_sim_config::reg_options(option_parser_t opp) {
@@ -1602,6 +1632,19 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
       print_cacheinst_stats(stdout, l2_stats, "L2");
     }
   }
+
+  // paper_ccws: CCWS reproduction stats (Rogers/O'Connor/Aamodt MICRO 2012)
+  // All counters are zero when gpgpu_enable_ccws=0 (no-op, Stage S2/S3).
+  fprintf(stdout, "paper_ccws_enabled = %d\n",
+          m_shader_config->gpgpu_enable_ccws);
+  fprintf(stdout, "paper_ccws_vta_probe = 0\n");
+  fprintf(stdout, "paper_ccws_vta_hit = 0\n");
+  fprintf(stdout, "paper_ccws_lost_locality_event = 0\n");
+  fprintf(stdout, "paper_ccws_score_update = 0\n");
+  fprintf(stdout, "paper_ccws_score_decay = 0\n");
+  fprintf(stdout, "paper_ccws_load_gate_attempt = 0\n");
+  fprintf(stdout, "paper_ccws_load_gate_block = 0\n");
+  fprintf(stdout, "paper_ccws_load_gate_allow = 0\n");
 
   if (m_config.gpgpu_cflog_interval != 0) {
     spill_log_to_file(stdout, 1, gpu_sim_cycle);

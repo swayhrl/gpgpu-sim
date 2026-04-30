@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-04-30 — Round R complete; CCWS repro plan written._
+_Last updated: 2026-04-30 — Round S complete; CCWS no-op config knobs added, feature_off ≈ baseline verified._
 
 ## Git 工作流
 
@@ -211,8 +211,8 @@ Four days of deep read-through of the PTX functional simulation → timing model
 - [x] **Round O**：Cache passive instrumentation 完成，tag `cache-inst-v0`，分支 `hrl/cache-instrumentation-v0`
 - [x] **Round Q**：Paper reproduction & idea development workflow 基础设施建立，分支 `hrl/repro-infra-v0`
 - [x] **Round R**：选择 CCWS 作为第一篇 cache 论文；论文深度阅读；写 repro plan；源码 mapping
-- [ ] **Round S（下一步）**：创建 `hrl/paper/ccws-repro-v0`；先 audit `swl_scheduler`；加 config knobs + no-op flag；feature_off quick pass
-- [ ] **Round S+**：CCWS 渐进实现（instrumentation → VTA/LLD → load gating → validation）
+- [x] **Round S**：创建 `hrl/paper/ccws-repro-v0`；audit `swl_scheduler`（`ccws_swl_audit.md`）；加 CCWS config knobs（9 个，全 default 0）；`paper_ccws_*` no-op stats；编译 pass；feature_off ≈ baseline 4 workload 验证 ✓；tag `ccws-config-noop` 待打
+- [ ] **Round S+**：CCWS 渐进实现（Stage S5: VTA/LLD prototype → Stage S6: load gating → Stage S7: quick set pass）
 - [ ] **Round V（后置）**：至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
 
 ## Workload Management Framework（Round B 新增）
@@ -507,3 +507,44 @@ CFLAGS = -O2 -arch=sm_52 -cudart shared --ptxas-options=-v
 ### 自研扩展规则
 
 CCWS paper branch **只做忠实复现**。任何对 CCWS 的自研改进或扩展必须放到 `hrl/idea/<idea-key>-from-ccws-v0`，不得混入 paper branch。
+
+## Round S: CCWS No-op Config + feature_off Pass（2026-04-30）
+
+### 完成内容
+
+| Stage | 内容 | 结果 |
+|-------|------|------|
+| S1 | audit `swl_scheduler`/`warp_limiting` | `ccws_swl_audit.md` 写好；结论：与论文 SWL 语义一致，无需修改，reuse 即可 |
+| S2 | 添加 9 个 CCWS config knobs（全 default 0） | `shader.h` + `gpu-sim.cc` 各加约 40 行；编译 pass |
+| S3 | feature_off quick pass | 4 workload sim_cycle 全部 = baseline；`paper_ccws_load_gate_block = 0` |
+| S4 | `paper_ccws_*` no-op stats | 9 行 `fprintf` 输出 key=value 格式；全 zero 时 feature_off pass |
+
+### 修改的源文件
+
+| 文件 | 修改内容 | 位置 |
+|------|---------|------|
+| `src/gpgpu-sim/shader.h` | 在 `shader_core_config` 末尾（原 line 1719 后）加 9 个 `gpgpu_ccws_*` 成员变量 | 紧接 `m_specialized_unit_num` 后 |
+| `src/gpgpu-sim/gpu-sim.cc` | 在 `shader_core_config::reg_options()` 末尾加 9 个 `option_parser_register` 调用 | 原 line 655–664 的 for 循环之后 |
+| `src/gpgpu-sim/gpu-sim.cc` | 在 `print_stats()` 的 `print_cacheinst_stats(stdout, l2_stats, "L2")` 之后加 9 行 `paper_ccws_*` 输出 | 原 line 1602 之后 |
+
+### 新增文档文件
+
+| 文件 | 内容 |
+|------|------|
+| `docs/papers/ccws_swl_audit.md` | SWL audit 结论：`swl_scheduler` 语义、源码走读、与论文 SWL 对比 |
+| `docs/papers/ccws_round_s_noop_config.md` | Round S config knobs 完整列表，feature_off 验证结果表 |
+
+### Tag 待打
+
+```bash
+git tag ccws-config-noop   # 在 commit 后打
+```
+
+### 下一步：Round S+ (Stage S5)
+
+- 在 `scheduler_unit` 中添加 per-warp LLS 数组（`unsigned ccws_lls[MAX_WARPS_PER_CTA]`）
+- 添加 miss-side VTA 原型（`mf->get_wid()` 在 L1D MISS 时记录到 per-scheduler VTA）
+- LLS score decay（per-cycle -1，floor = BaseScore）
+- LLS score update（VTA hit → jump to LLDS）
+- 此时 `paper_ccws_vta_hit > 0` 应在 HCS workload（如 `page_stride_access`）上出现
+
