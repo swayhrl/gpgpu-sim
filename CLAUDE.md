@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-04-30 — Round G complete; Rodinia 4 benchmarks (pathfinder/hotspot/srad_v2/lud) built and verified under GPGPU-Sim. Total: 14 workloads ready._
+_Last updated: 2026-04-30 — Round Q complete; paper reproduction & idea development workflow infrastructure established._
 
 ## Git 工作流
 
@@ -207,12 +207,12 @@ Four days of deep read-through of the PTX functional simulation → timing model
 - [x] Round E：stats extractor 增强，summarize_runs.py 新增，runs/latest_summary.csv 生成
 - [x] Round F：PolyBench-GPU 4 benchmarks（gemm/atax/2dconv/fdtd2d）带入，全部在 GPGPU-Sim 跑通
 - [x] **Round G**：Rodinia 4 benchmarks（pathfinder/hotspot/srad_v2/lud）带入，全部在 GPGPU-Sim 跑通；14 workload 全部 ready
-- [ ] **Round H（下一步选项）**：
-  - A：继续补 Rodinia 剩余 app（nw / bfs / backprop）扩大覆盖类型
-  - B：整理最终 manifest，为每个 workload 加 `min_recommended_size` 字段（如 lud 建议 `-s 64`）
-  - C：实现最小 TLB latency model（`shader.h` + `shader.cc` + `gpu-sim.cc`）
-- [ ] 用所有 workload 验证 zero-latency TLB（结果应与当前 baseline 完全一致）
-- [ ] 开启 TLB miss latency = 100 cycles，对比 `page_stride_access` vs `polybench_gemm` cycle 差值
+- [x] **Round G**：Rodinia 4 benchmarks（pathfinder/hotspot/srad_v2/lud）带入，全部在 GPGPU-Sim 跑通；14 workload 全部 ready
+- [x] **Round O**：Cache passive instrumentation 完成，tag `cache-inst-v0`，分支 `hrl/cache-instrumentation-v0`
+- [x] **Round Q**：Paper reproduction & idea development workflow 基础设施建立，分支 `hrl/repro-infra-v0`
+- [ ] **Round R（下一步）**：选择第一篇 cache 论文，填写 `docs/papers/<paper-key>_repro_plan.md`，不改代码
+- [ ] **Round S+**：第一篇论文 minimal implementation → quick_pass → standard_pass
+- [ ] **Round V（后置）**：至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
 
 ## Workload Management Framework（Round B 新增）
 
@@ -417,3 +417,51 @@ CFLAGS = -O2 -arch=sm_52 -cudart shared --ptxas-options=-v
 | rodinia_srad_v2 | 15,926 | 69.3 | 0.792 | 34% | 200 | 134,685 |
 | rodinia_lud | 97,518 | 1.09 | 0.516 | 0% | 188 | 19,562 |
 | rodinia_pathfinder | 207,186 | 3.74 | 0.800 | 1% | 189 | 3,278 |
+
+## Round Q: Paper Reproduction & Idea Development Workflow（2026-04-30）
+
+### 本轮目标
+
+建立论文复现与自研机制开发的工作流基础设施。**不修改 simulator 行为，不做 cache policy 实验，不运行 workload。**
+
+### 当前分支体系
+
+| 分支 / Tag | 说明 |
+|-----------|------|
+| `baseline-a4ce3fe` | 上游 baseline 锚点（已存在） |
+| `cache-inst-v0` | Cache instrumentation 稳定 tag（已存在） |
+| `hrl/cache-instrumentation-v0` | Cache instrumentation 分支 |
+| `hrl/repro-infra-v0` | **当前分支**，论文复现框架文档 |
+| `hrl/paper/<paper-key>-repro-v0` | 每篇论文独立分支（待创建） |
+| `hrl/idea/<idea-key>-v0` | 每个自研机制独立分支（待创建） |
+| `hrl/integration/cache-papers-v0` | 多篇 paper 合并验证（待创建） |
+| `hrl/integration/cache-final-v0` | 最终组合（待创建） |
+
+### 核心规则（恢复上下文用）
+
+1. **每篇论文一个 paper branch**，忠实复现，不混入自研创新。
+2. **每个自研机制一个 idea branch**，不寄生在 paper branch。
+3. **paper / idea 分支通过 integration 分支选择性合并**，互不直接 merge。
+4. **行为改动必须 feature flag default off**：`-gpgpu_enable_<key> 0`。
+5. **三组验证必须做**：baseline / feature_off / feature_on；`feature_off ≈ baseline` 是第一成功标准。
+6. **Workload sets**：quick（7，smoke）/ standard（13，正式实验）/ extended（全量，最终确认）。
+7. **方向顺序**：先 cache，后 TLB/MMU。
+8. **自研实验后置**：至少一篇论文 standard_pass 后再开 `hrl/idea/cache-policy-experiments-v0`。
+
+### 本轮新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `docs/reproduction_workflow.md` | 完整工作流文档（分支策略、tag、worktree、验证流程） |
+| `docs/paper_repro_template.md` | 论文复现计划模板（每篇论文 copy 填写） |
+| `docs/idea_branch_template.md` | 自研机制分支模板 |
+| `experiments/README.md` | 实验元数据目录说明和 result_manifest.csv 格式 |
+| `configs/hrl-repro/README.md` | Config 复制规范，不修改 tested-cfgs |
+| `docs/papers/README.md` | 论文复现进度表和 stage 定义 |
+| `docs/ideas/README.md` | 自研 idea 进度表和 stage 定义 |
+
+### 下一步：Round R
+
+选择第一篇 cache 论文，填写 `docs/papers/<paper-key>_repro_plan.md`，**不改代码**。
+
+候选方向：CCWS / DAWS / PCAL / Linebacker / RRIP。
