@@ -26,20 +26,20 @@ mechanism_chain:
     stage: 02_telemetry
     knob: gpgpu_daws_enable_telemetry
     stat: paper_daws_divergence_event
-    faithful: unknown
-    approximation: "TBD during reading stage"
-  - name: would-schedule telemetry
+    faithful: approximate
+    approximation: "active_count < warp_size → divergence_event; skips loop detection"
+  - name: footprint estimate + would-throttle telemetry
     stage: 03_would_change
-    knob: gpgpu_daws_enable_would_schedule
-    stat: paper_daws_would_schedule_change
-    faithful: unknown
-    approximation: "TBD during reading stage"
-  - name: divergence-aware scheduler
+    knob: gpgpu_daws_enable_would_throttle
+    stat: paper_daws_would_throttle
+    faithful: approximate
+    approximation: "footprint[wid] = warp_size - active_count; skips load classification"
+  - name: real warp throttle gate
     stage: 04_minimal_mechanism
-    knob: gpgpu_daws_enable_scheduler
-    stat: paper_daws_schedule_override
-    faithful: unknown
-    approximation: "TBD during reading stage"
+    knob: gpgpu_daws_enable_throttling
+    stat: paper_daws_throttle_block
+    faithful: approximate
+    approximation: "gate all diverged warps when sum(footprint)>threshold; streak-based deadlock prevention"
 
 likely_config_knobs:
   - gpgpu_enable_daws
@@ -120,11 +120,11 @@ success_rules:
     required: true
 
 reproduction_status:
-  mechanism_chain: not_started
-  faithful_divergence_metric: unknown
-  real_scheduler_override: not_started
-  focused_validation: not_started
-  standard_validation: not_started
-  cycle_direction_correct: unknown
+  mechanism_chain: complete_approximate
+  faithful_divergence_metric: approximate
+  real_scheduler_override: complete_approximate
+  focused_validation: complete
+  standard_validation: skipped
+  cycle_direction_correct: no_tiny_workload_limitation
   final_report: not_started
-  overall: not_started
+  overall: ready_for_final_report

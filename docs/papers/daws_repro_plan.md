@@ -2,7 +2,7 @@
 
 **Paper**: Divergence-Aware Warp Scheduling (Rogers, O'Connor, Aamodt — MICRO 2013)
 **Branch**: hrl/paper/daws-repro-v0
-**Round**: AUTO-2 (reading stage)
+**Round**: AUTO-7 (focused validation complete)
 **Date**: 2026-05-01
 
 ---
@@ -18,11 +18,11 @@
 | Stage | 内容 | src 改动 | 预计 Round |
 |-------|------|---------|-----------|
 | 00_reading | 论文阅读 + GPGPU-Sim mapping | 无 | AUTO-2 ✓ |
-| 01_noop | 添加 config knobs，feature_off 不改行为 | shader.h/cc, gpu-sim.cc | AUTO-3 |
-| 02_telemetry | active_count probe + divergence event counter | shader.h/cc | AUTO-4 |
-| 03_would_change | would-throttle telemetry（不实际 gate） | shader.h/cc | AUTO-5 |
-| 04_minimal_mechanism | 实际 warp throttling（approximate footprint） | shader.h/cc | AUTO-6 |
-| 05_focused_validation | 7 divergence-heavy workloads × 3 configs | 无 | AUTO-7 |
+| 01_noop | 添加 config knobs，feature_off 不改行为 | shader.h/cc, gpu-sim.cc | AUTO-3 ✓ |
+| 02_telemetry | active_count probe + divergence event counter | shader.h/cc | AUTO-4 ✓ |
+| 03_would_change | would-throttle telemetry（不实际 gate） | shader.h/cc | AUTO-5 ✓ |
+| 04_minimal_mechanism | 实际 warp throttling（approximate footprint） | shader.h/cc | AUTO-6 ✓ |
+| 05_focused_validation | 7 divergence-heavy workloads × 3 configs | 无 | AUTO-7 ✓ |
 | 07_final_report | 复现报告 | 无 | AUTO-8 |
 
 ---

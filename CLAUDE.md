@@ -270,7 +270,9 @@ cycle 方向相反（应减少）原因：cutoff 高估 8×，gate 触发时机�
 - [x] AUTO-3：DAWS no-op config + stats 添加，feature_off 验证通过（tag `daws-config-noop`）
 - [x] AUTO-4：DAWS divergence telemetry 实现，hotspot/bfs 有信号，sim_cycle 不变（tag `daws-divergence-telemetry`）
 - [x] AUTO-5：DAWS footprint + would-throttle telemetry，hotspot/srad_v2 有信号，sim_cycle 不变（tag `daws-would-throttle-telemetry`）
-- [ ] **下一步 AUTO-6**：minimal real throttling（sum(footprint) > threshold → 阻止高 footprint warp 发射，验证 cycle 是否减少）
+- [x] AUTO-6：DAWS minimal real throttling，streak-based deadlock prevention，hotspot/srad_v2 throttle_block 有信号（tag `daws-minimal-throttling`）
+- [x] AUTO-7：DAWS focused validation，7 workloads × 3 configs，无 deadlock，feature_off 不变（tag 待提交 `daws-focused-validation`）
+- [ ] **下一步 AUTO-8**：DAWS final reproduction report
 
 **DAWS 论文**：Rogers/O'Connor/Aamodt — MICRO 2013（与 CCWS 同一作者组）
 **DAWS 核心**：divergence → footprint prediction → warp throttling（proactive，比 CCWS reactive 更激进）

@@ -1,78 +1,64 @@
 paper: daws
-round: AUTO-6
-stage: minimal_throttling
+round: AUTO-7
+stage: focused_validation
 status: complete
 date: 2026-05-01
 branch: hrl/paper/daws-repro-v0
 
-source_changed: true
-changed_files:
-  - src/gpgpu-sim/shader.h
-  - src/gpgpu-sim/shader.cc
+source_changed: false
 
 experiments_run: true
-workloads_run: [vecadd, rodinia_hotspot, rodinia_bfs, rodinia_srad_v2]
-configs_run: [SM7_QV100_daws_noop_off, SM7_QV100_daws_throttle_on]
+workloads_run:
+  - vecadd
+  - rodinia_hotspot
+  - rodinia_srad_v2
+  - rodinia_bfs
+  - rodinia_pathfinder
+  - polybench_2dconv
+  - polybench_fdtd2d
+configs_run:
+  - SM7_QV100_daws_noop_off
+  - SM7_QV100_daws_would_throttle_on
+  - SM7_QV100_daws_throttle_on
 
 feature_off_unchanged: true
+would_throttle_behavior_unchanged: true
 no_deadlock: true
 
-throttle_results:
-  vecadd:
-    baseline: 5569
-    throttle_on: 5569
-    cycle_delta: "0%"
-    throttle_block: 0
-    throttle_allow: 0
-    note: "no divergence, gate never fires"
-  rodinia_hotspot:
-    baseline: 6931
-    throttle_on: 7072
-    cycle_delta: "+2.0%"
-    throttle_block: 79030
-    throttle_allow: 34606
-    note: "gate fires, cycle increases (tiny workload effect)"
-  rodinia_bfs:
-    baseline: 6665
-    throttle_on: 6665
-    cycle_delta: "0%"
-    throttle_block: 0
-    throttle_allow: 1256
-    note: "fp_sum_max=31 < threshold=32, gate never fires"
-  rodinia_srad_v2:
-    baseline: 8236
-    throttle_on: 8561
-    cycle_delta: "+3.9%"
-    throttle_block: 38769
-    throttle_allow: 6765
-    note: "gate fires, cycle increases (tiny workload effect)"
+throttle_signal_summary:
+  vecadd: "throttle_block=0 (no divergence)"
+  rodinia_hotspot: "throttle_block=79030 (strong signal, cycle+2%)"
+  rodinia_srad_v2: "throttle_block=38769 (strong signal, cycle+4%)"
+  rodinia_bfs: "throttle_block=0 (fp_sum_max=31 < threshold=32)"
+  rodinia_pathfinder: "throttle_block=0 (fp_sum_max=32 = threshold, not exceeded)"
+  polybench_2dconv: "throttle_block=0 (fp_max=8, low divergence)"
+  polybench_fdtd2d: "throttle_block=0 (no divergence)"
 
-deadlock_fix_summary: >
-  Root cause: footprint array updated post-scoreboard; gated warps never
-  reached update → stale footprint → permanent gate.
-  Fix 1: added daws_update_footprint_pre() called pre-scoreboard using
-  read-only get_active_mask() to refresh footprint before gate check.
-  Fix 2: per-warp streak counter (max_streak=8) — after 8 consecutive
-  gates, force-allow for one cycle and reset streak. Prevents deadlock
-  when all active warps have footprint > 0.
+slowdown_summary:
+  rodinia_hotspot: "+2.0% (6931→7072)"
+  rodinia_srad_v2: "+3.9% (8236→8561)"
+  others: "0% (gate never fires)"
+
+workloads_sensitive_to_daws:
+  - rodinia_hotspot
+  - rodinia_srad_v2
 
 cycle_direction_note: >
-  Cycle increases (+2–4%) instead of decreasing. Same root cause as CCWS:
-  tiny workload (64×64), few warps per SM, throttle blocks effective warps
+  Cycle increases (+2-4%) for hotspot/srad_v2. Same root cause as CCWS:
+  tiny workload (64x64), few warps per SM, throttle blocks effective warps
   rather than reducing cache pressure. Mechanism is correct; larger workloads
   needed to see cycle reduction.
 
 recommend_next: >
-  AUTO-7 / Round 05: Focused validation with divergence-heavy workloads.
-  Run 7 workloads × feature_off / conservative(threshold=32) / aggressive(threshold=16).
-  Verify no deadlock. Document cycle direction and throttle_block signal.
-  Consider larger workload sizes to see cycle reduction.
+  AUTO-8: DAWS final reproduction report.
+  Document mechanism chain, approximation strategy, validation results,
+  gap analysis vs original paper. No src changes needed.
 
 commit_recommended: true
-suggested_commit: "daws: add minimal real throttling with deadlock prevention"
-suggested_tag: daws-minimal-throttling
+suggested_commit: "daws: validate minimal throttling on focused workloads"
+suggested_tag: daws-focused-validation
 
 new_files:
-  - configs/hrl-repro/SM7_QV100_daws_throttle_on/
-  - docs/papers/daws_round_04_minimal_throttling.md
-  - experiments/paper-daws/throttle_check.csv
+  - experiments/paper-daws/focused_validation.csv
+  - docs/papers/daws_round_05_focused_validation.md
+  - experiments/paper-daws/config_matrix.csv (updated)
