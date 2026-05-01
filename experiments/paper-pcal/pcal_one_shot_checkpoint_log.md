@@ -73,6 +73,21 @@ append-only — 每个 Phase 结束时追加，10 分钟触发时追加，Phase 
 
 ---
 
+## Checkpoint: Phase 5 focused validation
+
+- Phase: Phase 5
+- 当前状态: 完成 ✓，待 commit
+- 已完成: 7 focused + 5 control × noop_off / would_change_on / policy_on
+- 正在做: N/A
+- 修改文件: experiments/paper-pcal/focused_validation.csv（新增）
+- 已运行验证: 12 workloads，无 crash，无 deadlock，feature_off=5569
+- 结果摘要: 4/7 focused cycle 减少（-0.2% ~ -0.85%）；polybench_2dconv +5.35%；polybench_gemm +39.8%（control 严重回归）
+- 当前风险: 无（Phase 5 无 src 改动）
+- 是否建议继续: 是（进入 Phase 6 final report）
+- 下一步: Phase 6 final reproduction report
+
+---
+
 ## Checkpoint: Phase 4 minimal bypass mechanism
 
 - Phase: Phase 4

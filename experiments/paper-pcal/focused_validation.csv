@@ -1,0 +1,13 @@
+workload,set,noop_off_cycle,would_change_cycle,policy_on_cycle,delta_pct,bypass_triggered,notes
+rodinia_hotspot,focused,6931,6931,6919,-0.17%,yes,cache pressure reduced
+rodinia_srad_v2,focused,8236,8236,8166,-0.85%,yes,cache pressure reduced
+polybench_fdtd2d,focused,5840,5840,5798,-0.72%,yes,cache pressure reduced
+mutual_tiled,focused,7479,7479,7419,-0.80%,yes,cache pressure reduced
+polybench_2dconv,focused,6652,6652,7008,+5.35%,yes,regression: bypass too aggressive
+strided_access,focused,5825,5825,5829,+0.07%,minimal,window too small to classify
+parboil_histo,focused,7096,7096,7096,0%,no,no bypass triggered
+vecadd,control,5569,,5548,-0.38%,yes,minor bypass activity
+polybench_gemm,control,24543,,34334,+39.8%,yes,regression: gemm is cache-sensitive
+mutual_naive,control,12322,,11617,-5.72%,yes,reduction unexpected but no deadlock
+rodinia_backprop,control,6911,,6900,-0.16%,yes,minor reduction
+atomic_contention,control,5414,,5414,0%,no,no bypass triggered

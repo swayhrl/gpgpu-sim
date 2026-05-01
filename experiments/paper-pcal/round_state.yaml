@@ -1,30 +1,27 @@
 paper: pcal
-round: Phase 4
-stage: minimal_policy
+round: Phase 5
+stage: focused_validation
 status: complete
 date: 2026-05-01
 branch: hrl/paper/pcal-repro-v0
 
-source_changed: true
+source_changed: false
 experiments_run: true
-workloads_run: [vecadd, rodinia_hotspot, rodinia_srad_v2, polybench_fdtd2d]
+workloads_run: [rodinia_hotspot, rodinia_srad_v2, polybench_fdtd2d, mutual_tiled, polybench_2dconv, strided_access, parboil_histo, vecadd, polybench_gemm, mutual_naive, rodinia_backprop, atomic_contention]
 behavior_unchanged: false
 feature_off_cycle: 5569
-recommend_next: Phase 5
+recommend_next: Phase 6 final report
 commit_recommended: true
-suggested_commit: "pcal: add minimal cache allocation policy"
+suggested_commit: "pcal: add focused validation results"
 
-bypass_signal_summary:
-  vecadd: "bypass_count=32, cycle: 5569→5548 (-0.4%)"
-  rodinia_hotspot: "bypass_count=682, cycle: 6931→6919 (-0.2%)"
-  rodinia_srad_v2: "bypass_count=3328, cycle: 8236→8166 (-0.85%)"
-  polybench_fdtd2d: "bypass_count=1008, cycle: 5840→5798 (-0.72%)"
-  note: "all bypass_count > 0; cycle direction correct (reduce); no deadlock"
-
-bug_fixed:
-  description: "bypass response path: erase from m_pcal_bypass_mfs only after successful pop"
-  root_cause: "m_next_global != NULL stalls pop; premature erase caused next cycle to miss set entry"
-  fix: "moved erase inside 'm_next_global == NULL' branch"
+validation_summary:
+  no_deadlock: true
+  no_crash: true
+  feature_off_unchanged: true
+  focused_correct_direction: "4/7 (reduce)"
+  focused_regression: [polybench_2dconv, strided_access, parboil_histo]
+  control_regression: [polybench_gemm +39.8%]
+  note: "approximate reproduction; gemm misclassified as low priority"
 
 # 机制链状态
 mechanism_chain:
@@ -33,4 +30,6 @@ mechanism_chain:
   - name: priority classification
     status: complete
   - name: L1 bypass gate
+    status: complete
+  - name: focused_validation
     status: complete
