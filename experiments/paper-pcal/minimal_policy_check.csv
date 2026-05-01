@@ -1,0 +1,9 @@
+workload,config,gpu_tot_sim_cycle,paper_pcal_bypass_count,notes
+vecadd,noop_off,5569,0,baseline
+vecadd,policy_on,5548,32,bypass active
+rodinia_hotspot,noop_off,6931,0,baseline
+rodinia_hotspot,policy_on,6919,682,bypass active
+rodinia_srad_v2,noop_off,8236,0,baseline
+rodinia_srad_v2,policy_on,8166,3328,bypass active
+polybench_fdtd2d,noop_off,5840,0,baseline
+polybench_fdtd2d,policy_on,5798,1008,bypass active

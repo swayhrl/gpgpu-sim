@@ -1,37 +1,30 @@
 paper: pcal
-round: Phase 3
-stage: would_change
+round: Phase 4
+stage: minimal_policy
 status: complete
 date: 2026-05-01
 branch: hrl/paper/pcal-repro-v0
 
 source_changed: true
 experiments_run: true
-workloads_run: [vecadd, rodinia_hotspot, rodinia_srad_v2, polybench_fdtd2d, mutual_tiled]
-behavior_unchanged: true
-recommend_next: Phase 4
+workloads_run: [vecadd, rodinia_hotspot, rodinia_srad_v2, polybench_fdtd2d]
+behavior_unchanged: false
+feature_off_cycle: 5569
+recommend_next: Phase 5
 commit_recommended: true
-suggested_commit: "pcal: add would-change cache allocation telemetry"
+suggested_commit: "pcal: add minimal cache allocation policy"
 
-would_allocate_signal_summary:
-  classified_high: 0
-  would_allocate: 0
-  note: "all workloads miss_rate > 50%; no high-priority classification"
+bypass_signal_summary:
+  vecadd: "bypass_count=32, cycle: 5569→5548 (-0.4%)"
+  rodinia_hotspot: "bypass_count=682, cycle: 6931→6919 (-0.2%)"
+  rodinia_srad_v2: "bypass_count=3328, cycle: 8236→8166 (-0.85%)"
+  polybench_fdtd2d: "bypass_count=1008, cycle: 5840→5798 (-0.72%)"
+  note: "all bypass_count > 0; cycle direction correct (reduce); no deadlock"
 
-would_bypass_signal_summary:
-  vecadd: "would_bypass=32 / access=96 (33%)"
-  rodinia_hotspot: "would_bypass=1106 / access=2576 (43%)"
-  rodinia_srad_v2: "would_bypass=3328 / access=4352 (76%)"
-  polybench_fdtd2d: "would_bypass=9352 / access=14450 (65%)"
-  mutual_tiled: "would_bypass=384 / access=640 (60%)"
-  note: "would_bypass < access because initial window not yet classified"
-
-phase4_risk_checkpoint:
-  hook_found: "memory_cycle() bypassL1D flag in shader.cc (line ~2487)"
-  files_to_change: [src/gpgpu-sim/shader.h, src/gpgpu-sim/shader.cc]
-  core_cache_touched: false
-  deadlock_risk: low
-  decision: proceed
+bug_fixed:
+  description: "bypass response path: erase from m_pcal_bypass_mfs only after successful pop"
+  root_cause: "m_next_global != NULL stalls pop; premature erase caused next cycle to miss set entry"
+  fix: "moved erase inside 'm_next_global == NULL' branch"
 
 # 机制链状态
 mechanism_chain:
@@ -40,4 +33,4 @@ mechanism_chain:
   - name: priority classification
     status: complete
   - name: L1 bypass gate
-    status: phase4_ready
+    status: complete

@@ -1485,6 +1485,7 @@ class ldst_unit : public pipelined_simd_unit {
   Scoreboard *m_scoreboard;
 
   mem_fetch *m_next_global;
+  std::set<const mem_fetch *> m_pcal_bypass_mfs;
   warp_inst_t m_next_wb;
   unsigned m_writeback_arb;  // round-robin arbiter for writeback contention
                              // between L1T, L1C, shared
@@ -2412,6 +2413,15 @@ class shader_core_ctx : public core_t {
       m_pcal_window_reset++;
     }
   }
+
+  // PCAL Phase 4: bypass query and accounting
+  bool pcal_is_warp_low_priority(unsigned warp_id) const {
+    if (!m_config->gpgpu_enable_pcal || !m_config->gpgpu_pcal_enable_bypass)
+      return false;
+    if (warp_id >= m_pcal_warp_low_priority.size()) return false;
+    return m_pcal_warp_low_priority[warp_id];
+  }
+  void pcal_count_bypass() { m_pcal_bypass_count++; }
 
   void get_icnt_power_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
 

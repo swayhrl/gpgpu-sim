@@ -72,3 +72,17 @@ append-only — 每个 Phase 结束时追加，10 分钟触发时追加，Phase 
 - 下一步: 实现 Phase 4 bypass
 
 ---
+
+## Checkpoint: Phase 4 minimal bypass mechanism
+
+- Phase: Phase 4
+- 当前状态: 完成 ✓，待 commit
+- 已完成: pcal_is_warp_low_priority() + pcal_count_bypass()；memory_cycle() bypass hook；m_pcal_bypass_mfs set 修复响应路径
+- Bug 修复: 响应路径 erase 需在 pop 成功后执行（m_next_global==NULL），否则次 cycle 找不到 set 条目 → baseline_cache::fill() assertion
+- 修改文件: shader.h（m_pcal_bypass_mfs + 2 方法）、shader.cc（memory_cycle + ldst_unit::cycle response path）
+- 已运行验证: vecadd/hotspot/srad_v2/fdtd2d × policy_on；无 crash；bypass_count 有信号；cycle 方向正确（减少）
+- 当前风险: 无（bypass set 正确维护）
+- 是否建议继续: 是
+- 下一步: Phase 5 focused validation
+
+---

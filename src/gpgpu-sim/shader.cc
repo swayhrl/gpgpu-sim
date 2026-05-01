@@ -2490,6 +2490,13 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
     if (m_core->get_config()->gmem_skip_L1D && (CACHE_L1 != inst.cache_op))
       bypassL1D = true;
   }
+  // PCAL Phase 4: bypass L1D for low-priority warps
+  bool pcal_bypass = false;
+  if (!bypassL1D && m_core->pcal_is_warp_low_priority(inst.warp_id())) {
+    bypassL1D = true;
+    pcal_bypass = true;
+    m_core->pcal_count_bypass();
+  }
   if (bypassL1D) {
     // bypass L1 cache
     unsigned control_size =
@@ -2511,6 +2518,7 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
           m_mf_allocator->alloc(inst, access,
                                 m_core->get_gpu()->gpu_sim_cycle +
                                     m_core->get_gpu()->gpu_tot_sim_cycle);
+      if (pcal_bypass && inst.is_load()) m_pcal_bypass_mfs.insert(mf);
       m_icnt->push(mf);
       inst.accessq_pop_back();
       // inst.clear_active( access.get_warp_mask() );
@@ -3114,12 +3122,17 @@ void ldst_unit::cycle() {
                        GLOBAL_ACC_W) {  // global memory access
           if (m_core->get_config()->gmem_skip_L1D) bypassL1D = true;
         }
+        bool pcal_bypassed = m_pcal_bypass_mfs.count(mf) > 0;
+        if (!bypassL1D && pcal_bypassed) {
+          bypassL1D = true;
+        }
         if (bypassL1D) {
           if (m_next_global == NULL) {
             mf->set_status(IN_SHADER_FETCHED,
                            m_core->get_gpu()->gpu_sim_cycle +
                                m_core->get_gpu()->gpu_tot_sim_cycle);
             m_response_fifo.pop_front();
+            if (pcal_bypassed) m_pcal_bypass_mfs.erase(mf);
             m_next_global = mf;
           }
         } else {
