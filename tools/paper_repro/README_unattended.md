@@ -140,6 +140,36 @@ python3 tools/paper_repro/gpt_review_stub.py \
 | `stop_after_completion` | 完成后必须 stop_for_review | `false` |
 | `requires_gpt_review` | 需要 GPT review 才能继续 | `false` |
 | `allow_src_change` | `false` 时 src/ diff 触发 blocked | `true` |
+| `reviewer` | `none` / `codex_cli` | `none` |
 
 `risk=high` 的 job 永远输出 `blocked_high_risk_stage`，无论 stage key 是什么。
+
+---
+
+## Codex CLI Reviewer（可选，默认 disabled）
+
+`tools/paper_repro/codex_review_stub.py` 支持 Codex CLI 作为 reviewer：
+
+```bash
+# stub 模式（默认，安全，不调用 codex）
+python3 tools/paper_repro/codex_review_stub.py \
+  --packet runs/paper_repro_queue/<job_id>/gpt_review_packet.md \
+  --policy tools/paper_repro/reviewer_policy.example.yaml \
+  --out runs/paper_repro_queue/<job_id>/next_action.yaml \
+  --dry-run
+
+# 如要启用真实 codex exec（需要先阅读 reviewer_policy.example.yaml）：
+# 1. 编辑 reviewer_policy.example.yaml：enabled=true, use_codex_exec=true
+# 2. 去掉 --dry-run，加 --use-codex
+python3 tools/paper_repro/codex_review_stub.py \
+  --packet ... --policy ... --out ... --use-codex
+```
+
+**明天如果使用 Codex reviewer**：
+1. 先用 `--dry-run` 验证 stub 通过
+2. Codex 只能读取 review packet，输出 YAML；不能修改文件、不能执行 shell
+3. high-risk stage（`minimal_mechanism`、`standard_validation`）Codex 被禁止 continue
+4. 所有输出会被 supervisor 强制覆写 `commit_recommended: false`
+
+权限策略见 `reviewer_policy.example.yaml`。风险分级见 `risk_policy.md`。
 

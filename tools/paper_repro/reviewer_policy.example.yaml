@@ -1,0 +1,30 @@
+enabled: false          # set true only with explicit human approval
+reviewer_type: codex_cli
+use_codex_exec: false   # must be set true explicitly to run codex exec
+
+expires_at: "2026-05-02T23:59:59"
+
+allowed_actions:
+  - review_round_state
+  - classify_risk
+  - generate_next_prompt_summary
+  - write_next_action_yaml
+
+forbidden_actions:
+  - commit
+  - tag
+  - push
+  - delete_files
+  - run_standard
+  - run_extended
+  - modify_src
+  - execute_shell_commands
+  - continue_high_risk_without_review
+
+require_human_for:
+  - minimal_mechanism
+  - standard_validation
+  - src_diff_outside_expected_modules
+  - deadlock
+  - timeout_exceeded
+  - extreme_slowdown

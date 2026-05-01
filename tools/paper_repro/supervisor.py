@@ -162,6 +162,7 @@ Generated: {ts}
 - stop_after_completion: {job.get('stop_after_completion', False)}
 - requires_gpt_review: {job.get('requires_gpt_review', False)}
 - allow_src_change: {job.get('allow_src_change', True)}
+- reviewer: {job.get('reviewer', 'none')}
 - description: {job.get('description', '')}
 
 ## Generated Prompt
@@ -223,6 +224,7 @@ def process_job(job: dict, queue_cfg: dict, dry_run: bool) -> None:
         "job_id": job_id,
         "action": action,
         "reason": reason,
+        "reviewer_required": job.get("reviewer", "none"),
         "prompt_path": str(RUNS_DIR / job_id / "prompt.md"),
         "review_path": str(RUNS_DIR / job_id / "gpt_review_packet.md"),
         "generated_at": datetime.now().isoformat(),
@@ -240,6 +242,10 @@ def main() -> None:
     parser.add_argument("--queue", required=True, help="Path to job_queue.yaml")
     parser.add_argument("--dry-run", action="store_true", help="Don't write files")
     parser.add_argument("--job", help="Process only this job_id")
+    parser.add_argument("--reviewer-stub", action="store_true",
+                        help="Annotate jobs requiring review with reviewer_required field (no API call)")
+    parser.add_argument("--use-codex-reviewer", action="store_true",
+                        help="Invoke codex_review_stub.py for jobs with reviewer=codex_cli (requires policy)")
     args = parser.parse_args()
 
     queue_path = Path(args.queue)
