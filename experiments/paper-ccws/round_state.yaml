@@ -1,72 +1,49 @@
-round: AI
-stage: focused_validation
+round: AK
+stage: final_report
 status: complete
 date: 2026-05-01
 branch: hrl/paper/ccws-repro-v0
 
 source_changed: false
-experiments_run: true
+experiments_run: false
+final_report_created: true
 
-workloads_run:
-  - rodinia_hotspot
-  - rodinia_srad_v2
-  - polybench_fdtd2d
-  - strided_access
-  - page_stride_access
-  - mutual_tiled
-  - rodinia_bfs
+mechanism_chain_reproduced: true
+faithful_reproduction_status: >
+  Partial. VTA is miss-side approximation (not eviction-based).
+  Can-Issue cutoff uses max_warps=64 (not active_warps~8).
+  LLDS uses static increment (not dynamic VTAHits/InstIssued ratio).
+  Cycle direction wrong in conservative config (+2-11% instead of decrease).
 
-configs_run:
-  - SM7_QV100_ccws_noop_off (feature_off baseline)
-  - SM7_QV100_ccws_load_gate_th99 (DEADLOCK — threshold < lls_base_score=100; invalid config)
-  - SM7_QV100_ccws_load_gate_th100 (conservative: inc=1, th=100)
-  - SM7_QV100_ccws_load_gate_inc50_th100 (aggressive: inc=50, th=100)
+focused_validation_summary:
+  conservative_inc1_th100:
+    workloads_with_gating: [rodinia_hotspot, rodinia_srad_v2, polybench_fdtd2d, mutual_tiled, rodinia_bfs]
+    workloads_no_gating: [strided_access, page_stride_access]
+    cycle_delta: "+2% to +11%"
+    cycle_direction: wrong (increases instead of decreases)
+  aggressive_inc50_th100:
+    cycle_delta: "+390% to +1464%"
+    assessment: severe over-gating; unusable
+  th99:
+    result: deadlock
+    reason: threshold < lls_base_score=100 gates all warps at init
 
-conservative_signal_summary:
-  config: inc=1 th=100
-  workloads_with_gating: [rodinia_hotspot, rodinia_srad_v2, polybench_fdtd2d, mutual_tiled, rodinia_bfs]
-  workloads_no_gating: [strided_access, page_stride_access]
-  cycle_delta_range: "+2% to +11%"
-  cycle_direction: "WRONG (should decrease per paper; increases due to cutoff approximation)"
-  lg_block_range: "2014 (mutual_tiled) to 54907 (fdtd2d)"
-  mechanism_chain: "VTA→LLS→gate confirmed correct (lls_update=vta_hit exact)"
+standard_validation_recommendation: >
+  Not recommended. Cycle direction wrong with current approximation.
+  Standard validation would produce misleading results.
 
-aggressive_signal_summary:
-  config: inc=50 th=100
-  workloads_with_gating: [rodinia_hotspot, rodinia_srad_v2, polybench_fdtd2d, mutual_tiled, rodinia_bfs]
-  workloads_no_gating: [strided_access, page_stride_access]
-  cycle_delta_range: "+390% to +1464%"
-  assessment: "severe over-gating; positive feedback loop; unusable"
-
-workloads_sensitive_to_gating:
-  high: [polybench_fdtd2d, rodinia_srad_v2]
-  medium: [rodinia_hotspot, mutual_tiled]
-  low: [rodinia_bfs]
-  none: [strided_access, page_stride_access]
-
-key_findings:
-  - "th=99 deadlock: threshold < lls_base_score causes all warps gated at init"
-  - "conservative cycle direction wrong: +2-11% instead of decrease"
-  - "root cause: nw=max_warps=64 makes cutoff 8x too large; gate fires too late"
-  - "strided/page_stride correctly show no gating (vta_hit=24 only)"
-  - "mechanism chain VTA->LLS->gate is functionally correct"
-
-approximation_limitations:
-  vta: "miss-side (intra-warp repeated miss), not eviction-based (inter-warp)"
-  cutoff: "nw=max_warps=64, should be active_warps~8; 8x over-estimate"
-  workload_size: "64x64 tiny workloads, not representative of paper HCS workloads"
-  cycle_impact: "conservative +2-11% cycle increase (paper shows decrease)"
-
-recommend_next: >
-  Direct final report. Standard validation not recommended with current approximation
-  (cycle direction wrong, would produce misleading results). Final report conclusion:
-  "mechanism chain reproduced; approximate VTA and cutoff limit quantitative accuracy."
-  Future work: faithful eviction-based VTA + active-warp cutoff with larger workloads.
+recommend_next:
+  primary: FINAL-INFRA (automate per-paper reproduction framework)
+  optional_faithful_ccws:
+    - eviction-based VTA (add warp_id to cache_block_t)
+    - active-wavefront cutoff with larger workloads
+    - dynamic LLDS calculation
+  self_developed: open hrl/idea/cache-policy-experiments-v0 (do not mix into paper branch)
 
 commit_recommended: true
-suggested_commit: "ccws: validate approximate CCWS on focused workloads"
-suggested_tag: ccws-focused-validation
+suggested_commit: "ccws: add final reproduction report"
+suggested_tag: ccws-final-report
 
 new_files:
-  - experiments/paper-ccws/focused_ccws_validation.csv
-  - docs/papers/ccws_round_ai_focused_validation.md
+  - docs/papers/ccws_final_reproduction_report.md
+  - experiments/paper-ccws/final_summary.csv

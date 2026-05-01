@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-05-01 — Round AI complete; focused validation on 7 workloads × conservative(inc=1,th=100)/aggressive(inc=50,th=100); mechanism chain confirmed; conservative +2–11% cycle (direction wrong due to cutoff approx); aggressive severe over-gating; recommend direct final report._
+_Last updated: 2026-05-01 — Round AK complete; CCWS final reproduction report written; mechanism chain reproduced; approximate VTA + cutoff limitations documented; cycle direction wrong; FINAL-INFRA recommended as next step._
 
 ## Git 工作流
 
@@ -228,7 +228,8 @@ Four days of deep read-through of the PTX functional simulation → timing model
 - [x] **Round AG**：Can-Issue cutoff 审计 — 确认主要 bug：`nw = max_warps_per_shader = 64`，而实际 active warps ≈ 8（occupancy 12%）；`cum_cutoff = 64×100 = 6400`，正确值应为 `8×100 = 800`；inactive warp 的 base_score(100) 合计 5600，消耗 cutoff budget 的 87.5%；`would_can_issue=false` 只落在 inactive warp slot 上，这些 warp 不发射 load，gate 永远不触发；修复方案：用 `not_completed/warp_size` 替换 `max_warps_per_shader` 作为 nw
 - [x] **Round AH**：尝试 active-warp cutoff 修复（`not_completed/warp_size`）；tiny workload 严重过度 gating（srad_v2 64×64 → ~2 warps/SM → cutoff=200 → +64–767% cycle）；**已 revert**；接受近似实现（`nw=max_warps` 加注释说明）；`source_changed=false`；分支已就绪进入 focused validation
 - [x] **Round AI**：Focused validation — 7 workload × conservative(inc=1,th=100) / aggressive(inc=50,th=100)；th=99 全部 deadlock（threshold < base_score）；conservative：hotspot/srad_v2/fdtd2d/mutual_tiled/bfs 出现 lg_block>0，cycle +2–11%（方向相反，因 cutoff 近似）；aggressive：严重过度 gating（+390–1464%）；机制链路 VTA→LLS→gate 确认正确；建议直接进入 final report
-- [ ] **Round AJ（后置）**：final report 撰写；或开 `hrl/idea/cache-policy-experiments-v0` 进行自研改进
+- [x] **Round AK**：CCWS final reproduction report 完成；机制链路复现成功；近似实现限制（miss-side VTA / max_warps cutoff / 静态 increment）明确文档化；cycle 方向相反；不建议 standard validation；建议进入 FINAL-INFRA
+- [ ] **FINAL-INFRA**：将 CCWS 复现流程沉淀为自动化逐篇复现框架；标准化 round_state.yaml schema；自动化 feature_off/on 验证脚本；之后可开 `hrl/idea/cache-policy-experiments-v0`
 
 ## Workload Management Framework（Round B 新增）
 

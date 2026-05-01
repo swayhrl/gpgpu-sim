@@ -1,0 +1,2 @@
+paper,round_range,status,mechanism_chain_reproduced,faithful_vta,faithful_cutoff,dynamic_llds,real_load_gating,focused_validation,standard_validation,cycle_direction_correct,recommendation,notes
+ccws,S-AI,approximate_reproduction,yes,no,no,no,yes,yes,no,no,direct_final_report,"VTA→LLS→gate chain functional; miss-side VTA approx; max_warps cutoff approx; conservative +2-11% cycle (wrong direction); aggressive +390-1464% over-gating; feature_off 7/7 pass all rounds"

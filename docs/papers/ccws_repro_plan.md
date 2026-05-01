@@ -179,7 +179,7 @@ All stats gated by `gpgpu_enable_ccws`. Prefix: `paper_ccws_`.
 | **AF** | Pre-scoreboard gate: moved gate before checkCollision; inc=5/20/30 still 0 blocks; root cause revised: VTA hits too dispersed, per-warp LLS never exceeds cutoff/nw | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AF) | Medium |
 | **AG** | Can-Issue cutoff audit: confirmed cutoff uses max_warps(64) not active_warps(~8); inactive warp base_score consumes 87.5% of cutoff budget; would_can_issue=false only on inactive slots | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AG) | None |
 | **AH** | Fix cutoff: attempted active-warp cutoff (not_completed/warp_size); caused severe over-gating (+64–767% cycle) on tiny workloads; **reverted**; accepted approximate implementation (nw=max_warps with comment); source_changed=false | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AH) | Medium |
-| **AI** | Focused validation: conservative（inc=1, th=100）vs aggressive（inc=50, th=100）on 7 workloads; mechanism chain confirmed; conservative +2–11% cycle; aggressive severe over-gating; direct final report recommended | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AI) | None |
+| **AK** | Final reproduction report: mechanism chain confirmed; approximation limitations documented; cycle direction wrong due to cutoff approx; direct final report recommended; FINAL-INFRA next | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AK) | None |
 | **S9** | K_THROTTLE sweep; result notes | `hrl/paper/ccws-repro-v0` | — | Low |
 
 **Round T note**: `GPGPUSIM_CONFIG_OVERRIDE` env var added to `run_one.sh`; config override confirmed
@@ -278,6 +278,11 @@ gating (vta_hit=24 only). Aggressive (inc=50, th=100): severe over-gating on all
 workloads (+390–1464% cycle). Mechanism chain VTA→LLS→gate confirmed correct. Cycle direction
 opposite to paper (should decrease) due to cutoff approximation (nw=max_warps 8× too large).
 Recommendation: direct final report; standard validation not recommended with current approximation.
+
+**Round AK note**: Final reproduction report written. Mechanism chain reproduced (VTA→LLS→gate
+functional). Faithful reproduction partial: miss-side VTA, max_warps cutoff, static increment.
+Cycle direction wrong in conservative config. Standard validation not recommended. FINAL-INFRA
+recommended as next step. Self-developed cache policy to open hrl/idea/cache-policy-experiments-v0.
 
 **Rules**:
 - Feature flag **always default 0**.
