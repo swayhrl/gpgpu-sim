@@ -2377,6 +2377,41 @@ class shader_core_ctx : public core_t {
     allow_count        += m_mascar_allow_count;
   }
 
+  // Mascar Phase 2: record when a warp's memory instruction can't issue
+  // (m_mem_out pipeline register full → memory pressure stall).
+  // Passive: does not change scheduling behavior.
+  void mascar_record_mem_stall(unsigned warp_id) {
+    if (!m_config->gpgpu_enable_mascar ||
+        !m_config->gpgpu_mascar_enable_telemetry)
+      return;
+    if (warp_id >= m_mascar_stall_streak.size()) return;
+    m_mascar_stall_streak[warp_id]++;
+    m_mascar_mem_stall_event++;
+    unsigned streak = m_mascar_stall_streak[warp_id];
+    // pitstop_event: warp enters pitstop state when streak crosses threshold
+    if (streak == m_config->gpgpu_mascar_stall_threshold)
+      m_mascar_pitstop_event++;
+    // saturation_event: proxy for SM-level saturation (>= half warps in pitstop)
+    if (streak >= m_config->gpgpu_mascar_stall_threshold) {
+      unsigned pitstop_warps = 0;
+      for (unsigned w = 0; w < m_mascar_stall_streak.size(); w++)
+        if (m_mascar_stall_streak[w] >= m_config->gpgpu_mascar_stall_threshold)
+          pitstop_warps++;
+      unsigned half_warps = (unsigned)m_mascar_stall_streak.size() / 2;
+      if (pitstop_warps >= half_warps && half_warps > 0)
+        m_mascar_saturation_event++;
+    }
+  }
+
+  // Mascar Phase 2: reset stall streak when warp successfully issues a memory op
+  void mascar_reset_stall_streak(unsigned warp_id) {
+    if (!m_config->gpgpu_enable_mascar ||
+        !m_config->gpgpu_mascar_enable_telemetry)
+      return;
+    if (warp_id >= m_mascar_stall_streak.size()) return;
+    m_mascar_stall_streak[warp_id] = 0;
+  }
+
   void get_icnt_power_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
 
   // debug:

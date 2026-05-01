@@ -367,6 +367,7 @@ cycle 方向相反（应减少）原因：tiny workload，throttle 阻止有效 
 - [x] TOMORROW-PAPERS：PCAL + Mascar preplan / paper.yaml / reading prompt / job_queue.tomorrow.yaml 准备完成（5 jobs dry-run 通过）
 - [x] MASCAR-PHASE-0：reading notes + repro plan 完成（branch hrl/paper/mascar-repro-v0）
 - [x] MASCAR-PHASE-1：no-op config + stats（编译通过，feature_off/noop cycle = baseline）
+- [x] MASCAR-PHASE-2：memory pressure telemetry（hotspot=12150 stall events，cycle 不变）
 - [ ] MASCAR-PHASE-2：memory pressure / pitstop telemetry
 - [ ] MASCAR-PHASE-3：would-change scheduling telemetry
 - [ ] MASCAR-PHASE-4：minimal scheduling policy（高风险）

@@ -1423,6 +1423,11 @@ void scheduler_unit::cycle() {
                 issued_inst = true;
                 warp_inst_issued = true;
                 previous_issued_inst_exec_type = exec_unit_type_t::MEM;
+                // Mascar Phase 2: successful issue resets stall streak
+                m_shader->mascar_reset_stall_streak(warp_id);
+              } else {
+                // Mascar Phase 2: memory pipeline full → record stall event
+                m_shader->mascar_record_mem_stall(warp_id);
               }
             } else {
               // This code need to be refactored

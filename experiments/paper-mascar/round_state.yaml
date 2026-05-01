@@ -1,28 +1,31 @@
 paper: mascar
-round: Phase 1
-stage: noop_config
+round: Phase 2
+stage: memory_pressure_telemetry
 status: complete
 source_changed: true
 source_files_changed:
   - src/gpgpu-sim/shader.h
   - src/gpgpu-sim/shader.cc
-  - src/gpgpu-sim/gpu-sim.cc
 experiments_run: true
-workloads_run: [vecadd, rodinia_hotspot, rodinia_bfs]
-configs_run: [mascar_noop_off, mascar_noop_on]
+workloads_run: [vecadd, rodinia_hotspot, rodinia_srad_v2, rodinia_bfs, strided_access]
+configs_run: [mascar_noop_off, mascar_telemetry_on]
 mechanism_chain:
-  - memory stall probe (per-warp stall streak counter)
-  - pitstop detection (stall_streak > threshold)
-  - would-deprioritize telemetry (no behavior change)
-  - scheduler skip (minimal issue-order proxy, no replay)
-gpgpu_sim_mapping:
-  - scheduler_unit::cycle() (hook for issue-order skip)
-  - per-warp stall streak counter in shader_core_ctx
-  - gpu-sim.cc (stats printing)
+  - memory stall probe: COMPLETE (mascar_record_mem_stall in scheduler_unit::cycle)
+  - pitstop detection: PARTIAL (stall_streak counter active, threshold=8 rarely reached)
+  - would-deprioritize telemetry: not_started
+  - scheduler skip: not_started
+telemetry_results:
+  rodinia_hotspot: mem_stall_event=12150 (HIGH signal)
+  rodinia_srad_v2: mem_stall_event=3989 (MED signal)
+  vecadd: mem_stall_event=57 (LOW)
+  strided_access: mem_stall_event=57 (LOW)
+  rodinia_bfs: mem_stall_event=1 (NEAR-ZERO)
 highest_risk_change: Phase 4 scheduler skip logic (deadlock risk if not guarded)
 known_hard_stop: pipeline replay / re-execution not implemented
-recommend_next: Phase 2 memory pressure telemetry
+recommend_next: Phase 3 would-change telemetry
 feature_off_baseline:
   vecadd: 5569
   rodinia_hotspot: 6931
   rodinia_bfs: 6665
+  rodinia_srad_v2: 8236
+  strided_access: 5825

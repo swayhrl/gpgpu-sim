@@ -107,7 +107,7 @@ reproduction_status:
   mechanism_chain: in_progress
   phase0_reading: complete
   phase1_noop: complete
-  phase2_telemetry: not_started
+  phase2_telemetry: complete
   phase3_would_change: not_started
   phase4_minimal_policy: not_started
   phase5_focused_validation: not_started

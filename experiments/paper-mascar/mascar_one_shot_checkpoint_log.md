@@ -60,3 +60,27 @@ append-only log — 每个 Phase 结束时追加一次。
 - 当前风险: 无
 - 是否建议继续: 是，进入 Phase 2
 - 下一步: Phase 2 memory pressure telemetry
+
+---
+
+## Checkpoint: Phase 2 — Memory Pressure Telemetry
+
+- Phase: 2 (Memory Pressure / Pitstop Telemetry)
+- 当前状态: complete
+- 已完成:
+  - mascar_record_mem_stall / mascar_reset_stall_streak 方法添加（shader.h）
+  - scheduler_unit::cycle() telemetry hook 添加（shader.cc）
+  - telemetry_on config 创建（SM7_QV100_mascar_telemetry_on）
+  - 编译通过
+  - feature_off 回归：vecadd=5569, hotspot=6931 ✓
+  - telemetry_on cycle 不变 ✓
+  - mem_stall_event: hotspot=12150, srad_v2=3989 (有信号)
+  - pitstop_event=0 (threshold=8 保守，Phase 3 改用 streak>=2)
+- 修改文件:
+  - src/gpgpu-sim/shader.h (mascar telemetry methods)
+  - src/gpgpu-sim/shader.cc (scheduler hook)
+  - configs/hrl-repro/SM7_QV100_mascar_telemetry_on/ (new)
+- 已运行验证: vecadd×2, hotspot×2, srad_v2×1, bfs×1, strided_access×1
+- 当前风险: 无
+- 是否建议继续: 是，进入 Phase 3
+- 下一步: Phase 3 would-change telemetry
