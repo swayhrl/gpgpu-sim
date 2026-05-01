@@ -104,13 +104,14 @@ success_rules:
     required: true
 
 reproduction_status:
-  mechanism_chain: in_progress
+  mechanism_chain: complete
   phase0_reading: complete
   phase1_noop: complete
   phase2_telemetry: complete
   phase3_would_change: complete
-  phase4_minimal_policy: not_started
-  phase5_focused_validation: not_started
-  phase6_final_report: not_started
-  overall: in_progress
+  phase4_minimal_policy: complete
+  phase5_focused_validation: complete
+  phase6_final_report: complete
+  overall: approximate_reproduction_complete
   last_updated: "2026-05-01"
+  notes: "skip gate post-scoreboard in memory block; threshold=2; skip_count>0 for 8/9 workloads; no deadlock"

@@ -163,3 +163,21 @@ append-only log — 每个 Phase 结束时追加一次。
   - experiments/paper-mascar/round_state.yaml (更新)
 - 是否建议继续: 是，进入 Phase 6 final report
 - 下一步: Phase 6 final reproduction report
+
+---
+
+## Checkpoint: Phase 6 — Final Report
+
+- Phase: 6 (Final Reproduction Report)
+- 当前状态: complete
+- 已完成:
+  - docs/papers/mascar_final_report.md 创建（完整复现报告）
+  - tools/paper_repro/papers/mascar.yaml 更新（overall=approximate_reproduction_complete）
+  - experiments/paper-mascar/round_state.yaml 更新（Phase 6 complete）
+- 复现结论: Approximate Reproduction SUCCESS
+  - 机制链路完整（5 个 phase 全部通过）
+  - feature_off 不破坏 baseline ✓
+  - deadlock 防护正确（skip/allow = max_skip_streak） ✓
+  - 8/9 workload skip_count > 0 ✓
+  - 定量差距与论文：由于 tiny workload + proxy 精度不足，改善幅度远小于论文（<0.2% vs 5-15%）
+- 下一步建议: 进入 hrl/idea/cache-policy-experiments-v0 自研 cache policy
