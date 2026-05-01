@@ -1,0 +1,9 @@
+workload,config,sim_cycle,access_event,miss_event,miss_rate_pct,classified_high,classified_low,window_reset,would_bypass,bypass_count,pass
+vecadd,feature_off,5569,0,0,,0,0,0,0,0,PASS
+vecadd,telemetry_on,5569,96,96,100,0,8,8,0,0,PASS
+rodinia_hotspot,feature_off,6931,0,0,,0,0,0,0,0,PASS
+rodinia_hotspot,telemetry_on,6931,2576,2576,100,0,262,262,0,0,PASS
+rodinia_srad_v2_k1,feature_off,8236,0,0,,0,0,0,0,0,PASS
+rodinia_srad_v2_k1,telemetry_on,8236,4352,4208,97,0,512,512,0,0,PASS
+polybench_fdtd2d_all_k,feature_off,35681_cumulative,0,0,,0,0,0,0,0,PASS
+polybench_fdtd2d_all_k,telemetry_on,35681_cumulative,14450,10656,74,0,1772,1772,0,0,PASS

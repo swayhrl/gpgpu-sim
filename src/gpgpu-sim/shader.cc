@@ -525,6 +525,10 @@ shader_core_ctx::shader_core_ctx(class gpgpu_sim *gpu,
   m_pcal_bypass_count = 0;
   m_pcal_bypass_hit = 0;
   m_pcal_window_reset = 0;
+  // PCAL Phase 2: initialize per-warp sliding window state
+  m_pcal_warp_accesses.assign(config->max_warps_per_shader, 0);
+  m_pcal_warp_misses.assign(config->max_warps_per_shader, 0);
+  m_pcal_warp_low_priority.assign(config->max_warps_per_shader, false);
 }
 
 void shader_core_ctx::reinit(unsigned start_thread, unsigned end_thread,
@@ -2213,6 +2217,8 @@ mem_stage_stall_type ldst_unit::process_cache_access(
       }
     }
     if (!write_sent) delete mf;
+    // PCAL Phase 2: hit path probe
+    m_core->pcal_probe_access(inst.warp_id(), false);
   } else if (status == RESERVATION_FAIL) {
     result = BK_CONF;
     assert(!read_sent);
@@ -2225,6 +2231,8 @@ mem_stage_stall_type ldst_unit::process_cache_access(
       new_addr_type ba = m_config->m_L1D_config.block_addr(mf->get_addr());
       ccws_vta_probe_miss(inst.warp_id(), ba);
     }
+    // PCAL Phase 2: miss path probe
+    m_core->pcal_probe_access(inst.warp_id(), true);
     // inst.clear_active( access.get_warp_mask() ); // threads in mf writeback
     // when mf returns
     inst.accessq_pop_back();
@@ -2370,7 +2378,10 @@ void ldst_unit::L1_latency_queue_cycle() {
           for (unsigned i = 0; i < dec_ack; ++i) m_core->store_ack(mf_next);
         }
 
+        unsigned pcal_hit_wid = mf_next->get_wid();  // save before potential delete
         if (!write_sent) delete mf_next;
+        // PCAL Phase 2: hit path probe (latency-queue path)
+        m_core->pcal_probe_access(pcal_hit_wid, false);
 
       } else if (status == RESERVATION_FAIL) {
         assert(!read_sent);
@@ -2383,6 +2394,8 @@ void ldst_unit::L1_latency_queue_cycle() {
               m_config->m_L1D_config.block_addr(mf_next->get_addr());
           ccws_vta_probe_miss(mf_next->get_wid(), ba);
         }
+        // PCAL Phase 2: miss path probe (latency-queue path)
+        m_core->pcal_probe_access(mf_next->get_wid(), true);
         l1_latency_queue[j][0] = NULL;
         if (m_config->m_L1D_config.get_write_policy() != WRITE_THROUGH &&
             mf_next->get_inst().is_store() &&

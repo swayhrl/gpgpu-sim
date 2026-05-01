@@ -2381,6 +2381,34 @@ class shader_core_ctx : public core_t {
     window_reset += m_pcal_window_reset;
   }
 
+  // PCAL Phase 2: per-access probe for cache pressure telemetry
+  void pcal_probe_access(unsigned warp_id, bool is_miss) {
+    if (!m_config->gpgpu_enable_pcal || !m_config->gpgpu_pcal_enable_telemetry)
+      return;
+    if (warp_id >= m_pcal_warp_accesses.size()) return;
+    m_pcal_access_event++;
+    m_pcal_warp_accesses[warp_id]++;
+    if (is_miss) {
+      m_pcal_miss_event++;
+      m_pcal_warp_misses[warp_id]++;
+    }
+    unsigned window_size = m_config->gpgpu_pcal_window_size;
+    if (window_size == 0) window_size = 64;
+    if (m_pcal_warp_accesses[warp_id] >= window_size) {
+      unsigned miss_pct =
+          (m_pcal_warp_misses[warp_id] * 100) / window_size;
+      bool is_low = (miss_pct >= m_config->gpgpu_pcal_miss_rate_threshold);
+      m_pcal_warp_low_priority[warp_id] = is_low;
+      if (is_low)
+        m_pcal_warp_classified_low++;
+      else
+        m_pcal_warp_classified_high++;
+      m_pcal_warp_accesses[warp_id] = 0;
+      m_pcal_warp_misses[warp_id] = 0;
+      m_pcal_window_reset++;
+    }
+  }
+
   void get_icnt_power_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
 
   // debug:
@@ -2844,6 +2872,10 @@ class shader_core_ctx : public core_t {
   unsigned long long m_pcal_bypass_count;
   unsigned long long m_pcal_bypass_hit;
   unsigned long long m_pcal_window_reset;
+  // PCAL Phase 2: per-warp sliding window state
+  std::vector<unsigned> m_pcal_warp_accesses;
+  std::vector<unsigned> m_pcal_warp_misses;
+  std::vector<bool> m_pcal_warp_low_priority;
 };
 
 class exec_shader_core_ctx : public shader_core_ctx {

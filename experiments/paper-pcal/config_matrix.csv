@@ -1,3 +1,4 @@
 paper,round,config_name,gpgpu_enable_pcal,gpgpu_pcal_enable_telemetry,gpgpu_pcal_enable_would_bypass,gpgpu_pcal_enable_bypass,gpgpu_pcal_miss_rate_threshold,gpgpu_pcal_window_size,notes
 pcal,Phase1,SM7_QV100_pcal_noop_off,0,0,0,0,50,64,Phase 1 feature_off baseline
 pcal,Phase1,SM7_QV100_pcal_noop_on,1,0,0,0,50,64,Phase 1 feature_on_noop (master on all stages off)
+pcal,Phase2,SM7_QV100_pcal_telemetry_on,1,1,0,0,50,8,Phase 2 cache pressure telemetry (window_size=8 for small workloads)

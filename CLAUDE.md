@@ -367,7 +367,8 @@ cycle 方向相反（应减少）原因：tiny workload，throttle 阻止有效 
 - [x] TOMORROW-PAPERS：PCAL + Mascar preplan / paper.yaml / reading prompt / job_queue.tomorrow.yaml 准备完成（5 jobs dry-run 通过）
 - [x] PCAL-Phase0：preflight 通过，reading 产物确认
 - [x] PCAL-Phase1：no-op config + stats 完成（7 knobs + 9 stats；feature_off/noop 均不改 cycle；tag 待定）
-- [ ] **下一步**：PCAL Phase 2 cache pressure telemetry
+- [x] PCAL-Phase2：cache pressure telemetry 完成（window_size=8；4 workloads 信号合理；sim_cycle 不变）
+- [ ] **下一步**：PCAL Phase 3 would-change bypass telemetry
 
 ---
 

@@ -1,78 +1,58 @@
 paper: pcal
-round: Phase 1
-stage: noop_config
+round: Phase 2
+stage: cache_pressure_telemetry
 status: complete
 date: 2026-05-01
 branch: hrl/paper/pcal-repro-v0
 
 source_changed: true
 experiments_run: true
-workloads_run: [vecadd, rodinia_hotspot, rodinia_srad_v2]
+workloads_run: [vecadd, rodinia_hotspot, rodinia_srad_v2, polybench_fdtd2d]
 feature_off_unchanged: true
-feature_on_noop_unchanged: true
-paper_pcal_stats_zero: true
-recommend_next: Phase 2
+telemetry_on_unchanged: true
+recommend_next: Phase 3
 commit_recommended: true
-suggested_commit: "pcal: add no-op config and stats"
+suggested_commit: "pcal: add cache pressure telemetry"
 
-# 论文机制链（从 Phase 0 保留）
+cache_pressure_signal_summary:
+  vecadd: "access=96, miss_rate=100%, classified_low=8, window_reset=8"
+  rodinia_hotspot: "access=2576, miss_rate=100%, classified_low=262, window_reset=262"
+  rodinia_srad_v2: "access=4352, miss_rate=97%, classified_low=512, window_reset=512"
+  polybench_fdtd2d: "access=14450, miss_rate=74%, classified_low=1772, window_reset=1772"
+  note: "All workloads classified_low due to miss_rate>50%; fdtd2d shows genuine cache reuse (74% miss rate)"
+
+priority_signal_summary:
+  classified_high: 0
+  classified_low: non-zero for all workloads
+  interpretation: "all tested workloads exceed 50% miss threshold → low priority; expected for tiny workloads with limited cache reuse"
+
+hook_points:
+  - "shader.cc process_cache_access() HIT/MISS branches (immediate path)"
+  - "shader.cc l1_latency queue HIT/MISS branches (SM7_QV100 path)"
+
+window_size_note: "window_size=8 used for tiny workloads; PCAL paper likely uses larger window; Phase 3 will use same size"
+
+# 论文机制链（从 Phase 1 保留）
 mechanism_chain:
   - name: miss-rate probe
     description: "per-warp L1D miss / access count in sliding window"
     stage: 02_telemetry
-    hook_location: "shader.cc hot path (L1D access path)"
-    approximation: "global access count not split by instruction type"
+    hook_location: "shader.cc: process_cache_access() and l1_latency queue path"
+    approximation: "window-based miss rate; window_size=8 for tiny workloads"
+    status: complete
   - name: priority classification
     description: "miss_rate > threshold → low priority → bypass"
     stage: 03_would_change
-    hook_location: "shader.cc: per-warp classification check"
-    approximation: "per-warp binary classification; no per-CTA or per-PC"
+    status: pending
   - name: L1 bypass gate
-    description: "low-priority warp loads bypass L1D, go directly to ICNT"
+    description: "low-priority warp loads bypass L1D"
     stage: 04_minimal_mechanism
-    hook_location: "shader.cc: bypassL1D condition"
-    approximation: "only L1D bypass; L2 bypass not implemented"
+    status: pending
 
-# GPGPU-Sim 映射点
-gpgpu_sim_mapping:
-  - file: src/gpgpu-sim/shader.h
-    purpose: "per-warp miss/access counters; miss_rate array; config knobs"
-  - file: src/gpgpu-sim/shader.cc
-    purpose: "miss probe hook; bypass decision; access tracking"
-  - file: src/gpgpu-sim/gpu-sim.cc
-    purpose: "option_parser_register for knobs; stat output"
-  - file: src/gpgpu-sim/gpu-cache.h
-    purpose: "read-only reference: cache_operator_type (CACHE_GLOBAL, CACHE_ALL)"
-
-# Phase 1 实现的 knobs（7 个，全部默认 off）
-implemented_knobs:
-  - gpgpu_enable_pcal          # default 0
-  - gpgpu_pcal_enable_telemetry  # default 0
-  - gpgpu_pcal_enable_would_bypass  # default 0
-  - gpgpu_pcal_enable_bypass       # default 0
-  - gpgpu_pcal_miss_rate_threshold  # default 50
-  - gpgpu_pcal_window_size         # default 64
-  - gpgpu_pcal_debug               # default 0
-
-# Phase 1 实现的 stats（9 个，行为计数默认 0）
-implemented_stats:
-  - paper_pcal_enabled
-  - paper_pcal_miss_event
-  - paper_pcal_access_event
-  - paper_pcal_warp_classified_high
-  - paper_pcal_warp_classified_low
-  - paper_pcal_would_bypass
-  - paper_pcal_bypass_count
-  - paper_pcal_bypass_hit
-  - paper_pcal_window_reset
-
-# 近似说明（从 reading stage 保留）
+# 近似说明
 approximation_notes:
   - "per-warp (not per-CTA) classification"
   - "simple miss/access ratio (not full CSI metric)"
   - "only L1D bypass (no L2 bypass)"
   - "binary priority (not multi-level)"
-  - "fixed window size (not adaptive)"
-
-# 分支说明
-branch_note: "分支从 hrl/paper/daws-repro-v0 创建（含 CCWS+DAWS instrumentation）。所有旧 feature flag 默认 0/off，不影响 PCAL baseline 验证。"
+  - "fixed window size=8 (not adaptive; reduced for tiny workloads)"
