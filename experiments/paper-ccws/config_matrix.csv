@@ -30,3 +30,6 @@ ccws_early_gate_inc5_th100,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_c
 ccws_early_gate_inc20_th100,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_load_gate_inc20_th100,early_gate_inc20_th100,pre-scoreboard gate; inc=20; 0 blocks; max_score=413 but per-SM prefix never exceeds cutoff,Round AF
 ccws_early_gate_inc30_th100,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_load_gate_inc30_th100,early_gate_inc30_th100,pre-scoreboard gate; inc=30; 0 blocks,Round AF
 ccws_early_gate_inc50_th100,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_load_gate_inc50_th100,early_gate_inc50_th100,pre-scoreboard gate; inc=50; srad_v2 +45% fdtd2d +61%; same as post-scoreboard,Round AF sanity check
+ccws_active_can_issue_inc5_th100,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_load_gate_inc5_th100,active_can_issue_inc5,active-warp cutoff; inc=5; over-gating (+64-88% cycle); tiny workload cutoff too small,Round AH
+ccws_active_can_issue_inc20_th100,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_load_gate_inc20_th100,active_can_issue_inc20,active-warp cutoff; inc=20; severe over-gating (+285-465% cycle),Round AH
+ccws_active_can_issue_inc30_th100,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_load_gate_inc30_th100,active_can_issue_inc30,active-warp cutoff; inc=30; severe over-gating (+415-767% cycle),Round AH

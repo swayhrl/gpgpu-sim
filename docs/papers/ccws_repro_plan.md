@@ -178,7 +178,7 @@ All stats gated by `gpgpu_enable_ccws`. Prefix: `paper_ccws_`.
 | **AE** | Gating insertion point audit: confirmed gate is post-scoreboard; recommend pre-scoreboard B1 | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AE) | None |
 | **AF** | Pre-scoreboard gate: moved gate before checkCollision; inc=5/20/30 still 0 blocks; root cause revised: VTA hits too dispersed, per-warp LLS never exceeds cutoff/nw | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AF) | Medium |
 | **AG** | Can-Issue cutoff audit: confirmed cutoff uses max_warps(64) not active_warps(~8); inactive warp base_score consumes 87.5% of cutoff budget; would_can_issue=false only on inactive slots | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AG) | None |
-| **AH** | Fix cutoff: use active warp count (not_completed/warp_size) for nw; only sort/prefix active slots; re-validate feature_off + inc5/20/30 | `hrl/paper/ccws-repro-v0` | — | Medium |
+| **AH** | Fix cutoff: attempted active-warp cutoff (not_completed/warp_size); caused severe over-gating (+64–767% cycle) on tiny workloads; **reverted**; accepted approximate implementation (nw=max_warps with comment); source_changed=false | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AH) | Medium |
 | **S8** | Standard / `cache_focus` set validation | `hrl/paper/ccws-repro-v0` | — | Low |
 | **S9** | K_THROTTLE sweep; result notes | `hrl/paper/ccws-repro-v0` | — | Low |
 
@@ -244,6 +244,32 @@ to amplify LLS score differentiation. Current mechanism is functionally correct.
 inc=1: only hotspot 5 blocks (weak). inc=10: 0 blocks all workloads (timing issue with tiny kernels).
 inc=50: srad_v2 +45% cycle, fdtd2d +61% cycle (over-gating). Recommended next: try inc=5 or inc=20
 for moderate signal before standard validation. inc=50 is too aggressive for tiny workloads.
+
+**Round AD note**: Hit-increment calibration on 7 workloads × inc5/20/30 (th100). All 0 blocks.
+Root cause confirmed: gate only fires when warp has LOAD_OP ready to issue; high-LLS warps are
+already stalled by scoreboard and never reach the gate. inc=50 bypasses this via positive feedback
+but causes over-gating. Pre-scoreboard gate (Round AF) did not resolve this.
+
+**Round AE note**: Gating insertion point audit (docs only). Confirmed gate is post-scoreboard in
+Round Y implementation. High-LLS stalled warps never reach gate. Recommended B1: move gate before
+checkCollision() so stall-recovered warps are also gated.
+
+**Round AF note**: Pre-scoreboard gate implemented (moved before checkCollision). inc=5/20/30 still
+0 blocks. Root cause revised: gate position was NOT the root cause. VTA hits too dispersed across
+warps; per-warp LLS never exceeds cutoff/nw. inc=50 sanity check: srad_v2 +45%, fdtd2d +61%
+(same as post-scoreboard). Pre-scoreboard gate retained (correct position per paper semantics).
+
+**Round AG note**: Can-Issue cutoff audit (docs only). Confirmed cutoff bug: nw=max_warps(64) vs
+actual active warps (~8). Inactive warp base_score sum = 56×100 = 5600 = 87.5% of cutoff(6400).
+would_can_issue=false only falls on inactive warp slots that never issue loads. inc=50 works because
+active warp scores accumulate fast enough to exceed 6400 within active range itself.
+
+**Round AH note**: Attempted active-warp cutoff fix using not_completed/warp_size. Caused severe
+over-gating on tiny workloads: srad_v2 64×64 → ~2 warps/SM → cutoff=200 → 91% loads blocked
+(+64–767% cycle). **Reverted** to nw=max_warps with explanatory comment. Accepted as approximate
+implementation. VTA (miss-side) and cutoff (max_warps) are both approximations; documented in
+ccws_round_ah_active_can_issue.md. Branch is ready for focused validation with inc=50 (active
+gating signal) or inc=1/th=99 (weak signal, no cycle impact). source_changed=false.
 
 **Rules**:
 - Feature flag **always default 0**.
