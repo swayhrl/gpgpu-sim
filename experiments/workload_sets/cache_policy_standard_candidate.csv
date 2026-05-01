@@ -1,0 +1,14 @@
+workload,suite,set,recommended_role,cache_sensitivity,irregularity,divergence,compute_intensity,sim_cost,reason,notes
+rodinia_hotspot,rodinia,cache_policy_standard,primary,high,low,medium,high,tiny,core cache-sensitive stencil,same as focused
+rodinia_srad_v2,rodinia,cache_policy_standard,primary,high,low,medium,high,medium,high L1D+L2 miss; divergence signal,same as focused
+polybench_fdtd2d,polybench,cache_policy_standard,primary,medium,low,low,medium,medium,L1D pressure without L2 spill,same as focused
+mutual_tiled,micro,cache_policy_standard,primary,high,low,low,high,tiny,tile reuse pattern,same as focused
+polybench_2dconv,polybench,cache_policy_standard,primary,medium,low,low,high,tiny,stencil L2 pressure,same as focused
+strided_access,micro,cache_policy_standard,primary,low,low,low,low,tiny,coalescing control,same as focused
+parboil_histo,parboil,cache_policy_standard,primary,medium,low,low,high,medium,reservation fail pattern,same as focused
+vecadd,existing,cache_policy_standard,negative_control,high,low,low,low,tiny,simplest kernel; sanity check,same as controls
+polybench_gemm,polybench,cache_policy_standard,compute_control,low,low,low,high,medium,compute-bound; should be unaffected,same as controls
+mutual_naive,micro,cache_policy_standard,streaming_reference,low,low,low,high,medium,global-mem streaming reference,same as controls
+rodinia_backprop,rodinia,cache_policy_standard,dense_nn_control,medium,low,low,high,medium,dense NN; low L2 miss,same as controls
+rodinia_bfs,rodinia,cache_policy_standard,irregular_signal,low,high,high,low,slow,IPC=0.23; irregular graph; divergence signal; slow,64-node graph 136K cycles
+parboil_spmv,parboil,cache_policy_standard,sparse_signal,low,high,low,low,very_slow,JDS SpMV; irregular; 1M cycles — use sparingly,42x42 fidapm05

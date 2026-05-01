@@ -1,0 +1,6 @@
+workload,suite,set,recommended_role,cache_sensitivity,irregularity,divergence,compute_intensity,sim_cost,reason,notes
+vecadd,existing,cache_policy_controls,negative_control,high,low,low,low,tiny,L1D=1.0 L2=0.33; no divergence; simplest kernel; any policy change here is a red flag,N=1024
+polybench_gemm,polybench,cache_policy_controls,compute_bound_control,low,low,low,high,medium,L1D=0.075 L2=0.00; fully compute-bound; cache policy should not affect this,GEMM 64x64x64
+mutual_naive,micro,cache_policy_controls,streaming_reference,low,low,low,high,medium,L1D=0.15 L2=0.20; global-mem streaming; contrast pair with mutual_tiled,N=32 no tile
+rodinia_backprop,rodinia,cache_policy_controls,dense_nn_control,medium,low,low,high,medium,L1D=0.41 L2=0.008; dense NN; low L2 miss; should be unaffected by cache policy,input=256
+atomic_contention,micro,cache_policy_controls,atomic_control,low,low,low,low,tiny,L1D bypassed; atomic path; cache policy should not affect; explicit PASS,n=256 bins=16

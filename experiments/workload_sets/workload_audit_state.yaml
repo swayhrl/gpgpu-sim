@@ -1,0 +1,91 @@
+round: WORKLOAD-AUDIT
+status: complete
+date: 2026-05-01
+branch: hrl/paper/daws-repro-v0
+
+workloads_reviewed: 23
+ready_workloads: 23
+
+focused_count: 7
+control_count: 5
+standard_candidate_count: 13
+
+workload_classification:
+  cache_sensitive_high:
+    - rodinia_hotspot      # L1D=1.0 L2=0.20
+    - mutual_tiled         # L1D=1.0 L2=0.20
+    - vecadd               # L1D=1.0 L2=0.33
+    - rodinia_srad_v2      # L1D=0.79 L2=0.34
+    - polybench_fdtd2d     # L1D=0.55 L2=0.00
+  cache_sensitive_medium:
+    - polybench_2dconv     # L1D=0.24 L2=0.37
+    - parboil_histo        # L1D=0.22 rfail=42603
+    - rodinia_backprop     # L1D=0.41 L2=0.008
+    - strided_access       # L1D=0.22 L2=0.50
+  divergence_heavy:
+    - rodinia_hotspot      # DAWS divergence_event=7655
+    - rodinia_srad_v2      # DAWS divergence_event=4229
+    - rodinia_bfs          # IPC=0.23 irregular graph
+    - rodinia_pathfinder   # wavefront DP divergence
+  irregular:
+    - rodinia_bfs          # data-dependent BFS
+    - parboil_spmv         # JDS sparse irregular
+    - rodinia_kmeans       # divergent cluster search
+  compute_bound:
+    - polybench_gemm       # IPC=80.3 L2=0.00
+    - rodinia_backprop     # IPC=37.9
+    - mutual_tiled         # IPC=25.7
+    - parboil_histo        # IPC=170.1
+  negative_controls:
+    - vecadd               # no divergence; simplest
+    - atomic_contention    # L1D bypassed
+    - polybench_gemm       # compute-bound; cache-insensitive
+
+major_gaps:
+  - id: no_large_stencil
+    description: "All stencils are 64x64 or 128x128. No 256x256+ stencil available."
+    impact: "Tiny workload limits divergence signal and cache pressure. CCWS/DAWS cycle direction reversed."
+    fix: "Recompile hotspot/srad_v2/fdtd2d with larger input. Low effort."
+    priority: high
+
+  - id: no_large_bfs
+    description: "rodinia_bfs uses 64-node graph. Real BFS divergence needs 1K+ nodes."
+    impact: "BFS divergence signal too weak (divergence_event=78 in DAWS). fp_sum_max=31 < threshold=32."
+    fix: "Recompile bfs with larger graph (e.g., 1024-node). Low effort."
+    priority: high
+
+  - id: no_hcs_like_workload
+    description: "No workload with HCS (High Cache Sensitivity) pattern as defined in CCWS/DAWS papers."
+    impact: "Cannot reproduce paper's primary claim workloads."
+    fix: "Would require adding new benchmark (e.g., LBM, LULESH). High effort."
+    priority: low
+
+  - id: no_stable_negative_control_for_divergence
+    description: "vecadd is the only zero-divergence control. fdtd2d also has zero divergence but is medium-cost."
+    impact: "Sufficient for now. Two zero-divergence controls is adequate."
+    fix: "Not needed immediately."
+    priority: low
+
+  - id: cacheinst_fields_missing_for_some_workloads
+    description: "parboil_spmv, parboil_sgemm, parboil_mri_q, rodinia_bfs, rodinia_kmeans, rodinia_lud, rodinia_nw, rodinia_pathfinder have cacheinst_L1D_miss_rate=NA."
+    impact: "Cannot use cacheinst instrumentation for these workloads without re-run."
+    fix: "Re-run with current GPGPU-Sim build (cacheinst instrumentation is in hrl/cache-instrumentation-v0)."
+    priority: medium
+
+ready_for_cache_policy_experiments: true
+rationale: >
+  7 focused workloads cover the key cache behaviors needed for first-round cache policy experiments:
+  high L1D miss (hotspot, srad_v2, mutual_tiled), L2 pressure (strided_access, 2dconv),
+  L1D-without-L2 (fdtd2d), reservation fail (histo). 5 controls provide clear negative signals.
+  The main limitation is tiny workload scale — cycle direction may be reversed as in CCWS/DAWS.
+  This is acceptable for mechanism validation; larger inputs can be added later.
+
+recommend_next: >
+  1. Start cache policy experiments with current 7 focused + 5 control workloads.
+  2. Before first experiment, optionally recompile hotspot/srad_v2 with 256x256 input
+     to get stronger cache pressure signal (low effort, high value).
+  3. Do NOT add new benchmark suites before first experiment — existing coverage is sufficient.
+  4. Open hrl/idea/cache-policy-experiments-v0 branch.
+
+commit_recommended: true
+suggested_commit: "docs: audit workloads for cache policy experiments"

@@ -1,0 +1,8 @@
+workload,suite,set,recommended_role,cache_sensitivity,irregularity,divergence,compute_intensity,sim_cost,reason,notes
+rodinia_hotspot,rodinia,cache_policy_focused,primary_signal,high,low,medium,high,tiny,L1D=1.0 L2=0.20 stencil; strong cache pressure; DAWS divergence_event=7655,64x64 1iter
+rodinia_srad_v2,rodinia,cache_policy_focused,primary_signal,high,low,medium,high,medium,L1D=0.79 L2=0.34; both L1D and L2 high miss; DAWS throttle_block=38769,64x64 1iter
+polybench_fdtd2d,polybench,cache_policy_focused,l1d_l2_contrast,medium,low,low,medium,medium,L1D=0.55 L2=0.00; L1D pressure without L2 spill; good for L1-only policy,64x64 TMAX=2
+mutual_tiled,micro,cache_policy_focused,reuse_signal,high,low,low,high,tiny,L1D=1.0 L2=0.20; tile reuse pattern; contrast with mutual_naive,N=32 TILE=16
+polybench_2dconv,polybench,cache_policy_focused,stencil_l2,medium,low,low,high,tiny,L1D=0.24 L2=0.37; L2 pressure with moderate L1D; stencil streaming,128x128
+strided_access,micro,cache_policy_focused,coalescing_control,low,low,low,low,tiny,L1D=0.22 L2=0.50; controlled coalescing degradation; L2 stress,stride=32
+parboil_histo,parboil,cache_policy_focused,reservation_fail,medium,low,low,high,medium,L1D_rfail=42603; highest reservation fail rate; atomic pressure,64x32 img 4x4

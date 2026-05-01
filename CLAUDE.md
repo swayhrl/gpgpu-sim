@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-05-01 — DAWS paper reproduction 完成到 daws-final-report tag；CCWS + DAWS 两篇论文复现完成；后续进入 hrl/idea/cache-policy-experiments-v0 自研 cache policy。_
+_Last updated: 2026-05-01 — CCWS + DAWS 两篇论文复现完成；tools/paper_repro scaffold 验证通过；下一阶段进入 hrl/idea/cache-policy-experiments-v0 自研 cache policy。_
 
 ---
 
@@ -12,7 +12,8 @@ _Last updated: 2026-05-01 — DAWS paper reproduction 完成到 daws-final-repor
 
 | 项目 | 值 |
 |------|-----|
-| 当前分支 | `hrl/paper/ccws-repro-v0` |
+| 当前活跃分支 | `hrl/paper/daws-repro-v0`（DAWS 已完成，下一步开新 branch） |
+| CCWS 分支 | `hrl/paper/ccws-repro-v0`（已完成，不再修改） |
 | 主 remote | `origin` → `git@github.com:swayhrl/gpgpu-sim.git` |
 | 上游 remote | `upstream` → `https://github.com/gpgpu-sim/gpgpu-sim_distribution.git` |
 | CUDA | 11.8 at `/usr/local/cuda-11.8` |
@@ -24,8 +25,9 @@ _Last updated: 2026-05-01 — DAWS paper reproduction 完成到 daws-final-repor
 src/gpgpu-sim/          simulator 核心（shader.h / shader.cc / gpu-sim.cc）
 configs/hrl-repro/      论文复现专用 config（不修改 tested-cfgs/）
 experiments/paper-ccws/ CCWS 实验数据（CSV + round_state.yaml）
+experiments/paper-daws/ DAWS 实验数据（CSV + round_state.yaml）
 docs/papers/            论文阅读笔记 + repro plan + round 文档
-tools/paper_repro/      论文复现自动化脚手架（FINAL-INFRA 新增）
+tools/paper_repro/      论文复现自动化脚手架
 /workspace/repos/gpgpu-workloads/  workload 管理框架（独立仓库）
 ```
 
@@ -33,7 +35,9 @@ tools/paper_repro/      论文复现自动化脚手架（FINAL-INFRA 新增）
 
 ## 2. Current Stable Checkpoint
 
-**当前完成阶段**：CCWS paper reproduction Round AI + AK + FINAL-INFRA
+**当前完成阶段**：CCWS + DAWS 两篇论文 approximate reproduction 完成
+
+### CCWS Tags
 
 | Tag | 说明 |
 |-----|------|
@@ -46,44 +50,75 @@ tools/paper_repro/      论文复现自动化脚手架（FINAL-INFRA 新增）
 | `ccws-focused-validation` | Focused validation 完成 |
 | `ccws-final-report` | **CCWS 复现最终报告** |
 | `paper-repro-scaffold-v0` | tools/paper_repro scaffold |
+| `paper-repro-scaffold-smoke` | scaffold AUTO-0 smoke test 通过 |
 
-**当前 feature_off quick regression 预期**：7/7 pass，sim_cycle = baseline，所有 `paper_ccws_*` = 0。
+### DAWS Tags（在 hrl/paper/daws-repro-v0 分支）
+
+| Tag | 说明 |
+|-----|------|
+| `paper-repro-daws-config` | DAWS paper.yaml 创建 |
+| `daws-reading-plan` | Reading stage + repro plan |
+| `daws-config-noop` | No-op config + stats，feature_off 验证 |
+| `daws-divergence-telemetry` | Divergence telemetry |
+| `daws-would-throttle-telemetry` | Footprint + would-throttle telemetry |
+| `daws-minimal-throttling` | Minimal real throttling + deadlock fix |
+| `daws-focused-validation` | Focused validation 完成 |
+| `daws-final-report` | **DAWS 复现最终报告** |
+
+**feature_off quick regression 预期（两个 paper branch 均适用）**：
+- sim_cycle = baseline（vecadd=5569）
+- 所有 `paper_ccws_*` / `paper_daws_*` = 0
 
 **当前稳定功能**：
 - CCWS 完整机制链路：VTA-like probe → LLS score → would-gate telemetry → load-only gating
-- feature_off 全程不破坏 baseline（所有 round 验证通过）
-- `tools/paper_repro/` 脚手架可用
+- DAWS 完整机制链路：divergence probe → footprint estimate → would-throttle → real throttle gate
+- 两个 paper branch 的 feature_off 全程不破坏 baseline
+- `tools/paper_repro/` 脚手架可用，AUTO-0 smoke test 通过
 
 **不视为完成的 WIP**：
 - CCWS faithful reproduction（miss-side VTA 近似、max_warps cutoff 近似）
-- standard validation（cycle 方向相反，不建议跑）
+- DAWS faithful reproduction（无 loop detection、无 load classification）
+- 两个 paper branch 的 standard validation（cycle 方向相反，不建议跑）
 - 自研 cache policy（尚未开 idea branch）
 
 ---
 
-## 3. Recent Session Summary（本次 save-session 覆盖的工作）
+## 3. Recent Session Summary
 
-**完成的 Rounds**：Round AI → Round AK → FINAL-INFRA
+**本次 save-session 覆盖的工作**：DAWS AUTO-3 → AUTO-8（完整 DAWS 复现试跑）
 
 | Round | 内容 | src 改动 |
 |-------|------|---------|
-| AI | Focused validation：7 workload × conservative(inc=1,th=100) / aggressive(inc=50,th=100) | 无 |
-| AK | CCWS final reproduction report 撰写 | 无 |
-| FINAL-INFRA | tools/paper_repro/ scaffold 建立 | 无 |
+| AUTO-3 | DAWS no-op config + 7 knobs + 11 stats，feature_off 验证 | shader.h/cc, gpu-sim.cc |
+| AUTO-4 | Divergence telemetry（passive，不改调度） | shader.h/cc |
+| AUTO-5 | Footprint estimate + would-throttle telemetry | shader.h/cc, gpu-sim.cc |
+| AUTO-6 | Minimal real throttling + deadlock fix（pre-scoreboard footprint + streak counter） | shader.h/cc |
+| AUTO-7 | Focused validation：7 workloads × 3 configs | 无 |
+| AUTO-8 | DAWS final reproduction report | 无 |
 
 **修改的文件类型**：
-- docs/papers/（新增 ccws_round_ai_focused_validation.md、ccws_final_reproduction_report.md）
-- experiments/paper-ccws/（新增 focused_ccws_validation.csv、final_summary.csv）
-- tools/paper_repro/（新增 16 个文件）
-- CLAUDE.md、ccws_repro_plan.md、round_state.yaml（更新）
+- `src/gpgpu-sim/shader.h`、`shader.cc`、`gpu-sim.cc`（AUTO-3/4/5/6）
+- `configs/hrl-repro/`（新增 5 个 DAWS config 目录）
+- `docs/papers/`（新增 6 个 DAWS round 文档 + final report）
+- `experiments/paper-daws/`（CSV + round_state.yaml）
+- `tools/paper_repro/papers/daws.yaml`（更新）
+- `CLAUDE.md`（更新）
 
-**是否改 src/**：否（Round AI 起不再改 src/）
+**是否改 src/**：AUTO-3/4/5/6 改了；AUTO-7/8 未改
 
-**已运行的测试**：
-- Round AI focused validation：7 workload × 3 configs = 21 runs，全部 gpgpusim_exit=1
-- conservative(inc=1,th=100)：hotspot/srad_v2/fdtd2d/mutual_tiled/bfs 有 lg_block>0，cycle +2–11%
-- aggressive(inc=50,th=100)：严重 over-gating，cycle +390–1464%
-- th=99：全部 deadlock（threshold < lls_base_score=100）
+**已运行的测试（DAWS focused validation，AUTO-7）**：
+
+| Workload | baseline | would_throttle_on | throttle_on | throttle_block |
+|----------|----------|-------------------|-------------|----------------|
+| vecadd | 5569 | 5569（cycle 不变） | 5569（0%） | 0 |
+| rodinia_hotspot | 6931 | 6931（cycle 不变） | 7072（+2.0%） | 79030 |
+| rodinia_srad_v2 | 8236 | 8236（cycle 不变） | 8561（+3.9%） | 38769 |
+| rodinia_bfs | 6665 | 6665（cycle 不变） | 6665（0%） | 0 |
+| rodinia_pathfinder | 6487 | 6487（cycle 不变） | 6487（0%） | 0 |
+| polybench_2dconv | 6652 | 6652（cycle 不变） | 6652（0%） | 0 |
+| polybench_fdtd2d | 5840 | 5840（cycle 不变） | 5840（0%） | 0 |
+
+全部无 deadlock ✓，feature_off 不变 ✓
 
 ---
 
@@ -94,15 +129,25 @@ tools/paper_repro/      论文复现自动化脚手架（FINAL-INFRA 新增）
 | 限制 | 影响 | 修复方向 |
 |------|------|---------|
 | VTA miss-side 近似（intra-warp repeated miss，非 eviction-based） | 信号方向正确但语义不同 | 在 `cache_block_t` 加 `warp_id` 字段 |
-| cutoff 使用 `max_warps=64`（应为 active ~8） | cutoff 高估 8×；gate 触发时机偏晚；cycle 方向相反 | 需要更大 workload 才能用 active-warp cutoff |
-| 静态 `lls_hit_increment`（非动态 LLDS 公式） | inc=1 信号弱，inc=50 over-gating，无稳定中间点 | 实现 VTAHitsTotal/InstIssuedTotal 比率计算 |
-| tiny workload（64×64，2–8 warps/SM） | 不代表论文 HCS 场景 | 使用 256×256 或更大 workload |
+| cutoff 使用 `max_warps=64`（应为 active ~8） | cutoff 高估 8×；gate 触发时机偏晚；cycle 方向相反 | 需要更大 workload |
+| 静态 `lls_hit_increment`（非动态 LLDS 公式） | inc=1 信号弱，inc=50 over-gating | 实现 VTAHitsTotal/InstIssuedTotal 比率计算 |
+| `lg_score_threshold` 必须 ≥ `lls_base_score`（默认 100） | threshold < 100 → deadlock | 不要调低 threshold |
 
-### 重要规则
+### DAWS 近似实现限制
 
-- `lg_score_threshold` 必须 ≥ `lls_base_score`（默认 100），否则 deadlock
-- standard validation 不建议（cycle 方向相反，会产生误导性结果）
-- 自研 cache policy 不得进入 `hrl/paper/ccws-repro-v0`
+| 限制 | 影响 | 修复方向 |
+|------|------|---------|
+| 无 loop detection | 非 loop 区域也触发 throttle | 实现 back-edge detection |
+| 无 load classification | 所有指令均可被 gate（非 load-only） | 加 per-static-PC 分类表 |
+| Streak counter（max=8）防死锁 | 非原论文机制，但功能等价 | 实现原论文 warp 选择保证 |
+| tiny workload（64×64） | cycle 方向相反（增加而非减少） | 使用 256×256 或更大 workload |
+
+### 通用规则
+
+- CCWS：`lg_score_threshold >= lls_base_score`（否则 deadlock）
+- DAWS：`gpgpu_daws_footprint_threshold` 默认 32（= warp_size），低于此值 gate 不触发
+- standard validation 不建议（两个 paper branch 的 cycle 方向均相反）
+- 自研 cache policy 不得进入 paper branch
 
 ---
 
@@ -111,17 +156,24 @@ tools/paper_repro/      论文复现自动化脚手架（FINAL-INFRA 新增）
 **建议下一步**：开 `hrl/idea/cache-policy-experiments-v0` 做自研 cache policy
 
 **不要做**：
-- 继续修改 `hrl/paper/ccws-repro-v0` 的 CCWS 机制
+- 继续修改 `hrl/paper/ccws-repro-v0` 或 `hrl/paper/daws-repro-v0` 的论文机制
 - 在 paper branch 混入自研改进
-- 跑 CCWS standard validation（cycle 方向错误）
+- 跑 CCWS / DAWS standard validation（cycle 方向错误）
 
-**如果要开第二篇论文**：
+**如果要开第三篇论文**：
 ```bash
 # 1. 复制 paper config 模板
 cp tools/paper_repro/schemas/paper_config.example.yaml tools/paper_repro/papers/<key>.yaml
 # 2. 填写 paper.yaml
 # 3. 生成第一个 stage prompt
 python3 tools/paper_repro/make_round_prompt.py --paper <key> --stage 00_reading
+```
+
+**如果要开自研 cache policy**：
+```bash
+git checkout main
+git checkout -b hrl/idea/cache-policy-experiments-v0
+# 可以复用 CCWS/DAWS 的 instrumentation 基础设施
 ```
 
 **10 分钟 checkpoint 规则**：每轮 prompt 必须包含"如果执行超过 10 分钟，暂停并输出 checkpoint summary"。
@@ -135,8 +187,6 @@ python3 tools/paper_repro/make_round_prompt.py --paper <key> --stage 00_reading
 ```bash
 git branch --show-current   # 确认在正确分支
 git status --short          # 确认工作树干净
-# 或使用脚手架：
-bash tools/paper_repro/check_repo_clean.sh hrl/paper/ccws-repro-v0 ccws-final-report
 ```
 
 ### 通用规则
@@ -148,6 +198,7 @@ bash tools/paper_repro/check_repo_clean.sh hrl/paper/ccws-repro-v0 ccws-final-re
 - **不把 WIP test 加入 regression**
 - **每轮结束必须更新 `round_state.yaml`**
 - **自研实验不混入 paper branch**
+- **单轮超过 10 分钟必须输出 checkpoint summary 并暂停**
 
 ### 论文复现工作流
 
@@ -156,14 +207,15 @@ tools/paper_repro/
   check_repo_clean.sh          # 前置检查
   make_round_prompt.py         # 生成 stage prompt
   stage_guard.sh               # 10 分钟 checkpoint 提示
-  papers/ccws.yaml             # CCWS 配置（样例）
+  papers/ccws.yaml             # CCWS 配置
+  papers/daws.yaml             # DAWS 配置
   templates/00_reading.md      # Stage 0: 论文阅读
   templates/01_noop.md         # Stage 1: no-op config
   templates/02_telemetry.md    # Stage 2: instrumentation
   templates/03_would_change.md # Stage 3: would-change telemetry
   templates/04_minimal_mechanism.md  # Stage 4: minimal mechanism
   templates/05_focused_validation.md # Stage 5: focused validation
-  templates/06_standard_validation.md # Stage 6: standard validation
+  templates/06_standard_validation.md # Stage 6: standard validation（通常跳过）
   templates/07_final_report.md # Stage 7: final report
   schemas/                     # round_state / paper_config / result_csv 规范
 ```
@@ -174,11 +226,11 @@ tools/paper_repro/
 
 ```bash
 # 必须在每个新 shell 中执行
+source /workspace/repos/load_gpgpusim.sh
+# 或手动：
 export CUDA_INSTALL_PATH=/usr/local/cuda-11.8
 export PATH=$CUDA_INSTALL_PATH/bin:$PATH
 export LD_LIBRARY_PATH=$CUDA_INSTALL_PATH/lib64:$CUDA_INSTALL_PATH/lib:$LD_LIBRARY_PATH
-# 或使用一键脚本：
-source /workspace/repos/load_gpgpusim.sh
 ```
 
 **Build**：
@@ -207,17 +259,26 @@ make -j$(nproc)
 **Quick set（7 workloads，smoke test）**：
 vecadd, strided_access, page_stride_access, atomic_contention, mutual_tiled, polybench_2dconv, rodinia_hotspot
 
-**Focused set（7 workloads，mechanism validation）**：
+**DAWS focused set（7 workloads）**：
+vecadd, rodinia_hotspot, rodinia_srad_v2, rodinia_bfs, rodinia_pathfinder, polybench_2dconv, polybench_fdtd2d
+
+**CCWS focused set（7 workloads）**：
 rodinia_hotspot, rodinia_srad_v2, polybench_fdtd2d, strided_access, page_stride_access, mutual_tiled, rodinia_bfs
 
-**Standard set（13 workloads）**：所有 ready workload（不含 pathfinder/lud 等低 L1D miss 率 workload）
+**Standard set（13 workloads）**：所有 ready workload
+
+**Cache policy focused set（7 workloads，WORKLOAD-AUDIT 确定）**：
+rodinia_hotspot, rodinia_srad_v2, polybench_fdtd2d, mutual_tiled, polybench_2dconv, strided_access, parboil_histo
+
+**Cache policy controls（5 workloads）**：
+vecadd, polybench_gemm, mutual_naive, rodinia_backprop, atomic_contention
 
 **运行命令**：
 
 ```bash
 cd /workspace/repos/gpgpu-workloads
-GPGPUSIM_CONFIG_OVERRIDE=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_ccws_noop_off \
-  bash scripts/run_one.sh rodinia_hotspot
+GPGPUSIM_CONFIG_OVERRIDE=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/<config_dir> \
+  bash scripts/run_one.sh <workload_name>
 ```
 
 ---
@@ -225,7 +286,7 @@ GPGPUSIM_CONFIG_OVERRIDE=/workspace/repos/gpgpu-sim_distribution/configs/hrl-rep
 ## 9. CCWS Implementation Summary
 
 **论文**：Cache-Conscious Wavefront Scheduling (Rogers, O'Connor, Aamodt — MICRO 2012)
-
+**分支**：`hrl/paper/ccws-repro-v0`（已完成，不再修改）
 **实现状态**：Approximate reproduction（机制链路正确，定量结果与原论文不符）
 
 | 机制 | 实现状态 | 近似说明 |
@@ -244,45 +305,64 @@ GPGPUSIM_CONFIG_OVERRIDE=/workspace/repos/gpgpu-sim_distribution/configs/hrl-rep
 
 **关键约束**：`lg_score_threshold >= lls_base_score`（否则 deadlock）
 
-**Focused validation 结果（conservative inc=1, th=100）**：
+---
 
-| Workload | baseline | conservative | cycle_delta | lg_block |
-|----------|----------|-------------|-------------|----------|
-| rodinia_hotspot | 6,931 | 7,343 | +6% | 4,595 |
-| rodinia_srad_v2 | 15,926 | 16,739 | +5% | 17,092 |
-| polybench_fdtd2d | 35,681 | 39,539 | +11% | 54,907 |
-| strided_access | 5,825 | 5,825 | 0% | 0 |
-| page_stride_access | 5,851 | 5,851 | 0% | 0 |
-| mutual_tiled | 7,479 | 7,921 | +6% | 2,014 |
-| rodinia_bfs | 136,110 | 139,060 | +2% | 4,341 |
+## 10. DAWS Implementation Summary
 
-cycle 方向相反（应减少）原因：cutoff 高估 8×，gate 触发时机偏晚。
+**论文**：Divergence-Aware Warp Scheduling (Rogers, O'Connor, Aamodt — MICRO 2013)
+**分支**：`hrl/paper/daws-repro-v0`（已完成，不再修改）
+**实现状态**：Approximate reproduction（机制链路正确，cycle 方向受 tiny workload 限制）
+
+| 机制 | 实现状态 | 近似说明 |
+|------|---------|---------|
+| Divergence probe | ✓ `active_count < warp_size` | 直接读 active_mask |
+| Footprint estimate | ✓ `warp_size - active_count` | 无 loop detection |
+| Would-throttle telemetry | ✓ | threshold=32 |
+| Real throttle gate | ✓ | streak counter 防死锁（max=8） |
+| feature_off 不破坏 baseline | ✓ 全程验证 | — |
+
+**Config knobs**（7 个，全部 default 0/off）：
+`gpgpu_enable_daws`, `gpgpu_daws_enable_telemetry`, `gpgpu_daws_enable_would_throttle`,
+`gpgpu_daws_enable_throttling`, `gpgpu_daws_footprint_threshold(32)`,
+`gpgpu_daws_min_active_threads(1)`, `gpgpu_daws_debug`
+
+**Deadlock fix**：footprint 在 pre-scoreboard 用只读 `get_active_mask()` 更新（`daws_update_footprint_pre()`），避免被 gate 的 warp 永远无法刷新 footprint。
+
+**Focused validation 结果（throttle_on，threshold=32）**：
+
+| Workload | baseline | throttle_on | cycle_delta | throttle_block |
+|----------|----------|-------------|-------------|----------------|
+| vecadd | 5569 | 5569 | 0% | 0 |
+| rodinia_hotspot | 6931 | 7072 | +2.0% | 79030 |
+| rodinia_srad_v2 | 8236 | 8561 | +3.9% | 38769 |
+| rodinia_bfs | 6665 | 6665 | 0% | 0 |
+| rodinia_pathfinder | 6487 | 6487 | 0% | 0 |
+| polybench_2dconv | 6652 | 6652 | 0% | 0 |
+| polybench_fdtd2d | 5840 | 5840 | 0% | 0 |
+
+cycle 方向相反（应减少）原因：tiny workload，throttle 阻止有效 warp 发射而非减少 cache pressure。
 
 ---
 
-## 10. Next Steps
+## 11. Next Steps
 
 - [x] Round S–AK：CCWS paper reproduction 完成（tag `ccws-final-report`）
 - [x] FINAL-INFRA：`tools/paper_repro/` scaffold 建立（tag `paper-repro-scaffold-v0`）
 - [x] AUTO-0：scaffold smoke test 通过（tag `paper-repro-scaffold-smoke`）
 - [x] AUTO-1：DAWS paper.yaml 创建（tag `paper-repro-daws-config`）
 - [x] AUTO-2：DAWS reading stage 完成（tag `daws-reading-plan`）
-- [x] AUTO-3：DAWS no-op config + stats 添加，feature_off 验证通过（tag `daws-config-noop`）
-- [x] AUTO-4：DAWS divergence telemetry 实现，hotspot/bfs 有信号，sim_cycle 不变（tag `daws-divergence-telemetry`）
-- [x] AUTO-5：DAWS footprint + would-throttle telemetry，hotspot/srad_v2 有信号，sim_cycle 不变（tag `daws-would-throttle-telemetry`）
-- [x] AUTO-6：DAWS minimal real throttling，streak-based deadlock prevention，hotspot/srad_v2 throttle_block 有信号（tag `daws-minimal-throttling`）
-- [x] AUTO-7：DAWS focused validation，7 workloads × 3 configs，无 deadlock，feature_off 不变（tag `daws-focused-validation`）
-- [x] AUTO-8：DAWS final reproduction report（tag 待提交 `daws-final-report`）
+- [x] AUTO-3：DAWS no-op config + stats，feature_off 验证通过（tag `daws-config-noop`）
+- [x] AUTO-4：DAWS divergence telemetry，hotspot/bfs 有信号，sim_cycle 不变（tag `daws-divergence-telemetry`）
+- [x] AUTO-5：DAWS footprint + would-throttle telemetry，hotspot/srad_v2 有信号（tag `daws-would-throttle-telemetry`）
+- [x] AUTO-6：DAWS minimal real throttling，deadlock fix，throttle_block 有信号（tag `daws-minimal-throttling`）
+- [x] AUTO-7：DAWS focused validation，7 workloads × 3 configs，无 deadlock（tag `daws-focused-validation`）
+- [x] AUTO-8：DAWS final reproduction report（tag `daws-final-report`）
+- [x] WORKLOAD-AUDIT：cache policy workload coverage audit 完成（23 workloads 审计，7 focused + 5 controls 确定）
 - [ ] **下一步**：进入 `hrl/idea/cache-policy-experiments-v0` 自研 cache policy
-
-**DAWS 论文**：Rogers/O'Connor/Aamodt — MICRO 2013（与 CCWS 同一作者组）
-**DAWS 核心**：divergence → footprint prediction → warp throttling（proactive，比 CCWS reactive 更激进）
-**DAWS 近似方案**：用 `active_count()` 作为 footprint proxy，跳过 loop detection 和 load classification
-**DAWS 最高风险**：loop detection 缺失可能导致 over-throttle；tiny workload 可能无 divergence 信号
 
 ---
 
-## 11. Known Limitations（环境）
+## 12. Known Limitations（环境）
 
 | Issue | Detail |
 |-------|--------|
