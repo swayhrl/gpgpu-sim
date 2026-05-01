@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-05-01 — Round AD complete; hit-increment calibration (inc=5/20/30 all 0 blocks; root cause confirmed). **Round AD 变更尚未提交（working tree dirty）。**_
+_Last updated: 2026-05-01 — Round AE complete; gating insertion point audit done; recommend pre-scoreboard gate (B1). **Round AE 变更尚未提交（working tree dirty）。**_
 
 ## Git 工作流
 
@@ -223,6 +223,8 @@ Four days of deep read-through of the PTX functional simulation → timing model
 - [x] **Round AB**：Focused threshold validation — 7 workload × th99/100/101；28 runs 全部 pass；只有 `rodinia_hotspot` 出现 `lg_block=5`（th99/100），th101 → 0 blocks；趋势单调正确 ✓；sim_cycle 未变化；信号弱（tiny workload + `lls_hit_increment=1`）；建议 standard validation 前先增大 `lls_hit_increment`（10–50）
 - [x] **Round AC**：LLS hit-increment sensitivity — 7 workload × inc1/10/50（th100）+ inc10（th101）；inc=1：只 hotspot 5 blocks（弱）；inc=10：全部 0 blocks（timing 问题）；inc=50：srad_v2 +45% cycle / fdtd2d +61% cycle（过度 gating）；建议 standard validation 前先试 inc=5 或 inc=20
 - [x] **Round AD**：Hit-increment calibration — 7 workload × inc5/20/30（th100）；全部 0 blocks；根本原因确认：gate 只在 warp 有 LOAD_OP 准备发射时触发，高 LLS warp 已被 scoreboard stall，无法到达 issue 阶段；inc=50 通过正反馈绕过此限制但过度 gating
+- [x] **Round AE**：Gating insertion point audit — 确认当前 gate 在 `checkCollision()` 之后（post-scoreboard）；高 LLS stall warp 永远不到达 gate；推荐方向 B1：将 gate 移到 `checkCollision()` 之前（pre-scoreboard），约 10 行改动；不改变 non-load 指令行为
+- [ ] **Round AF**：Pre-scoreboard gate 实现（B1）— 移动 `ccws_lg_gate_load()` 调用到 scoreboard 检查前；feature_off 7/7 pass；inc=5/20/30 预期出现 lg_block > 0
 - [ ] **Round（后置）**：选择下一步方向（A: inc=50+高 threshold；B: 更早 pipeline 插入点；C: 接受当前行为进入 standard validation）；至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
 
 ## Workload Management Framework（Round B 新增）

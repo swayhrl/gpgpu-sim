@@ -1,60 +1,77 @@
-round: AD
-stage: hit_increment_calibration
+round: AE
+stage: gating_insertion_audit
 status: complete
 date: 2026-05-01
 branch: hrl/paper/ccws-repro-v0
 
 source_changed: false
+experiments_run: false
 
-workloads_run:
-  - rodinia_hotspot
-  - strided_access
-  - page_stride_access
-  - mutual_tiled
-  - rodinia_srad_v2
-  - polybench_fdtd2d
-  - rodinia_bfs
+current_gate_location: >
+  scheduler_unit::cycle(), shader.cc:1356-1363.
+  After checkCollision() (scoreboard check) passes.
+  Inside the LOAD_OP/TENSOR_CORE_LOAD_OP branch.
+  Only reached if warp is NOT in scoreboard stall.
 
-hit_increment_values: [5, 20, 30]
-threshold_values: [100]
-total_runs: 28  # 7 workloads x 4 configs (off + inc5/20/30 th100)
-all_pass: true
+scoreboard_interaction_summary: >
+  High-LLS warps are typically in scoreboard stall (pending register writes
+  from previous loads). checkCollision() returns true for these warps,
+  causing them to exit the inner while loop before reaching the gate.
+  Gate is never called for stalled warps regardless of LLS score.
+  After gate blocks a warp (ccws_load_blocked=true), checked++ causes
+  while condition (checked <= issued) to fail, so outer for continues
+  to next warp — this part is correct behavior.
 
-workloads_with_load_gate_block:
-  inc5_th100: {}   # 0 blocks all workloads
-  inc20_th100: {}  # 0 blocks all workloads
-  inc30_th100: {}  # 0 blocks all workloads
+inc50_feedback_explanation: >
+  inc=50 causes scores to accumulate so fast that non-stalled (low-LLS)
+  warps also exceed the cutoff. wg_attempt jumps from ~16000 (inc=30)
+  to 470559 (inc=50), a 28x increase. This means inc=50 gates warps
+  that are NOT the high-LLS stall warps — it gates the wrong warps,
+  causing +45-61% cycle increase (over-gating via feedback loop).
 
-signal_strength_summary:
-  inc5: none (0 blocks; same root cause as inc10)
-  inc20: none (0 blocks; max_score=413 for srad_v2 but wg_block=0)
-  inc30: none (0 blocks; max_score=863 for fdtd2d; wg_attempt=16580 vs inc50 470559)
+paper_can_issue_semantics: >
+  CCWS paper: Can Issue bit cleared for warps exceeding LLS cutoff.
+  Cleared warps are "not considered for load instruction issue" —
+  meaning they are excluded at warp candidate selection, not after
+  scoreboard check. A stalled warp that recovers should still be
+  gated if its LLS is still high.
 
-root_cause_confirmed: >
-  Gate fires only when warp has LOAD_OP ready to issue.
-  High-LLS warps are already stalled by scoreboard/memory system.
-  They never reach the issue stage, so gate never triggers.
-  inc=50 overcomes this via feedback loop (gates non-stalled warps too),
-  but causes +45-61% cycle increase (over-gating).
+recommended_direction: B1
+direction_comparison:
+  A_inc50_higher_threshold:
+    pros: no src change
+    cons: >
+      Does not fix root cause (gate position wrong).
+      inc=50 gates wrong warps (non-stalled), not high-LLS stalled warps.
+      Parameter rescue, not mechanism fix. Diverges further from paper.
+  B1_pre_scoreboard_gate:
+    pros: >
+      Closest to paper Can Issue semantics.
+      Minimal change (~10 lines, move existing gate call earlier).
+      High-LLS warps gated after stall recovery.
+      Non-load instructions unaffected.
+    cons: >
+      Requires src/ change.
+      Need to re-validate feature_off 7/7 pass.
+  C_accept_current:
+    pros: no src change, fast path to standard validation
+    cons: >
+      inc=50 gating is not faithful CCWS reproduction.
+      Standard set results may show cycle increase (not decrease).
+      Cannot be used as evidence of correct CCWS behavior.
 
-sim_cycle_changes:
-  all_inc5_20_30: 0  # no cycle change for any workload
-
-recommend_next: >
-  Three options:
-  A) Accept inc=50, raise lg_score_threshold (150/200) to reduce over-gating.
-  B) Move gate insertion point earlier in pipeline (warp selection, not issue stage)
-     so high-LLS warps are gated even when recovering from stall.
-  C) Accept current behavior; use inc=1/th=99 (hotspot 5 blocks) + inc=50
-     (srad_v2/fdtd2d active gating) as evidence of working mechanism;
-     proceed to standard set validation.
+next_round_proposal: >
+  Round AF: Move ccws_lg_gate_load() call from post-scoreboard to
+  pre-scoreboard position in scheduler_unit::cycle().
+  Exact location: after valid_inst=true assignment, before
+  checkCollision() call (shader.cc ~line 1332-1333).
+  Change: ~10 lines moved, no new logic.
+  Validation: feature_off 7/7 pass + inc=5/20/30 lg_block > 0.
+  Expected: moderate gating signal without +45-61% cycle increase.
 
 commit_recommended: true
-suggested_commit: "ccws: add hit-increment calibration (Round AD)"
+suggested_commit: "ccws: audit load-gating insertion point (Round AE)"
+suggested_tag: ccws-gating-insertion-audit
 
 new_files:
-  - experiments/paper-ccws/hit_increment_calibration.csv
-  - docs/papers/ccws_round_ad_hit_increment_calibration.md
-  - configs/hrl-repro/SM7_QV100_ccws_load_gate_inc5_th100/
-  - configs/hrl-repro/SM7_QV100_ccws_load_gate_inc20_th100/
-  - configs/hrl-repro/SM7_QV100_ccws_load_gate_inc30_th100/
+  - docs/papers/ccws_round_ae_gating_insertion_audit.md
