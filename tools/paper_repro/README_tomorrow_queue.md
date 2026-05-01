@@ -128,3 +128,41 @@ python3 tools/paper_repro/gpt_review_stub.py \
 1. 设置 `OPENAI_API_KEY`
 2. 将 `gpt_supervisor_policy.example.yaml` 中 `enabled` 改为 `true`
 3. API 仍只允许 review / prompt generation，禁止 commit / push / 执行危险动作
+
+---
+
+## 明天实际操作步骤
+
+```bash
+# Step 1: 复制模板
+cp tools/paper_repro/job_queue.tomorrow.yaml.example \
+   tools/paper_repro/job_queue.tomorrow.yaml
+
+# Step 2: 填写真实 paper/branch
+#   把所有 REPLACE_PAPER_KEY → 实际 paper key（e.g. bypass_cache）
+#   把所有 REPLACE_BRANCH → 实际 branch 名（e.g. hrl/paper/bypass_cache-repro-v0）
+#   只保留你今天要跑的 stage，删掉其他
+
+# Step 3: dry-run 验证（一定要先跑这一步）
+python3 tools/paper_repro/supervisor.py \
+  --queue tools/paper_repro/job_queue.tomorrow.yaml \
+  --dry-run
+# 确认：low-risk job → continue；high-risk job → blocked_high_risk_stage
+
+# Step 4: 正式运行
+bash tools/paper_repro/run_queue.sh tools/paper_repro/job_queue.tomorrow.yaml
+
+# Step 5: 处理结果
+#   action=continue → 粘贴 prompt.md 内容到 Claude Code 执行
+#   action=stop_for_review → 先发 gpt_review_packet.md 给 GPT / Codex reviewer
+#   action=blocked_high_risk_stage → 必须等你回来手动判断
+
+# Step 6: 不自动 commit/tag/push
+#   执行完每个 stage 后，手动审查结果再 commit
+```
+
+**永远不要绕过的规则**：
+- `minimal_mechanism`、`standard_validation`：supervisor 永远 blocked，不能改
+- feature_off 后 sim_cycle 改变 → 立即停，不继续下一 stage
+- 超过 10 分钟 → 输出 checkpoint summary，暂停
+

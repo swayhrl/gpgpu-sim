@@ -1,0 +1,114 @@
+queue_name: tomorrow_actual
+description: "Fill in REPLACE_* before use. Remove jobs you don't want to run."
+
+max_minutes_per_stage: 10
+stop_on_dirty_repo: true
+stop_on_src_diff: true
+stop_on_missing_round_state: false
+
+allow_auto_continue:
+  - reading
+  - noop
+  - telemetry
+  - would_change
+  - final_report
+  - workload_audit
+
+require_human_review:
+  - minimal_mechanism
+  - standard_validation
+  - behavior_change
+
+jobs:
+  # ── A. LOW RISK: reading ────────────────────────────────────────────────────
+  - id: REPLACE_PAPER_KEY_reading
+    paper: REPLACE_PAPER_KEY          # e.g. new_paper
+    stage: 00_reading
+    expected_branch: REPLACE_BRANCH   # e.g. hrl/paper/new_paper-repro-v0
+    risk: low
+    allow_src_change: false
+    stop_after_completion: false
+    requires_gpt_review: false
+    reviewer: none
+    max_minutes: 10
+    round_state_path: experiments/paper-REPLACE_PAPER_KEY/round_state.yaml
+    expected_outputs:
+      - docs/papers/REPLACE_PAPER_KEY_repro_plan.md
+      - experiments/paper-REPLACE_PAPER_KEY/round_state.yaml
+    success_criteria: "round_state.status==complete; no src/ diff"
+    stop_rules:
+      - dirty_repo
+      - unexpected_src_diff
+    description: "Reading stage — literature review, no code changes"
+
+  # ── B. LOW RISK: noop ───────────────────────────────────────────────────────
+  - id: REPLACE_PAPER_KEY_noop
+    paper: REPLACE_PAPER_KEY
+    stage: 01_noop
+    expected_branch: REPLACE_BRANCH
+    risk: low
+    allow_src_change: false           # config-only; no scheduler logic
+    stop_after_completion: false
+    requires_gpt_review: false
+    reviewer: none
+    max_minutes: 10
+    round_state_path: experiments/paper-REPLACE_PAPER_KEY/round_state.yaml
+    expected_outputs:
+      - configs/hrl-repro/REPLACE_PAPER_KEY_feature_off/gpgpusim.config
+      - experiments/paper-REPLACE_PAPER_KEY/round_state.yaml
+    success_criteria: "feature_off sim_cycle==baseline; vecadd=5569"
+    stop_rules:
+      - dirty_repo
+      - feature_off_sim_cycle_changed
+    description: "No-op config + stats; feature_off must not change baseline"
+
+  # ── C. MEDIUM RISK: telemetry / would-change ────────────────────────────────
+  - id: REPLACE_PAPER_KEY_telemetry
+    paper: REPLACE_PAPER_KEY
+    stage: 02_telemetry               # or 03_would_change
+    expected_branch: REPLACE_BRANCH
+    risk: medium
+    allow_src_change: true            # passive probe OK
+    stop_after_completion: true       # must review after
+    requires_gpt_review: true
+    reviewer: none                    # or codex_cli if policy enabled
+    max_minutes: 10
+    round_state_path: experiments/paper-REPLACE_PAPER_KEY/round_state.yaml
+    expected_outputs:
+      - src/gpgpu-sim/shader.h
+      - src/gpgpu-sim/shader.cc
+      - experiments/paper-REPLACE_PAPER_KEY/round_state.yaml
+    success_criteria: "feature_off sim_cycle unchanged; telemetry stats non-zero on target workloads"
+    stop_rules:
+      - dirty_repo
+      - feature_off_sim_cycle_changed
+      - unexpected_modules_touched
+    description: "Passive instrumentation probe — baseline must not change"
+
+  # ── D. HIGH RISK: minimal_mechanism ────────────────────────────────────────
+  # This job will ALWAYS be blocked. Do not expect auto-continue.
+  - id: REPLACE_PAPER_KEY_minimal_mechanism
+    paper: REPLACE_PAPER_KEY
+    stage: 04_minimal_mechanism
+    expected_branch: REPLACE_BRANCH
+    risk: high
+    allow_src_change: true
+    stop_after_completion: true
+    requires_gpt_review: true
+    reviewer: none
+    max_minutes: 10
+    round_state_path: experiments/paper-REPLACE_PAPER_KEY/round_state.yaml
+    expected_outputs:
+      - src/gpgpu-sim/shader.h
+      - src/gpgpu-sim/shader.cc
+      - experiments/paper-REPLACE_PAPER_KEY/round_state.yaml
+    success_criteria: |
+      feature_off sim_cycle==baseline;
+      feature_on: mechanism counter > 0;
+      no deadlock
+    stop_rules:
+      - dirty_repo
+      - feature_off_sim_cycle_changed
+      - deadlock
+      - timeout_10min
+    description: "First real behavior change — ALWAYS requires human sign-off"
