@@ -167,6 +167,7 @@ All stats gated by `gpgpu_enable_ccws`. Prefix: `paper_ccws_`.
 | **U** | SWL static baseline: create limit_4/8/16 hrl-repro configs; quick set pass | `hrl/paper/ccws-repro-v0` | ✓ Done (Round U) | Low |
 | **V** | VTA probe instrumentation-only: per-warp miss-side probe; vta_probe/hit > 0; no gating | `hrl/paper/ccws-repro-v0` | ✓ Done (Round V) | Low |
 | **S5** | LLS array + score decay per-scheduler; vta_hit feeds score update | `hrl/paper/ccws-repro-v0` | ✓ Done (Round W) | Medium |
+| **X** | Would-gate telemetry: sort+prefix-sum; `would_gate_block > 0`; no real gating | `hrl/paper/ccws-repro-v0` | ✓ Done (Round X) | Low |
 | **S6** | LSS Can Issue gating in `scheduler_unit::cycle()` for LOAD_OP | `hrl/paper/ccws-repro-v0` | — | High |
 | **S7** | Quick set validation: `feature_off ≈ baseline`, `feature_on` triggers | `hrl/paper/ccws-repro-v0` | — | Medium |
 | **S8** | Standard / `cache_focus` set validation | `hrl/paper/ccws-repro-v0` | — | Low |
@@ -195,6 +196,13 @@ expected access patterns. No LLS/score/gating yet.
 decay sweep in `ldst_unit::cycle()`. Validated on all 7 quick-set workloads: `sim_cycle` unchanged,
 `lls_score_update = vta_hit` (exact), `load_gate_block = 0`. `atomic_contention` shows `lls_update=0`
 (correct). `mutual_tiled` shows `nonzero_warps=0` at end (decay balanced hits). No Can Issue gating yet.
+
+**Round X note**: Would-gate telemetry implemented (instrumentation-only). Sort+prefix-sum algorithm
+computes `m_ccws_would_can_issue[]` per cycle in `ldst_unit`. Scheduler calls `ccws_wg_check_load()`
+on each LOAD_OP attempt (no actual gating). 3 new knobs (`enable_would_gate`, `wg_k_throttle`,
+`wg_debug`). Validated on 7 quick-set workloads: `sim_cycle` unchanged, `load_gate_block=0`,
+`would_gate_attempt > 0` for all workloads, `would_gate_block = 2` for `rodinia_hotspot`.
+Mechanism confirmed functional; small block count expected for tiny workloads with low LLS elevation.
 
 **Rules**:
 - Feature flag **always default 0**.

@@ -1,0 +1,15 @@
+run_group,config,workload,result_status,sim_cycle,paper_ccws_vta_hit,paper_ccws_lls_score_update,paper_ccws_load_gate_block,paper_ccws_would_gate_attempt,paper_ccws_would_gate_block,paper_ccws_would_gate_allow,notes
+round_x,wg_off,vecadd,explicit_pass,5569,0,0,0,0,0,0,feature_off; sim_cycle=baseline; all counters=0
+round_x,wg_off,strided_access,explicit_pass,5825,0,0,0,0,0,0,feature_off; sim_cycle=baseline; all counters=0
+round_x,wg_off,page_stride_access,explicit_pass,5851,0,0,0,0,0,0,feature_off; sim_cycle=baseline; all counters=0
+round_x,wg_off,atomic_contention,explicit_pass,5414,0,0,0,0,0,0,feature_off; sim_cycle=baseline; all counters=0
+round_x,wg_off,mutual_tiled,explicit_pass,7479,0,0,0,0,0,0,feature_off; sim_cycle=baseline; all counters=0
+round_x,wg_off,polybench_2dconv,explicit_pass,6652,0,0,0,0,0,0,feature_off; sim_cycle=baseline; all counters=0
+round_x,wg_off,rodinia_hotspot,explicit_pass,6931,0,0,0,0,0,0,feature_off; sim_cycle=baseline; all counters=0
+round_x,wg_on,vecadd,explicit_pass,5569,72,72,0,105,0,105,vta_hit=lls_update=72; wg_attempt=105; no block (scores close to base)
+round_x,wg_on,strided_access,explicit_pass,5825,24,24,0,97,0,97,vta_hit=24; wg_attempt=97; no block (low hit rate)
+round_x,wg_on,page_stride_access,explicit_pass,5851,24,24,0,97,0,97,vta_hit=24; wg_attempt=97; no block (low hit rate)
+round_x,wg_on,atomic_contention,explicit_pass,5414,0,0,0,50,0,50,vta_hit=0; wg_attempt=50 (scalar loads before atomics); no block
+round_x,wg_on,mutual_tiled,explicit_pass,7479,384,384,0,2552,0,2552,vta_hit=384; scores decay fully; no block at issue points
+round_x,wg_on,polybench_2dconv,explicit_pass,6652,5616,5616,0,10232,0,10232,vta_hit=5616; high activity; no block (scores modestly elevated)
+round_x,wg_on,rodinia_hotspot,explicit_pass,6931,1328,1328,0,16415,2,16413,vta_hit=1328; wg_block=2 (2 loads would be gated); no actual gating

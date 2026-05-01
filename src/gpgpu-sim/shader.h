@@ -1419,6 +1419,15 @@ class ldst_unit : public pipelined_simd_unit {
                           unsigned long long &nonzero_warps,
                           unsigned long long &max_score_val,
                           unsigned long long &sum_score) const;
+  // CCWS Round X: would-gate telemetry (no actual gating)
+  void ccws_wg_check_load(unsigned wid);
+  void get_ccws_wg_stats(unsigned long long &attempt, unsigned long long &block,
+                         unsigned long long &allow) const;
+  bool ccws_would_can_issue(unsigned wid) const {
+    if (m_ccws_would_can_issue.empty()) return true;
+    return (wid < m_ccws_would_can_issue.size()) ? m_ccws_would_can_issue[wid]
+                                                  : true;
+  }
 
  protected:
   ldst_unit(mem_fetch_interface *icnt,
@@ -1506,6 +1515,11 @@ class ldst_unit : public pipelined_simd_unit {
   unsigned long long m_ccws_lls_score_decay_total;
   unsigned long long m_ccws_lls_score_saturations;
   unsigned long long m_ccws_lls_decay_cycle_count;
+  // CCWS Round X: would-gate telemetry (no actual gating)
+  std::vector<bool> m_ccws_would_can_issue;  // per-warp, recomputed each cycle
+  unsigned long long m_ccws_wg_attempt;
+  unsigned long long m_ccws_wg_block;
+  unsigned long long m_ccws_wg_allow;
 };
 
 enum pipeline_stage_name_t {
@@ -1768,6 +1782,10 @@ class shader_core_config : public core_config {
   unsigned gpgpu_ccws_lls_decay_interval;
   unsigned gpgpu_ccws_lls_decay_amount;
   unsigned gpgpu_ccws_lls_max_score;
+  // CCWS Round X: would-gate telemetry knobs (instrumentation-only, no gating)
+  int gpgpu_ccws_enable_would_gate;  // enable would-gate telemetry (default 0)
+  float gpgpu_ccws_wg_k_throttle;   // K_THROTTLE factor (informational, default 8.0)
+  int gpgpu_ccws_wg_debug;           // per-cycle debug trace (default 0)
 };
 
 struct shader_core_stats_pod {
@@ -2201,6 +2219,8 @@ class shader_core_ctx : public core_t {
                           unsigned long long &nonzero_warps,
                           unsigned long long &max_score_val,
                           unsigned long long &sum_score) const;
+  void get_ccws_wg_stats(unsigned long long &attempt, unsigned long long &block,
+                         unsigned long long &allow) const;
 
   void get_icnt_power_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
 
@@ -2731,6 +2751,8 @@ class simt_core_cluster {
                           unsigned long long &nonzero_warps,
                           unsigned long long &max_score_val,
                           unsigned long long &sum_score) const;
+  void get_ccws_wg_stats(unsigned long long &attempt, unsigned long long &block,
+                         unsigned long long &allow) const;
 
   void get_icnt_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
   float get_current_occupancy(unsigned long long &active,

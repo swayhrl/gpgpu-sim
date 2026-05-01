@@ -1345,6 +1345,13 @@ void scheduler_unit::cycle() {
                 (pI->op == MEMORY_BARRIER_OP) ||
                 (pI->op == TENSOR_CORE_LOAD_OP) ||
                 (pI->op == TENSOR_CORE_STORE_OP)) {
+              // CCWS Round X: would-gate telemetry (no actual gating)
+              if (m_shader->m_config->gpgpu_enable_ccws &&
+                  m_shader->m_config->gpgpu_ccws_enable_would_gate &&
+                  ((pI->op == LOAD_OP) ||
+                   (pI->op == TENSOR_CORE_LOAD_OP))) {
+                m_shader->m_ldst_unit->ccws_wg_check_load(warp_id);
+              }
               if (m_mem_out->has_free(m_shader->m_config->sub_core_model,
                                       m_id) &&
                   (!diff_exec_units ||
@@ -1936,6 +1943,28 @@ void ldst_unit::get_ccws_lls_stats(unsigned long long &score_update,
     if ((unsigned long long)s > max_score_val) max_score_val = s;
     sum_score += s;
   }
+}
+
+// CCWS Round X: would-gate telemetry (instrumentation-only, no gating)
+void ldst_unit::ccws_wg_check_load(unsigned wid) {
+  m_ccws_wg_attempt++;
+  if (!m_ccws_would_can_issue.empty() &&
+      wid < m_ccws_would_can_issue.size()) {
+    if (m_ccws_would_can_issue[wid])
+      m_ccws_wg_allow++;
+    else
+      m_ccws_wg_block++;
+  } else {
+    m_ccws_wg_allow++;
+  }
+}
+
+void ldst_unit::get_ccws_wg_stats(unsigned long long &attempt,
+                                   unsigned long long &block,
+                                   unsigned long long &allow) const {
+  attempt += m_ccws_wg_attempt;
+  block += m_ccws_wg_block;
+  allow += m_ccws_wg_allow;
 }
 
 // Add this function to unset depbar
@@ -2724,6 +2753,12 @@ void ldst_unit::init(mem_fetch_interface *icnt,
     m_ccws_lls.assign(config->max_warps_per_shader,
                       config->gpgpu_ccws_lls_base_score);
   }
+  // CCWS Round X: initialize would-gate telemetry state
+  m_ccws_wg_attempt = m_ccws_wg_block = m_ccws_wg_allow = 0;
+  if (config->gpgpu_enable_ccws && config->gpgpu_ccws_enable_would_gate &&
+      config->gpgpu_ccws_enable_lls_score) {
+    m_ccws_would_can_issue.assign(config->max_warps_per_shader, true);
+  }
 }
 
 ldst_unit::ldst_unit(mem_fetch_interface *icnt,
@@ -3095,6 +3130,26 @@ void ldst_unit::cycle() {
         }
       }
       m_ccws_lls_score_decay_events++;
+    }
+  }
+  // CCWS Round X: recompute would_can_issue from current LLS (sort + prefix-sum)
+  if (m_config->gpgpu_enable_ccws && m_config->gpgpu_ccws_enable_would_gate &&
+      m_config->gpgpu_ccws_enable_lls_score && !m_ccws_lls.empty() &&
+      !m_ccws_would_can_issue.empty()) {
+    unsigned nw = m_ccws_lls.size();
+    unsigned long long cum_cutoff =
+        (unsigned long long)nw * m_config->gpgpu_ccws_lls_base_score;
+    std::vector<std::pair<unsigned, unsigned>> sv(nw);
+    for (unsigned w = 0; w < nw; w++) sv[w] = {m_ccws_lls[w], w};
+    std::sort(sv.begin(), sv.end(),
+              [](const std::pair<unsigned,unsigned> &a,
+                 const std::pair<unsigned,unsigned> &b) {
+                return a.first > b.first;
+              });
+    unsigned long long prefix = 0;
+    for (unsigned k = 0; k < sv.size(); k++) {
+      prefix += sv[k].first;
+      m_ccws_would_can_issue[sv[k].second] = (prefix <= cum_cutoff);
     }
   }
 }
@@ -4218,6 +4273,12 @@ void shader_core_ctx::get_ccws_lls_stats(unsigned long long &score_update,
                                    max_score_val, sum_score);
 }
 
+void shader_core_ctx::get_ccws_wg_stats(unsigned long long &attempt,
+                                         unsigned long long &block,
+                                         unsigned long long &allow) const {
+  m_ldst_unit->get_ccws_wg_stats(attempt, block, allow);
+}
+
 void shader_core_ctx::get_icnt_power_stats(long &n_simt_to_mem,
                                            long &n_mem_to_simt) const {
   n_simt_to_mem += m_stats->n_simt_to_mem[m_sid];
@@ -5061,6 +5122,13 @@ void simt_core_cluster::get_ccws_lls_stats(unsigned long long &score_update,
     m_core[i]->get_ccws_lls_stats(score_update, decay_events, increment_total,
                                    decay_total, saturations, nonzero_warps,
                                    max_score_val, sum_score);
+}
+
+void simt_core_cluster::get_ccws_wg_stats(unsigned long long &attempt,
+                                           unsigned long long &block,
+                                           unsigned long long &allow) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
+    m_core[i]->get_ccws_wg_stats(attempt, block, allow);
 }
 
 void exec_shader_core_ctx::checkExecutionStatusAndUpdate(warp_inst_t &inst,

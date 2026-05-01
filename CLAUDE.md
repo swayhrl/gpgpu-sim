@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-05-01 — Round W complete; LLS score array + decay implemented and validated._
+_Last updated: 2026-05-01 — Round X complete; would-gate telemetry implemented and validated. **Round X 变更尚未提交（working tree dirty）。**_
 
 ## Git 工作流
 
@@ -216,7 +216,8 @@ Four days of deep read-through of the PTX functional simulation → timing model
 - [x] **Round U**：SWL static baseline；基于已有 `swl_scheduler` / `warp_limiting` 创建 limit_4/8/16 hrl-repro config 副本；quick set 3×7=21 workload 全部通过；**发现 quick workload 太小**，所有 limit 结果完全相同（<1 warp/scheduler），差异来自 LRR→GTO，非 warp limiting；`paper_ccws_*` 全 0 ✓；不修改 src/
 - [x] **Round V**：VTA miss-side probe 实现；`evicted_block_info` 无 warp_id 确认 → miss-side 近似（per-warp 环形 buffer）；新 knob `gpgpu_ccws_enable_vta_probe`（default 0）；probe point: `L1_latency_queue_cycle()` MISS branch；quick set 7/7 pass：`sim_cycle` 不变，`load_gate_block=0`，`vta_probe/hit>0` 对所有 L1D miss workload ✓；VTA hit rate 9–75% 与访存模式一致
 - [x] **Round W**：Stage S5 完成 — per-warp LLS 数组加入 `ldst_unit`；6 个新 config knob（`enable_lls_score/base_score/hit_increment/decay_interval/decay_amount/max_score`）；VTA hit → `ccws_lls_update(wid)`；per-cycle score decay（in `ldst_unit::cycle()`）；quick set 7/7 pass：`sim_cycle` 不变，`lls_score_update = vta_hit`（完全相等），`load_gate_block=0`；`atomic_contention` lls_update=0 ✓；`mutual_tiled` 最终 nonzero_warps=0（decay 平衡 hits）✓；无 Can Issue gating
-- [ ] **Round X（下一步）**：Stage S6 — Can Issue gating；LLDS 公式；`scheduler_unit::cycle()` 中 LOAD_OP 门控；`paper_ccws_load_gate_block > 0` 在 HCS workload 上出现
+- [x] **Round X**：Would-gate telemetry 完成 — sort+prefix-sum 计算 `m_ccws_would_can_issue[]`（per cycle in `ldst_unit`）；scheduler 调用 `ccws_wg_check_load()` 对每个 LOAD_OP 尝试计数（不阻塞）；3 个新 knob（`enable_would_gate`, `wg_k_throttle`, `wg_debug`）；quick set 7/7 pass：`sim_cycle` 不变，`load_gate_block=0`，`would_gate_attempt>0` 对所有 workload，`would_gate_block=2` for `rodinia_hotspot` ✓
+- [ ] **Round Y（下一步）**：Stage S6 — 将 `would_gate_block` 变为真实 Can Issue gating；`paper_ccws_load_gate_block > 0` 在 HCS workload 上出现
 - [ ] **Round（后置）**：至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
 
 ## Workload Management Framework（Round B 新增）
@@ -757,15 +758,79 @@ SM7_QV100 每 scheduler 约 16 warps。**quick set 的 tiny workloads 每 schedu
 
 无改动。`runs/latest_summary.csv` 有改动，**不建议提交**。
 
-### 下一步：Round X（Stage S6）
+### 下一步：Round Y（Stage S6 — 真正 Can Issue gating）
 
-- 在 `scheduler_unit` 加 `can_issue[MAX_WARPS]` bit 数组
-- 计算 LLDS 公式：`LLDS = (VTAHitsTotal / InstIssuedTotal) × K_THROTTLE × CumLLSCutoff`
-- 按 LLS 排序 warps；prefix sum；清除低于 cutoff 的 warp 的 `can_issue`
-- 在 `scheduler_unit::cycle()` LOAD_OP 分支加 `&& can_issue[warp_id]` 门控
+- 将 `m_ccws_would_can_issue[warp_id]` 检查加入 `scheduler_unit::cycle()` 的 LOAD_OP 分支（`&& m_shader->m_ldst_unit->ccws_would_can_issue(warp_id)`）
+- 更新 `paper_ccws_load_gate_block` 统计为真实 gate 计数
 - 目标：`paper_ccws_load_gate_block > 0` 在 HCS workload 上出现；`sim_cycle` 对 CI workload 不变
 
 **严格规则**：自研 cache policy 不得进入 `hrl/paper/ccws-repro-v0`。
+
+## Round X: CCWS Would-Gate Telemetry（2026-05-01）
+
+### 本轮目标
+
+实现 CCWS Can-Issue/would-gate 计算逻辑，**纯 telemetry，不阻塞 load，不改变 scheduler/cache/timing 行为。**
+
+### 完成内容
+
+| 内容 | 结果 |
+|------|------|
+| `m_ccws_would_can_issue[]` 在 `ldst_unit` 中 | ✓ per-warp bool vector，每周期 LLS decay 后 sort+prefix-sum 重计算 |
+| `ccws_wg_check_load(wid)` | ✓ scheduler 调用，查 `would_can_issue[wid]`，增 attempt/block/allow |
+| 3 wg 计数器 | ✓ `m_ccws_wg_attempt/block/allow` in `ldst_unit` |
+| 3 新 config knob | ✓ `enable_would_gate(0)`, `wg_k_throttle(8.0)`, `wg_debug(0)` |
+| scheduler_unit::cycle() 6-line telemetry 插入 | ✓ 无 issue_warp 调用修改，不阻塞 load |
+| stats 聚合链 | ✓ `ldst_unit → shader_core_ctx → simt_core_cluster → print_stats()` |
+| `SM7_QV100_ccws_would_gate_on/` config | ✓ 创建；全套 VTA+LLS+would_gate 开启 |
+| quick set 7/7 pass（wg_on） | ✓ `sim_cycle` 不变，`load_gate_block=0`，`would_gate_attempt>0` 全 workload |
+| `would_gate_block > 0` | ✓ `rodinia_hotspot` = 2（机制 confirmed functional） |
+| feature_off 7/7 pass | ✓ 所有计数器 0 |
+| 编译 | ✓ warnings only（pre-existing Wreorder） |
+
+### 关键验证结果
+
+| Workload | vta_hit | wg_attempt | wg_block | gate_block |
+|----------|---------|------------|----------|------------|
+| vecadd | 72 | 105 | 0 | 0 |
+| strided_access | 24 | 97 | 0 | 0 |
+| page_stride_access | 24 | 97 | 0 | 0 |
+| atomic_contention | 0 | 50 | 0 | 0 |
+| mutual_tiled | 384 | 2552 | 0 | 0 |
+| polybench_2dconv | 5616 | 10232 | 0 | 0 |
+| rodinia_hotspot | 1328 | 16415 | **2** | 0 |
+
+**wg_block = 2 in rodinia_hotspot**：机制 confirmed working。small number 是预期的（quick-set 小 workload，LLS 分数仅微高于 base，cutoff 很少被真正越过）。
+
+### 修改文件（本轮）
+
+| 文件 | 修改内容 |
+|------|---------|
+| `src/gpgpu-sim/shader.h` | `ldst_unit`: 3 wg state vars + 3 new public methods; `shader_core_config`: 3 new knobs; `shader_core_ctx`/`simt_core_cluster`: declarations |
+| `src/gpgpu-sim/shader.cc` | `init()`: wg state init; `cycle()`: sort+prefix-sum after decay; `ccws_wg_check_load()`, `get_ccws_wg_stats()` definitions; `scheduler_unit::cycle()`: 6-line telemetry block; aggregation methods |
+| `src/gpgpu-sim/gpu-sim.cc` | Register 3 knobs; add `paper_ccws_would_gate_*` stats block |
+| `configs/hrl-repro/SM7_QV100_ccws_would_gate_on/` | 新建 |
+| `experiments/paper-ccws/would_gate_check.csv` | 新建（2×7 = 14 runs） |
+| `experiments/paper-ccws/config_matrix.csv` | +1 行 |
+| `docs/papers/ccws_round_x_would_gate.md` | 新建 |
+| `docs/papers/ccws_repro_plan.md` | Stage X ✓, Round X note 加入 |
+| `CLAUDE.md` | Round X 摘要 |
+
+### 待提交状态（session 结束时未提交）
+
+```bash
+# 建议 commit message:
+# ccws: add would-gate telemetry (Round X instrumentation-only)
+# 建议 tag: ccws-would-gate-telemetry
+git add src/gpgpu-sim/shader.h src/gpgpu-sim/shader.cc src/gpgpu-sim/gpu-sim.cc \
+    configs/hrl-repro/SM7_QV100_ccws_would_gate_on/ \
+    docs/papers/ccws_round_x_would_gate.md \
+    experiments/paper-ccws/would_gate_check.csv \
+    experiments/paper-ccws/config_matrix.csv \
+    docs/papers/ccws_repro_plan.md CLAUDE.md
+git commit -m "ccws: add would-gate telemetry (Round X instrumentation-only)"
+git tag ccws-would-gate-telemetry
+```
 
 ## Round W: CCWS LLS Score Instrumentation（2026-05-01）
 

@@ -715,6 +715,16 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_ccws_lls_max_score", OPT_UINT32,
                          &gpgpu_ccws_lls_max_score,
                          "CCWS LLS maximum score cap", "1024");
+  option_parser_register(opp, "-gpgpu_ccws_enable_would_gate", OPT_INT32,
+                         &gpgpu_ccws_enable_would_gate,
+                         "CCWS Round X: enable would-gate telemetry (0=off)", "0");
+  option_parser_register(opp, "-gpgpu_ccws_wg_k_throttle", OPT_FLOAT,
+                         &gpgpu_ccws_wg_k_throttle,
+                         "CCWS Round X: K_THROTTLE for LLDS formula (informational)",
+                         "8.0");
+  option_parser_register(opp, "-gpgpu_ccws_wg_debug", OPT_INT32,
+                         &gpgpu_ccws_wg_debug,
+                         "CCWS Round X: per-cycle would-gate debug trace (0=off)", "0");
 }
 
 void gpgpu_sim_config::reg_options(option_parser_t opp) {
@@ -1694,6 +1704,14 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
   fprintf(stdout, "paper_ccws_load_gate_attempt = 0\n");
   fprintf(stdout, "paper_ccws_load_gate_block = 0\n");
   fprintf(stdout, "paper_ccws_load_gate_allow = 0\n");
+  {
+    unsigned long long wg_attempt = 0, wg_block = 0, wg_allow = 0;
+    for (unsigned i = 0; i < m_config.num_cluster(); i++)
+      m_cluster[i]->get_ccws_wg_stats(wg_attempt, wg_block, wg_allow);
+    fprintf(stdout, "paper_ccws_would_gate_attempt = %llu\n", wg_attempt);
+    fprintf(stdout, "paper_ccws_would_gate_block = %llu\n", wg_block);
+    fprintf(stdout, "paper_ccws_would_gate_allow = %llu\n", wg_allow);
+  }
 
   if (m_config.gpgpu_cflog_interval != 0) {
     spill_log_to_file(stdout, 1, gpu_sim_cycle);
