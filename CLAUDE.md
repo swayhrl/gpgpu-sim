@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-05-01 — CCWS + DAWS 两篇论文复现完成；tools/paper_repro scaffold 验证通过；L3-lite supervisor scaffold 建立（AUTO-SUPERVISOR-0）；下一阶段进入 hrl/idea/cache-policy-experiments-v0 自研 cache policy。_
+_Last updated: 2026-05-01 — CCWS + DAWS + PCAL 三篇论文复现完成；tools/paper_repro scaffold 验证通过；下一阶段进入 hrl/idea/cache-policy-experiments-v0 自研 cache policy。_
 
 ---
 
@@ -345,7 +345,42 @@ cycle 方向相反（应减少）原因：tiny workload，throttle 阻止有效 
 
 ---
 
-## 11. Next Steps
+## 11. PCAL Implementation Summary
+
+**论文**：Priority-Based Cache Allocation in Throughput Processors (Jia, Lowe-Power, Aamodt — HPCA 2015)
+**分支**：`hrl/paper/pcal-repro-v0`（已完成）
+**实现状态**：Approximate reproduction（机制链路正确，gemm 等 workload 有回归）
+
+| 机制 | 实现状态 | 近似说明 |
+|------|---------|---------|
+| Per-warp miss rate probe | ✓ 窗口计数（window_size=8） | 两条 L1D 路径均 hook |
+| Priority classification | ✓ miss_rate > 50% → low | 无 reuse distance / footprint |
+| Would-bypass telemetry | ✓ | passive，不改 cache 行为 |
+| L1D bypass gate | ✓ memory_cycle() bypassL1D | bypass set 维护响应路径 |
+| feature_off 不破坏 baseline | ✓ 全程验证 | — |
+
+**Config knobs**（7 个，全部 default 0/off）：
+`gpgpu_enable_pcal`, `gpgpu_pcal_enable_telemetry`, `gpgpu_pcal_enable_would_bypass`,
+`gpgpu_pcal_enable_bypass`, `gpgpu_pcal_miss_rate_threshold(50)`, `gpgpu_pcal_window_size(64)`, `gpgpu_pcal_debug`
+
+**关键 bug（已修复）**：bypass response path 中 `m_pcal_bypass_mfs.erase(mf)` 必须在 `m_next_global == NULL`（pop 成功）后执行，否则次 cycle 找不到 set 条目 → `baseline_cache::fill()` assertion crash。
+
+**Focused validation 结果（policy_on，threshold=50，window=8）**：
+
+| Workload | baseline | policy_on | delta |
+|----------|----------|-----------|-------|
+| rodinia_hotspot | 6931 | 6919 | -0.17% |
+| rodinia_srad_v2 | 8236 | 8166 | -0.85% |
+| polybench_fdtd2d | 5840 | 5798 | -0.72% |
+| mutual_tiled | 7479 | 7419 | -0.80% |
+| polybench_2dconv | 6652 | 7008 | +5.35% ✗ |
+| polybench_gemm（control） | 24543 | 34334 | +39.8% ✗ |
+
+gemm 回归原因：简单 miss_rate threshold 将 cache-sensitive workload 错误分类为 low priority。
+
+---
+
+## 12. Next Steps
 
 - [x] Round S–AK：CCWS paper reproduction 完成（tag `ccws-final-report`）
 - [x] FINAL-INFRA：`tools/paper_repro/` scaffold 建立（tag `paper-repro-scaffold-v0`）
@@ -369,7 +404,10 @@ cycle 方向相反（应减少）原因：tiny workload，throttle 阻止有效 
 - [x] PCAL-Phase1：no-op config + stats 完成（7 knobs + 9 stats；feature_off/noop 均不改 cycle；tag 待定）
 - [x] PCAL-Phase2：cache pressure telemetry 完成（window_size=8；4 workloads 信号合理；sim_cycle 不变）
 - [x] PCAL-Phase3：would-change bypass telemetry 完成（5 workloads；would_bypass 有信号；behavior 不变）
-- [ ] **下一步**：PCAL Phase 4 minimal bypass mechanism
+- [x] PCAL-Phase4：minimal bypass mechanism 完成（bypass set 修复 response path；4 workloads；cycle 减少；无 deadlock）
+- [x] PCAL-Phase5：focused validation 完成（12 workloads × 3 configs；4/7 focused 方向正确；gemm 回归 +39.8%）
+- [x] PCAL-Phase6：final report 完成（approximate reproduction 完成）
+- [ ] **下一步**：进入 `hrl/idea/cache-policy-experiments-v0` 自研 cache policy
 
 ---
 

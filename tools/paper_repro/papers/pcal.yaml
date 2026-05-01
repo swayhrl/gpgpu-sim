@@ -101,11 +101,11 @@ success_rules:
     required: true
 
 reproduction_status:
-  mechanism_chain: in_progress
-  overall: in_progress
+  mechanism_chain: complete
+  overall: complete
   phase1_noop_config: complete
   phase2_telemetry: complete
   phase3_would_change: complete
-  phase4_minimal_mechanism: not_started
-  phase5_focused_validation: not_started
-  phase6_final_report: not_started
+  phase4_minimal_mechanism: complete
+  phase5_focused_validation: complete
+  phase6_final_report: complete
