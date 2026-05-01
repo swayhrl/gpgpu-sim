@@ -1,0 +1,18 @@
+paper: mascar
+round: Phase 0
+stage: reading
+status: complete
+source_changed: false
+experiments_run: false
+mechanism_chain:
+  - memory stall probe (per-warp stall streak counter)
+  - pitstop detection (stall_streak > threshold)
+  - would-deprioritize telemetry (no behavior change)
+  - scheduler skip (minimal issue-order proxy, no replay)
+gpgpu_sim_mapping:
+  - scheduler_unit::cycle() (hook for issue-order skip)
+  - per-warp stall streak counter in shader_t or warp_inst_t context
+  - gpu-sim.cc (stats printing)
+highest_risk_change: Phase 4 scheduler skip logic (deadlock risk if not guarded)
+known_hard_stop: pipeline replay / re-execution not implemented
+recommend_next: Phase 1 no-op config

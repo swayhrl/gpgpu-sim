@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-05-01 — CCWS + DAWS 两篇论文复现完成；tools/paper_repro scaffold 验证通过；L3-lite supervisor scaffold 建立（AUTO-SUPERVISOR-0）；下一阶段进入 hrl/idea/cache-policy-experiments-v0 自研 cache policy。_
+_Last updated: 2026-05-01 — CCWS + DAWS + PCAL 三篇论文复现完成；Mascar one-shot reproduction 启动（Phase 0 reading/plan 完成）；当前活跃分支 hrl/paper/mascar-repro-v0。_
 
 ---
 
@@ -365,7 +365,14 @@ cycle 方向相反（应减少）原因：tiny workload，throttle 阻止有效 
 - [x] AUTO-SUPERVISOR-2：Codex CLI reviewer stub smoke test（codex v0.125.0 可用；stub dry-run 通过；high-risk stage 强制 blocked）
 - [x] TOMORROW-RUN-PREP：tomorrow queue end-to-end rehearsal 通过（4 jobs，low/medium/high risk 判断全部正确）
 - [x] TOMORROW-PAPERS：PCAL + Mascar preplan / paper.yaml / reading prompt / job_queue.tomorrow.yaml 准备完成（5 jobs dry-run 通过）
-- [ ] **下一步**：进入 `hrl/idea/cache-policy-experiments-v0` 自研 cache policy
+- [x] MASCAR-PHASE-0：reading notes + repro plan 完成（branch hrl/paper/mascar-repro-v0）
+- [ ] MASCAR-PHASE-1：no-op config + stats
+- [ ] MASCAR-PHASE-2：memory pressure / pitstop telemetry
+- [ ] MASCAR-PHASE-3：would-change scheduling telemetry
+- [ ] MASCAR-PHASE-4：minimal scheduling policy（高风险）
+- [ ] MASCAR-PHASE-5：focused validation
+- [ ] MASCAR-PHASE-6：final report
+- [ ] **完成 Mascar 后**：进入 `hrl/idea/cache-policy-experiments-v0` 自研 cache policy
 
 ---
 

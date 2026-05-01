@@ -1,0 +1,1 @@
+workload,config,phase,sim_cycle,baseline_cycle,cycle_delta,paper_mascar_enabled,paper_mascar_mem_stall_event,paper_mascar_saturation_event,paper_mascar_pitstop_event,paper_mascar_would_deprioritize,paper_mascar_skip_count,pass,notes
