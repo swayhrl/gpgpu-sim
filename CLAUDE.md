@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-05-01 — CCWS + DAWS + PCAL 三篇论文复现完成；Mascar one-shot reproduction 启动（Phase 0 reading/plan 完成）；当前活跃分支 hrl/paper/mascar-repro-v0。_
+_Last updated: 2026-05-01 — CCWS + DAWS + PCAL + Mascar 四篇论文复现完成；Mascar approximate reproduction complete（6 phases，skip gate 正常，9 workloads 无 deadlock）；下一阶段进入 hrl/idea/cache-policy-experiments-v0 自研 cache policy。_
 
 ---
 
@@ -369,12 +369,10 @@ cycle 方向相反（应减少）原因：tiny workload，throttle 阻止有效 
 - [x] MASCAR-PHASE-1：no-op config + stats（编译通过，feature_off/noop cycle = baseline）
 - [x] MASCAR-PHASE-2：memory pressure telemetry（hotspot=12150 stall events，cycle 不变）
 - [x] MASCAR-PHASE-3：would-change telemetry（hotspot would_deprioritize=10025，cycle 不变）
-- [ ] MASCAR-PHASE-2：memory pressure / pitstop telemetry
-- [ ] MASCAR-PHASE-3：would-change scheduling telemetry
-- [ ] MASCAR-PHASE-4：minimal scheduling policy（高风险）
-- [ ] MASCAR-PHASE-5：focused validation
-- [ ] MASCAR-PHASE-6：final report
-- [ ] **完成 Mascar 后**：进入 `hrl/idea/cache-policy-experiments-v0` 自研 cache policy
+- [x] MASCAR-PHASE-4：minimal scheduling policy（skip gate post-scoreboard，skip_count > 0，no deadlock）
+- [x] MASCAR-PHASE-5：focused validation（9 workloads，skip/allow ratio=4，8/9 有 skip 信号）
+- [x] MASCAR-PHASE-6：final report（approximate reproduction complete）
+- [ ] **下一步**：进入 `hrl/idea/cache-policy-experiments-v0` 自研 cache policy
 
 ---
 
