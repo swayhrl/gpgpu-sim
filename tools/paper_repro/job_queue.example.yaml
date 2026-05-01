@@ -1,0 +1,42 @@
+queue_name: example_queue
+description: "L3-lite supervisor job queue example"
+
+# Global stop rules
+max_minutes_per_stage: 10
+stop_on_dirty_repo: true
+stop_on_src_diff: true        # stop if unexpected src/ changes
+stop_on_missing_round_state: true
+
+# Stage auto-continue policy
+allow_auto_continue:
+  - reading
+  - noop
+  - telemetry
+  - would_change
+  - final_report
+  - workload_audit
+
+require_human_review:
+  - minimal_mechanism
+  - standard_validation
+  - behavior_change
+
+# Jobs
+jobs:
+  - id: daws_final_report
+    paper: daws
+    stage: 07_final_report
+    description: "DAWS final reproduction report (already done, demo job)"
+    round_state_path: experiments/paper-daws/round_state.yaml
+    expected_status: done
+    notes: "Reference job — DAWS AUTO-8 completed"
+
+  - id: placeholder_new_paper_reading
+    paper: new_paper
+    stage: 00_reading
+    description: "Placeholder: reading stage for a hypothetical third paper"
+    round_state_path: experiments/paper-new_paper/round_state.yaml
+    expected_status: pending
+    notes: |
+      Replace 'new_paper' with actual paper key.
+      Create tools/paper_repro/papers/new_paper.yaml first.

@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-05-01 — CCWS + DAWS 两篇论文复现完成；tools/paper_repro scaffold 验证通过；下一阶段进入 hrl/idea/cache-policy-experiments-v0 自研 cache policy。_
+_Last updated: 2026-05-01 — CCWS + DAWS 两篇论文复现完成；tools/paper_repro scaffold 验证通过；L3-lite supervisor scaffold 建立（AUTO-SUPERVISOR-0）；下一阶段进入 hrl/idea/cache-policy-experiments-v0 自研 cache policy。_
 
 ---
 
@@ -51,6 +51,7 @@ tools/paper_repro/      论文复现自动化脚手架
 | `ccws-final-report` | **CCWS 复现最终报告** |
 | `paper-repro-scaffold-v0` | tools/paper_repro scaffold |
 | `paper-repro-scaffold-smoke` | scaffold AUTO-0 smoke test 通过 |
+| `paper-repro-supervisor-v0` | L3-lite supervisor scaffold（AUTO-SUPERVISOR-0）|
 
 ### DAWS Tags（在 hrl/paper/daws-repro-v0 分支）
 
@@ -358,6 +359,7 @@ cycle 方向相反（应减少）原因：tiny workload，throttle 阻止有效 
 - [x] AUTO-7：DAWS focused validation，7 workloads × 3 configs，无 deadlock（tag `daws-focused-validation`）
 - [x] AUTO-8：DAWS final reproduction report（tag `daws-final-report`）
 - [x] WORKLOAD-AUDIT：cache policy workload coverage audit 完成（23 workloads 审计，7 focused + 5 controls 确定）
+- [x] AUTO-SUPERVISOR-0：L3-lite unattended supervisor scaffold 建立（supervisor.py + run_queue.sh + stop_rules.md + README_unattended.md）
 - [ ] **下一步**：进入 `hrl/idea/cache-policy-experiments-v0` 自研 cache policy
 
 ---

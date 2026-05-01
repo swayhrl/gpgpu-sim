@@ -1,0 +1,18 @@
+queue_name: example_queue
+started_at: "2026-05-01T12:00:00"
+last_updated: "2026-05-01T12:05:30"
+
+jobs:
+  daws_final_report:
+    action: continue
+    reason: "Stage is in allow_auto_continue list"
+    processed_at: "2026-05-01T12:00:10"
+    prompt_path: runs/paper_repro_queue/daws_final_report/prompt.md
+    review_path: runs/paper_repro_queue/daws_final_report/gpt_review_packet.md
+
+  placeholder_new_paper_reading:
+    action: blocked_missing_round_state
+    reason: "round_state.yaml not found at experiments/paper-new_paper/round_state.yaml"
+    processed_at: "2026-05-01T12:00:15"
+    prompt_path: runs/paper_repro_queue/placeholder_new_paper_reading/prompt.md
+    review_path: runs/paper_repro_queue/placeholder_new_paper_reading/gpt_review_packet.md

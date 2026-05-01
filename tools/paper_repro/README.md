@@ -90,6 +90,23 @@ checkpoint summary 格式：
 
 ---
 
+## L3-lite 无人值守模式
+
+`tools/paper_repro/` 现在支持 **L3-lite supervisor**：job queue + stop rules + review packet。
+
+详见 **[README_unattended.md](README_unattended.md)**。
+
+快速入门：
+```bash
+# 生成 prompt + review packet（dry-run）
+bash tools/paper_repro/run_queue.sh tools/paper_repro/job_queue.example.yaml --dry-run
+
+# 实际运行
+bash tools/paper_repro/run_queue.sh tools/paper_repro/job_queue.example.yaml
+```
+
+---
+
 ## 工具限制
 
 - **不自动调用 Claude**：所有 prompt 需人工复制粘贴

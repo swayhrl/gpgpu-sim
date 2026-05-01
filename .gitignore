@@ -66,3 +66,6 @@ setup
 # Local paper PDFs / source documents
 /docs/papers/source/*.pdf
 /docs/papers/source/*.PDF
+
+# paper_repro supervisor runtime outputs
+runs/paper_repro_queue/

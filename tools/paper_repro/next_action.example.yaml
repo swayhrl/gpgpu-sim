@@ -1,0 +1,6 @@
+job_id: daws_final_report
+action: continue
+reason: "Stage is in allow_auto_continue list"
+prompt_path: runs/paper_repro_queue/daws_final_report/prompt.md
+review_path: runs/paper_repro_queue/daws_final_report/gpt_review_packet.md
+generated_at: "2026-05-01T12:00:10"
