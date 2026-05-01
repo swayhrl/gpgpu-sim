@@ -90,6 +90,7 @@ K_THROTTLE = 8 is a single static constant that works well across all workloads.
 - [x] Audit and document existing `swl_scheduler` / `warp_limiting` (Stage S1) → `ccws_swl_audit.md`
 - [x] No-op CCWS feature flag: compiles, `feature_off` passes quick set (Stage S2/S3) → `ccws-config-noop` tag
 - [x] `paper_ccws_*` instrumentation stats (Stage S4) — no-op zero output confirmed
+- [x] VTA miss-side probe (Stage V) — `vta_probe/hit > 0` for L1D-miss workloads; no behavior change
 
 ### B. Nice to have
 
@@ -164,7 +165,8 @@ All stats gated by `gpgpu_enable_ccws`. Prefix: `paper_ccws_`.
 | **S4** | Add `paper_ccws_*` instrumentation counters (no behavior change) | `hrl/paper/ccws-repro-v0` | ✓ Done (Round S) | Low |
 | **T** | No-op behavior check: off/on_noop both ≈ baseline; config override automation | `hrl/paper/ccws-repro-v0` | ✓ Done (Round T) | Low |
 | **U** | SWL static baseline: create limit_4/8/16 hrl-repro configs; quick set pass | `hrl/paper/ccws-repro-v0` | ✓ Done (Round U) | Low |
-| **S5** | VTA-like prototype + LLD; score update + decay | `hrl/paper/ccws-repro-v0` | — | Medium |
+| **V** | VTA probe instrumentation-only: per-warp miss-side probe; vta_probe/hit > 0; no gating | `hrl/paper/ccws-repro-v0` | ✓ Done (Round V) | Low |
+| **S5** | LLS array + score decay per-scheduler; vta_hit feeds score update | `hrl/paper/ccws-repro-v0` | — | Medium |
 | **S6** | LSS Can Issue gating in `scheduler_unit::cycle()` for LOAD_OP | `hrl/paper/ccws-repro-v0` | — | High |
 | **S7** | Quick set validation: `feature_off ≈ baseline`, `feature_on` triggers | `hrl/paper/ccws-repro-v0` | — | Medium |
 | **S8** | Standard / `cache_focus` set validation | `hrl/paper/ccws-repro-v0` | — | Low |
@@ -178,6 +180,14 @@ each other on quick-set workloads because tiny workloads have fewer active warps
 `limit=4`. Difference vs LRR baseline (0.1–0.4%) is from GTO vs LRR scheduling, not warp limiting.
 Key finding: quick-set workloads are insufficient to show SWL discriminating effect; larger
 workloads (cache_focus / irregular_focus) are needed before CCWS comparison is meaningful.
+
+**Round V note**: VTA miss-side probe implemented. `evicted_block_info` confirmed to have no
+warp_id field; miss-side approximation used (per-warp circular buffer, probe/insert on each L1D
+miss). Primary probe point: `L1_latency_queue_cycle()` MISS branch (`mf_next->get_wid()` +
+`block_addr()`). New knob: `gpgpu_ccws_enable_vta_probe` (default 0). Validated on all 7
+quick-set workloads: `sim_cycle` unchanged, `load_gate_block=0`, `vta_probe/hit > 0` for all
+L1D-miss workloads, `atomic_contention` correctly shows 0. VTA hit rates: 9–75% consistent with
+expected access patterns. No LLS/score/gating yet.
 
 **Rules**:
 - Feature flag **always default 0**.

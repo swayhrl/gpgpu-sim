@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-05-01 — Round U complete; SWL static baseline configs created and validated._
+_Last updated: 2026-05-01 — Round V complete; VTA miss-side probe implemented and validated._
 
 ## Git 工作流
 
@@ -214,8 +214,9 @@ Four days of deep read-through of the PTX functional simulation → timing model
 - [x] **Round S**：创建 `hrl/paper/ccws-repro-v0`；audit `swl_scheduler`（`ccws_swl_audit.md`）；加 CCWS config knobs（9 个，全 default 0）；`paper_ccws_*` no-op stats；编译 pass；feature_off ≈ baseline 4 workload 验证 ✓；tag `ccws-config-noop` 打好
 - [x] **Round T**：no-op behavior check；创建 `hrl-repro` config 副本（off/on_noop）；`GPGPUSIM_CONFIG_OVERRIDE` env var 支持加入 `run_one.sh`；quick set 7/7 通过（off + on_noop 两组）；`paper_ccws_enabled` 区分验证 ✓；behavior 计数器全 0 ✓
 - [x] **Round U**：SWL static baseline；基于已有 `swl_scheduler` / `warp_limiting` 创建 limit_4/8/16 hrl-repro config 副本；quick set 3×7=21 workload 全部通过；**发现 quick workload 太小**，所有 limit 结果完全相同（<1 warp/scheduler），差异来自 LRR→GTO，非 warp limiting；`paper_ccws_*` 全 0 ✓；不修改 src/
-- [ ] **Round V**：扩大 workload（cache_focus 或 irregular_focus）以验证 SWL 效果；或直接 Stage S5 VTA 原型
-- [ ] **Round V（后置）**：至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
+- [x] **Round V**：VTA miss-side probe 实现；`evicted_block_info` 无 warp_id 确认 → miss-side 近似（per-warp 环形 buffer）；新 knob `gpgpu_ccws_enable_vta_probe`（default 0）；probe point: `L1_latency_queue_cycle()` MISS branch；quick set 7/7 pass：`sim_cycle` 不变，`load_gate_block=0`，`vta_probe/hit>0` 对所有 L1D miss workload ✓；VTA hit rate 9–75% 与访存模式一致
+- [ ] **Round W（下一步）**：Stage S5 — 在 `scheduler_unit` 加 per-warp LLS 数组；per-scheduler `VTAHitsTotal`/`InstIssuedTotal` 计数；VTA hit → LLDS 更新；per-cycle score decay；先验证 `score_update/decay > 0`，no gating
+- [ ] **Round（后置）**：至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
 
 ## Workload Management Framework（Round B 新增）
 
@@ -661,11 +662,107 @@ SM7_QV100 每 scheduler 约 16 warps。**quick set 的 tiny workloads 每 schedu
 - `runs/latest_summary.csv`：有改动，**不建议提交**
 - 其他文件：无改动（workload 脚本 `run_one.sh` 已在 Round T 提交）
 
-### 下一步：Round V
+### 下一步：Round W（Stage S5）
 
-优先：
-1. **cache_focus set SWL 验证**：用 `rodinia_srad_v2` 等更大 workload 验证 SWL 效果可见
-2. **Stage S5 VTA 原型**：miss-side VTA + LLS score array + decay，使 `paper_ccws_vta_hit > 0`
+在 `scheduler_unit` 加 per-warp LLS 数组；per-scheduler `VTAHitsTotal`/`InstIssuedTotal` 计数；VTA hit → LLDS 更新；per-cycle score decay；先验证 `score_update/decay > 0`，no gating。
+
+**严格规则**：自研 cache policy 不得进入 `hrl/paper/ccws-repro-v0`。
+
+---
+
+## Round V: CCWS VTA Probe Instrumentation（2026-05-01）
+
+### 本轮目标
+
+在 `ldst_unit` 中插入 VTA-like miss-side probe，作为 **pure instrumentation**（纯计数，无调度行为改变）。验证 L1D miss 路径可拿到 warp_id 和 block_addr，使 `paper_ccws_vta_probe/hit > 0`，同时保持 `sim_cycle` 与 baseline 完全一致。
+
+### 关键约束（本轮严格遵守）
+
+| 约束 | 状态 |
+|------|------|
+| 无 LLS / score array | ✓ |
+| 无 score decay | ✓ |
+| 无 Can Issue gating | ✓ |
+| 无 load 阻塞 | ✓ (`load_gate_block = 0` 所有 workload) |
+| 无调度行为变化 | ✓ (`sim_cycle` 全部 = baseline) |
+| 使用 miss-side 近似，不是 faithful eviction-based VTA | ✓ |
+
+### VTA 近似方案说明
+
+`evicted_block_info`（`gpu-cache.h:82`）无 warp_id 字段，因此**无法使用 eviction-based VTA**。本轮使用 **miss-side approximation（方案 B）**：
+
+- 每个 warp 维护一个大小为 `vta_entries_per_warp`（默认 16）的环形 buffer，存储最近 miss 的 block 地址
+- 每次 L1D MISS：probe VTA[wid] for block_addr → 若找到则 `vta_hit++`（代表"此 warp 重复 miss 同一 block"，近似代替"lost locality"）
+- 然后将 block_addr 插入 VTA[wid]（替换最旧 slot）
+
+**与论文 VTA 的区别**：论文 VTA 记录被 *其他 warp 驱逐* 的该 warp 的 cache line owner，用于检测 inter-warp eviction。本轮的近似记录的是 warp 自己的重复 miss，是 intra-warp locality 的代理指标。足够用于验证机制，Stage S6+ 可视需要替换为精确版本。
+
+### 新增 Config Knob
+
+| Knob | Default | 说明 |
+|------|---------|------|
+| `-gpgpu_ccws_enable_vta_probe` | `0` | 启用 miss-side VTA probe（不影响调度） |
+
+当 `gpgpu_enable_ccws=0` 时，`ccws_vta_probe_miss()` 完全不执行。
+
+### 新增 Stats
+
+| Stat | 说明 |
+|------|------|
+| `paper_ccws_l1d_miss_seen` | 总 L1D miss 数（gpgpu_enable_ccws=1 时统计） |
+| `paper_ccws_vta_probe` | 执行了 VTA probe 的 miss 数 |
+| `paper_ccws_vta_hit` | VTA probe hit（same block before by this warp） |
+| `paper_ccws_vta_insert` | VTA 插入次数 |
+| `paper_ccws_vta_overwrite` | 插入时覆盖已有 entry 的次数（VTA 满后） |
+
+### 修改的源文件
+
+| 文件 | 修改内容 |
+|------|---------|
+| `src/gpgpu-sim/shader.h` | `ldst_unit`：VTA state + 计数器 + `ccws_vta_probe_miss()` + `get_ccws_vta_stats()`；`shader_core_config`：新增 `gpgpu_ccws_enable_vta_probe`；`shader_core_ctx`、`simt_core_cluster`：新增 `get_ccws_vta_stats()` 声明 |
+| `src/gpgpu-sim/shader.cc` | `ldst_unit::init()`：初始化 VTA 表；`L1_latency_queue_cycle()`：MISS branch probe（SM7_QV100 主路径）；`process_cache_access()`：MISS branch probe（fallback）；三处聚合函数实现 |
+| `src/gpgpu-sim/gpu-sim.cc` | 注册 `gpgpu_ccws_enable_vta_probe`；`print_stats()`：将硬编码 0 替换为跨 cluster 聚合的真实计数 |
+
+### Quick Set 验证结果（7 workload）
+
+**probe_off（feature_off）**：所有 7 workload sim_cycle = baseline，所有 `paper_ccws_*` = 0。✓
+
+**probe_on（VTA probe 启用）**：
+
+| Workload | sim_cycle | l1d_miss | vta_probe | vta_hit | hit_rate | gate_block |
+|----------|-----------|----------|-----------|---------|---------|------------|
+| vecadd | 5569 | 96 | 96 | 72 | 75% | 0 |
+| strided_access | 5825 | 224 | 224 | 24 | 11% | 0 |
+| page_stride_access | 5851 | 256 | 256 | 24 | 9% | 0 |
+| atomic_contention | 5414 | 0 | 0 | 0 | — | 0 |
+| mutual_tiled | 7479 | 640 | 640 | 384 | 60% | 0 |
+| polybench_2dconv | 6652 | 7860 | 7860 | 5616 | 71% | 0 |
+| rodinia_hotspot | 6931 | 2576 | 2576 | 1328 | 52% | 0 |
+
+- `atomic_contention`：atomic 不走 L1D read 路径，`l1d_miss_seen=0` 符合预期 ✓
+- `strided_access` / `page_stride_access`：stride 破坏 warp 内局部性，hit rate 低（9–11%）符合预期 ✓
+- `polybench_2dconv` / `mutual_tiled`：卷积/矩阵数据复用高，hit rate 高（60–75%）符合预期 ✓
+
+### 新增文件
+
+| 文件 | 内容 |
+|------|------|
+| `configs/hrl-repro/SM7_QV100_ccws_vta_probe_off/` | feature_off config（gpgpu_ccws_enable_vta_probe=0） |
+| `configs/hrl-repro/SM7_QV100_ccws_vta_probe_on/` | VTA probe on config（gpgpu_ccws_enable_vta_probe=1） |
+| `docs/papers/ccws_round_v_vta_probe.md` | Round V 完整文档 |
+| `experiments/paper-ccws/vta_probe_check.csv` | 2×7 workload 运行结果 |
+
+### workload 仓库
+
+无改动。`runs/latest_summary.csv` 有改动，**不建议提交**。
+
+### 下一步：Round W（Stage S5）
+
+- 在 `scheduler_unit` 加 per-warp LLS 数组（`unsigned m_ccws_lls[max_warps]`）
+- 添加 per-scheduler `VTAHitsTotal` / `InstIssuedTotal` 计数
+- VTA hit（来自 Round V）→ LLDS 计算 → LLS 更新
+- per-cycle score decay（-1/cycle，floor = `BaseScore=100`）
+- 先让 `paper_ccws_score_update > 0` 和 `score_decay > 0`，不做 gating
 
 **严格规则**：自研 cache policy 不得进入 `hrl/paper/ccws-repro-v0`。
 

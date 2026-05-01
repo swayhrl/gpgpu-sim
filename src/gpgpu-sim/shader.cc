@@ -1864,6 +1864,39 @@ void ldst_unit::get_L1T_sub_stats(struct cache_sub_stats &css) const {
   if (m_L1T) m_L1T->get_sub_stats(css);
 }
 
+// CCWS Round V: VTA-like miss-side probe implementation
+void ldst_unit::ccws_vta_probe_miss(unsigned wid, new_addr_type block_addr) {
+  m_ccws_l1d_miss_seen++;
+  if (m_ccws_vta.empty()) return;  // probe table not allocated (probe disabled)
+  m_ccws_vta_probe++;
+  unsigned nvta = m_config->gpgpu_ccws_vta_entries_per_warp;
+  bool hit = false;
+  for (unsigned s = 0; s < nvta; s++) {
+    if (m_ccws_vta[wid][s] == block_addr) {
+      hit = true;
+      break;
+    }
+  }
+  if (hit) m_ccws_vta_hit++;
+  if (m_ccws_vta[wid][m_ccws_vta_ptr[wid]] != (new_addr_type)-1)
+    m_ccws_vta_overwrite++;
+  m_ccws_vta[wid][m_ccws_vta_ptr[wid]] = block_addr;
+  m_ccws_vta_ptr[wid] = (m_ccws_vta_ptr[wid] + 1) % nvta;
+  m_ccws_vta_insert++;
+}
+
+void ldst_unit::get_ccws_vta_stats(unsigned long long &probe,
+                                   unsigned long long &hit,
+                                   unsigned long long &insert,
+                                   unsigned long long &overwrite,
+                                   unsigned long long &miss_seen) const {
+  probe += m_ccws_vta_probe;
+  hit += m_ccws_vta_hit;
+  insert += m_ccws_vta_insert;
+  overwrite += m_ccws_vta_overwrite;
+  miss_seen += m_ccws_l1d_miss_seen;
+}
+
 // Add this function to unset depbar
 void shader_core_ctx::unset_depbar(const warp_inst_t &inst) {
   bool done_flag = true;
@@ -2035,6 +2068,11 @@ mem_stage_stall_type ldst_unit::process_cache_access(
     delete mf;
   } else {
     assert(status == MISS || status == HIT_RESERVED);
+    // CCWS Round V: VTA-like miss probe (no-latency L1D path)
+    if (m_config->gpgpu_enable_ccws) {
+      new_addr_type ba = m_config->m_L1D_config.block_addr(mf->get_addr());
+      ccws_vta_probe_miss(inst.warp_id(), ba);
+    }
     // inst.clear_active( access.get_warp_mask() ); // threads in mf writeback
     // when mf returns
     inst.accessq_pop_back();
@@ -2187,6 +2225,12 @@ void ldst_unit::L1_latency_queue_cycle() {
         assert(!write_sent);
       } else {
         assert(status == MISS || status == HIT_RESERVED);
+        // CCWS Round V: VTA-like miss probe (latency-queue L1D path, SM7_QV100)
+        if (m_config->gpgpu_enable_ccws) {
+          new_addr_type ba =
+              m_config->m_L1D_config.block_addr(mf_next->get_addr());
+          ccws_vta_probe_miss(mf_next->get_wid(), ba);
+        }
         l1_latency_queue[j][0] = NULL;
         if (m_config->m_L1D_config.get_write_policy() != WRITE_THROUGH &&
             mf_next->get_inst().is_store() &&
@@ -2621,6 +2665,16 @@ void ldst_unit::init(mem_fetch_interface *icnt,
   m_next_global = NULL;
   m_last_inst_gpu_sim_cycle = 0;
   m_last_inst_gpu_tot_sim_cycle = 0;
+  // CCWS Round V: initialize VTA counters and probe table
+  m_ccws_vta_probe = m_ccws_vta_hit = m_ccws_vta_insert = 0;
+  m_ccws_vta_overwrite = m_ccws_l1d_miss_seen = 0;
+  if (config->gpgpu_enable_ccws && config->gpgpu_ccws_enable_vta_probe) {
+    unsigned nwarps = config->max_warps_per_shader;
+    unsigned nvta = config->gpgpu_ccws_vta_entries_per_warp;
+    m_ccws_vta.assign(nwarps,
+                      std::vector<new_addr_type>(nvta, (new_addr_type)-1));
+    m_ccws_vta_ptr.assign(nwarps, 0);
+  }
 }
 
 ldst_unit::ldst_unit(mem_fetch_interface *icnt,
@@ -4076,6 +4130,13 @@ void shader_core_ctx::get_L1C_sub_stats(struct cache_sub_stats &css) const {
 void shader_core_ctx::get_L1T_sub_stats(struct cache_sub_stats &css) const {
   m_ldst_unit->get_L1T_sub_stats(css);
 }
+void shader_core_ctx::get_ccws_vta_stats(unsigned long long &probe,
+                                         unsigned long long &hit,
+                                         unsigned long long &insert,
+                                         unsigned long long &overwrite,
+                                         unsigned long long &miss_seen) const {
+  m_ldst_unit->get_ccws_vta_stats(probe, hit, insert, overwrite, miss_seen);
+}
 
 void shader_core_ctx::get_icnt_power_stats(long &n_simt_to_mem,
                                            long &n_mem_to_simt) const {
@@ -4897,6 +4958,15 @@ void simt_core_cluster::get_L1T_sub_stats(struct cache_sub_stats &css) const {
     total_css += temp_css;
   }
   css = total_css;
+}
+
+void simt_core_cluster::get_ccws_vta_stats(unsigned long long &probe,
+                                            unsigned long long &hit,
+                                            unsigned long long &insert,
+                                            unsigned long long &overwrite,
+                                            unsigned long long &miss_seen) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
+    m_core[i]->get_ccws_vta_stats(probe, hit, insert, overwrite, miss_seen);
 }
 
 void exec_shader_core_ctx::checkExecutionStatusAndUpdate(warp_inst_t &inst,

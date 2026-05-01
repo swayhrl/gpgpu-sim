@@ -1,0 +1,15 @@
+run_group,config,workload,result_status,sim_cycle,paper_ccws_enabled,paper_ccws_l1d_miss_seen,paper_ccws_vta_probe,paper_ccws_vta_hit,paper_ccws_vta_insert,paper_ccws_vta_overwrite,paper_ccws_load_gate_block,notes
+round_v,probe_off,vecadd,explicit_pass,5569,0,0,0,0,0,0,0,feature_off; sim_cycle=baseline
+round_v,probe_off,strided_access,explicit_pass,5825,0,0,0,0,0,0,0,feature_off; sim_cycle=baseline
+round_v,probe_off,page_stride_access,explicit_pass,5851,0,0,0,0,0,0,0,feature_off; sim_cycle=baseline
+round_v,probe_off,atomic_contention,explicit_pass,5414,0,0,0,0,0,0,0,feature_off; sim_cycle=baseline
+round_v,probe_off,mutual_tiled,explicit_pass,7479,0,0,0,0,0,0,0,feature_off; sim_cycle=baseline
+round_v,probe_off,polybench_2dconv,completed,6652,0,0,0,0,0,0,0,feature_off; sim_cycle=baseline
+round_v,probe_off,rodinia_hotspot,completed,6931,0,0,0,0,0,0,0,feature_off; sim_cycle=baseline
+round_v,probe_on,vecadd,explicit_pass,5569,1,96,96,72,96,0,0,vta_probe=96 hit=72; no behavior change
+round_v,probe_on,strided_access,explicit_pass,5825,1,224,224,24,224,0,0,vta_probe=224 hit=24; repeated miss low (each block accessed once per warp)
+round_v,probe_on,page_stride_access,explicit_pass,5851,1,256,256,24,256,0,0,vta_probe=256 hit=24; page-stride: low locality per warp
+round_v,probe_on,atomic_contention,explicit_pass,5414,1,0,0,0,0,0,0,atomics bypass L1D read path; miss_seen=0 as expected
+round_v,probe_on,mutual_tiled,explicit_pass,7479,1,640,640,384,640,0,0,vta_probe=640 hit=384; tiled matmul: high locality within warp
+round_v,probe_on,polybench_2dconv,completed,6652,1,7860,7860,5616,7860,0,0,vta_probe=7860 hit=5616; convolution: high repeated miss rate
+round_v,probe_on,rodinia_hotspot,completed,6931,1,2576,2576,1328,2576,0,0,vta_probe=2576 hit=1328; stencil: moderate locality

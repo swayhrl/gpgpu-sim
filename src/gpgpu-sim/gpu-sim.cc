@@ -692,6 +692,10 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_ccws_debug", OPT_INT32,
                          &gpgpu_ccws_debug,
                          "CCWS per-cycle debug trace (0=off)", "0");
+  option_parser_register(opp, "-gpgpu_ccws_enable_vta_probe", OPT_INT32,
+                         &gpgpu_ccws_enable_vta_probe,
+                         "CCWS Round V: enable VTA-like L1D miss probe (0=off)",
+                         "0");
 }
 
 void gpgpu_sim_config::reg_options(option_parser_t opp) {
@@ -1634,11 +1638,20 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
   }
 
   // paper_ccws: CCWS reproduction stats (Rogers/O'Connor/Aamodt MICRO 2012)
-  // All counters are zero when gpgpu_enable_ccws=0 (no-op, Stage S2/S3).
   fprintf(stdout, "paper_ccws_enabled = %d\n",
           m_shader_config->gpgpu_enable_ccws);
-  fprintf(stdout, "paper_ccws_vta_probe = 0\n");
-  fprintf(stdout, "paper_ccws_vta_hit = 0\n");
+  {
+    unsigned long long vta_probe = 0, vta_hit = 0, vta_insert = 0,
+                       vta_overwrite = 0, l1d_miss_seen = 0;
+    for (unsigned i = 0; i < m_config.num_cluster(); i++)
+      m_cluster[i]->get_ccws_vta_stats(vta_probe, vta_hit, vta_insert,
+                                       vta_overwrite, l1d_miss_seen);
+    fprintf(stdout, "paper_ccws_l1d_miss_seen = %llu\n", l1d_miss_seen);
+    fprintf(stdout, "paper_ccws_vta_probe = %llu\n", vta_probe);
+    fprintf(stdout, "paper_ccws_vta_hit = %llu\n", vta_hit);
+    fprintf(stdout, "paper_ccws_vta_insert = %llu\n", vta_insert);
+    fprintf(stdout, "paper_ccws_vta_overwrite = %llu\n", vta_overwrite);
+  }
   fprintf(stdout, "paper_ccws_lost_locality_event = 0\n");
   fprintf(stdout, "paper_ccws_score_update = 0\n");
   fprintf(stdout, "paper_ccws_score_decay = 0\n");

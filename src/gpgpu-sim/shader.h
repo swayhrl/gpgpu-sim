@@ -1407,6 +1407,10 @@ class ldst_unit : public pipelined_simd_unit {
   void get_L1D_cache_stats(cache_stats &cs) const;
   void get_L1C_sub_stats(struct cache_sub_stats &css) const;
   void get_L1T_sub_stats(struct cache_sub_stats &css) const;
+  void get_ccws_vta_stats(unsigned long long &probe, unsigned long long &hit,
+                          unsigned long long &insert,
+                          unsigned long long &overwrite,
+                          unsigned long long &miss_seen) const;
 
  protected:
   ldst_unit(mem_fetch_interface *icnt,
@@ -1475,6 +1479,16 @@ class ldst_unit : public pipelined_simd_unit {
 
   std::vector<std::deque<mem_fetch *>> l1_latency_queue;
   void L1_latency_queue_cycle();
+
+  // CCWS Round V: VTA-like miss-side probe (per-warp circular buffer)
+  void ccws_vta_probe_miss(unsigned wid, new_addr_type block_addr);
+  std::vector<std::vector<new_addr_type>> m_ccws_vta;  // [warp][slot]
+  std::vector<unsigned> m_ccws_vta_ptr;                // circular ptr per warp
+  unsigned long long m_ccws_vta_probe;
+  unsigned long long m_ccws_vta_hit;
+  unsigned long long m_ccws_vta_insert;
+  unsigned long long m_ccws_vta_overwrite;
+  unsigned long long m_ccws_l1d_miss_seen;
 };
 
 enum pipeline_stage_name_t {
@@ -1729,6 +1743,7 @@ class shader_core_config : public core_config {
   unsigned gpgpu_ccws_score_decay_interval;
   int gpgpu_ccws_gate_loads_only;
   int gpgpu_ccws_debug;
+  int gpgpu_ccws_enable_vta_probe;  // Round V: enable VTA-like L1D miss probe
 };
 
 struct shader_core_stats_pod {
@@ -2150,6 +2165,10 @@ class shader_core_ctx : public core_t {
   void get_L1D_cache_stats(cache_stats &cs) const;
   void get_L1C_sub_stats(struct cache_sub_stats &css) const;
   void get_L1T_sub_stats(struct cache_sub_stats &css) const;
+  void get_ccws_vta_stats(unsigned long long &probe, unsigned long long &hit,
+                          unsigned long long &insert,
+                          unsigned long long &overwrite,
+                          unsigned long long &miss_seen) const;
 
   void get_icnt_power_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
 
@@ -2668,6 +2687,10 @@ class simt_core_cluster {
   void get_L1D_cache_stats(cache_stats &cs) const;
   void get_L1C_sub_stats(struct cache_sub_stats &css) const;
   void get_L1T_sub_stats(struct cache_sub_stats &css) const;
+  void get_ccws_vta_stats(unsigned long long &probe, unsigned long long &hit,
+                          unsigned long long &insert,
+                          unsigned long long &overwrite,
+                          unsigned long long &miss_seen) const;
 
   void get_icnt_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
   float get_current_occupancy(unsigned long long &active,

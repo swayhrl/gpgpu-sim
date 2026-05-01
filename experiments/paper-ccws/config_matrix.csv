@@ -7,3 +7,5 @@ ccws_noop_on,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_noop_on,fe
 ccws_swl_limit_4,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_swl_limit_4,swl_static,static SWL limiting; GTO scheduler; limit 4 warps/scheduler,Round U; warp_limiting:2:4; no CCWS dynamic gating
 ccws_swl_limit_8,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_swl_limit_8,swl_static,static SWL limiting; GTO scheduler; limit 8 warps/scheduler,Round U; warp_limiting:2:8; paper sweet-spot
 ccws_swl_limit_16,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_swl_limit_16,swl_static,GTO reference; limit 16 = no effective limit for SM7_QV100,Round U; warp_limiting:2:16; separates LRR vs GTO effect
+ccws_vta_probe_off,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_vta_probe_off,feature_off,all paper_ccws_* = 0; sim_cycle = baseline,Round V; gpgpu_enable_ccws=0 gpgpu_ccws_enable_vta_probe=0
+ccws_vta_probe_on,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_vta_probe_on,vta_probe_on,vta_probe>0 for L1D-miss workloads; vta_hit>0 for HCS-like; load_gate_block=0; sim_cycle=baseline,Round V; gpgpu_enable_ccws=1 gpgpu_ccws_enable_vta_probe=1; no gating
