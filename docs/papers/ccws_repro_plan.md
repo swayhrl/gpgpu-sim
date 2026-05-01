@@ -166,7 +166,7 @@ All stats gated by `gpgpu_enable_ccws`. Prefix: `paper_ccws_`.
 | **T** | No-op behavior check: off/on_noop both ≈ baseline; config override automation | `hrl/paper/ccws-repro-v0` | ✓ Done (Round T) | Low |
 | **U** | SWL static baseline: create limit_4/8/16 hrl-repro configs; quick set pass | `hrl/paper/ccws-repro-v0` | ✓ Done (Round U) | Low |
 | **V** | VTA probe instrumentation-only: per-warp miss-side probe; vta_probe/hit > 0; no gating | `hrl/paper/ccws-repro-v0` | ✓ Done (Round V) | Low |
-| **S5** | LLS array + score decay per-scheduler; vta_hit feeds score update | `hrl/paper/ccws-repro-v0` | — | Medium |
+| **S5** | LLS array + score decay per-scheduler; vta_hit feeds score update | `hrl/paper/ccws-repro-v0` | ✓ Done (Round W) | Medium |
 | **S6** | LSS Can Issue gating in `scheduler_unit::cycle()` for LOAD_OP | `hrl/paper/ccws-repro-v0` | — | High |
 | **S7** | Quick set validation: `feature_off ≈ baseline`, `feature_on` triggers | `hrl/paper/ccws-repro-v0` | — | Medium |
 | **S8** | Standard / `cache_focus` set validation | `hrl/paper/ccws-repro-v0` | — | Low |
@@ -188,6 +188,13 @@ miss). Primary probe point: `L1_latency_queue_cycle()` MISS branch (`mf_next->ge
 quick-set workloads: `sim_cycle` unchanged, `load_gate_block=0`, `vta_probe/hit > 0` for all
 L1D-miss workloads, `atomic_contention` correctly shows 0. VTA hit rates: 9–75% consistent with
 expected access patterns. No LLS/score/gating yet.
+
+**Round W note**: LLS array + per-cycle score decay implemented in `ldst_unit` (instrumentation-only).
+6 new config knobs (`gpgpu_ccws_enable_lls_score`, `lls_base_score`, `lls_hit_increment`,
+`lls_decay_interval`, `lls_decay_amount`, `lls_max_score`). VTA hit → `ccws_lls_update(wid)`;
+decay sweep in `ldst_unit::cycle()`. Validated on all 7 quick-set workloads: `sim_cycle` unchanged,
+`lls_score_update = vta_hit` (exact), `load_gate_block = 0`. `atomic_contention` shows `lls_update=0`
+(correct). `mutual_tiled` shows `nonzero_warps=0` at end (decay balanced hits). No Can Issue gating yet.
 
 **Rules**:
 - Feature flag **always default 0**.

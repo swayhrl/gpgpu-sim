@@ -1877,7 +1877,12 @@ void ldst_unit::ccws_vta_probe_miss(unsigned wid, new_addr_type block_addr) {
       break;
     }
   }
-  if (hit) m_ccws_vta_hit++;
+  if (hit) {
+    m_ccws_vta_hit++;
+    // CCWS Round W: trigger LLS score update (instrumentation-only, no gating)
+    if (m_config->gpgpu_ccws_enable_lls_score && !m_ccws_lls.empty())
+      ccws_lls_update(wid);
+  }
   if (m_ccws_vta[wid][m_ccws_vta_ptr[wid]] != (new_addr_type)-1)
     m_ccws_vta_overwrite++;
   m_ccws_vta[wid][m_ccws_vta_ptr[wid]] = block_addr;
@@ -1895,6 +1900,42 @@ void ldst_unit::get_ccws_vta_stats(unsigned long long &probe,
   insert += m_ccws_vta_insert;
   overwrite += m_ccws_vta_overwrite;
   miss_seen += m_ccws_l1d_miss_seen;
+}
+
+// CCWS Round W: LLS score update (instrumentation-only, no gating)
+void ldst_unit::ccws_lls_update(unsigned wid) {
+  unsigned max_s = m_config->gpgpu_ccws_lls_max_score;
+  unsigned old_s = m_ccws_lls[wid];
+  unsigned new_s = old_s + m_config->gpgpu_ccws_lls_hit_increment;
+  if (new_s > max_s) {
+    new_s = max_s;
+    if (old_s < max_s) m_ccws_lls_score_saturations++;
+  }
+  m_ccws_lls_score_increment_total += (new_s - old_s);
+  m_ccws_lls[wid] = new_s;
+  m_ccws_lls_score_update++;
+}
+
+void ldst_unit::get_ccws_lls_stats(unsigned long long &score_update,
+                                    unsigned long long &decay_events,
+                                    unsigned long long &increment_total,
+                                    unsigned long long &decay_total,
+                                    unsigned long long &saturations,
+                                    unsigned long long &nonzero_warps,
+                                    unsigned long long &max_score_val,
+                                    unsigned long long &sum_score) const {
+  score_update += m_ccws_lls_score_update;
+  decay_events += m_ccws_lls_score_decay_events;
+  increment_total += m_ccws_lls_score_increment_total;
+  decay_total += m_ccws_lls_score_decay_total;
+  saturations += m_ccws_lls_score_saturations;
+  unsigned base = m_config->gpgpu_ccws_lls_base_score;
+  for (unsigned w = 0; w < m_ccws_lls.size(); w++) {
+    unsigned s = m_ccws_lls[w];
+    if (s > base) nonzero_warps++;
+    if ((unsigned long long)s > max_score_val) max_score_val = s;
+    sum_score += s;
+  }
 }
 
 // Add this function to unset depbar
@@ -2675,6 +2716,14 @@ void ldst_unit::init(mem_fetch_interface *icnt,
                       std::vector<new_addr_type>(nvta, (new_addr_type)-1));
     m_ccws_vta_ptr.assign(nwarps, 0);
   }
+  // CCWS Round W: initialize LLS score counters and array
+  m_ccws_lls_score_update = m_ccws_lls_score_decay_events = 0;
+  m_ccws_lls_score_increment_total = m_ccws_lls_score_decay_total = 0;
+  m_ccws_lls_score_saturations = m_ccws_lls_decay_cycle_count = 0;
+  if (config->gpgpu_enable_ccws && config->gpgpu_ccws_enable_lls_score) {
+    m_ccws_lls.assign(config->max_warps_per_shader,
+                      config->gpgpu_ccws_lls_base_score);
+  }
 }
 
 ldst_unit::ldst_unit(mem_fetch_interface *icnt,
@@ -3028,6 +3077,24 @@ void ldst_unit::cycle() {
       m_core->dec_inst_in_pipeline(warp_id);
       m_core->warp_inst_complete(*m_dispatch_reg);
       m_dispatch_reg->clear();
+    }
+  }
+  // CCWS Round W: LLS score decay (instrumentation-only, no gating)
+  if (m_config->gpgpu_enable_ccws && m_config->gpgpu_ccws_enable_lls_score &&
+      m_config->gpgpu_ccws_lls_decay_interval > 0 && !m_ccws_lls.empty()) {
+    m_ccws_lls_decay_cycle_count++;
+    if (m_ccws_lls_decay_cycle_count >= m_config->gpgpu_ccws_lls_decay_interval) {
+      m_ccws_lls_decay_cycle_count = 0;
+      unsigned base = m_config->gpgpu_ccws_lls_base_score;
+      unsigned amount = m_config->gpgpu_ccws_lls_decay_amount;
+      for (unsigned w = 0; w < m_ccws_lls.size(); w++) {
+        if (m_ccws_lls[w] > base) {
+          unsigned dec = std::min(m_ccws_lls[w] - base, amount);
+          m_ccws_lls[w] -= dec;
+          m_ccws_lls_score_decay_total += dec;
+        }
+      }
+      m_ccws_lls_score_decay_events++;
     }
   }
 }
@@ -4138,6 +4205,19 @@ void shader_core_ctx::get_ccws_vta_stats(unsigned long long &probe,
   m_ldst_unit->get_ccws_vta_stats(probe, hit, insert, overwrite, miss_seen);
 }
 
+void shader_core_ctx::get_ccws_lls_stats(unsigned long long &score_update,
+                                          unsigned long long &decay_events,
+                                          unsigned long long &increment_total,
+                                          unsigned long long &decay_total,
+                                          unsigned long long &saturations,
+                                          unsigned long long &nonzero_warps,
+                                          unsigned long long &max_score_val,
+                                          unsigned long long &sum_score) const {
+  m_ldst_unit->get_ccws_lls_stats(score_update, decay_events, increment_total,
+                                   decay_total, saturations, nonzero_warps,
+                                   max_score_val, sum_score);
+}
+
 void shader_core_ctx::get_icnt_power_stats(long &n_simt_to_mem,
                                            long &n_mem_to_simt) const {
   n_simt_to_mem += m_stats->n_simt_to_mem[m_sid];
@@ -4967,6 +5047,20 @@ void simt_core_cluster::get_ccws_vta_stats(unsigned long long &probe,
                                             unsigned long long &miss_seen) const {
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
     m_core[i]->get_ccws_vta_stats(probe, hit, insert, overwrite, miss_seen);
+}
+
+void simt_core_cluster::get_ccws_lls_stats(unsigned long long &score_update,
+                                            unsigned long long &decay_events,
+                                            unsigned long long &increment_total,
+                                            unsigned long long &decay_total,
+                                            unsigned long long &saturations,
+                                            unsigned long long &nonzero_warps,
+                                            unsigned long long &max_score_val,
+                                            unsigned long long &sum_score) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
+    m_core[i]->get_ccws_lls_stats(score_update, decay_events, increment_total,
+                                   decay_total, saturations, nonzero_warps,
+                                   max_score_val, sum_score);
 }
 
 void exec_shader_core_ctx::checkExecutionStatusAndUpdate(warp_inst_t &inst,

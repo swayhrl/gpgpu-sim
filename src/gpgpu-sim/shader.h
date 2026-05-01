@@ -1411,6 +1411,14 @@ class ldst_unit : public pipelined_simd_unit {
                           unsigned long long &insert,
                           unsigned long long &overwrite,
                           unsigned long long &miss_seen) const;
+  void get_ccws_lls_stats(unsigned long long &score_update,
+                          unsigned long long &decay_events,
+                          unsigned long long &increment_total,
+                          unsigned long long &decay_total,
+                          unsigned long long &saturations,
+                          unsigned long long &nonzero_warps,
+                          unsigned long long &max_score_val,
+                          unsigned long long &sum_score) const;
 
  protected:
   ldst_unit(mem_fetch_interface *icnt,
@@ -1489,6 +1497,15 @@ class ldst_unit : public pipelined_simd_unit {
   unsigned long long m_ccws_vta_insert;
   unsigned long long m_ccws_vta_overwrite;
   unsigned long long m_ccws_l1d_miss_seen;
+  // CCWS Round W: LLS score instrumentation-only (no gating)
+  void ccws_lls_update(unsigned wid);
+  std::vector<unsigned> m_ccws_lls;  // per-warp score, indexed by wid
+  unsigned long long m_ccws_lls_score_update;
+  unsigned long long m_ccws_lls_score_decay_events;
+  unsigned long long m_ccws_lls_score_increment_total;
+  unsigned long long m_ccws_lls_score_decay_total;
+  unsigned long long m_ccws_lls_score_saturations;
+  unsigned long long m_ccws_lls_decay_cycle_count;
 };
 
 enum pipeline_stage_name_t {
@@ -1744,6 +1761,13 @@ class shader_core_config : public core_config {
   int gpgpu_ccws_gate_loads_only;
   int gpgpu_ccws_debug;
   int gpgpu_ccws_enable_vta_probe;  // Round V: enable VTA-like L1D miss probe
+  // CCWS Round W: LLS score instrumentation-only (no gating)
+  int gpgpu_ccws_enable_lls_score;
+  unsigned gpgpu_ccws_lls_base_score;
+  unsigned gpgpu_ccws_lls_hit_increment;
+  unsigned gpgpu_ccws_lls_decay_interval;
+  unsigned gpgpu_ccws_lls_decay_amount;
+  unsigned gpgpu_ccws_lls_max_score;
 };
 
 struct shader_core_stats_pod {
@@ -2169,6 +2193,14 @@ class shader_core_ctx : public core_t {
                           unsigned long long &insert,
                           unsigned long long &overwrite,
                           unsigned long long &miss_seen) const;
+  void get_ccws_lls_stats(unsigned long long &score_update,
+                          unsigned long long &decay_events,
+                          unsigned long long &increment_total,
+                          unsigned long long &decay_total,
+                          unsigned long long &saturations,
+                          unsigned long long &nonzero_warps,
+                          unsigned long long &max_score_val,
+                          unsigned long long &sum_score) const;
 
   void get_icnt_power_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
 
@@ -2691,6 +2723,14 @@ class simt_core_cluster {
                           unsigned long long &insert,
                           unsigned long long &overwrite,
                           unsigned long long &miss_seen) const;
+  void get_ccws_lls_stats(unsigned long long &score_update,
+                          unsigned long long &decay_events,
+                          unsigned long long &increment_total,
+                          unsigned long long &decay_total,
+                          unsigned long long &saturations,
+                          unsigned long long &nonzero_warps,
+                          unsigned long long &max_score_val,
+                          unsigned long long &sum_score) const;
 
   void get_icnt_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
   float get_current_occupancy(unsigned long long &active,

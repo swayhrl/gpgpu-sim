@@ -696,6 +696,25 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          &gpgpu_ccws_enable_vta_probe,
                          "CCWS Round V: enable VTA-like L1D miss probe (0=off)",
                          "0");
+  option_parser_register(opp, "-gpgpu_ccws_enable_lls_score", OPT_INT32,
+                         &gpgpu_ccws_enable_lls_score,
+                         "CCWS Round W: enable LLS score array (0=off, instr-only)",
+                         "0");
+  option_parser_register(opp, "-gpgpu_ccws_lls_base_score", OPT_UINT32,
+                         &gpgpu_ccws_lls_base_score,
+                         "CCWS LLS base/floor score value", "100");
+  option_parser_register(opp, "-gpgpu_ccws_lls_hit_increment", OPT_UINT32,
+                         &gpgpu_ccws_lls_hit_increment,
+                         "CCWS LLS score increment on VTA hit", "1");
+  option_parser_register(opp, "-gpgpu_ccws_lls_decay_interval", OPT_UINT32,
+                         &gpgpu_ccws_lls_decay_interval,
+                         "CCWS LLS decay interval in cycles (0=no decay)", "100");
+  option_parser_register(opp, "-gpgpu_ccws_lls_decay_amount", OPT_UINT32,
+                         &gpgpu_ccws_lls_decay_amount,
+                         "CCWS LLS score decrement per decay step", "1");
+  option_parser_register(opp, "-gpgpu_ccws_lls_max_score", OPT_UINT32,
+                         &gpgpu_ccws_lls_max_score,
+                         "CCWS LLS maximum score cap", "1024");
 }
 
 void gpgpu_sim_config::reg_options(option_parser_t opp) {
@@ -1651,6 +1670,23 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
     fprintf(stdout, "paper_ccws_vta_hit = %llu\n", vta_hit);
     fprintf(stdout, "paper_ccws_vta_insert = %llu\n", vta_insert);
     fprintf(stdout, "paper_ccws_vta_overwrite = %llu\n", vta_overwrite);
+  }
+  {
+    unsigned long long score_update = 0, decay_events = 0, increment_total = 0,
+                       decay_total = 0, saturations = 0, nonzero_warps = 0,
+                       max_score_val = 0, sum_score = 0;
+    for (unsigned i = 0; i < m_config.num_cluster(); i++)
+      m_cluster[i]->get_ccws_lls_stats(score_update, decay_events,
+                                       increment_total, decay_total, saturations,
+                                       nonzero_warps, max_score_val, sum_score);
+    fprintf(stdout, "paper_ccws_lls_score_update = %llu\n", score_update);
+    fprintf(stdout, "paper_ccws_lls_decay_events = %llu\n", decay_events);
+    fprintf(stdout, "paper_ccws_lls_increment_total = %llu\n", increment_total);
+    fprintf(stdout, "paper_ccws_lls_decay_total = %llu\n", decay_total);
+    fprintf(stdout, "paper_ccws_lls_saturations = %llu\n", saturations);
+    fprintf(stdout, "paper_ccws_lls_nonzero_warps = %llu\n", nonzero_warps);
+    fprintf(stdout, "paper_ccws_lls_max_score = %llu\n", max_score_val);
+    fprintf(stdout, "paper_ccws_lls_sum_score = %llu\n", sum_score);
   }
   fprintf(stdout, "paper_ccws_lost_locality_event = 0\n");
   fprintf(stdout, "paper_ccws_score_update = 0\n");

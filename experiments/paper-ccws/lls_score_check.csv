@@ -1,0 +1,15 @@
+run_group,config,workload,result_status,sim_cycle,paper_ccws_enabled,paper_ccws_vta_hit,paper_ccws_lls_score_update,paper_ccws_lls_decay_events,paper_ccws_lls_increment_total,paper_ccws_lls_decay_total,paper_ccws_lls_saturations,paper_ccws_lls_nonzero_warps,paper_ccws_lls_max_score,paper_ccws_load_gate_block,notes
+round_w,lls_off,vecadd,explicit_pass,5569,0,0,0,0,0,0,0,0,0,0,feature_off; sim_cycle=baseline; all lls counters=0
+round_w,lls_off,strided_access,explicit_pass,5825,0,0,0,0,0,0,0,0,0,0,feature_off; sim_cycle=baseline; all lls counters=0
+round_w,lls_off,page_stride_access,explicit_pass,5851,0,0,0,0,0,0,0,0,0,0,feature_off; sim_cycle=baseline; all lls counters=0
+round_w,lls_off,atomic_contention,explicit_pass,5414,0,0,0,0,0,0,0,0,0,0,feature_off; sim_cycle=baseline; all lls counters=0
+round_w,lls_off,mutual_tiled,explicit_pass,7479,0,0,0,0,0,0,0,0,0,0,feature_off; sim_cycle=baseline; all lls counters=0
+round_w,lls_off,polybench_2dconv,explicit_pass,6652,0,0,0,0,0,0,0,0,0,0,feature_off; sim_cycle=baseline; all lls counters=0
+round_w,lls_off,rodinia_hotspot,explicit_pass,6931,0,0,0,0,0,0,0,0,0,0,feature_off; sim_cycle=baseline; all lls counters=0
+round_w,lls_score_on,vecadd,explicit_pass,5569,1,72,72,5,72,32,0,8,105,0,vta_hit=lls_update=72; decay 5 events; max_score=105; no gating
+round_w,lls_score_on,strided_access,explicit_pass,5825,1,24,24,5,24,18,0,6,101,0,vta_hit=lls_update=24; low hit rate (stride destroys locality)
+round_w,lls_score_on,page_stride_access,explicit_pass,5851,1,24,24,6,24,20,0,4,101,0,vta_hit=lls_update=24; cross-page stride low locality
+round_w,lls_score_on,atomic_contention,explicit_pass,5414,1,0,0,3,0,0,0,0,100,0,vta_hit=0 (atomics bypass L1D); lls_update=0; decay fires 3x
+round_w,lls_score_on,mutual_tiled,explicit_pass,7479,1,384,384,96,384,384,0,0,100,0,hit=update=384; decay=increment (fully decayed at end); nonzero=0
+round_w,lls_score_on,polybench_2dconv,explicit_pass,6652,1,5616,5616,916,5616,5396,0,80,106,0,high hit rate; 80 warps above base at end; no gating
+round_w,lls_score_on,rodinia_hotspot,explicit_pass,6931,1,1328,1328,442,1328,1271,0,34,102,0,moderate hit rate; 34 warps above base at end; no gating

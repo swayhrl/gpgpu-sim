@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-05-01 — Round V complete; VTA miss-side probe implemented and validated._
+_Last updated: 2026-05-01 — Round W complete; LLS score array + decay implemented and validated._
 
 ## Git 工作流
 
@@ -215,7 +215,8 @@ Four days of deep read-through of the PTX functional simulation → timing model
 - [x] **Round T**：no-op behavior check；创建 `hrl-repro` config 副本（off/on_noop）；`GPGPUSIM_CONFIG_OVERRIDE` env var 支持加入 `run_one.sh`；quick set 7/7 通过（off + on_noop 两组）；`paper_ccws_enabled` 区分验证 ✓；behavior 计数器全 0 ✓
 - [x] **Round U**：SWL static baseline；基于已有 `swl_scheduler` / `warp_limiting` 创建 limit_4/8/16 hrl-repro config 副本；quick set 3×7=21 workload 全部通过；**发现 quick workload 太小**，所有 limit 结果完全相同（<1 warp/scheduler），差异来自 LRR→GTO，非 warp limiting；`paper_ccws_*` 全 0 ✓；不修改 src/
 - [x] **Round V**：VTA miss-side probe 实现；`evicted_block_info` 无 warp_id 确认 → miss-side 近似（per-warp 环形 buffer）；新 knob `gpgpu_ccws_enable_vta_probe`（default 0）；probe point: `L1_latency_queue_cycle()` MISS branch；quick set 7/7 pass：`sim_cycle` 不变，`load_gate_block=0`，`vta_probe/hit>0` 对所有 L1D miss workload ✓；VTA hit rate 9–75% 与访存模式一致
-- [ ] **Round W（下一步）**：Stage S5 — 在 `scheduler_unit` 加 per-warp LLS 数组；per-scheduler `VTAHitsTotal`/`InstIssuedTotal` 计数；VTA hit → LLDS 更新；per-cycle score decay；先验证 `score_update/decay > 0`，no gating
+- [x] **Round W**：Stage S5 完成 — per-warp LLS 数组加入 `ldst_unit`；6 个新 config knob（`enable_lls_score/base_score/hit_increment/decay_interval/decay_amount/max_score`）；VTA hit → `ccws_lls_update(wid)`；per-cycle score decay（in `ldst_unit::cycle()`）；quick set 7/7 pass：`sim_cycle` 不变，`lls_score_update = vta_hit`（完全相等），`load_gate_block=0`；`atomic_contention` lls_update=0 ✓；`mutual_tiled` 最终 nonzero_warps=0（decay 平衡 hits）✓；无 Can Issue gating
+- [ ] **Round X（下一步）**：Stage S6 — Can Issue gating；LLDS 公式；`scheduler_unit::cycle()` 中 LOAD_OP 门控；`paper_ccws_load_gate_block > 0` 在 HCS workload 上出现
 - [ ] **Round（后置）**：至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
 
 ## Workload Management Framework（Round B 新增）
@@ -756,15 +757,64 @@ SM7_QV100 每 scheduler 约 16 warps。**quick set 的 tiny workloads 每 schedu
 
 无改动。`runs/latest_summary.csv` 有改动，**不建议提交**。
 
-### 下一步：Round W（Stage S5）
+### 下一步：Round X（Stage S6）
 
-- 在 `scheduler_unit` 加 per-warp LLS 数组（`unsigned m_ccws_lls[max_warps]`）
-- 添加 per-scheduler `VTAHitsTotal` / `InstIssuedTotal` 计数
-- VTA hit（来自 Round V）→ LLDS 计算 → LLS 更新
-- per-cycle score decay（-1/cycle，floor = `BaseScore=100`）
-- 先让 `paper_ccws_score_update > 0` 和 `score_decay > 0`，不做 gating
+- 在 `scheduler_unit` 加 `can_issue[MAX_WARPS]` bit 数组
+- 计算 LLDS 公式：`LLDS = (VTAHitsTotal / InstIssuedTotal) × K_THROTTLE × CumLLSCutoff`
+- 按 LLS 排序 warps；prefix sum；清除低于 cutoff 的 warp 的 `can_issue`
+- 在 `scheduler_unit::cycle()` LOAD_OP 分支加 `&& can_issue[warp_id]` 门控
+- 目标：`paper_ccws_load_gate_block > 0` 在 HCS workload 上出现；`sim_cycle` 对 CI workload 不变
 
 **严格规则**：自研 cache policy 不得进入 `hrl/paper/ccws-repro-v0`。
+
+## Round W: CCWS LLS Score Instrumentation（2026-05-01）
+
+### 本轮目标
+
+实现 LLS（Lost-Locality Score）per-warp 数组 + per-cycle decay，纯 instrumentation。**不做 Can Issue gating，不改变调度行为。**
+
+### 完成内容
+
+| 内容 | 结果 |
+|------|------|
+| `m_ccws_lls` per-warp score vector in `ldst_unit` | ✓ `std::vector<unsigned>`，size = `max_warps_per_shader`，初始化为 `lls_base_score` |
+| `ccws_lls_update(wid)` — VTA hit → score increment | ✓ 在 `ccws_vta_probe_miss()` VTA hit 分支调用 |
+| LLS decay in `ldst_unit::cycle()` | ✓ 每 `lls_decay_interval` 周期扫描所有 warp，decrement floor = `lls_base_score` |
+| 6 新 config knob | ✓ `enable_lls_score`, `lls_base_score(100)`, `lls_hit_increment(1)`, `lls_decay_interval(100)`, `lls_decay_amount(1)`, `lls_max_score(1024)` |
+| 8 新 stats 指标 | ✓ `score_update`, `decay_events`, `increment_total`, `decay_total`, `saturations`, `nonzero_warps`, `max_score`, `sum_score` |
+| stats 聚合链 | ✓ `ldst_unit` → `shader_core_ctx` → `simt_core_cluster` → `print_stats()` |
+| `SM7_QV100_ccws_lls_score_on/` config | ✓ 创建；`enable_ccws=1`, `vta_probe=1`, `lls_score=1` |
+| quick set 7/7 pass | ✓ `sim_cycle` 不变，`lls_score_update = vta_hit`（完全相等），`load_gate_block=0` |
+| `feature_off` 7/7 pass | ✓ 所有 LLS 计数为 0 |
+| 编译 | ✓ warnings only（pre-existing Wreorder） |
+
+### 关键验证结果
+
+| Workload | vta_hit | lls_update | lls_update=vta_hit | gate_block |
+|----------|---------|------------|-------------------|------------|
+| vecadd | 72 | 72 | ✓ | 0 |
+| strided_access | 24 | 24 | ✓ | 0 |
+| page_stride_access | 24 | 24 | ✓ | 0 |
+| atomic_contention | 0 | 0 | ✓ | 0 |
+| mutual_tiled | 384 | 384 | ✓ | 0 |
+| polybench_2dconv | 5616 | 5616 | ✓ | 0 |
+| rodinia_hotspot | 1328 | 1328 | ✓ | 0 |
+
+**关键发现**：`lls_score_update = vta_hit`（精确相等），证明 LLS update path 正确触发。`mutual_tiled` 末尾 `nonzero_warps=0`（decay 平衡了 hits，score 回到 base）。`polybench_2dconv` 末尾 80 个 warp 略高于 base（hits > decay 在该 workload 时长内）。
+
+### 修改文件（本轮）
+
+| 文件 | 修改内容 |
+|------|---------|
+| `src/gpgpu-sim/shader.h` | LLS state (6 vars + `ccws_lls_update` + `get_ccws_lls_stats`) in `ldst_unit`; 6 new config knobs in `shader_core_config`; declarations in `shader_core_ctx`, `simt_core_cluster` |
+| `src/gpgpu-sim/shader.cc` | `init()`: LLS alloc; `ccws_vta_probe_miss()`: call `ccws_lls_update` on hit; `ldst_unit::cycle()`: decay; define 4 new methods |
+| `src/gpgpu-sim/gpu-sim.cc` | Register 6 knobs; add LLS stats block in `print_stats()` |
+| `configs/hrl-repro/SM7_QV100_ccws_lls_score_on/` | 新建 |
+| `experiments/paper-ccws/lls_score_check.csv` | 新建（2×7 = 14 runs） |
+| `experiments/paper-ccws/config_matrix.csv` | +1 行 |
+| `docs/papers/ccws_round_w_lls_score.md` | 新建 |
+| `docs/papers/ccws_repro_plan.md` | Stage S5 ✓, Round W note 加入 |
+| `CLAUDE.md` | Round W 摘要 |
 
 
 
