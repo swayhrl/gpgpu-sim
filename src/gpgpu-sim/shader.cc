@@ -1352,7 +1352,17 @@ void scheduler_unit::cycle() {
                    (pI->op == TENSOR_CORE_LOAD_OP))) {
                 m_shader->m_ldst_unit->ccws_wg_check_load(warp_id);
               }
-              if (m_mem_out->has_free(m_shader->m_config->sub_core_model,
+              // CCWS Round Y: real load-only gating
+              bool ccws_load_blocked = false;
+              if (m_shader->m_config->gpgpu_enable_ccws &&
+                  m_shader->m_config->gpgpu_ccws_enable_load_gating &&
+                  ((pI->op == LOAD_OP) ||
+                   (pI->op == TENSOR_CORE_LOAD_OP))) {
+                ccws_load_blocked =
+                    m_shader->m_ldst_unit->ccws_lg_gate_load(warp_id);
+              }
+              if (!ccws_load_blocked &&
+                  m_mem_out->has_free(m_shader->m_config->sub_core_model,
                                       m_id) &&
                   (!diff_exec_units ||
                    previous_issued_inst_exec_type != exec_unit_type_t::MEM)) {
@@ -1965,6 +1975,29 @@ void ldst_unit::get_ccws_wg_stats(unsigned long long &attempt,
   attempt += m_ccws_wg_attempt;
   block += m_ccws_wg_block;
   allow += m_ccws_wg_allow;
+}
+
+// CCWS Round Y: real load-only gating — returns true if load should be blocked
+bool ldst_unit::ccws_lg_gate_load(unsigned wid) {
+  m_ccws_lg_attempt++;
+  bool blocked = false;
+  if (!m_ccws_would_can_issue.empty() &&
+      wid < m_ccws_would_can_issue.size()) {
+    blocked = !m_ccws_would_can_issue[wid];
+  }
+  if (blocked)
+    m_ccws_lg_block++;
+  else
+    m_ccws_lg_allow++;
+  return blocked;
+}
+
+void ldst_unit::get_ccws_lg_stats(unsigned long long &attempt,
+                                   unsigned long long &block,
+                                   unsigned long long &allow) const {
+  attempt += m_ccws_lg_attempt;
+  block += m_ccws_lg_block;
+  allow += m_ccws_lg_allow;
 }
 
 // Add this function to unset depbar
@@ -2759,6 +2792,8 @@ void ldst_unit::init(mem_fetch_interface *icnt,
       config->gpgpu_ccws_enable_lls_score) {
     m_ccws_would_can_issue.assign(config->max_warps_per_shader, true);
   }
+  // CCWS Round Y: initialize real load-gating counters
+  m_ccws_lg_attempt = m_ccws_lg_block = m_ccws_lg_allow = 0;
 }
 
 ldst_unit::ldst_unit(mem_fetch_interface *icnt,
@@ -4279,6 +4314,12 @@ void shader_core_ctx::get_ccws_wg_stats(unsigned long long &attempt,
   m_ldst_unit->get_ccws_wg_stats(attempt, block, allow);
 }
 
+void shader_core_ctx::get_ccws_lg_stats(unsigned long long &attempt,
+                                         unsigned long long &block,
+                                         unsigned long long &allow) const {
+  m_ldst_unit->get_ccws_lg_stats(attempt, block, allow);
+}
+
 void shader_core_ctx::get_icnt_power_stats(long &n_simt_to_mem,
                                            long &n_mem_to_simt) const {
   n_simt_to_mem += m_stats->n_simt_to_mem[m_sid];
@@ -5129,6 +5170,13 @@ void simt_core_cluster::get_ccws_wg_stats(unsigned long long &attempt,
                                            unsigned long long &allow) const {
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
     m_core[i]->get_ccws_wg_stats(attempt, block, allow);
+}
+
+void simt_core_cluster::get_ccws_lg_stats(unsigned long long &attempt,
+                                           unsigned long long &block,
+                                           unsigned long long &allow) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
+    m_core[i]->get_ccws_lg_stats(attempt, block, allow);
 }
 
 void exec_shader_core_ctx::checkExecutionStatusAndUpdate(warp_inst_t &inst,

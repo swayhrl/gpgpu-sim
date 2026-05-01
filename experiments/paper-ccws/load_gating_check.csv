@@ -1,0 +1,15 @@
+config,workload,sim_cycle,gpgpusim_exit,lg_attempt,lg_block,lg_allow,wg_attempt,wg_block,notes
+SM7_QV100_ccws_noop_off,vecadd,5569,1,0,0,0,0,0,feature_off baseline
+SM7_QV100_ccws_noop_off,strided_access,5825,1,0,0,0,0,0,feature_off baseline
+SM7_QV100_ccws_noop_off,page_stride_access,5851,1,0,0,0,0,0,feature_off baseline
+SM7_QV100_ccws_noop_off,atomic_contention,5414,1,0,0,0,0,0,feature_off baseline
+SM7_QV100_ccws_noop_off,mutual_tiled,7479,1,0,0,0,0,0,feature_off baseline
+SM7_QV100_ccws_noop_off,polybench_2dconv,6652,1,0,0,0,0,0,feature_off baseline
+SM7_QV100_ccws_noop_off,rodinia_hotspot,6931,1,0,0,0,0,0,feature_off baseline
+SM7_QV100_ccws_load_gate_on,vecadd,5569,1,105,0,105,0,0,load_gate_on; no signal
+SM7_QV100_ccws_load_gate_on,strided_access,5825,1,97,0,97,0,0,load_gate_on; no signal
+SM7_QV100_ccws_load_gate_on,page_stride_access,5851,1,97,0,97,0,0,load_gate_on; no signal
+SM7_QV100_ccws_load_gate_on,atomic_contention,5414,1,50,0,50,0,0,load_gate_on; atomic no L1D
+SM7_QV100_ccws_load_gate_on,mutual_tiled,7479,1,2552,0,2552,0,0,load_gate_on; no signal
+SM7_QV100_ccws_load_gate_on,polybench_2dconv,6652,1,10232,0,10232,0,0,load_gate_on; no signal
+SM7_QV100_ccws_load_gate_on,rodinia_hotspot,6931,1,16420,5,16415,5,5,load_gate_on; GATING ACTIVE

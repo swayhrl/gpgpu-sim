@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-05-01 — Round X complete; would-gate telemetry implemented and validated. **Round X 变更尚未提交（working tree dirty）。**_
+_Last updated: 2026-05-01 — Round Y complete; real load-only gating implemented and validated. **Round Y 变更尚未提交（working tree dirty）。**_
 
 ## Git 工作流
 
@@ -217,8 +217,8 @@ Four days of deep read-through of the PTX functional simulation → timing model
 - [x] **Round V**：VTA miss-side probe 实现；`evicted_block_info` 无 warp_id 确认 → miss-side 近似（per-warp 环形 buffer）；新 knob `gpgpu_ccws_enable_vta_probe`（default 0）；probe point: `L1_latency_queue_cycle()` MISS branch；quick set 7/7 pass：`sim_cycle` 不变，`load_gate_block=0`，`vta_probe/hit>0` 对所有 L1D miss workload ✓；VTA hit rate 9–75% 与访存模式一致
 - [x] **Round W**：Stage S5 完成 — per-warp LLS 数组加入 `ldst_unit`；6 个新 config knob（`enable_lls_score/base_score/hit_increment/decay_interval/decay_amount/max_score`）；VTA hit → `ccws_lls_update(wid)`；per-cycle score decay（in `ldst_unit::cycle()`）；quick set 7/7 pass：`sim_cycle` 不变，`lls_score_update = vta_hit`（完全相等），`load_gate_block=0`；`atomic_contention` lls_update=0 ✓；`mutual_tiled` 最终 nonzero_warps=0（decay 平衡 hits）✓；无 Can Issue gating
 - [x] **Round X**：Would-gate telemetry 完成 — sort+prefix-sum 计算 `m_ccws_would_can_issue[]`（per cycle in `ldst_unit`）；scheduler 调用 `ccws_wg_check_load()` 对每个 LOAD_OP 尝试计数（不阻塞）；3 个新 knob（`enable_would_gate`, `wg_k_throttle`, `wg_debug`）；quick set 7/7 pass：`sim_cycle` 不变，`load_gate_block=0`，`would_gate_attempt>0` 对所有 workload，`would_gate_block=2` for `rodinia_hotspot` ✓
-- [ ] **Round Y（下一步）**：Stage S6 — 将 `would_gate_block` 变为真实 Can Issue gating；`paper_ccws_load_gate_block > 0` 在 HCS workload 上出现
-- [ ] **Round（后置）**：至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
+- [x] **Round Y**：Stage S6+S7 完成 — 真实 load-only gating；`ccws_lg_gate_load(wid)` 查询 `would_can_issue[wid]`，阻塞 LOAD_OP / TENSOR_CORE_LOAD_OP；2 个新 knob（`enable_load_gating`, `load_gate_debug`）；feature_off 7/7 pass（cycle=baseline，所有计数器=0）；load_gate_on 7/7 pass：`rodinia_hotspot` `lg_block=5`（真实 gating 生效），`lg_block=wg_block` ✓；STORE / compute 不受影响 ✓
+- [ ] **Round（后置）**：standard set 验证；LLS 参数调优；K_THROTTLE sweep；至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
 
 ## Workload Management Framework（Round B 新增）
 
@@ -881,5 +881,67 @@ git tag ccws-would-gate-telemetry
 | `docs/papers/ccws_repro_plan.md` | Stage S5 ✓, Round W note 加入 |
 | `CLAUDE.md` | Round W 摘要 |
 
+## Round Y: CCWS Minimal Real Load-Only Gating（2026-05-01）
+
+### 本轮目标
+
+将 Round X 的 would-gate telemetry 升级为真实 load-only gating。**最小实现，不改 cache replacement / VTA / LLS 逻辑，不重构 scheduler。**
+
+### 完成内容
+
+| 内容 | 结果 |
+|------|------|
+| `ccws_lg_gate_load(wid)` in `ldst_unit` | ✓ 查询 `would_can_issue[wid]`，返回 true = 阻塞 |
+| `scheduler_unit::cycle()` gate 插入 | ✓ LOAD_OP / TENSOR_CORE_LOAD_OP 前加 `ccws_load_blocked` 判断 |
+| 3 个 lg 计数器 | ✓ `m_ccws_lg_attempt/block/allow` in `ldst_unit` |
+| 2 个新 config knob | ✓ `enable_load_gating(0)`, `load_gate_debug(0)` |
+| stats 聚合链 | ✓ `ldst_unit → shader_core_ctx → simt_core_cluster → print_stats()` |
+| `SM7_QV100_ccws_load_gate_on/` config | ✓ 基于 would_gate_on + `enable_load_gating=1` |
+| feature_off quick set 7/7 | ✓ cycle=baseline，所有计数器=0 |
+| load_gate_on quick set 7/7 | ✓ `rodinia_hotspot` `lg_block=5`（真实 gating 生效） |
+| `lg_block = wg_block` | ✓ gate 与 telemetry 完全一致 |
+| STORE / compute 不受影响 | ✓ 只 gate LOAD_OP / TENSOR_CORE_LOAD_OP |
+| 编译 | ✓ warnings only（pre-existing Wreorder） |
+
+### 关键验证结果（load_gate_on）
+
+| Workload | sim_cycle | lg_attempt | lg_block | wg_block |
+|----------|-----------|------------|----------|----------|
+| vecadd | 5569 | 105 | 0 | 0 |
+| strided_access | 5825 | 97 | 0 | 0 |
+| page_stride_access | 5851 | 97 | 0 | 0 |
+| atomic_contention | 5414 | 50 | 0 | 0 |
+| mutual_tiled | 7479 | 2552 | 0 | 0 |
+| polybench_2dconv | 6652 | 10232 | 0 | 0 |
+| **rodinia_hotspot** | **6931** | **16420** | **5** | **5** |
+
+**lg_block=5 in rodinia_hotspot**：真实 gating 生效 ✓。quick workload 太小，standard set 预期更多 block。
+
+### 修改文件（本轮）
+
+| 文件 | 修改内容 |
+|------|---------|
+| `src/gpgpu-sim/shader.h` | `ldst_unit`: 3 lg counters + `ccws_lg_gate_load()` + `get_ccws_lg_stats()`; `shader_core_config`: 2 new knobs; `shader_core_ctx`/`simt_core_cluster`: declarations |
+| `src/gpgpu-sim/shader.cc` | `init()`: lg counter init; `scheduler_unit::cycle()`: gate block; `ccws_lg_gate_load()`, `get_ccws_lg_stats()` definitions; aggregation methods |
+| `src/gpgpu-sim/gpu-sim.cc` | Register 2 knobs; `paper_ccws_load_gate_*` from hardcoded 0 to real aggregation |
+| `configs/hrl-repro/SM7_QV100_ccws_load_gate_on/` | 新建 |
+| `experiments/paper-ccws/load_gating_check.csv` | 新建（2×7 = 14 runs） |
+| `experiments/paper-ccws/config_matrix.csv` | +1 行 |
+| `docs/papers/ccws_round_y_load_gating.md` | 新建 |
+| `docs/papers/ccws_repro_plan.md` | Stage S6/S7 ✓, Round Y note 加入 |
+| `CLAUDE.md` | Round Y 摘要 |
+
+### 建议提交
+
+```bash
+git add src/gpgpu-sim/shader.h src/gpgpu-sim/shader.cc src/gpgpu-sim/gpu-sim.cc \
+    configs/hrl-repro/SM7_QV100_ccws_load_gate_on/ \
+    docs/papers/ccws_round_y_load_gating.md \
+    experiments/paper-ccws/load_gating_check.csv \
+    experiments/paper-ccws/config_matrix.csv \
+    docs/papers/ccws_repro_plan.md CLAUDE.md
+git commit -m "ccws: add minimal real load-only gating (Round Y)"
+git tag ccws-load-gating-minimal
+```
 
 

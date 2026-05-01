@@ -725,6 +725,14 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_ccws_wg_debug", OPT_INT32,
                          &gpgpu_ccws_wg_debug,
                          "CCWS Round X: per-cycle would-gate debug trace (0=off)", "0");
+  // CCWS Round Y: real load-only gating knobs
+  option_parser_register(opp, "-gpgpu_ccws_enable_load_gating", OPT_INT32,
+                         &gpgpu_ccws_enable_load_gating,
+                         "CCWS Round Y: enable real load-only gating (0=off, 1=on)",
+                         "0");
+  option_parser_register(opp, "-gpgpu_ccws_load_gate_debug", OPT_INT32,
+                         &gpgpu_ccws_load_gate_debug,
+                         "CCWS Round Y: per-gate debug trace (0=off, 1=on)", "0");
 }
 
 void gpgpu_sim_config::reg_options(option_parser_t opp) {
@@ -1701,9 +1709,14 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
   fprintf(stdout, "paper_ccws_lost_locality_event = 0\n");
   fprintf(stdout, "paper_ccws_score_update = 0\n");
   fprintf(stdout, "paper_ccws_score_decay = 0\n");
-  fprintf(stdout, "paper_ccws_load_gate_attempt = 0\n");
-  fprintf(stdout, "paper_ccws_load_gate_block = 0\n");
-  fprintf(stdout, "paper_ccws_load_gate_allow = 0\n");
+  {
+    unsigned long long lg_attempt = 0, lg_block = 0, lg_allow = 0;
+    for (unsigned i = 0; i < m_config.num_cluster(); i++)
+      m_cluster[i]->get_ccws_lg_stats(lg_attempt, lg_block, lg_allow);
+    fprintf(stdout, "paper_ccws_load_gate_attempt = %llu\n", lg_attempt);
+    fprintf(stdout, "paper_ccws_load_gate_block = %llu\n", lg_block);
+    fprintf(stdout, "paper_ccws_load_gate_allow = %llu\n", lg_allow);
+  }
   {
     unsigned long long wg_attempt = 0, wg_block = 0, wg_allow = 0;
     for (unsigned i = 0; i < m_config.num_cluster(); i++)

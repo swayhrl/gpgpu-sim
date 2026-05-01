@@ -168,8 +168,8 @@ All stats gated by `gpgpu_enable_ccws`. Prefix: `paper_ccws_`.
 | **V** | VTA probe instrumentation-only: per-warp miss-side probe; vta_probe/hit > 0; no gating | `hrl/paper/ccws-repro-v0` | ✓ Done (Round V) | Low |
 | **S5** | LLS array + score decay per-scheduler; vta_hit feeds score update | `hrl/paper/ccws-repro-v0` | ✓ Done (Round W) | Medium |
 | **X** | Would-gate telemetry: sort+prefix-sum; `would_gate_block > 0`; no real gating | `hrl/paper/ccws-repro-v0` | ✓ Done (Round X) | Low |
-| **S6** | LSS Can Issue gating in `scheduler_unit::cycle()` for LOAD_OP | `hrl/paper/ccws-repro-v0` | — | High |
-| **S7** | Quick set validation: `feature_off ≈ baseline`, `feature_on` triggers | `hrl/paper/ccws-repro-v0` | — | Medium |
+| **S6** | LSS Can Issue gating in `scheduler_unit::cycle()` for LOAD_OP | `hrl/paper/ccws-repro-v0` | ✓ Done (Round Y) | High |
+| **S7** | Quick set validation: `feature_off ≈ baseline`, `feature_on` triggers | `hrl/paper/ccws-repro-v0` | ✓ Done (Round Y) | Medium |
 | **S8** | Standard / `cache_focus` set validation | `hrl/paper/ccws-repro-v0` | — | Low |
 | **S9** | K_THROTTLE sweep; result notes | `hrl/paper/ccws-repro-v0` | — | Low |
 
@@ -203,6 +203,14 @@ on each LOAD_OP attempt (no actual gating). 3 new knobs (`enable_would_gate`, `w
 `wg_debug`). Validated on 7 quick-set workloads: `sim_cycle` unchanged, `load_gate_block=0`,
 `would_gate_attempt > 0` for all workloads, `would_gate_block = 2` for `rodinia_hotspot`.
 Mechanism confirmed functional; small block count expected for tiny workloads with low LLS elevation.
+
+**Round Y note**: Real load-only gating implemented (Stage S6+S7). `ccws_lg_gate_load(wid)` queries
+`m_ccws_would_can_issue[wid]` and blocks issue if false. 2 new knobs (`enable_load_gating`,
+`load_gate_debug`). New config `SM7_QV100_ccws_load_gate_on`. Validated on 7 quick-set workloads:
+feature_off 7/7 pass (all counters=0, cycle=baseline). load_gate_on 7/7 pass: `rodinia_hotspot`
+shows `lg_block=5` (real gating active), `lg_block=wg_block` (gate consistent with telemetry).
+Other workloads: `lg_block=0` (quick-set too small; standard set expected to show more blocking).
+Only LOAD_OP / TENSOR_CORE_LOAD_OP gated; STORE / MEMORY_BARRIER / compute unaffected.
 
 **Rules**:
 - Feature flag **always default 0**.
