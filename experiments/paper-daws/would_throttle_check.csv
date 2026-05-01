@@ -1,0 +1,8 @@
+paper,round,stage,workload,set,config,pass,sim_cycle,baseline_cycle,cycle_delta,cycle_delta_pct,divergence_event,footprint_update,footprint_sum_max,would_throttle,throttle_block,notes
+daws,AUTO-5,would_throttle,vecadd,quick,SM7_QV100_daws_noop_off,1,5569,5569,0,0%,0,0,0,0,0,feature_off baseline
+daws,AUTO-5,would_throttle,rodinia_hotspot,quick,SM7_QV100_daws_noop_off,1,6931,6931,0,0%,0,0,0,0,0,feature_off baseline
+daws,AUTO-5,would_throttle,rodinia_bfs,quick,SM7_QV100_daws_noop_off,1,6665,6665,0,0%,0,0,0,0,0,feature_off baseline
+daws,AUTO-5,would_throttle,vecadd,quick,SM7_QV100_daws_would_throttle_on,1,5569,5569,0,0%,0,348,0,0,0,no divergence; footprint_sum=0
+daws,AUTO-5,would_throttle,rodinia_hotspot,quick,SM7_QV100_daws_would_throttle_on,1,6931,6931,0,0%,7655,46883,144,6118,0,would_throttle signal present; fp_max=144>threshold=32
+daws,AUTO-5,would_throttle,rodinia_bfs,quick,SM7_QV100_daws_would_throttle_on,1,6665,6665,0,0%,78,121,31,0,0,fp_max=31<threshold=32; tiny workload limit
+daws,AUTO-5,would_throttle,rodinia_srad_v2,focused,SM7_QV100_daws_would_throttle_on,1,8236,8236,0,0%,4229,31067,242,6083,0,would_throttle signal present; fp_max=242>threshold=32

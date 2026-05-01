@@ -1769,10 +1769,19 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
     fprintf(stdout, "paper_daws_active_thread_sum = %llu\n", active_thread_sum);
     fprintf(stdout, "paper_daws_active_thread_samples = %llu\n", active_thread_samples);
     fprintf(stdout, "paper_daws_min_active_seen = %llu\n",
-            (min_active_seen == UINT64_MAX) ? 0 : min_active_seen);
+            (min_active_seen == ~0ULL) ? 0 : min_active_seen);
   }
-  fprintf(stdout, "paper_daws_footprint_update = 0\n");
-  fprintf(stdout, "paper_daws_would_throttle = 0\n");
+  {
+    unsigned long long fp_update = 0, fp_sum_total = 0, fp_sum_max = 0,
+                       would_throttle = 0;
+    for (unsigned i = 0; i < m_config.num_cluster(); i++)
+      m_cluster[i]->get_daws_would_throttle_stats(fp_update, fp_sum_total,
+                                                  fp_sum_max, would_throttle);
+    fprintf(stdout, "paper_daws_footprint_update = %llu\n", fp_update);
+    fprintf(stdout, "paper_daws_footprint_sum_total = %llu\n", fp_sum_total);
+    fprintf(stdout, "paper_daws_footprint_sum_max = %llu\n", fp_sum_max);
+    fprintf(stdout, "paper_daws_would_throttle = %llu\n", would_throttle);
+  }
   fprintf(stdout, "paper_daws_throttle_block = 0\n");
 
   if (m_config.gpgpu_cflog_interval != 0) {

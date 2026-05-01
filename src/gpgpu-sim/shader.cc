@@ -506,6 +506,12 @@ shader_core_ctx::shader_core_ctx(class gpgpu_sim *gpu,
   m_daws_active_thread_sum = 0;
   m_daws_active_thread_samples = 0;
   m_daws_min_active_seen = ~0ULL;
+  // DAWS Round 03: initialize footprint + would-throttle counters
+  m_daws_footprint.assign(config->max_warps_per_shader, 0);
+  m_daws_footprint_update = 0;
+  m_daws_footprint_sum_total = 0;
+  m_daws_footprint_sum_max = 0;
+  m_daws_would_throttle = 0;
 }
 
 void shader_core_ctx::reinit(unsigned start_thread, unsigned end_thread,
@@ -1361,6 +1367,8 @@ void scheduler_unit::cycle() {
               unsigned ac = active_mask.count();
               if (ac < (unsigned)m_shader->m_config->warp_size)
                 m_shader->daws_record_divergence(ac);
+              // DAWS Round 03: footprint estimate + would-throttle (no actual gate)
+              m_shader->daws_update_footprint_and_would_throttle(warp_id, ac);
             }
 
             assert(warp(warp_id).inst_in_pipeline());
@@ -5200,6 +5208,15 @@ void simt_core_cluster::get_daws_telemetry_stats(
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
     m_core[i]->get_daws_telemetry_stats(divergence_event, active_thread_sum,
                                         active_thread_samples, min_active_seen);
+}
+
+void simt_core_cluster::get_daws_would_throttle_stats(
+    unsigned long long &footprint_update, unsigned long long &footprint_sum_total,
+    unsigned long long &footprint_sum_max,
+    unsigned long long &would_throttle) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
+    m_core[i]->get_daws_would_throttle_stats(footprint_update, footprint_sum_total,
+                                             footprint_sum_max, would_throttle);
 }
 
 void exec_shader_core_ctx::checkExecutionStatusAndUpdate(warp_inst_t &inst,

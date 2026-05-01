@@ -2268,6 +2268,41 @@ class shader_core_ctx : public core_t {
       min_active_seen = m_daws_min_active_seen;
   }
 
+  // DAWS Round 03: footprint estimate + would-throttle telemetry (no scheduling change)
+  // footprint[wid] = warp_size - active_count (diverged thread slots).
+  // would_throttle fires when sum(footprint) > gpgpu_daws_footprint_threshold.
+  void daws_update_footprint_and_would_throttle(unsigned warp_id,
+                                                unsigned active_count) {
+    if (!m_config->gpgpu_enable_daws ||
+        !m_config->gpgpu_daws_enable_would_throttle)
+      return;
+    unsigned warp_size = m_config->warp_size;
+    unsigned fp = (active_count < warp_size) ? (warp_size - active_count) : 0;
+    if (warp_id < m_daws_footprint.size()) {
+      m_daws_footprint[warp_id] = fp;
+    }
+    m_daws_footprint_update++;
+    // compute sum of all warp footprints
+    unsigned long long fp_sum = 0;
+    for (unsigned w = 0; w < m_daws_footprint.size(); w++)
+      fp_sum += m_daws_footprint[w];
+    if (fp_sum > m_daws_footprint_sum_max)
+      m_daws_footprint_sum_max = fp_sum;
+    m_daws_footprint_sum_total += fp_sum;
+    if (fp_sum > m_config->gpgpu_daws_footprint_threshold)
+      m_daws_would_throttle++;
+  }
+  void get_daws_would_throttle_stats(unsigned long long &footprint_update,
+                                     unsigned long long &footprint_sum_total,
+                                     unsigned long long &footprint_sum_max,
+                                     unsigned long long &would_throttle) const {
+    footprint_update += m_daws_footprint_update;
+    footprint_sum_total += m_daws_footprint_sum_total;
+    if (m_daws_footprint_sum_max > footprint_sum_max)
+      footprint_sum_max = m_daws_footprint_sum_max;
+    would_throttle += m_daws_would_throttle;
+  }
+
   void get_icnt_power_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
 
   // debug:
@@ -2712,6 +2747,12 @@ class shader_core_ctx : public core_t {
   unsigned long long m_daws_active_thread_sum;
   unsigned long long m_daws_active_thread_samples;
   unsigned long long m_daws_min_active_seen;
+  // DAWS Round 03: footprint + would-throttle counters (per-SM, passive)
+  std::vector<unsigned> m_daws_footprint;  // per-warp footprint estimate
+  unsigned long long m_daws_footprint_update;
+  unsigned long long m_daws_footprint_sum_total;
+  unsigned long long m_daws_footprint_sum_max;
+  unsigned long long m_daws_would_throttle;
 };
 
 class exec_shader_core_ctx : public shader_core_ctx {
@@ -2813,6 +2854,11 @@ class simt_core_cluster {
                                 unsigned long long &active_thread_sum,
                                 unsigned long long &active_thread_samples,
                                 unsigned long long &min_active_seen) const;
+  // DAWS Round 03: would-throttle telemetry aggregation
+  void get_daws_would_throttle_stats(unsigned long long &footprint_update,
+                                     unsigned long long &footprint_sum_total,
+                                     unsigned long long &footprint_sum_max,
+                                     unsigned long long &would_throttle) const;
 
   void get_icnt_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
   float get_current_occupancy(unsigned long long &active,

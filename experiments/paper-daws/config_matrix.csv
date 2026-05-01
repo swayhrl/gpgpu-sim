@@ -2,3 +2,4 @@ paper,round,config_name,gpgpu_enable_daws,gpgpu_daws_enable_telemetry,gpgpu_daws
 daws,AUTO-3,SM7_QV100_daws_noop_off,0,0,0,0,50,1,feature_off baseline
 daws,AUTO-3,SM7_QV100_daws_noop_on,1,0,0,0,50,1,master switch on; all sub-features off
 daws,AUTO-4,SM7_QV100_daws_telemetry_on,1,1,0,0,50,1,divergence telemetry; no scheduling change
+daws,AUTO-5,SM7_QV100_daws_would_throttle_on,1,1,1,0,32,1,would-throttle telemetry; threshold=32 (warp_size); no scheduling change
