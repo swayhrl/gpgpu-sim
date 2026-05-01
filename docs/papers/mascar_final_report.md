@@ -119,7 +119,7 @@ the policy skips warps that would have been served quickly anyway.
 
 ## 6. Approximation Limitations
 
-| Limitation | Impact | Faithful Fix |
+| Limitation | Impact | Closer Approximation |
 |------------|--------|-------------|
 | m_mem_out proxy (not true MSHR) | Less precise saturation signal | Monitor MSHR hit-under-miss count |
 | No memory bandwidth tracking | Can't distinguish BW-limited vs MSHR-limited | Add per-cycle BW utilization probe |
@@ -152,20 +152,25 @@ policy_on mechanism:
 
 ## 8. Conclusion
 
-**Approximate reproduction: SUCCESS**
+**Approximate mechanism reproduction: COMPLETE**
 
-The Mascar memory-pitstop scheduling mechanism has been faithfully reproduced in
-GPGPU-Sim at an approximate level:
-- The mechanism chain is complete and functional
+This is an **approximate reproduction only**, not a faithful reproduction.
+The Mascar memory-pitstop scheduling mechanism has been implemented as a
+scheduler-side proxy in GPGPU-Sim:
+- The mechanism chain is complete and functional at the proxy level
 - Feature flag (enable_mascar=0) preserves baseline exactly
 - Deadlock prevention (max_skip_streak force-allow) works correctly
-- Memory-pressure signal is correctly identified (BFS vs hotspot behavior)
-- Cycle impact is small but in the expected direction for most workloads
+- Memory-pressure signal direction is correct (BFS vs hotspot behavior)
+- Cycle impact is small; the paper's reported 5–15% speedup is NOT reproduced
 
-The quantitative gap vs. the paper is expected given our approximation (m_mem_out proxy
-instead of true MSHR tracking) and tiny workload sizes.
+**What this is NOT**:
+- Not a faithful reproduction of the paper
+- No pipeline replay or re-execution (the paper's primary speedup source)
+- Memory pressure detection uses m_mem_out (scheduler slot), not true MSHR occupancy
+- Cycle deltas (<0.2%) are far below the paper's claims — do not cite as confirmation
+- Workloads are tiny; quantitative results are not comparable to the paper
 
-**Next steps for faithful reproduction**:
+**Next steps toward a more faithful reproduction**:
 1. Use larger workloads (256×256 matrices, larger graphs)
 2. Implement true MSHR tracking via `m_ldst_unit->mshr` occupancy probe
 3. Add memory bandwidth utilization tracking

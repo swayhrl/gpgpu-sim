@@ -124,9 +124,9 @@ memory stall probe
 | Phase | 状态 | commit | 备注 |
 |-------|------|--------|------|
 | Phase 0 | complete | 5979161 | reading + plan |
-| Phase 1 | complete | — | noop config; 待 commit |
-| Phase 2 | pending | — | |
-| Phase 3 | pending | — | |
-| Phase 4 | pending | — | 高风险 |
-| Phase 5 | pending | — | 依赖 Phase 4 |
-| Phase 6 | pending | — | |
+| Phase 1 | complete | 0f9530f | noop config + stats |
+| Phase 2 | complete | 4084056 | memory pressure telemetry |
+| Phase 3 | complete | 3d18536 | would-change telemetry |
+| Phase 4 | complete | ee86829 | minimal scheduling skip (approximate, not faithful) |
+| Phase 5 | complete | 6506156 | focused validation, 9 workloads |
+| Phase 6 | complete | 4fb1338 | approximate reproduction final report |
