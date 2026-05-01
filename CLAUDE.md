@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-05-01 — Round Y complete; real load-only gating implemented and validated. **Round Y 变更尚未提交（working tree dirty）。**_
+_Last updated: 2026-05-01 — Round Z complete; post-gating validation on 7 workloads × 3 thresholds. **Round Z 变更尚未提交（working tree dirty）。**_
 
 ## Git 工作流
 
@@ -218,7 +218,8 @@ Four days of deep read-through of the PTX functional simulation → timing model
 - [x] **Round W**：Stage S5 完成 — per-warp LLS 数组加入 `ldst_unit`；6 个新 config knob（`enable_lls_score/base_score/hit_increment/decay_interval/decay_amount/max_score`）；VTA hit → `ccws_lls_update(wid)`；per-cycle score decay（in `ldst_unit::cycle()`）；quick set 7/7 pass：`sim_cycle` 不变，`lls_score_update = vta_hit`（完全相等），`load_gate_block=0`；`atomic_contention` lls_update=0 ✓；`mutual_tiled` 最终 nonzero_warps=0（decay 平衡 hits）✓；无 Can Issue gating
 - [x] **Round X**：Would-gate telemetry 完成 — sort+prefix-sum 计算 `m_ccws_would_can_issue[]`（per cycle in `ldst_unit`）；scheduler 调用 `ccws_wg_check_load()` 对每个 LOAD_OP 尝试计数（不阻塞）；3 个新 knob（`enable_would_gate`, `wg_k_throttle`, `wg_debug`）；quick set 7/7 pass：`sim_cycle` 不变，`load_gate_block=0`，`would_gate_attempt>0` 对所有 workload，`would_gate_block=2` for `rodinia_hotspot` ✓
 - [x] **Round Y**：Stage S6+S7 完成 — 真实 load-only gating；`ccws_lg_gate_load(wid)` 查询 `would_can_issue[wid]`，阻塞 LOAD_OP / TENSOR_CORE_LOAD_OP；2 个新 knob（`enable_load_gating`, `load_gate_debug`）；feature_off 7/7 pass（cycle=baseline，所有计数器=0）；load_gate_on 7/7 pass：`rodinia_hotspot` `lg_block=5`（真实 gating 生效），`lg_block=wg_block` ✓；STORE / compute 不受影响 ✓
-- [ ] **Round（后置）**：standard set 验证；LLS 参数调优；K_THROTTLE sweep；至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
+- [x] **Round Z**：Post-gating validation — 7 workload × 3 threshold（default/conservative/aggressive）；feature_off 7/7 pass；load_gate_on 7/7 pass；只有 `rodinia_hotspot` 出现 `lg_block=5`；threshold sweep 无效（`base_score` 同时控制初始值和 cutoff，不是独立 threshold）；高 vta_hit workload（srad_v2/fdtd2d）无 gating（hits 分散）；sim_cycle 未变化（5 blocks 太少）；关键发现：需要独立 `lls_gate_threshold` knob
+- [ ] **Round（后置）**：standard set 验证；引入独立 `lls_gate_threshold`；至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
 
 ## Workload Management Framework（Round B 新增）
 

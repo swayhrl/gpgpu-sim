@@ -170,6 +170,7 @@ All stats gated by `gpgpu_enable_ccws`. Prefix: `paper_ccws_`.
 | **X** | Would-gate telemetry: sort+prefix-sum; `would_gate_block > 0`; no real gating | `hrl/paper/ccws-repro-v0` | ✓ Done (Round X) | Low |
 | **S6** | LSS Can Issue gating in `scheduler_unit::cycle()` for LOAD_OP | `hrl/paper/ccws-repro-v0` | ✓ Done (Round Y) | High |
 | **S7** | Quick set validation: `feature_off ≈ baseline`, `feature_on` triggers | `hrl/paper/ccws-repro-v0` | ✓ Done (Round Y) | Medium |
+| **Z** | Post-gating validation: 7 workloads × 3 thresholds; signal analysis | `hrl/paper/ccws-repro-v0` | ✓ Done (Round Z) | Low |
 | **S8** | Standard / `cache_focus` set validation | `hrl/paper/ccws-repro-v0` | — | Low |
 | **S9** | K_THROTTLE sweep; result notes | `hrl/paper/ccws-repro-v0` | — | Low |
 
@@ -211,6 +212,14 @@ feature_off 7/7 pass (all counters=0, cycle=baseline). load_gate_on 7/7 pass: `r
 shows `lg_block=5` (real gating active), `lg_block=wg_block` (gate consistent with telemetry).
 Other workloads: `lg_block=0` (quick-set too small; standard set expected to show more blocking).
 Only LOAD_OP / TENSOR_CORE_LOAD_OP gated; STORE / MEMORY_BARRIER / compute unaffected.
+
+**Round Z note**: Post-gating validation on 7 workloads × 3 threshold configs. Only `rodinia_hotspot`
+shows `lg_block=5` across all thresholds. Key finding: `base_score` is NOT an independent threshold —
+it scales both LLS initial value and cutoff proportionally, so behavior is invariant to base_score
+changes. High-vta_hit workloads (srad_v2=3924, fdtd2d=8338) show no gating because hits are spread
+across many warps/cycles; no single warp accumulates enough to push prefix sum over cutoff. To enable
+effective threshold sweep, a separate `lls_gate_threshold` knob (decoupled from base_score) is needed.
+sim_cycle unchanged for all workloads (5 gate blocks too few to affect timing).
 
 **Rules**:
 - Feature flag **always default 0**.

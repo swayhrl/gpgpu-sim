@@ -1,0 +1,29 @@
+workload,set,config,threshold,pass,sim_cycle,baseline_cycle,cycle_delta,vta_hit,lls_update,would_gate_block,load_gate_block,notes
+strided_access,quick,SM7_QV100_ccws_noop_off,off,1,5825,5825,0,0,0,0,0,feature_off baseline
+page_stride_access,quick,SM7_QV100_ccws_noop_off,off,1,5851,5851,0,0,0,0,0,feature_off baseline
+mutual_tiled,quick,SM7_QV100_ccws_noop_off,off,1,7479,7479,0,0,0,0,0,feature_off baseline
+rodinia_hotspot,Tier1,SM7_QV100_ccws_noop_off,off,1,6931,6931,0,0,0,0,0,feature_off baseline
+rodinia_srad_v2,Tier1,SM7_QV100_ccws_noop_off,off,1,15926,15926,0,0,0,0,0,feature_off baseline
+polybench_fdtd2d,Tier1,SM7_QV100_ccws_noop_off,off,1,35681,35681,0,0,0,0,0,feature_off baseline
+rodinia_bfs,Tier1,SM7_QV100_ccws_noop_off,off,1,136110,136110,0,0,0,0,0,feature_off baseline
+strided_access,quick,SM7_QV100_ccws_load_gate_on,default,1,5825,5825,0,24,24,0,0,no gating signal; stride breaks intra-warp locality
+page_stride_access,quick,SM7_QV100_ccws_load_gate_on,default,1,5851,5851,0,24,24,0,0,no gating signal; page stride breaks intra-warp locality
+mutual_tiled,quick,SM7_QV100_ccws_load_gate_on,default,1,7479,7479,0,384,384,0,0,vta_hit high but decay balances; no warp exceeds cutoff
+rodinia_hotspot,Tier1,SM7_QV100_ccws_load_gate_on,default,1,6931,6931,0,1328,1328,5,5,GATING ACTIVE; 5 blocks; cycle unchanged (too few blocks)
+rodinia_srad_v2,Tier1,SM7_QV100_ccws_load_gate_on,default,1,15926,15926,0,3924,3924,0,0,high vta_hit but hits spread across warps/cycles; no cutoff exceeded
+polybench_fdtd2d,Tier1,SM7_QV100_ccws_load_gate_on,default,1,35681,35681,0,8338,8338,0,0,highest vta_hit but hits spread; no cutoff exceeded
+rodinia_bfs,Tier1,SM7_QV100_ccws_load_gate_on,default,1,136110,136110,0,124,124,0,0,irregular graph; low vta_hit; no gating
+strided_access,quick,SM7_QV100_ccws_load_gate_conservative,conservative,1,5825,5825,0,24,24,0,0,identical to default; base_score scales both init and cutoff
+page_stride_access,quick,SM7_QV100_ccws_load_gate_conservative,conservative,1,5851,5851,0,24,24,0,0,identical to default
+mutual_tiled,quick,SM7_QV100_ccws_load_gate_conservative,conservative,1,7479,7479,0,384,384,0,0,identical to default
+rodinia_hotspot,Tier1,SM7_QV100_ccws_load_gate_conservative,conservative,1,6931,6931,0,1328,1328,5,5,identical to default; base_score invariant
+rodinia_srad_v2,Tier1,SM7_QV100_ccws_load_gate_conservative,conservative,1,15926,15926,0,3924,3924,0,0,identical to default
+polybench_fdtd2d,Tier1,SM7_QV100_ccws_load_gate_conservative,conservative,1,35681,35681,0,8338,8338,0,0,identical to default
+rodinia_bfs,Tier1,SM7_QV100_ccws_load_gate_conservative,conservative,1,136110,136110,0,124,124,0,0,identical to default
+strided_access,quick,SM7_QV100_ccws_load_gate_aggressive,aggressive,1,5825,5825,0,24,24,0,0,identical to default; base_score invariant
+page_stride_access,quick,SM7_QV100_ccws_load_gate_aggressive,aggressive,1,5851,5851,0,24,24,0,0,identical to default
+mutual_tiled,quick,SM7_QV100_ccws_load_gate_aggressive,aggressive,1,7479,7479,0,384,384,0,0,identical to default
+rodinia_hotspot,Tier1,SM7_QV100_ccws_load_gate_aggressive,aggressive,1,6931,6931,0,1328,1328,5,5,identical to default
+rodinia_srad_v2,Tier1,SM7_QV100_ccws_load_gate_aggressive,aggressive,1,15926,15926,0,3924,3924,0,0,identical to default
+polybench_fdtd2d,Tier1,SM7_QV100_ccws_load_gate_aggressive,aggressive,1,35681,35681,0,8338,8338,0,0,identical to default
+rodinia_bfs,Tier1,SM7_QV100_ccws_load_gate_aggressive,aggressive,1,136110,136110,0,124,124,0,0,identical to default
