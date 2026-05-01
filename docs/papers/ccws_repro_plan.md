@@ -171,6 +171,7 @@ All stats gated by `gpgpu_enable_ccws`. Prefix: `paper_ccws_`.
 | **S6** | LSS Can Issue gating in `scheduler_unit::cycle()` for LOAD_OP | `hrl/paper/ccws-repro-v0` | ✓ Done (Round Y) | High |
 | **S7** | Quick set validation: `feature_off ≈ baseline`, `feature_on` triggers | `hrl/paper/ccws-repro-v0` | ✓ Done (Round Y) | Medium |
 | **Z** | Post-gating validation: 7 workloads × 3 thresholds; signal analysis | `hrl/paper/ccws-repro-v0` | ✓ Done (Round Z) | Low |
+| **AA** | Independent `lg_score_threshold` knob; decouple from `lls_base_score`; tiny validation | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AA) | Low |
 | **S8** | Standard / `cache_focus` set validation | `hrl/paper/ccws-repro-v0` | — | Low |
 | **S9** | K_THROTTLE sweep; result notes | `hrl/paper/ccws-repro-v0` | — | Low |
 
@@ -220,6 +221,11 @@ changes. High-vta_hit workloads (srad_v2=3924, fdtd2d=8338) show no gating becau
 across many warps/cycles; no single warp accumulates enough to push prefix sum over cutoff. To enable
 effective threshold sweep, a separate `lls_gate_threshold` knob (decoupled from base_score) is needed.
 sim_cycle unchanged for all workloads (5 gate blocks too few to affect timing).
+
+**Round AA note**: New knob `gpgpu_ccws_lg_score_threshold` (default 100) decouples gating cutoff
+from `lls_base_score`. `cum_cutoff = nw * lg_score_threshold`. Threshold sweep now effective:
+th99/100 → hotspot lg_block=5; th101/200 → 0 blocks. Warning: threshold < lls_base_score causes
+deadlock (all warps gated at init). Valid range: `lg_score_threshold >= lls_base_score`.
 
 **Rules**:
 - Feature flag **always default 0**.

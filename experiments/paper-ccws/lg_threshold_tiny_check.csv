@@ -1,0 +1,16 @@
+workload,config,lg_score_threshold,pass,sim_cycle,baseline_cycle,cycle_delta,vta_hit,lls_update,would_gate_block,load_gate_block,notes
+rodinia_hotspot,SM7_QV100_ccws_noop_off,off,1,6931,6931,0,0,0,0,0,feature_off baseline
+strided_access,SM7_QV100_ccws_noop_off,off,1,5825,5825,0,0,0,0,0,feature_off baseline
+page_stride_access,SM7_QV100_ccws_noop_off,off,1,5851,5851,0,0,0,0,0,feature_off baseline
+rodinia_hotspot,SM7_QV100_ccws_load_gate_th100,100,1,6931,6931,0,1328,1328,5,5,default; lg_block=5; consistent with Round Y
+strided_access,SM7_QV100_ccws_load_gate_th100,100,1,5825,5825,0,24,24,0,0,no gating signal
+page_stride_access,SM7_QV100_ccws_load_gate_th100,100,1,5851,5851,0,24,24,0,0,no gating signal
+rodinia_hotspot,SM7_QV100_ccws_load_gate_th99,99,1,6931,6931,0,1328,1328,5,5,cutoff=6336; same 5 blocks as th100
+strided_access,SM7_QV100_ccws_load_gate_th99,99,1,5825,5825,0,24,24,0,0,no gating signal
+page_stride_access,SM7_QV100_ccws_load_gate_th99,99,1,5851,5851,0,24,24,0,0,no gating signal
+rodinia_hotspot,SM7_QV100_ccws_load_gate_th101,101,1,6931,6931,0,1328,1328,0,0,cutoff=6464; 0 blocks (prefix barely under cutoff)
+strided_access,SM7_QV100_ccws_load_gate_th101,101,1,5825,5825,0,24,24,0,0,no gating signal
+page_stride_access,SM7_QV100_ccws_load_gate_th101,101,1,5851,5851,0,24,24,0,0,no gating signal
+rodinia_hotspot,SM7_QV100_ccws_load_gate_th200,200,1,6931,6931,0,1328,1328,0,0,cutoff=12800; 0 blocks (max_score=102 << threshold)
+strided_access,SM7_QV100_ccws_load_gate_th200,200,1,5825,5825,0,24,24,0,0,no gating signal
+page_stride_access,SM7_QV100_ccws_load_gate_th200,200,1,5851,5851,0,24,24,0,0,no gating signal

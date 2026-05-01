@@ -1797,6 +1797,8 @@ class shader_core_config : public core_config {
   // CCWS Round Y: real load-only gating knob
   int gpgpu_ccws_enable_load_gating;  // enable real load gating (default 0)
   int gpgpu_ccws_load_gate_debug;     // per-gate debug trace (default 0)
+  // CCWS Round AA: independent gating threshold (decoupled from lls_base_score)
+  unsigned gpgpu_ccws_lg_score_threshold;  // per-warp score cutoff for gating (default 100)
 };
 
 struct shader_core_stats_pod {

@@ -733,6 +733,12 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_ccws_load_gate_debug", OPT_INT32,
                          &gpgpu_ccws_load_gate_debug,
                          "CCWS Round Y: per-gate debug trace (0=off, 1=on)", "0");
+  // CCWS Round AA: independent gating threshold (decoupled from lls_base_score)
+  option_parser_register(opp, "-gpgpu_ccws_lg_score_threshold", OPT_UINT32,
+                         &gpgpu_ccws_lg_score_threshold,
+                         "CCWS Round AA: per-warp LLS score threshold for gating cutoff"
+                         " (default 100; independent of lls_base_score)",
+                         "100");
 }
 
 void gpgpu_sim_config::reg_options(option_parser_t opp) {

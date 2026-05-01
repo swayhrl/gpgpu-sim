@@ -1,0 +1,50 @@
+round: AA
+status: complete
+date: 2026-05-01
+branch: hrl/paper/ccws-repro-v0
+
+new_knob: gpgpu_ccws_lg_score_threshold
+default_value: 100
+description: >
+  Independent gating cutoff threshold, decoupled from lls_base_score.
+  cum_cutoff = nw * lg_score_threshold.
+  Valid range: >= lls_base_score (lower values cause deadlock).
+
+source_changed: true
+changed_files:
+  - src/gpgpu-sim/shader.h
+  - src/gpgpu-sim/shader.cc
+  - src/gpgpu-sim/gpu-sim.cc
+
+workloads_run:
+  - rodinia_hotspot
+  - strided_access
+  - page_stride_access
+
+threshold_values_tested: [99, 100, 101, 200]
+threshold_50_result: deadlock (removed)
+
+threshold_changes_load_gate_block: true
+results_summary:
+  th99:  {hotspot_lg_block: 5, strided_lg_block: 0, page_stride_lg_block: 0}
+  th100: {hotspot_lg_block: 5, strided_lg_block: 0, page_stride_lg_block: 0}
+  th101: {hotspot_lg_block: 0, strided_lg_block: 0, page_stride_lg_block: 0}
+  th200: {hotspot_lg_block: 0, strided_lg_block: 0, page_stride_lg_block: 0}
+
+feature_off_behavior_unchanged: true
+sim_cycle_changed: false
+
+commit_recommended: true
+suggested_commit: "ccws: add independent load-gating score threshold"
+suggested_tag: ccws-lg-threshold
+
+new_configs:
+  - configs/hrl-repro/SM7_QV100_ccws_load_gate_th99
+  - configs/hrl-repro/SM7_QV100_ccws_load_gate_th100
+  - configs/hrl-repro/SM7_QV100_ccws_load_gate_th101
+  - configs/hrl-repro/SM7_QV100_ccws_load_gate_th200
+
+removed_configs:
+  - configs/hrl-repro/SM7_QV100_ccws_load_gate_aggressive  (was base_score sweep, now obsolete)
+  - configs/hrl-repro/SM7_QV100_ccws_load_gate_conservative (was base_score sweep, now obsolete)
+  - configs/hrl-repro/SM7_QV100_ccws_load_gate_th50         (deadlock)

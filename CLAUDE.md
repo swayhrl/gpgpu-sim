@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-05-01 — Round Z complete; post-gating validation on 7 workloads × 3 thresholds. **Round Z 变更尚未提交（working tree dirty）。**_
+_Last updated: 2026-05-01 — Round AA complete; independent `gpgpu_ccws_lg_score_threshold` knob added. **Round AA 变更尚未提交（working tree dirty）。**_
 
 ## Git 工作流
 
@@ -219,7 +219,8 @@ Four days of deep read-through of the PTX functional simulation → timing model
 - [x] **Round X**：Would-gate telemetry 完成 — sort+prefix-sum 计算 `m_ccws_would_can_issue[]`（per cycle in `ldst_unit`）；scheduler 调用 `ccws_wg_check_load()` 对每个 LOAD_OP 尝试计数（不阻塞）；3 个新 knob（`enable_would_gate`, `wg_k_throttle`, `wg_debug`）；quick set 7/7 pass：`sim_cycle` 不变，`load_gate_block=0`，`would_gate_attempt>0` 对所有 workload，`would_gate_block=2` for `rodinia_hotspot` ✓
 - [x] **Round Y**：Stage S6+S7 完成 — 真实 load-only gating；`ccws_lg_gate_load(wid)` 查询 `would_can_issue[wid]`，阻塞 LOAD_OP / TENSOR_CORE_LOAD_OP；2 个新 knob（`enable_load_gating`, `load_gate_debug`）；feature_off 7/7 pass（cycle=baseline，所有计数器=0）；load_gate_on 7/7 pass：`rodinia_hotspot` `lg_block=5`（真实 gating 生效），`lg_block=wg_block` ✓；STORE / compute 不受影响 ✓
 - [x] **Round Z**：Post-gating validation — 7 workload × 3 threshold（default/conservative/aggressive）；feature_off 7/7 pass；load_gate_on 7/7 pass；只有 `rodinia_hotspot` 出现 `lg_block=5`；threshold sweep 无效（`base_score` 同时控制初始值和 cutoff，不是独立 threshold）；高 vta_hit workload（srad_v2/fdtd2d）无 gating（hits 分散）；sim_cycle 未变化（5 blocks 太少）；关键发现：需要独立 `lls_gate_threshold` knob
-- [ ] **Round（后置）**：standard set 验证；引入独立 `lls_gate_threshold`；至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
+- [x] **Round AA**：新增独立 knob `gpgpu_ccws_lg_score_threshold`（default 100）；`cum_cutoff = nw * lg_score_threshold`（不再用 `lls_base_score`）；tiny validation 3 workload × 4 threshold：th99/100 → hotspot `lg_block=5`，th101/200 → 0 blocks；threshold 有效 ✓；注意：threshold < base_score 会 deadlock（已删除 th50 config）；有效范围 `lg_score_threshold >= lls_base_score`
+- [ ] **Round（后置）**：standard set 验证；增大 `lls_hit_increment` 使更多 workload 出现 gating；至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
 
 ## Workload Management Framework（Round B 新增）
 

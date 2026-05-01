@@ -3173,7 +3173,7 @@ void ldst_unit::cycle() {
       !m_ccws_would_can_issue.empty()) {
     unsigned nw = m_ccws_lls.size();
     unsigned long long cum_cutoff =
-        (unsigned long long)nw * m_config->gpgpu_ccws_lls_base_score;
+        (unsigned long long)nw * m_config->gpgpu_ccws_lg_score_threshold;
     std::vector<std::pair<unsigned, unsigned>> sv(nw);
     for (unsigned w = 0; w < nw; w++) sv[w] = {m_ccws_lls[w], w};
     std::sort(sv.begin(), sv.end(),
