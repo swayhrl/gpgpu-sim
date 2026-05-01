@@ -1,0 +1,105 @@
+paper_key: pcal
+title: "Priority-Based Cache Allocation in Throughput Processors"
+authors: "Jia, Lowe-Power, Aamodt"
+venue: "HPCA 2015"
+branch: hrl/paper/pcal-repro-v0
+base_branch: main
+
+mechanism_category: cache allocation / cache bypass / thread priority
+
+target_modules:
+  - src/gpgpu-sim/shader.h
+  - src/gpgpu-sim/shader.cc
+  - src/gpgpu-sim/gpu-sim.cc
+  - src/gpgpu-sim/gpu-cache.h
+  - src/gpgpu-sim/gpu-cache.cc
+
+config_root: configs/hrl-repro
+experiment_root: experiments/paper-pcal
+doc_root: docs/papers
+
+# PCAL core idea: classify threads as "cache-sensitive" vs "cache-insensitive"
+# based on observed cache behavior (miss rate, reuse). Allocate L1/L2 cache
+# preferentially to cache-sensitive threads; bypass for insensitive threads.
+#
+# Approximation plan: probe per-warp miss rate as priority signal;
+# use miss-rate threshold to decide bypass vs allocate.
+mechanism_chain:
+  - name: miss-rate probe
+    stage: 02_telemetry
+    knob: gpgpu_enable_pcal_telemetry
+    stat: paper_pcal_miss_event
+    faithful: approximate
+    approximation: "per-warp miss count / total access as priority proxy"
+  - name: would-bypass telemetry
+    stage: 03_would_change
+    knob: gpgpu_enable_pcal_would_bypass
+    stat: paper_pcal_would_bypass
+    faithful: approximate
+    approximation: "global miss-rate threshold; no per-PC classification"
+  - name: L1 bypass gate
+    stage: 04_minimal_mechanism
+    knob: gpgpu_enable_pcal_bypass
+    stat: paper_pcal_bypass_count
+    faithful: approximate
+    approximation: "bypass L1 for warps with miss_rate > threshold; no adaptive update"
+
+likely_config_knobs:
+  - gpgpu_enable_pcal
+  - gpgpu_pcal_enable_telemetry
+  - gpgpu_pcal_enable_would_bypass
+  - gpgpu_pcal_enable_bypass
+  - gpgpu_pcal_miss_rate_threshold
+  - gpgpu_pcal_window_size
+
+likely_stats:
+  - paper_pcal_miss_event
+  - paper_pcal_warp_classified_high
+  - paper_pcal_warp_classified_low
+  - paper_pcal_would_bypass
+  - paper_pcal_bypass_count
+
+known_risks:
+  - id: cache_module_complexity
+    description: "GPGPU-Sim cache module (gpu-cache.cc) is complex; bypass requires careful hook"
+    impact: "may need shallow integration first (shader-side flag rather than cache-side change)"
+  - id: priority_signal_approximation
+    description: "PCAL exact priority metric unknown before reading"
+    impact: "first pass uses miss rate as proxy; may need refinement"
+  - id: no_original_benchmarks
+    description: "PCAL original benchmarks (SPEC CPU, etc.) may not be available"
+    impact: "use cache_policy focused workload set"
+
+workload_sets:
+  focused:
+    size: 7
+    workloads: [rodinia_hotspot, rodinia_srad_v2, polybench_fdtd2d, mutual_tiled, polybench_2dconv, strided_access, parboil_histo]
+    purpose: cache-sensitive focused set (from WORKLOAD-AUDIT)
+  controls:
+    size: 5
+    workloads: [vecadd, polybench_gemm, mutual_naive, rodinia_backprop, atomic_contention]
+    purpose: should show minimal bypass activity
+
+expected_stage_sequence:
+  - 00_reading
+  - 01_noop
+  - 02_telemetry
+  - 03_would_change
+  - 04_minimal_mechanism
+  - 05_focused_validation
+  - 07_final_report
+
+success_rules:
+  - id: feature_off_no_change
+    description: "feature_off sim_cycle must equal baseline; all paper_pcal_* counters = 0"
+    required: true
+  - id: no_cache_replacement_without_review
+    description: "cache replacement policy changes require explicit human review"
+    required: true
+  - id: do_not_require_100_percent_faithful
+    description: "approximate reproduction acceptable; document deviations"
+    required: true
+
+reproduction_status:
+  mechanism_chain: not_started
+  overall: not_started

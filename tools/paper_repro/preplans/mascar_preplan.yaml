@@ -1,0 +1,109 @@
+paper_key: mascar
+title: "Mascar: Speeding up GPU Warps by Reducing Memory Pitstops"
+authors: "Mahmoud, Jog, Srikantaiah, Narayanan, Xiao"
+venue: HPCA 2015
+target_branch: hrl/paper/mascar-repro-v0
+paper_source: "docs/papers/mascar_hpca2015.pdf (obtain separately)"
+
+mechanism_category: memory-aware warp scheduling / memory saturation detection
+
+expected_modules:
+  - src/gpgpu-sim/shader.h
+  - src/gpgpu-sim/shader.cc
+  - src/gpgpu-sim/gpu-sim.cc
+  - src/gpgpu-sim/mem_fetch.h     # likely: memory queue saturation probe
+  # gpu-cache.h / ldst_unit.cc may also be needed — confirm in reading stage
+
+max_rounds: 6
+faithfulness_policy: approximate_ok
+
+stage_sequence:
+  - 00_reading
+  - 01_noop
+  - 02_telemetry
+  - 03_would_change
+  - 04_minimal_mechanism
+  - 05_focused_validation
+  - 07_final_report
+
+# Mascar reading+noop are safe to auto-continue.
+# Telemetry and beyond require review because memory pipeline probes are
+# more invasive than pure scheduler probes.
+allowed_auto_stages:
+  - 00_reading
+  - 01_noop
+
+require_review_stages:
+  - 02_telemetry               # memory queue probe — invasive
+  - 03_would_change
+  - 04_minimal_mechanism
+  - 05_focused_validation
+  - 06_standard_validation
+
+# Expected mechanism chain (preliminary)
+#
+# Mascar core idea:
+#   Detect when a warp is "memory saturated" (all MSHR entries occupied,
+#   or memory queue is full). Schedule other warps preferentially to let
+#   the memory system drain ("memory pitstop"). Resume the saturated warp
+#   when memory queue has capacity.
+#
+# Key risk: memory pipeline interaction is nonlocal.
+# First pass MUST NOT implement re-execution or pipeline replay.
+# Use passive saturation detection only.
+preliminary_mechanism_chain:
+  - stage: 02_telemetry
+    description: "probe MSHR occupancy or memory queue depth per warp"
+    approximation: "count stall cycles where warp is waiting on memory; skip MSHR-level detail"
+  - stage: 03_would_change
+    description: "would-deprioritize counter: mark warps blocked on memory"
+    approximation: "use existing stall signal (mem_rc, ldst_unit stall); no real scheduling change"
+  - stage: 04_minimal_mechanism
+    description: "deprioritize memory-saturated warps in issue logic"
+    approximation: "simple: skip warp if mem_stall flag set; NOT re-execution/replay"
+    critical_constraint: "NO pipeline replay or re-execution in first pass"
+
+known_approximations:
+  - description: "Mascar may use MSHR entry count as saturation signal; GPGPU-Sim exposes this"
+    impact: "approximation feasible via existing MSHR structure"
+    fix_direction: "check ldst_unit.h for pending_reads / m_mshr_entries"
+  - description: "Original 'pitstop' re-execution is complex; first pass skips it"
+    impact: "may miss a significant part of the speedup"
+    fix_direction: "document as known limitation in final report"
+  - description: "Memory saturation threshold may need per-CTA tuning"
+    impact: "global threshold may over- or under-trigger"
+    fix_direction: "start with MSHR > 50% as conservative threshold"
+
+success_criteria:
+  faithful_reproduction: false
+  approximate_reproduction: true
+  mechanism_chain_reproduced: true
+  feature_off_cycle_unchanged: true
+  feature_on_signal_present: true   # paper_mascar_* stats non-zero on memory-bound workloads
+  no_deadlock: true
+  no_pipeline_replay: true          # hard constraint for first pass
+  focused_validation_complete: true
+  final_report_created: true
+
+stop_rules:
+  - any_pipeline_replay_or_reexecution   # HARD STOP — too risky
+  - memory_pipeline_change_without_review
+  - src_diff_outside_expected_modules
+  - standard_validation_attempt
+  - hang_or_deadlock
+  - timeout_per_stage_10min
+
+version_control_plan:
+  base_branch: hrl/paper/mascar-repro-v0
+  tag_each_milestone: true
+  milestone_tags:
+    - mascar-config-noop
+    - mascar-telemetry
+    - mascar-would-deprioritize
+    - mascar-minimal-mechanism
+    - mascar-focused-validation
+    - mascar-final-report
+
+final_report_policy:
+  do_not_continue_mechanism_refinement: true
+  recommend_next: hrl/idea/cache-policy-experiments-v0

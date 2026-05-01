@@ -1,0 +1,106 @@
+paper_key: pcal
+title: "Priority-Based Cache Allocation in Throughput Processors"
+authors: "Jia, Lowe-Power, Aamodt"
+venue: HPCA 2015
+target_branch: hrl/paper/pcal-repro-v0
+paper_source: "docs/papers/pcal_hpca2015.pdf (obtain separately)"
+
+mechanism_category: cache allocation / cache bypass / thread priority
+
+expected_modules:
+  - src/gpgpu-sim/shader.h
+  - src/gpgpu-sim/shader.cc
+  - src/gpgpu-sim/gpu-sim.cc
+  - src/gpgpu-sim/gpu-cache.h    # likely: bypass / admission control
+  - src/gpgpu-sim/gpu-cache.cc
+
+max_rounds: 6
+faithfulness_policy: approximate_ok   # faithful repro NOT required
+
+stage_sequence:
+  - 00_reading
+  - 01_noop
+  - 02_telemetry
+  - 03_would_change
+  - 04_minimal_mechanism
+  - 05_focused_validation
+  # 06_standard_validation — skip unless paper trend requires verification
+  - 07_final_report
+
+allowed_auto_stages:
+  - 00_reading
+  - 01_noop
+  - 02_telemetry
+  - 03_would_change
+
+require_review_stages:
+  - 04_minimal_mechanism
+  - 05_focused_validation
+  - 06_standard_validation
+
+# Expected mechanism chain (preliminary, to be refined in reading stage)
+#
+# PCAL core idea:
+#   Classify threads by cache "priority" (cache-sensitive vs cache-insensitive).
+#   Allocate cache lines preferentially to high-priority threads.
+#   Cache-insensitive threads bypass the L1 or L2 cache.
+#
+# Approximation plan:
+#   Reading stage: identify what "priority" means in terms of observables
+#   (miss rate? reuse distance? warp divergence?).
+#   Telemetry: probe per-warp or per-CTA miss rate or cache footprint.
+#   Would-change: would-bypass counter.
+#   Minimal mechanism: simple miss-based bypass gate.
+preliminary_mechanism_chain:
+  - stage: 02_telemetry
+    description: "probe per-warp L1/L2 miss rate or cache reuse ratio"
+    approximation: "use miss count as priority signal; skip reuse distance analysis"
+  - stage: 03_would_change
+    description: "would-bypass counter: mark warps whose miss rate > threshold"
+    approximation: "global threshold; no per-PC classification"
+  - stage: 04_minimal_mechanism
+    description: "bypass L1 for low-priority (high-miss-rate) warps"
+    approximation: "hit/miss-based; skip adaptive priority update"
+
+known_approximations:
+  - description: "Exact priority classification algorithm unknown before reading"
+    impact: "may need to approximate with miss-rate proxy"
+    fix_direction: "clarify in reading stage"
+  - description: "PCAL may require cache hardware changes beyond GPGPU-Sim's ISA-level access"
+    impact: "may only be implementable as software-visible bypass"
+    fix_direction: "use existing bypass mechanisms in gpu-cache.cc"
+  - description: "Original benchmarks (SPEC, Parboil, etc.) may not all be available"
+    impact: "use cache_policy focused workload set instead"
+
+success_criteria:
+  faithful_reproduction: false
+  approximate_reproduction: true
+  mechanism_chain_reproduced: true
+  feature_off_cycle_unchanged: true
+  feature_on_signal_present: true
+  no_deadlock: true
+  focused_validation_complete: true
+  final_report_created: true
+
+stop_rules:
+  - cache_replacement_change_without_review
+  - src_diff_outside_expected_modules
+  - standard_validation_attempt
+  - hang_or_deadlock
+  - timeout_per_stage_10min
+  - extreme_slowdown_without_review
+
+version_control_plan:
+  base_branch: hrl/paper/pcal-repro-v0
+  tag_each_milestone: true
+  milestone_tags:
+    - pcal-config-noop
+    - pcal-telemetry
+    - pcal-would-bypass
+    - pcal-minimal-mechanism
+    - pcal-focused-validation
+    - pcal-final-report
+
+final_report_policy:
+  do_not_continue_mechanism_refinement: true
+  recommend_next: hrl/idea/cache-policy-experiments-v0

@@ -1,0 +1,127 @@
+queue_name: tomorrow_pcal_mascar
+description: "PCAL and Mascar reading/noop/telemetry — first automated pass"
+
+max_minutes_per_stage: 10
+stop_on_dirty_repo: true
+stop_on_src_diff: true
+stop_on_missing_round_state: false
+
+allow_auto_continue:
+  - reading
+  - noop
+  - telemetry
+  - would_change
+  - final_report
+  - workload_audit
+
+require_human_review:
+  - minimal_mechanism
+  - standard_validation
+  - behavior_change
+
+jobs:
+  # ── PCAL ──────────────────────────────────────────────────────────────────
+
+  - id: pcal_reading
+    paper: pcal
+    stage: 00_reading
+    expected_branch: hrl/paper/pcal-repro-v0
+    risk: low
+    allow_src_change: false
+    stop_after_completion: false
+    requires_gpt_review: false
+    reviewer: none
+    max_minutes: 10
+    round_state_path: experiments/paper-pcal/round_state.yaml
+    expected_outputs:
+      - docs/papers/pcal_repro_plan.md
+      - experiments/paper-pcal/round_state.yaml
+    success_criteria: "round_state.status==complete; no src/ diff"
+    stop_rules:
+      - dirty_repo
+      - unexpected_src_diff
+    description: "PCAL reading stage — literature review, mechanism chain draft"
+
+  - id: pcal_noop
+    paper: pcal
+    stage: 01_noop
+    expected_branch: hrl/paper/pcal-repro-v0
+    risk: low
+    allow_src_change: false
+    stop_after_completion: false
+    requires_gpt_review: false
+    reviewer: none
+    max_minutes: 10
+    round_state_path: experiments/paper-pcal/round_state.yaml
+    expected_outputs:
+      - configs/hrl-repro/pcal_feature_off/gpgpusim.config
+      - experiments/paper-pcal/round_state.yaml
+    success_criteria: "feature_off sim_cycle==baseline (vecadd=5569); all paper_pcal_* == 0"
+    stop_rules:
+      - dirty_repo
+      - feature_off_sim_cycle_changed
+    description: "PCAL no-op config + stats skeleton; feature_off must not change baseline"
+
+  - id: pcal_telemetry_plan
+    paper: pcal
+    stage: 02_telemetry
+    expected_branch: hrl/paper/pcal-repro-v0
+    risk: medium
+    allow_src_change: true
+    stop_after_completion: true
+    requires_gpt_review: true
+    reviewer: none
+    max_minutes: 10
+    round_state_path: experiments/paper-pcal/round_state.yaml
+    expected_outputs:
+      - src/gpgpu-sim/shader.h
+      - src/gpgpu-sim/shader.cc
+      - experiments/paper-pcal/round_state.yaml
+    success_criteria: "feature_off sim_cycle unchanged; paper_pcal_miss_event > 0 on cache-bound workloads"
+    stop_rules:
+      - dirty_repo
+      - feature_off_sim_cycle_changed
+      - unexpected_modules_touched
+    description: "PCAL miss-rate telemetry probe — passive only, baseline must not change"
+
+  # ── Mascar ────────────────────────────────────────────────────────────────
+
+  - id: mascar_reading
+    paper: mascar
+    stage: 00_reading
+    expected_branch: hrl/paper/mascar-repro-v0
+    risk: low
+    allow_src_change: false
+    stop_after_completion: false
+    requires_gpt_review: false
+    reviewer: none
+    max_minutes: 10
+    round_state_path: experiments/paper-mascar/round_state.yaml
+    expected_outputs:
+      - docs/papers/mascar_repro_plan.md
+      - experiments/paper-mascar/round_state.yaml
+    success_criteria: "round_state.status==complete; no src/ diff"
+    stop_rules:
+      - dirty_repo
+      - unexpected_src_diff
+    description: "Mascar reading stage — confirm memory pitstop mechanism, identify MSHR hook"
+
+  - id: mascar_noop
+    paper: mascar
+    stage: 01_noop
+    expected_branch: hrl/paper/mascar-repro-v0
+    risk: low
+    allow_src_change: false
+    stop_after_completion: true
+    requires_gpt_review: true
+    reviewer: none
+    max_minutes: 10
+    round_state_path: experiments/paper-mascar/round_state.yaml
+    expected_outputs:
+      - configs/hrl-repro/mascar_feature_off/gpgpusim.config
+      - experiments/paper-mascar/round_state.yaml
+    success_criteria: "feature_off sim_cycle==baseline (vecadd=5569); all paper_mascar_* == 0"
+    stop_rules:
+      - dirty_repo
+      - feature_off_sim_cycle_changed
+    description: "Mascar no-op config + stats skeleton; stop after to review before telemetry (memory pipeline risk)"

@@ -1,0 +1,108 @@
+paper_key: mascar
+title: "Mascar: Speeding up GPU Warps by Reducing Memory Pitstops"
+authors: "Mahmoud, Jog, Srikantaiah, Narayanan, Xiao"
+venue: "HPCA 2015"
+branch: hrl/paper/mascar-repro-v0
+base_branch: main
+
+mechanism_category: memory-aware warp scheduling / memory saturation detection
+
+target_modules:
+  - src/gpgpu-sim/shader.h
+  - src/gpgpu-sim/shader.cc
+  - src/gpgpu-sim/gpu-sim.cc
+  - src/gpgpu-sim/mem_fetch.h
+
+config_root: configs/hrl-repro
+experiment_root: experiments/paper-mascar
+doc_root: docs/papers
+
+# Mascar core idea: detect when a warp's memory requests are "saturating"
+# the memory subsystem (MSHR full, memory queue stalled). Schedule other
+# warps to run while the saturated warp waits ("memory pitstop"). Resume
+# the saturated warp after the memory queue drains.
+#
+# First-pass approximation: use warp stall signal (ldst unit busy) as
+# saturation proxy. NO pipeline replay or re-execution in first pass.
+mechanism_chain:
+  - name: memory stall probe
+    stage: 02_telemetry
+    knob: gpgpu_enable_mascar_telemetry
+    stat: paper_mascar_mem_stall_event
+    faithful: approximate
+    approximation: "count cycles where warp is stalled on ldst; skip MSHR-level detail"
+  - name: would-deprioritize telemetry
+    stage: 03_would_change
+    knob: gpgpu_enable_mascar_would_deprioritize
+    stat: paper_mascar_would_deprioritize
+    faithful: approximate
+    approximation: "flag warp if stall_streak > threshold; no real scheduling change"
+  - name: memory-saturated warp deprioritization
+    stage: 04_minimal_mechanism
+    knob: gpgpu_enable_mascar_scheduling
+    stat: paper_mascar_skip_count
+    faithful: approximate
+    approximation: "skip warp issue when mem_stall_flag set; streak counter prevents deadlock"
+    critical_constraint: "NO pipeline replay or re-execution"
+
+likely_config_knobs:
+  - gpgpu_enable_mascar
+  - gpgpu_mascar_enable_telemetry
+  - gpgpu_mascar_enable_would_deprioritize
+  - gpgpu_mascar_enable_scheduling
+  - gpgpu_mascar_stall_threshold
+  - gpgpu_mascar_max_skip_streak
+
+likely_stats:
+  - paper_mascar_mem_stall_event
+  - paper_mascar_stall_streak
+  - paper_mascar_would_deprioritize
+  - paper_mascar_skip_count
+
+known_risks:
+  - id: no_pipeline_replay
+    description: "Mascar's 'pitstop' involves re-executing cache-missing loads; NOT implemented in first pass"
+    impact: "significant speedup may be lost; document as known limitation"
+  - id: memory_pipeline_interaction
+    description: "Scheduler changes interact nonlocally with memory pipeline timing"
+    impact: "cycle deltas may be noisy; deadlock risk if skip too aggressive"
+  - id: stall_signal_accuracy
+    description: "ldst stall is a coarse proxy for MSHR saturation"
+    impact: "may over-skip on non-memory-bound workloads"
+
+workload_sets:
+  focused:
+    size: 7
+    workloads: [rodinia_hotspot, rodinia_srad_v2, polybench_fdtd2d, mutual_tiled, polybench_2dconv, strided_access, parboil_histo]
+    purpose: memory-bound workloads likely to show stall signal
+  controls:
+    size: 5
+    workloads: [vecadd, polybench_gemm, mutual_naive, rodinia_backprop, atomic_contention]
+    purpose: compute-bound; should show minimal stall activity
+
+expected_stage_sequence:
+  - 00_reading
+  - 01_noop
+  - 02_telemetry
+  - 03_would_change
+  - 04_minimal_mechanism
+  - 05_focused_validation
+  - 07_final_report
+
+success_rules:
+  - id: feature_off_no_change
+    description: "feature_off sim_cycle must equal baseline; all paper_mascar_* counters = 0"
+    required: true
+  - id: no_pipeline_replay
+    description: "first pass must NOT implement replay or re-execution"
+    required: true
+  - id: no_memory_pipeline_change_without_review
+    description: "any change to memory pipeline ordering requires explicit human review"
+    required: true
+  - id: do_not_require_100_percent_faithful
+    description: "approximate reproduction acceptable; document deviations"
+    required: true
+
+reproduction_status:
+  mechanism_chain: not_started
+  overall: not_started
