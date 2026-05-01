@@ -2392,6 +2392,10 @@ class shader_core_ctx : public core_t {
       m_pcal_miss_event++;
       m_pcal_warp_misses[warp_id]++;
     }
+    // PCAL Phase 3: would-bypass decision based on current priority
+    if (m_config->gpgpu_pcal_enable_would_bypass &&
+        m_pcal_warp_low_priority[warp_id])
+      m_pcal_would_bypass++;
     unsigned window_size = m_config->gpgpu_pcal_window_size;
     if (window_size == 0) window_size = 64;
     if (m_pcal_warp_accesses[warp_id] >= window_size) {

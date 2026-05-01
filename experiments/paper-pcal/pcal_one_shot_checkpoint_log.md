@@ -45,3 +45,30 @@ append-only — 每个 Phase 结束时追加，10 分钟触发时追加，Phase 
 - 下一步: Phase 3 would-change bypass telemetry
 
 ---
+
+## Checkpoint: Phase 3 would-change bypass telemetry
+
+- Phase: Phase 3
+- 当前状态: 完成 ✓，待 commit
+- 已完成: pcal_probe_access() 添加 would_bypass 判断（3 行）；5 workload 验证
+- 正在做: N/A
+- 修改文件: src/gpgpu-sim/shader.h; configs/hrl-repro/SM7_QV100_pcal_would_change_on/
+- 已运行验证: 5 workloads would_bypass 有信号；bypass_count=0；sim_cycle 不变
+- 当前风险: 无（仍是 passive telemetry）
+- 是否建议继续: 是
+- 下一步: Phase 4 minimal bypass mechanism
+
+---
+
+## Checkpoint: Phase 4 Risk Pre-check
+
+- Phase: Phase 4（进入前）
+- 当前状态: 决定进入 Phase 4
+- hook 点: memory_cycle() bypassL1D 标志（shader.cc ~2487）
+- 计划改文件: shader.h（2 小方法）、shader.cc（3-5 行）
+- cache internals 是否涉及: 否（不改 replacement/fill/tag/MSHR）
+- 死锁风险: 低（bypass 不阻塞 warp；请求仍通过 L2/DRAM 完成）
+- 是否建议继续: 是（2 文件，完全可回退）
+- 下一步: 实现 Phase 4 bypass
+
+---

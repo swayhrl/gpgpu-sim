@@ -368,7 +368,8 @@ cycle 方向相反（应减少）原因：tiny workload，throttle 阻止有效 
 - [x] PCAL-Phase0：preflight 通过，reading 产物确认
 - [x] PCAL-Phase1：no-op config + stats 完成（7 knobs + 9 stats；feature_off/noop 均不改 cycle；tag 待定）
 - [x] PCAL-Phase2：cache pressure telemetry 完成（window_size=8；4 workloads 信号合理；sim_cycle 不变）
-- [ ] **下一步**：PCAL Phase 3 would-change bypass telemetry
+- [x] PCAL-Phase3：would-change bypass telemetry 完成（5 workloads；would_bypass 有信号；behavior 不变）
+- [ ] **下一步**：PCAL Phase 4 minimal bypass mechanism
 
 ---
 

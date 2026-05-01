@@ -1,8 +1,8 @@
 # PCAL Reproduction Plan
 
-**Round**: Phase 2 (cache_pressure_telemetry) 完成
+**Round**: Phase 3 (would_change) 完成
 **Date**: 2026-05-01
-**状态**: Phase 2 完成 ✓，进入 Phase 3 would-change
+**状态**: Phase 3 完成 ✓，进入 Phase 4 minimal mechanism
 
 ---
 

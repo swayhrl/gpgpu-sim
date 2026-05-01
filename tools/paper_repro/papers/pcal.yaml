@@ -105,7 +105,7 @@ reproduction_status:
   overall: in_progress
   phase1_noop_config: complete
   phase2_telemetry: complete
-  phase3_would_change: not_started
+  phase3_would_change: complete
   phase4_minimal_mechanism: not_started
   phase5_focused_validation: not_started
   phase6_final_report: not_started

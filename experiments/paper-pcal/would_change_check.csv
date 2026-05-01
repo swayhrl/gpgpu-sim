@@ -1,0 +1,11 @@
+workload,config,sim_cycle,access_event,would_bypass,would_bypass_rate_pct,bypass_count,behavior_unchanged,pass
+vecadd,feature_off,5569,96,0,0,0,true,PASS
+vecadd,would_change_on,5569,96,32,33,0,true,PASS
+rodinia_hotspot,feature_off,6931,2576,0,0,0,true,PASS
+rodinia_hotspot,would_change_on,6931,2576,1106,43,0,true,PASS
+rodinia_srad_v2_k1,feature_off,8236,4352,0,0,0,true,PASS
+rodinia_srad_v2_k1,would_change_on,8236,4352,3328,76,0,true,PASS
+polybench_fdtd2d_all,feature_off,35681_cumulative,14450,0,0,0,true,PASS
+polybench_fdtd2d_all,would_change_on,35681_cumulative,14450,9352,65,0,true,PASS
+mutual_tiled,feature_off,7479,640,0,0,0,true,PASS
+mutual_tiled,would_change_on,7479,640,384,60,0,true,PASS
