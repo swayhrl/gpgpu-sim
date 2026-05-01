@@ -1,6 +1,6 @@
 paper: mascar
-round: Phase 4
-stage: minimal_scheduling_policy
+round: Phase 5
+stage: focused_validation
 status: complete
 source_changed: true
 source_files_changed:

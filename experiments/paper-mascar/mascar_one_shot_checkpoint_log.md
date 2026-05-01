@@ -135,3 +135,31 @@ append-only log — 每个 Phase 结束时追加一次。
 - 根本原因分析：config 有重复 option 行，GPGPU-Sim option_parser 后值覆盖前值 → enable_scheduling=0 → skip gate always false
 - 是否建议继续: 是，进入 Phase 5 focused validation
 - 下一步: Phase 5 focused validation
+
+---
+
+## Checkpoint: Phase 5 — Focused Validation
+
+- Phase: 5 (Focused Validation)
+- 当前状态: complete
+- 已完成:
+  - 9 workloads × {noop_off, policy_on} = 18 runs
+  - 所有 workload 无 deadlock ✓
+  - skip/allow ratio = 4 = max_skip_streak（全部 workload）✓
+  - BFS skip_count=0（预期：BFS 内存压力低）✓
+- 详细结果:
+  - vecadd: 5569→5560 (-0.16%), skip=44, allow=11
+  - hotspot: 6931→6923 (-0.12%), skip=8300, allow=2075
+  - srad_v2: 15926→15918 (-0.05%), skip=5516, allow=1379
+  - bfs: 136110→136110 (0%), skip=0, allow=0
+  - strided_access: 5825→5821 (-0.07%), skip=44, allow=11
+  - fdtd2d: 35681→35720 (+0.11%), skip=1728, allow=432
+  - 2dconv: 6652→6651 (-0.02%), skip=2984, allow=746
+  - mutual_tiled: 7479→7472 (-0.09%), skip=216, allow=54
+  - parboil_histo: 35472→35519 (+0.13%), skip=13440, allow=3360
+- 修改文件:
+  - experiments/paper-mascar/focused_validation_check.csv (new)
+  - docs/papers/mascar_round_05_focused_validation.md (new)
+  - experiments/paper-mascar/round_state.yaml (更新)
+- 是否建议继续: 是，进入 Phase 6 final report
+- 下一步: Phase 6 final reproduction report
