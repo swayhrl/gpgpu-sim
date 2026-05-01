@@ -179,7 +179,7 @@ All stats gated by `gpgpu_enable_ccws`. Prefix: `paper_ccws_`.
 | **AF** | Pre-scoreboard gate: moved gate before checkCollision; inc=5/20/30 still 0 blocks; root cause revised: VTA hits too dispersed, per-warp LLS never exceeds cutoff/nw | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AF) | Medium |
 | **AG** | Can-Issue cutoff audit: confirmed cutoff uses max_warps(64) not active_warps(~8); inactive warp base_score consumes 87.5% of cutoff budget; would_can_issue=false only on inactive slots | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AG) | None |
 | **AH** | Fix cutoff: attempted active-warp cutoff (not_completed/warp_size); caused severe over-gating (+64–767% cycle) on tiny workloads; **reverted**; accepted approximate implementation (nw=max_warps with comment); source_changed=false | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AH) | Medium |
-| **AK** | Final reproduction report: mechanism chain confirmed; approximation limitations documented; cycle direction wrong due to cutoff approx; direct final report recommended; FINAL-INFRA next | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AK) | None |
+| **FINAL-INFRA** | Paper reproduction automation scaffold: tools/paper_repro/ created; check_repo_clean.sh + make_round_prompt.py + stage templates + ccws.yaml; ready for second paper | `hrl/paper/ccws-repro-v0` | ✓ Done | None |
 | **S9** | K_THROTTLE sweep; result notes | `hrl/paper/ccws-repro-v0` | — | Low |
 
 **Round T note**: `GPGPUSIM_CONFIG_OVERRIDE` env var added to `run_one.sh`; config override confirmed
@@ -283,6 +283,12 @@ Recommendation: direct final report; standard validation not recommended with cu
 functional). Faithful reproduction partial: miss-side VTA, max_warps cutoff, static increment.
 Cycle direction wrong in conservative config. Standard validation not recommended. FINAL-INFRA
 recommended as next step. Self-developed cache policy to open hrl/idea/cache-policy-experiments-v0.
+
+**FINAL-INFRA note**: Paper reproduction automation scaffold created at tools/paper_repro/.
+Includes: check_repo_clean.sh (branch/status/tag check), make_round_prompt.py (stage prompt
+generator), stage_guard.sh (checkpoint reminder), 8 stage templates (00_reading to 07_final_report),
+ccws.yaml (CCWS config as example), 3 schema files. Scripts verified runnable. For second paper:
+copy schemas/paper_config.example.yaml to papers/<key>.yaml, then run make_round_prompt.py.
 
 **Rules**:
 - Feature flag **always default 0**.

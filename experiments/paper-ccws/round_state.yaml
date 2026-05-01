@@ -1,49 +1,43 @@
-round: AK
-stage: final_report
+round: FINAL-INFRA
+stage: paper_repro_automation_scaffold
 status: complete
 date: 2026-05-01
 branch: hrl/paper/ccws-repro-v0
 
 source_changed: false
 experiments_run: false
-final_report_created: true
+scaffold_created: true
 
-mechanism_chain_reproduced: true
-faithful_reproduction_status: >
-  Partial. VTA is miss-side approximation (not eviction-based).
-  Can-Issue cutoff uses max_warps=64 (not active_warps~8).
-  LLDS uses static increment (not dynamic VTAHits/InstIssued ratio).
-  Cycle direction wrong in conservative config (+2-11% instead of decrease).
+scaffold_summary:
+  directory: tools/paper_repro/
+  files_created:
+    - tools/paper_repro/README.md
+    - tools/paper_repro/check_repo_clean.sh
+    - tools/paper_repro/make_round_prompt.py
+    - tools/paper_repro/stage_guard.sh
+    - tools/paper_repro/papers/ccws.yaml
+    - tools/paper_repro/templates/00_reading.md
+    - tools/paper_repro/templates/01_noop.md
+    - tools/paper_repro/templates/02_telemetry.md
+    - tools/paper_repro/templates/03_would_change.md
+    - tools/paper_repro/templates/04_minimal_mechanism.md
+    - tools/paper_repro/templates/05_focused_validation.md
+    - tools/paper_repro/templates/06_standard_validation.md
+    - tools/paper_repro/templates/07_final_report.md
+    - tools/paper_repro/schemas/round_state.example.yaml
+    - tools/paper_repro/schemas/paper_config.example.yaml
+    - tools/paper_repro/schemas/result_csv_fields.md
+  scripts_verified:
+    check_repo_clean: "runs correctly; detects untracked files"
+    make_round_prompt: "outputs formatted prompt with paper config + stage template"
+    stage_guard: "prints checkpoint reminder template"
 
-focused_validation_summary:
-  conservative_inc1_th100:
-    workloads_with_gating: [rodinia_hotspot, rodinia_srad_v2, polybench_fdtd2d, mutual_tiled, rodinia_bfs]
-    workloads_no_gating: [strided_access, page_stride_access]
-    cycle_delta: "+2% to +11%"
-    cycle_direction: wrong (increases instead of decreases)
-  aggressive_inc50_th100:
-    cycle_delta: "+390% to +1464%"
-    assessment: severe over-gating; unusable
-  th99:
-    result: deadlock
-    reason: threshold < lls_base_score=100 gates all warps at init
-
-standard_validation_recommendation: >
-  Not recommended. Cycle direction wrong with current approximation.
-  Standard validation would produce misleading results.
-
-recommend_next:
-  primary: FINAL-INFRA (automate per-paper reproduction framework)
-  optional_faithful_ccws:
-    - eviction-based VTA (add warp_id to cache_block_t)
-    - active-wavefront cutoff with larger workloads
-    - dynamic LLDS calculation
-  self_developed: open hrl/idea/cache-policy-experiments-v0 (do not mix into paper branch)
+recommend_next: >
+  Open hrl/idea/cache-policy-experiments-v0 for self-developed cache policy experiments,
+  OR start second paper reproduction using tools/paper_repro/ scaffold.
+  For second paper: copy schemas/paper_config.example.yaml to papers/<key>.yaml,
+  run make_round_prompt.py --paper <key> --stage 00_reading.
 
 commit_recommended: true
-suggested_commit: "ccws: add final reproduction report"
-suggested_tag: ccws-final-report
-
-new_files:
-  - docs/papers/ccws_final_reproduction_report.md
-  - experiments/paper-ccws/final_summary.csv
+suggested_commit: "tools: add paper reproduction automation scaffold"
+suggested_tag: paper-repro-scaffold-v0

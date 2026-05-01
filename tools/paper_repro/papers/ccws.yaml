@@ -1,0 +1,104 @@
+paper_key: ccws
+title: "Cache-Conscious Wavefront Scheduling"
+authors: "Rogers, O'Connor, Aamodt"
+venue: "MICRO 2012"
+branch: hrl/paper/ccws-repro-v0
+base_branch: hrl/repro-infra-v0
+final_tag: ccws-final-report
+
+target_modules:
+  - src/gpgpu-sim/shader.h
+  - src/gpgpu-sim/shader.cc
+  - src/gpgpu-sim/gpu-sim.cc
+
+config_root: configs/hrl-repro
+experiment_root: experiments/paper-ccws
+doc_root: docs/papers
+
+mechanism_chain:
+  - name: VTA-like probe
+    stage: 02_telemetry
+    knob: gpgpu_ccws_enable_vta_probe
+    stat: paper_ccws_vta_hit
+    faithful: false
+    approximation: "miss-side (intra-warp repeated miss), not eviction-based"
+  - name: LLS score
+    stage: 02_telemetry
+    knob: gpgpu_ccws_enable_lls_score
+    stat: paper_ccws_lls_score_update
+    faithful: partial
+    approximation: "static hit_increment instead of dynamic LLDS formula"
+  - name: would-gate telemetry
+    stage: 03_would_change
+    knob: gpgpu_ccws_enable_would_gate
+    stat: paper_ccws_would_gate_block
+    faithful: partial
+    approximation: "nw=max_warps instead of active_warps"
+  - name: load-only gating
+    stage: 04_minimal_mechanism
+    knob: gpgpu_ccws_enable_load_gating
+    stat: paper_ccws_load_gate_block
+    faithful: partial
+    approximation: "same cutoff approximation as would-gate"
+
+known_approximations:
+  - id: miss_side_vta
+    description: "VTA uses intra-warp repeated miss instead of inter-warp eviction detection"
+    impact: "signal direction correct but semantics differ from paper"
+    fix: "add warp_id to cache_block_t and evicted_block_info"
+  - id: max_warps_cutoff
+    description: "CumLLSCutoff uses max_warps_per_shader=64 instead of active_warps~8"
+    impact: "cutoff 8x too large; gate fires too late; cycle direction wrong"
+    fix: "use not_completed/warp_size but requires larger workloads to avoid over-gating"
+  - id: tiny_workload
+    description: "64x64 workloads have 2-8 warps/SM, not representative of paper HCS workloads"
+    impact: "active-warp cutoff fix causes over-gating; standard validation misleading"
+    fix: "use 256x256 or larger workloads"
+  - id: static_increment
+    description: "LLS uses static lls_hit_increment instead of dynamic LLDS formula"
+    impact: "no self-adaptive gating strength; inc=1 weak, inc=50 over-gates"
+    fix: "implement VTAHitsTotal/InstIssuedTotal ratio calculation"
+
+workload_sets:
+  quick:
+    size: 7
+    workloads: [vecadd, strided_access, page_stride_access, atomic_contention, mutual_tiled, polybench_2dconv, rodinia_hotspot]
+    purpose: smoke test; feature_off must pass before any feature_on
+  focused:
+    size: 7
+    workloads: [rodinia_hotspot, rodinia_srad_v2, polybench_fdtd2d, strided_access, page_stride_access, mutual_tiled, rodinia_bfs]
+    purpose: mechanism signal validation
+  standard:
+    size: 13
+    workloads: all_ready_workloads
+    purpose: full regression; only after focused passes
+
+success_rules:
+  - id: feature_off_no_change
+    description: "feature_off sim_cycle must equal baseline; all paper_ccws_* counters = 0"
+    required: true
+  - id: no_src_change_for_validation
+    description: "validation rounds must not modify src/"
+    required: true
+  - id: no_standard_before_focused
+    description: "standard validation only after focused validation passes"
+    required: true
+  - id: round_state_required
+    description: "every round must update round_state.yaml before ending"
+    required: true
+  - id: threshold_ge_base_score
+    description: "lg_score_threshold must be >= lls_base_score to avoid deadlock"
+    required: true
+    note: "th=99 with base_score=100 causes all warps gated at init"
+
+reproduction_status:
+  mechanism_chain: reproduced
+  faithful_vta: false
+  faithful_cutoff: false
+  dynamic_llds: false
+  real_load_gating: true
+  focused_validation: complete
+  standard_validation: not_recommended
+  cycle_direction_correct: false
+  final_report: complete
+  overall: approximate_reproduction

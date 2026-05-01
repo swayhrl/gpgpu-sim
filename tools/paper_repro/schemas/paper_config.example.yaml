@@ -1,0 +1,65 @@
+paper_key: <key>           # short identifier, e.g. ccws, daws, pcal
+title: ""
+authors: ""
+venue: ""                  # e.g. MICRO 2012
+branch: hrl/paper/<key>-repro-v0
+base_branch: hrl/repro-infra-v0
+final_tag: <key>-final-report
+
+target_modules: []         # src/ files expected to be modified
+
+config_root: configs/hrl-repro
+experiment_root: experiments/paper-<key>
+doc_root: docs/papers
+
+mechanism_chain: []        # list of {name, stage, knob, stat, faithful, approximation}
+
+known_approximations: []   # list of {id, description, impact, fix}
+
+workload_sets:
+  quick:
+    size: 7
+    workloads: []
+    purpose: smoke test
+  focused:
+    size: 7
+    workloads: []
+    purpose: mechanism signal validation
+  standard:
+    size: 13
+    workloads: all_ready_workloads
+    purpose: full regression
+
+stage_sequence:
+  - 00_reading
+  - 01_noop
+  - 02_telemetry
+  - 03_would_change
+  - 04_minimal_mechanism
+  - 05_focused_validation
+  - 06_standard_validation   # only if focused passes with correct cycle direction
+  - 07_final_report
+
+success_rules:
+  - id: feature_off_no_change
+    description: "feature_off sim_cycle must equal baseline; all paper_* counters = 0"
+    required: true
+  - id: no_src_change_for_validation
+    description: "validation rounds must not modify src/"
+    required: true
+  - id: no_standard_before_focused
+    description: "standard validation only after focused validation passes"
+    required: true
+  - id: round_state_required
+    description: "every round must update round_state.yaml before ending"
+    required: true
+
+reproduction_status:
+  mechanism_chain: null
+  faithful_vta: null
+  faithful_cutoff: null
+  real_gating: null
+  focused_validation: null
+  standard_validation: null
+  final_report: null
+  overall: null

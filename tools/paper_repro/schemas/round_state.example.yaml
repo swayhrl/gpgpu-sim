@@ -1,0 +1,37 @@
+round: <round_id>          # e.g. S, T, V, W, X, Y, Z, AA, AB, AI, AK, FINAL-INFRA
+stage: <stage_name>        # e.g. noop_config, telemetry, would_gate, load_gating, focused_validation
+status: complete           # pending / in_progress / complete / blocked
+date: YYYY-MM-DD
+branch: hrl/paper/<key>-repro-v0
+
+source_changed: false      # true if any src/ file was modified
+experiments_run: false     # true if any workload was run
+
+# --- experiment details (if experiments_run: true) ---
+workloads_run: []
+configs_run: []
+
+# --- key findings ---
+key_findings: []           # bullet list of non-obvious discoveries
+
+# --- signal summary (for mechanism rounds) ---
+main_signal_present: null  # true/false/null
+sim_cycle_unchanged: null  # true/false/null (for telemetry rounds)
+feature_off_pass: null     # true/false
+
+# --- problems encountered ---
+problems: []               # list of blockers or unexpected behaviors
+
+# --- approximations accepted (if any) ---
+approximations_accepted: []
+
+# --- next step ---
+recommend_next: ""         # one sentence
+
+# --- commit guidance ---
+commit_recommended: true
+suggested_commit: ""
+suggested_tag: ""
+
+# --- new files created ---
+new_files: []

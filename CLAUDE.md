@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-05-01 — Round AK complete; CCWS final reproduction report written; mechanism chain reproduced; approximate VTA + cutoff limitations documented; cycle direction wrong; FINAL-INFRA recommended as next step._
+_Last updated: 2026-05-01 — FINAL-INFRA complete; tools/paper_repro/ scaffold 建立；check_repo_clean.sh + make_round_prompt.py + 8 stage templates + ccws.yaml；后续论文复现使用 paper.yaml + stage templates + round_state.yaml 流程。_
 
 ## Git 工作流
 
@@ -229,7 +229,8 @@ Four days of deep read-through of the PTX functional simulation → timing model
 - [x] **Round AH**：尝试 active-warp cutoff 修复（`not_completed/warp_size`）；tiny workload 严重过度 gating（srad_v2 64×64 → ~2 warps/SM → cutoff=200 → +64–767% cycle）；**已 revert**；接受近似实现（`nw=max_warps` 加注释说明）；`source_changed=false`；分支已就绪进入 focused validation
 - [x] **Round AI**：Focused validation — 7 workload × conservative(inc=1,th=100) / aggressive(inc=50,th=100)；th=99 全部 deadlock（threshold < base_score）；conservative：hotspot/srad_v2/fdtd2d/mutual_tiled/bfs 出现 lg_block>0，cycle +2–11%（方向相反，因 cutoff 近似）；aggressive：严重过度 gating（+390–1464%）；机制链路 VTA→LLS→gate 确认正确；建议直接进入 final report
 - [x] **Round AK**：CCWS final reproduction report 完成；机制链路复现成功；近似实现限制（miss-side VTA / max_warps cutoff / 静态 increment）明确文档化；cycle 方向相反；不建议 standard validation；建议进入 FINAL-INFRA
-- [ ] **FINAL-INFRA**：将 CCWS 复现流程沉淀为自动化逐篇复现框架；标准化 round_state.yaml schema；自动化 feature_off/on 验证脚本；之后可开 `hrl/idea/cache-policy-experiments-v0`
+- [x] **FINAL-INFRA**：`tools/paper_repro/` scaffold 建立；`check_repo_clean.sh`（branch/status/tag 检查）+ `make_round_prompt.py`（stage prompt 生成）+ `stage_guard.sh`（checkpoint 提示）+ 8 个 stage templates + `papers/ccws.yaml` + 3 个 schema 文件；脚本均可运行；后续论文复现使用此框架
+- [ ] **下一步**：开 `hrl/idea/cache-policy-experiments-v0` 做自研 cache policy，或选第二篇论文用 `tools/paper_repro/` 框架复现
 
 ## Workload Management Framework（Round B 新增）
 
