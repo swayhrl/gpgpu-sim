@@ -173,6 +173,7 @@ All stats gated by `gpgpu_enable_ccws`. Prefix: `paper_ccws_`.
 | **Z** | Post-gating validation: 7 workloads × 3 thresholds; signal analysis | `hrl/paper/ccws-repro-v0` | ✓ Done (Round Z) | Low |
 | **AA** | Independent `lg_score_threshold` knob; decouple from `lls_base_score`; tiny validation | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AA) | Low |
 | **AB** | Focused threshold validation: 7 workloads × th99/100/101; signal analysis | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AB) | Low |
+| **AC** | LLS hit-increment sensitivity: inc1/10/50 × 7 workloads; find working range | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AC) | Low |
 | **S8** | Standard / `cache_focus` set validation | `hrl/paper/ccws-repro-v0` | — | Low |
 | **S9** | K_THROTTLE sweep; result notes | `hrl/paper/ccws-repro-v0` | — | Low |
 
@@ -233,6 +234,11 @@ shows gating (lg_block=5 for th99/100, 0 for th101). Threshold trend monotone an
 weak because tiny workloads have few active warps and `lls_hit_increment=1` causes slow score
 accumulation. Recommendation before standard validation: increase `lls_hit_increment` (e.g. 10–50)
 to amplify LLS score differentiation. Current mechanism is functionally correct.
+
+**Round AC note**: LLS hit-increment sensitivity on 7 workloads × inc1/10/50 (th100) + inc10 (th101).
+inc=1: only hotspot 5 blocks (weak). inc=10: 0 blocks all workloads (timing issue with tiny kernels).
+inc=50: srad_v2 +45% cycle, fdtd2d +61% cycle (over-gating). Recommended next: try inc=5 or inc=20
+for moderate signal before standard validation. inc=50 is too aggressive for tiny workloads.
 
 **Rules**:
 - Feature flag **always default 0**.

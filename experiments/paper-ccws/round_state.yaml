@@ -1,5 +1,5 @@
-round: AB
-stage: focused_threshold_validation
+round: AC
+stage: hit_increment_validation
 status: complete
 date: 2026-05-01
 branch: hrl/paper/ccws-repro-v0
@@ -15,36 +15,43 @@ workloads_run:
   - polybench_fdtd2d
   - rodinia_bfs
 
-threshold_values: [99, 100, 101]
-total_runs: 28  # 7 workloads x 4 configs (off + th99/100/101)
+hit_increment_values: [1, 10, 50]
+threshold_values: [100, 101]
+total_runs: 35  # 7 workloads x 5 configs (off + inc1/10/50 th100 + inc10 th101)
 all_pass: true
 
 workloads_with_load_gate_block:
-  - workload: rodinia_hotspot
-    th99: 5
-    th100: 5
-    th101: 0
+  inc1_th100:
+    rodinia_hotspot: 5
+  inc10_th100: {}  # 0 blocks all workloads
+  inc50_th100:
+    rodinia_srad_v2: 34557
+    polybench_fdtd2d: 453979
+  inc10_th101: {}  # 0 blocks all workloads
 
-threshold_trend_summary: >
-  th99 == th100 (5 blocks) > th101 (0 blocks). Monotone and correct.
-  Boundary at cutoff 6400 (th100) vs 6464 (th101). hotspot LLS prefix
-  sum falls in [6400, 6464) range at gate-check time.
+signal_strength_summary:
+  inc1: weak (only hotspot 5 blocks; tiny kernel timing)
+  inc10: none (0 blocks; blocked warps have no load ready at gate-check time)
+  inc50: over-gating (srad_v2 +45% cycle, fdtd2d +61% cycle)
 
-signal_weakness_root_cause: >
-  lls_hit_increment=1 causes slow score accumulation. Tiny workloads
-  have few active warps. Most workloads spread VTA hits across many
-  warps/cycles, so no single warp exceeds cutoff at any given cycle.
+sim_cycle_changes:
+  inc50_srad_v2: +7224 (+45%)
+  inc50_fdtd2d: +21730 (+61%)
+  all_others: 0
 
 recommend_next: >
-  Before standard validation, increase lls_hit_increment to 10-50 to
-  amplify LLS score differentiation. This should cause more workloads
-  to show gating and make threshold sweep more discriminating.
-  Current mechanism is functionally correct.
+  Try lls_hit_increment=5 or lls_hit_increment=20 as intermediate values.
+  Target: moderate gating signal (cycle change <10%) on stencil workloads.
+  inc=50 is too aggressive; inc=10 has timing issues with tiny kernels.
+  After finding working increment, proceed to standard validation.
 
 commit_recommended: true
-suggested_commit: "ccws: validate focused load-gating thresholds"
-suggested_tag: ccws-focused-threshold-validation
+suggested_commit: "ccws: validate LLS hit-increment sensitivity"
+suggested_tag: ccws-hit-increment-validation
 
 new_files:
-  - experiments/paper-ccws/focused_threshold_validation.csv
-  - docs/papers/ccws_round_ab_focused_threshold_validation.md
+  - experiments/paper-ccws/hit_increment_validation.csv
+  - docs/papers/ccws_round_ac_hit_increment_validation.md
+  - configs/hrl-repro/SM7_QV100_ccws_load_gate_inc10_th100/
+  - configs/hrl-repro/SM7_QV100_ccws_load_gate_inc50_th100/
+  - configs/hrl-repro/SM7_QV100_ccws_load_gate_inc10_th101/
