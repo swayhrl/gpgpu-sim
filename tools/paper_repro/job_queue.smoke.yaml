@@ -1,0 +1,45 @@
+queue_name: smoke_test
+description: "AUTO-SUPERVISOR-1: L3-lite supervisor smoke test (3 jobs)"
+
+max_minutes_per_stage: 10
+stop_on_dirty_repo: true
+stop_on_src_diff: true
+stop_on_missing_round_state: false   # reading stage won't have round_state yet
+
+allow_auto_continue:
+  - reading
+  - noop
+  - telemetry
+  - would_change
+  - final_report
+  - workload_audit
+
+require_human_review:
+  - minimal_mechanism
+  - standard_validation
+  - behavior_change
+
+jobs:
+  - id: safe_reading
+    paper: daws
+    stage: 00_reading
+    description: "Safe reading stage — no code changes, should be continue"
+    round_state_path: experiments/paper-daws/round_state.yaml
+    expected_status: complete
+    notes: "reading is in allow_auto_continue; expected action: continue"
+
+  - id: safe_final_report
+    paper: daws
+    stage: 07_final_report
+    description: "Safe final_report stage — doc only, should be continue"
+    round_state_path: experiments/paper-daws/round_state.yaml
+    expected_status: complete
+    notes: "final_report is in allow_auto_continue; expected action: continue"
+
+  - id: blocked_minimal_mechanism
+    paper: daws
+    stage: 04_minimal_mechanism
+    description: "High-risk stage — must be blocked by stop rules"
+    round_state_path: experiments/paper-daws/round_state.yaml
+    expected_status: complete
+    notes: "minimal_mechanism is in require_human_review; expected action: blocked_high_risk_stage"
