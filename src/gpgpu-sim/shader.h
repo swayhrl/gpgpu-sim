@@ -2412,6 +2412,18 @@ class shader_core_ctx : public core_t {
     m_mascar_stall_streak[warp_id] = 0;
   }
 
+  // Mascar Phase 3: would-deprioritize check — passive, no scheduling change.
+  // Fires when stall_streak >= 2 (warp has had 2+ consecutive mem stalls):
+  // lower sensitivity than Phase 4 threshold to confirm signal presence.
+  void mascar_check_would_deprioritize(unsigned warp_id) {
+    if (!m_config->gpgpu_enable_mascar ||
+        !m_config->gpgpu_mascar_enable_would_deprioritize)
+      return;
+    if (warp_id >= m_mascar_stall_streak.size()) return;
+    if (m_mascar_stall_streak[warp_id] >= 2)
+      m_mascar_would_deprioritize++;
+  }
+
   void get_icnt_power_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
 
   // debug:

@@ -1,31 +1,38 @@
 paper: mascar
-round: Phase 2
-stage: memory_pressure_telemetry
+round: Phase 3
+stage: would_change_telemetry
 status: complete
 source_changed: true
 source_files_changed:
   - src/gpgpu-sim/shader.h
   - src/gpgpu-sim/shader.cc
 experiments_run: true
-workloads_run: [vecadd, rodinia_hotspot, rodinia_srad_v2, rodinia_bfs, strided_access]
-configs_run: [mascar_noop_off, mascar_telemetry_on]
+workloads_run: [vecadd, rodinia_hotspot, rodinia_srad_v2, rodinia_bfs, strided_access, polybench_fdtd2d]
+configs_run: [mascar_noop_off, mascar_would_change_on]
 mechanism_chain:
-  - memory stall probe: COMPLETE (mascar_record_mem_stall in scheduler_unit::cycle)
-  - pitstop detection: PARTIAL (stall_streak counter active, threshold=8 rarely reached)
-  - would-deprioritize telemetry: not_started
+  - memory stall probe: COMPLETE
+  - pitstop detection: PARTIAL (stall_streak active, pitstop_event=0 at threshold=8)
+  - would-deprioritize telemetry: COMPLETE (streak>=2, clear signal)
   - scheduler skip: not_started
-telemetry_results:
-  rodinia_hotspot: mem_stall_event=12150 (HIGH signal)
-  rodinia_srad_v2: mem_stall_event=3989 (MED signal)
-  vecadd: mem_stall_event=57 (LOW)
-  strided_access: mem_stall_event=57 (LOW)
-  rodinia_bfs: mem_stall_event=1 (NEAR-ZERO)
-highest_risk_change: Phase 4 scheduler skip logic (deadlock risk if not guarded)
+would_deprioritize_results:
+  rodinia_hotspot: would_deprioritize=10025 (HIGH signal)
+  rodinia_srad_v2: would_deprioritize=3237 (MED signal)
+  polybench_fdtd2d: would_deprioritize=1936 (MED signal)
+  vecadd: would_deprioritize=44 (LOW)
+  strided_access: would_deprioritize=44 (LOW)
+  rodinia_bfs: would_deprioritize=0 (near-zero, expected)
+phase4_feasibility: safe
+  - hook_point: scheduler_unit::cycle() m_mem_out false branch
+  - files_to_modify: shader.h + shader.cc only
+  - no_memory_pipeline_change: true
+  - deadlock_prevention: max_skip_streak counter (default 4)
+highest_risk_change: Phase 4 scheduler skip (guarded by max_skip_streak)
 known_hard_stop: pipeline replay / re-execution not implemented
-recommend_next: Phase 3 would-change telemetry
+recommend_next: Phase 4 minimal scheduling policy
 feature_off_baseline:
   vecadd: 5569
   rodinia_hotspot: 6931
   rodinia_bfs: 6665
   rodinia_srad_v2: 8236
   strided_access: 5825
+  polybench_fdtd2d: 5840

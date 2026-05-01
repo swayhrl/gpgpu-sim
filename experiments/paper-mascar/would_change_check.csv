@@ -1,0 +1,9 @@
+workload,config,phase,sim_cycle,baseline_cycle,cycle_delta,paper_mascar_mem_stall_event,paper_mascar_would_deprioritize,paper_mascar_skip_count,pass,notes
+vecadd,mascar_noop_off,3,5569,5569,0,0,0,0,PASS,feature_off regression
+rodinia_hotspot,mascar_noop_off,3,6931,6931,0,0,0,0,PASS,feature_off regression
+vecadd,mascar_would_change_on,3,5569,5569,0,57,44,0,PASS,cycle unchanged; low pressure
+rodinia_hotspot,mascar_would_change_on,3,6931,6931,0,12150,10025,0,PASS,cycle unchanged; HIGH would_deprioritize
+rodinia_srad_v2,mascar_would_change_on,3,8236,8236,0,3989,3237,0,PASS,cycle unchanged; MED would_deprioritize
+rodinia_bfs,mascar_would_change_on,3,6665,6665,0,1,0,0,PASS,cycle unchanged; near-zero signal (expected)
+strided_access,mascar_would_change_on,3,5825,5825,0,57,44,0,PASS,cycle unchanged; low pressure
+polybench_fdtd2d,mascar_would_change_on,3,5840,5840,0,2400,1936,0,PASS,cycle unchanged; MED would_deprioritize

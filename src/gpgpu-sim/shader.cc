@@ -1428,6 +1428,8 @@ void scheduler_unit::cycle() {
               } else {
                 // Mascar Phase 2: memory pipeline full → record stall event
                 m_shader->mascar_record_mem_stall(warp_id);
+                // Mascar Phase 3: would-deprioritize check (no actual skip)
+                m_shader->mascar_check_would_deprioritize(warp_id);
               }
             } else {
               // This code need to be refactored

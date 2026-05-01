@@ -84,3 +84,28 @@ append-only log — 每个 Phase 结束时追加一次。
 - 当前风险: 无
 - 是否建议继续: 是，进入 Phase 3
 - 下一步: Phase 3 would-change telemetry
+
+---
+
+## Checkpoint: Phase 3 — Would-Change Telemetry
+
+- Phase: 3 (Would-Change Scheduling Telemetry)
+- 当前状态: complete
+- 已完成:
+  - mascar_check_would_deprioritize 方法添加（shader.h）
+  - 触发条件：stall_streak >= 2（比 Phase 4 threshold=8 更敏感）
+  - scheduler hook 更新（shader.cc：mem stall else 分支追加 would-check）
+  - would_change_on config 创建
+  - 编译通过
+  - 所有 6 workload cycle 不变 ✓
+  - would_deprioritize: hotspot=10025, srad_v2=3237, fdtd2d=1936
+  - skip_count=0（无真实 policy）✓
+  - Phase 4 可行性确认：hook 点明确，仅 shader.h+cc，no memory pipeline change
+- 修改文件:
+  - src/gpgpu-sim/shader.h (mascar_check_would_deprioritize)
+  - src/gpgpu-sim/shader.cc (call in scheduler)
+  - configs/hrl-repro/SM7_QV100_mascar_would_change_on/ (new)
+- 已运行验证: vecadd, hotspot, srad_v2, bfs, strided_access, fdtd2d × would_change_on
+- 当前风险: 低（纯被动）
+- 是否建议继续: 是，进入 Phase 4（附 risk checkpoint）
+- 下一步: Phase 4 minimal scheduling policy
