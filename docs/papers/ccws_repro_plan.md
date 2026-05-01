@@ -179,7 +179,7 @@ All stats gated by `gpgpu_enable_ccws`. Prefix: `paper_ccws_`.
 | **AF** | Pre-scoreboard gate: moved gate before checkCollision; inc=5/20/30 still 0 blocks; root cause revised: VTA hits too dispersed, per-warp LLS never exceeds cutoff/nw | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AF) | Medium |
 | **AG** | Can-Issue cutoff audit: confirmed cutoff uses max_warps(64) not active_warps(~8); inactive warp base_score consumes 87.5% of cutoff budget; would_can_issue=false only on inactive slots | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AG) | None |
 | **AH** | Fix cutoff: attempted active-warp cutoff (not_completed/warp_size); caused severe over-gating (+64–767% cycle) on tiny workloads; **reverted**; accepted approximate implementation (nw=max_warps with comment); source_changed=false | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AH) | Medium |
-| **S8** | Standard / `cache_focus` set validation | `hrl/paper/ccws-repro-v0` | — | Low |
+| **AI** | Focused validation: conservative（inc=1, th=100）vs aggressive（inc=50, th=100）on 7 workloads; mechanism chain confirmed; conservative +2–11% cycle; aggressive severe over-gating; direct final report recommended | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AI) | None |
 | **S9** | K_THROTTLE sweep; result notes | `hrl/paper/ccws-repro-v0` | — | Low |
 
 **Round T note**: `GPGPUSIM_CONFIG_OVERRIDE` env var added to `run_one.sh`; config override confirmed
@@ -270,6 +270,14 @@ over-gating on tiny workloads: srad_v2 64×64 → ~2 warps/SM → cutoff=200 →
 implementation. VTA (miss-side) and cutoff (max_warps) are both approximations; documented in
 ccws_round_ah_active_can_issue.md. Branch is ready for focused validation with inc=50 (active
 gating signal) or inc=1/th=99 (weak signal, no cycle impact). source_changed=false.
+
+**Round AI note**: Focused validation on 7 workloads × 3 configs (feature_off / conservative /
+aggressive). th=99 deadlocked (threshold < lls_base_score=100). Conservative (inc=1, th=100):
+hotspot/srad_v2/fdtd2d/mutual_tiled/bfs show lg_block>0 (+2–11% cycle); strided/page_stride no
+gating (vta_hit=24 only). Aggressive (inc=50, th=100): severe over-gating on all L1D-miss
+workloads (+390–1464% cycle). Mechanism chain VTA→LLS→gate confirmed correct. Cycle direction
+opposite to paper (should decrease) due to cutoff approximation (nw=max_warps 8× too large).
+Recommendation: direct final report; standard validation not recommended with current approximation.
 
 **Rules**:
 - Feature flag **always default 0**.

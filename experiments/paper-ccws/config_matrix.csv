@@ -33,3 +33,5 @@ ccws_early_gate_inc50_th100,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_
 ccws_active_can_issue_inc5_th100,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_load_gate_inc5_th100,active_can_issue_inc5,active-warp cutoff; inc=5; over-gating (+64-88% cycle); tiny workload cutoff too small,Round AH
 ccws_active_can_issue_inc20_th100,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_load_gate_inc20_th100,active_can_issue_inc20,active-warp cutoff; inc=20; severe over-gating (+285-465% cycle),Round AH
 ccws_active_can_issue_inc30_th100,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_load_gate_inc30_th100,active_can_issue_inc30,active-warp cutoff; inc=30; severe over-gating (+415-767% cycle),Round AH
+ccws_focused_conservative,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_load_gate_th100,focused_conservative,inc=1 th=100; hotspot/srad_v2/fdtd2d/mutual_tiled/bfs lg_block>0; +2-11% cycle; strided/page_stride no gating,Round AI
+ccws_focused_aggressive,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_load_gate_inc50_th100,focused_aggressive,inc=50 th=100; severe over-gating all L1D-miss workloads (+390-1464% cycle),Round AI

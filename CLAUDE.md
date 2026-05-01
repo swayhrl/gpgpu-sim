@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-05-01 — Round AH complete; attempted active-warp cutoff fix; caused over-gating (+64–767% cycle) on tiny workloads; **reverted**; accepted approximate implementation (nw=max_warps with comment); source_changed=false. Branch ready for focused validation._
+_Last updated: 2026-05-01 — Round AI complete; focused validation on 7 workloads × conservative(inc=1,th=100)/aggressive(inc=50,th=100); mechanism chain confirmed; conservative +2–11% cycle (direction wrong due to cutoff approx); aggressive severe over-gating; recommend direct final report._
 
 ## Git 工作流
 
@@ -227,7 +227,8 @@ Four days of deep read-through of the PTX functional simulation → timing model
 - [x] **Round AF**：Pre-scoreboard gate 实现 — 将 `ccws_lg_gate_load()` 移到 `checkCollision()` 之前；feature_off 7/7 pass；inc=5/20/30 仍全 0 blocks；根本原因修正：VTA hit 分散在太多 warp，每个 warp 的 LLS 分数远低于 cutoff/nw（6400/64=100）；inc=50 行为与 post-scoreboard 完全相同（srad_v2 +45%，fdtd2d +61%）；gate 位置不是问题所在
 - [x] **Round AG**：Can-Issue cutoff 审计 — 确认主要 bug：`nw = max_warps_per_shader = 64`，而实际 active warps ≈ 8（occupancy 12%）；`cum_cutoff = 64×100 = 6400`，正确值应为 `8×100 = 800`；inactive warp 的 base_score(100) 合计 5600，消耗 cutoff budget 的 87.5%；`would_can_issue=false` 只落在 inactive warp slot 上，这些 warp 不发射 load，gate 永远不触发；修复方案：用 `not_completed/warp_size` 替换 `max_warps_per_shader` 作为 nw
 - [x] **Round AH**：尝试 active-warp cutoff 修复（`not_completed/warp_size`）；tiny workload 严重过度 gating（srad_v2 64×64 → ~2 warps/SM → cutoff=200 → +64–767% cycle）；**已 revert**；接受近似实现（`nw=max_warps` 加注释说明）；`source_changed=false`；分支已就绪进入 focused validation
-- [ ] **Round（后置）**：focused validation（7 workload × inc=50 或 inc=1/th=99）；验证 gating 趋势正确性；至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
+- [x] **Round AI**：Focused validation — 7 workload × conservative(inc=1,th=100) / aggressive(inc=50,th=100)；th=99 全部 deadlock（threshold < base_score）；conservative：hotspot/srad_v2/fdtd2d/mutual_tiled/bfs 出现 lg_block>0，cycle +2–11%（方向相反，因 cutoff 近似）；aggressive：严重过度 gating（+390–1464%）；机制链路 VTA→LLS→gate 确认正确；建议直接进入 final report
+- [ ] **Round AJ（后置）**：final report 撰写；或开 `hrl/idea/cache-policy-experiments-v0` 进行自研改进
 
 ## Workload Management Framework（Round B 新增）
 

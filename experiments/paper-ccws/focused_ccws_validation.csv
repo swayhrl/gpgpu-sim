@@ -1,0 +1,22 @@
+workload,config,lls_hit_increment,lg_score_threshold,pass,sim_cycle,baseline_cycle,cycle_delta,cycle_delta_pct,vta_hit,lls_update,would_gate_block,load_gate_block,notes
+rodinia_hotspot,SM7_QV100_ccws_noop_off,0,off,1,6931,6931,0,0%,0,0,0,0,feature_off baseline
+rodinia_srad_v2,SM7_QV100_ccws_noop_off,0,off,1,15926,15926,0,0%,0,0,0,0,feature_off baseline
+polybench_fdtd2d,SM7_QV100_ccws_noop_off,0,off,1,35681,35681,0,0%,0,0,0,0,feature_off baseline
+strided_access,SM7_QV100_ccws_noop_off,0,off,1,5825,5825,0,0%,0,0,0,0,feature_off baseline
+page_stride_access,SM7_QV100_ccws_noop_off,0,off,1,5851,5851,0,0%,0,0,0,0,feature_off baseline
+mutual_tiled,SM7_QV100_ccws_noop_off,0,off,1,7479,7479,0,0%,0,0,0,0,feature_off baseline
+rodinia_bfs,SM7_QV100_ccws_noop_off,0,off,1,136110,136110,0,0%,0,0,0,0,feature_off baseline
+rodinia_hotspot,SM7_QV100_ccws_load_gate_th100,1,100,1,7343,6931,+412,+6%,1328,1328,0,4595,conservative; gating active; +6% cycle
+rodinia_srad_v2,SM7_QV100_ccws_load_gate_th100,1,100,1,16739,15926,+813,+5%,3924,3924,0,17092,conservative; gating active; +5% cycle
+polybench_fdtd2d,SM7_QV100_ccws_load_gate_th100,1,100,1,39539,35681,+3858,+11%,8345,8345,0,54907,conservative; gating active; +11% cycle
+strided_access,SM7_QV100_ccws_load_gate_th100,1,100,1,5825,5825,0,0%,24,24,0,0,conservative; no gating (low vta_hit)
+page_stride_access,SM7_QV100_ccws_load_gate_th100,1,100,1,5851,5851,0,0%,24,24,0,0,conservative; no gating (low vta_hit)
+mutual_tiled,SM7_QV100_ccws_load_gate_th100,1,100,1,7921,7479,+442,+6%,384,384,0,2014,conservative; gating active; +6% cycle
+rodinia_bfs,SM7_QV100_ccws_load_gate_th100,1,100,1,139060,136110,+2950,+2%,128,128,0,4341,conservative; weak gating; +2% cycle
+rodinia_hotspot,SM7_QV100_ccws_load_gate_inc50_th100,50,100,1,98133,6931,+91202,+1316%,1328,1328,0,3391951,aggressive; severe over-gating
+rodinia_srad_v2,SM7_QV100_ccws_load_gate_inc50_th100,50,100,1,249050,15926,+233124,+1464%,3754,3754,0,10312132,aggressive; severe over-gating
+polybench_fdtd2d,SM7_QV100_ccws_load_gate_inc50_th100,50,100,1,319747,35681,+284066,+796%,8262,8262,0,13985078,aggressive; severe over-gating
+strided_access,SM7_QV100_ccws_load_gate_inc50_th100,50,100,1,5825,5825,0,0%,24,24,0,0,aggressive; no gating (low vta_hit)
+page_stride_access,SM7_QV100_ccws_load_gate_inc50_th100,50,100,1,5851,5851,0,0%,24,24,0,0,aggressive; no gating (low vta_hit)
+mutual_tiled,SM7_QV100_ccws_load_gate_inc50_th100,50,100,1,96271,7479,+88792,+1187%,384,384,0,969673,aggressive; severe over-gating
+rodinia_bfs,SM7_QV100_ccws_load_gate_inc50_th100,50,100,1,666655,136110,+530545,+390%,135,135,0,760007,aggressive; severe over-gating
