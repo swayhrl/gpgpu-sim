@@ -37,8 +37,16 @@ def run(cmd: list[str], capture: bool = True) -> str:
 
 
 def check_git_clean() -> tuple[bool, str]:
-    status = run(["git", "status", "--short"])
-    return (status == "", status)
+    # Use --porcelain with explicit untracked mode to get stable output.
+    # Filter out ignored entries (!! prefix) and runtime output under runs/.
+    raw = run(["git", "status", "--porcelain", "--untracked-files=normal"])
+    lines = [
+        l for l in raw.splitlines()
+        if not l.startswith("!! ")
+        and not l.lstrip().startswith("runs/paper_repro_queue/")
+    ]
+    status = "\n".join(lines)
+    return (status != "", status)
 
 
 def git_diff_stat() -> str:
