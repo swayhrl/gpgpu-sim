@@ -1,0 +1,28 @@
+workload,config,lls_hit_increment,lg_score_threshold,pass,sim_cycle,baseline_cycle,cycle_delta,vta_hit,lls_update,would_gate_block,load_gate_block,notes
+rodinia_hotspot,SM7_QV100_ccws_noop_off,1,off,1,6931,6931,0,0,0,0,0,feature_off baseline
+strided_access,SM7_QV100_ccws_noop_off,1,off,1,5825,5825,0,0,0,0,0,feature_off baseline
+page_stride_access,SM7_QV100_ccws_noop_off,1,off,1,5851,5851,0,0,0,0,0,feature_off baseline
+rodinia_srad_v2,SM7_QV100_ccws_noop_off,1,off,1,15926,15926,0,0,0,0,0,feature_off baseline
+polybench_fdtd2d,SM7_QV100_ccws_noop_off,1,off,1,35681,35681,0,0,0,0,0,feature_off baseline
+strided_access,SM7_QV100_ccws_noop_off,1,off,1,5825,5825,0,0,0,0,0,feature_off baseline
+page_stride_access,SM7_QV100_ccws_noop_off,1,off,1,5851,5851,0,0,0,0,0,feature_off baseline
+rodinia_hotspot,SM7_QV100_ccws_load_gate_inc5_th100,5,100,1,6931,6931,0,1328,1328,0,0,pre-scoreboard gate; 0 blocks; LLS scores too dispersed
+rodinia_srad_v2,SM7_QV100_ccws_load_gate_inc5_th100,5,100,1,15926,15926,0,3924,3924,0,0,pre-scoreboard gate; 0 blocks; max_score too low vs cutoff
+polybench_fdtd2d,SM7_QV100_ccws_load_gate_inc5_th100,5,100,1,35681,35681,0,8338,8338,0,0,pre-scoreboard gate; 0 blocks
+strided_access,SM7_QV100_ccws_load_gate_inc5_th100,5,100,1,5825,5825,0,24,24,0,0,pre-scoreboard gate; 0 blocks
+page_stride_access,SM7_QV100_ccws_load_gate_inc5_th100,5,100,1,5851,5851,0,24,24,0,0,pre-scoreboard gate; 0 blocks
+rodinia_hotspot,SM7_QV100_ccws_load_gate_inc20_th100,20,100,1,6931,6931,0,1328,1328,0,0,pre-scoreboard gate; 0 blocks; max_score=413 sum=550736 nonzero=128 cutoff=6400
+rodinia_srad_v2,SM7_QV100_ccws_load_gate_inc20_th100,20,100,1,15926,15926,0,3924,3924,0,0,pre-scoreboard gate; 0 blocks; per-SM avg 1.6 nonzero warps; prefix never exceeds cutoff
+polybench_fdtd2d,SM7_QV100_ccws_load_gate_inc20_th100,20,100,1,35681,35681,0,8338,8338,0,0,pre-scoreboard gate; 0 blocks
+strided_access,SM7_QV100_ccws_load_gate_inc20_th100,20,100,1,5825,5825,0,24,24,0,0,pre-scoreboard gate; 0 blocks
+page_stride_access,SM7_QV100_ccws_load_gate_inc20_th100,20,100,1,5851,5851,0,24,24,0,0,pre-scoreboard gate; 0 blocks
+rodinia_hotspot,SM7_QV100_ccws_load_gate_inc30_th100,30,100,1,6931,6931,0,1328,1328,0,0,pre-scoreboard gate; 0 blocks
+rodinia_srad_v2,SM7_QV100_ccws_load_gate_inc30_th100,30,100,1,15926,15926,0,3924,3924,0,0,pre-scoreboard gate; 0 blocks
+polybench_fdtd2d,SM7_QV100_ccws_load_gate_inc30_th100,30,100,1,35681,35681,0,8338,8338,0,0,pre-scoreboard gate; 0 blocks
+strided_access,SM7_QV100_ccws_load_gate_inc30_th100,30,100,1,5825,5825,0,24,24,0,0,pre-scoreboard gate; 0 blocks
+page_stride_access,SM7_QV100_ccws_load_gate_inc30_th100,30,100,1,5851,5851,0,24,24,0,0,pre-scoreboard gate; 0 blocks
+rodinia_hotspot,SM7_QV100_ccws_load_gate_inc50_th100,50,100,1,6931,6931,0,1328,1328,0,0,inc=50 sanity; hotspot no gating (tiny kernel)
+rodinia_srad_v2,SM7_QV100_ccws_load_gate_inc50_th100,50,100,1,23150,15926,+7224,3924,3924,0,34572,GATING ACTIVE; +45% cycle; pre-scoreboard gate same as post-scoreboard
+polybench_fdtd2d,SM7_QV100_ccws_load_gate_inc50_th100,50,100,1,57411,35681,+21730,8308,8308,0,454219,GATING ACTIVE; +61% cycle; pre-scoreboard gate same as post-scoreboard
+strided_access,SM7_QV100_ccws_load_gate_inc50_th100,50,100,1,5825,5825,0,24,24,0,0,no gating
+page_stride_access,SM7_QV100_ccws_load_gate_inc50_th100,50,100,1,5851,5851,0,24,24,0,0,no gating

@@ -1329,6 +1329,16 @@ void scheduler_unit::cycle() {
           warp(warp_id).set_next_pc(pc);
           warp(warp_id).ibuffer_flush();
         } else {
+          // CCWS Round AF: pre-scoreboard load gate (move from post-scoreboard)
+          // Gate high-LLS warps before scoreboard check so stall-recovered warps
+          // are also gated. Only gates LOAD_OP/TENSOR_CORE_LOAD_OP.
+          if (m_shader->m_config->gpgpu_enable_ccws &&
+              m_shader->m_config->gpgpu_ccws_enable_load_gating &&
+              ((pI->op == LOAD_OP) || (pI->op == TENSOR_CORE_LOAD_OP)) &&
+              m_shader->m_ldst_unit->ccws_lg_gate_load(warp_id)) {
+            checked++;
+            break;
+          }
           valid_inst = true;
           if (!m_scoreboard->checkCollision(warp_id, pI)) {
             SCHED_DPRINTF(
@@ -1352,17 +1362,7 @@ void scheduler_unit::cycle() {
                    (pI->op == TENSOR_CORE_LOAD_OP))) {
                 m_shader->m_ldst_unit->ccws_wg_check_load(warp_id);
               }
-              // CCWS Round Y: real load-only gating
-              bool ccws_load_blocked = false;
-              if (m_shader->m_config->gpgpu_enable_ccws &&
-                  m_shader->m_config->gpgpu_ccws_enable_load_gating &&
-                  ((pI->op == LOAD_OP) ||
-                   (pI->op == TENSOR_CORE_LOAD_OP))) {
-                ccws_load_blocked =
-                    m_shader->m_ldst_unit->ccws_lg_gate_load(warp_id);
-              }
-              if (!ccws_load_blocked &&
-                  m_mem_out->has_free(m_shader->m_config->sub_core_model,
+              if (m_mem_out->has_free(m_shader->m_config->sub_core_model,
                                       m_id) &&
                   (!diff_exec_units ||
                    previous_issued_inst_exec_type != exec_unit_type_t::MEM)) {

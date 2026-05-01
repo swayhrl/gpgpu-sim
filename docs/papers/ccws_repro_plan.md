@@ -176,8 +176,8 @@ All stats gated by `gpgpu_enable_ccws`. Prefix: `paper_ccws_`.
 | **AC** | LLS hit-increment sensitivity: inc1/10/50 × 7 workloads; find working range | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AC) | Low |
 | **AD** | Hit-increment calibration: inc5/20/30 × 7 workloads; all 0 blocks; root cause confirmed | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AD) | Low |
 | **AE** | Gating insertion point audit: confirmed gate is post-scoreboard; recommend pre-scoreboard B1 | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AE) | None |
-| **AF** | Move gate to pre-scoreboard (B1): ~10 line change; re-validate feature_off + inc5/20/30 | `hrl/paper/ccws-repro-v0` | — | Medium |
-| **S8** | Standard / `cache_focus` set validation | `hrl/paper/ccws-repro-v0` | — | Low |
+| **AF** | Pre-scoreboard gate: moved gate before checkCollision; inc=5/20/30 still 0 blocks; root cause revised: VTA hits too dispersed, per-warp LLS never exceeds cutoff/nw | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AF) | Medium |
+| **AG** | Next: lower threshold (D) or accept inc=50+higher threshold (E) or revisit VTA approximation (F) | `hrl/paper/ccws-repro-v0` | — | — |
 | **S9** | K_THROTTLE sweep; result notes | `hrl/paper/ccws-repro-v0` | — | Low |
 
 **Round T note**: `GPGPUSIM_CONFIG_OVERRIDE` env var added to `run_one.sh`; config override confirmed

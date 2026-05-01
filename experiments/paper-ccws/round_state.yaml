@@ -1,77 +1,92 @@
-round: AE
-stage: gating_insertion_audit
+round: AF
+stage: early_gate_minimal_implementation
 status: complete
 date: 2026-05-01
 branch: hrl/paper/ccws-repro-v0
 
-source_changed: false
-experiments_run: false
+source_changed: true
+modified_files:
+  - src/gpgpu-sim/shader.cc
 
-current_gate_location: >
-  scheduler_unit::cycle(), shader.cc:1356-1363.
-  After checkCollision() (scoreboard check) passes.
-  Inside the LOAD_OP/TENSOR_CORE_LOAD_OP branch.
-  Only reached if warp is NOT in scoreboard stall.
+gate_location_before: >
+  shader.cc ~line 1356 (Round Y position).
+  Inside LOAD_OP branch, after checkCollision() passes.
+  Only reached by warps that pass scoreboard check.
 
-scoreboard_interaction_summary: >
-  High-LLS warps are typically in scoreboard stall (pending register writes
-  from previous loads). checkCollision() returns true for these warps,
-  causing them to exit the inner while loop before reaching the gate.
-  Gate is never called for stalled warps regardless of LLS score.
-  After gate blocks a warp (ccws_load_blocked=true), checked++ causes
-  while condition (checked <= issued) to fail, so outer for continues
-  to next warp — this part is correct behavior.
+gate_location_after: >
+  shader.cc ~line 1332 (Round AF position).
+  Before valid_inst=true assignment, before checkCollision() call.
+  Reached by any warp with a valid instruction (ibuffer non-empty, not waiting).
+  Gate triggers: checked++; break; (while condition checked<=issued fails naturally)
 
-inc50_feedback_explanation: >
-  inc=50 causes scores to accumulate so fast that non-stalled (low-LLS)
-  warps also exceed the cutoff. wg_attempt jumps from ~16000 (inc=30)
-  to 470559 (inc=50), a 28x increase. This means inc=50 gates warps
-  that are NOT the high-LLS stall warps — it gates the wrong warps,
-  causing +45-61% cycle increase (over-gating via feedback loop).
+workloads_run:
+  - rodinia_hotspot
+  - rodinia_srad_v2
+  - polybench_fdtd2d
+  - strided_access
+  - page_stride_access
 
-paper_can_issue_semantics: >
-  CCWS paper: Can Issue bit cleared for warps exceeding LLS cutoff.
-  Cleared warps are "not considered for load instruction issue" —
-  meaning they are excluded at warp candidate selection, not after
-  scoreboard check. A stalled warp that recovers should still be
-  gated if its LLS is still high.
+configs_run:
+  - SM7_QV100_ccws_noop_off (feature_off, 7 workloads)
+  - SM7_QV100_ccws_load_gate_inc5_th100
+  - SM7_QV100_ccws_load_gate_inc20_th100
+  - SM7_QV100_ccws_load_gate_inc30_th100
+  - SM7_QV100_ccws_load_gate_inc50_th100 (sanity)
 
-recommended_direction: B1
-direction_comparison:
-  A_inc50_higher_threshold:
-    pros: no src change
-    cons: >
-      Does not fix root cause (gate position wrong).
-      inc=50 gates wrong warps (non-stalled), not high-LLS stalled warps.
-      Parameter rescue, not mechanism fix. Diverges further from paper.
-  B1_pre_scoreboard_gate:
-    pros: >
-      Closest to paper Can Issue semantics.
-      Minimal change (~10 lines, move existing gate call earlier).
-      High-LLS warps gated after stall recovery.
-      Non-load instructions unaffected.
-    cons: >
-      Requires src/ change.
-      Need to re-validate feature_off 7/7 pass.
-  C_accept_current:
-    pros: no src change, fast path to standard validation
-    cons: >
-      inc=50 gating is not faithful CCWS reproduction.
-      Standard set results may show cycle increase (not decrease).
-      Cannot be used as evidence of correct CCWS behavior.
+behavior_off_unchanged: true  # feature_off 7/7 pass, all cycle = baseline
 
-next_round_proposal: >
-  Round AF: Move ccws_lg_gate_load() call from post-scoreboard to
-  pre-scoreboard position in scheduler_unit::cycle().
-  Exact location: after valid_inst=true assignment, before
-  checkCollision() call (shader.cc ~line 1332-1333).
-  Change: ~10 lines moved, no new logic.
-  Validation: feature_off 7/7 pass + inc=5/20/30 lg_block > 0.
-  Expected: moderate gating signal without +45-61% cycle increase.
+workloads_with_load_gate_block:
+  inc5_th100: {}   # 0 blocks all workloads
+  inc20_th100: {}  # 0 blocks all workloads
+  inc30_th100: {}  # 0 blocks all workloads
+  inc50_th100:
+    rodinia_srad_v2: 34572   # +45% cycle (same as Round Y post-scoreboard)
+    polybench_fdtd2d: 454219 # +61% cycle (same as Round Y post-scoreboard)
+
+signal_strength_summary:
+  inc5_20_30: none (0 blocks; gate position change had no effect)
+  inc50: same as before (srad_v2 +45%, fdtd2d +61%)
+
+root_cause_revised: >
+  Gate position was NOT the root cause. The actual problem:
+  would_can_issue is all-true for inc=5/20/30 because VTA hits are
+  dispersed across too many warps. Per-warp LLS scores never exceed
+  cutoff/nw (6400/64 = 100 per warp). The prefix sum never exceeds
+  the cutoff, so would_can_issue[wid]=true for all warps.
+
+  inc=20 srad_v2 diagnostic:
+    max_score=413, sum_score=550736, nonzero_warps=128 (across 80 SMs)
+    per-SM avg nonzero warps = 1.6
+    per-SM cutoff = 6400
+    prefix[0] = max_score = 413 << 6400 → would_can_issue all true
+
+  inc=50 works because scores accumulate fast enough that some warps
+  exceed cutoff/nw=100, making prefix sum exceed cutoff.
+  But this gates non-stalled warps too → feedback loop → over-gating.
+
+round_ae_hypothesis_status: incorrect
+round_ae_hypothesis: >
+  AE assumed high-LLS warps were stalled and couldn't reach the gate.
+  AF shows the gate IS reached (lg_attempt=12416 for inc=20 srad_v2),
+  but would_can_issue is all-true, so gate always returns allow.
+  The stall hypothesis was a red herring.
+
+recommend_next: >
+  Three new directions:
+  D) Lower lg_score_threshold to 1-10 so cutoff = nw*threshold is
+     small enough for dispersed LLS scores to exceed it.
+     Risk: threshold too low may gate all warps (deadlock if < base_score).
+  E) Accept inc=50, raise threshold (150/200) to reduce over-gating.
+     This is parameter tuning, not mechanism fix.
+  F) Revisit VTA approximation: current intra-warp miss-side VTA
+     disperses hits across many warps. Paper VTA (inter-warp eviction)
+     concentrates signal on warps that lose locality to other warps.
+     Implementing faithful eviction-based VTA may concentrate LLS scores.
 
 commit_recommended: true
-suggested_commit: "ccws: audit load-gating insertion point (Round AE)"
-suggested_tag: ccws-gating-insertion-audit
+suggested_commit: "ccws: move load gating before scoreboard collision check"
+suggested_tag: ccws-early-load-gate
 
 new_files:
-  - docs/papers/ccws_round_ae_gating_insertion_audit.md
+  - experiments/paper-ccws/early_gate_validation.csv
+  - docs/papers/ccws_round_af_early_gate.md
