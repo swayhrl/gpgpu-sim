@@ -1,6 +1,6 @@
 workload,config,phase,sim_cycle,baseline_cycle,cycle_delta,paper_mascar_enabled,paper_mascar_mem_stall_event,paper_mascar_saturation_event,paper_mascar_pitstop_event,paper_mascar_would_deprioritize,paper_mascar_skip_count,pass,notes
 vecadd,mascar_noop_off,1,5569,5569,0,0,0,0,0,0,0,PASS,feature_off cycle = baseline
-vecadd,mascar_noop_on,1,5569,5569,0,1,0,0,0,0,0,PASS,feature_on_noop unchanged
+vecadd,mascar_noop_on,1,5569,5569,0,1,0,0,0,0,0,PASS,feature_on_noop cycle = baseline
 rodinia_hotspot,mascar_noop_off,1,6931,6931,0,0,0,0,0,0,0,PASS,feature_off unchanged
 rodinia_hotspot,mascar_noop_on,1,6931,6931,0,1,0,0,0,0,0,PASS,feature_on_noop unchanged
 rodinia_bfs,mascar_noop_off,1,6665,6665,0,0,0,0,0,0,0,PASS,feature_off unchanged

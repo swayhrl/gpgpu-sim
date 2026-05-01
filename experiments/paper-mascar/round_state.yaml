@@ -1,9 +1,15 @@
 paper: mascar
-round: Phase 0
-stage: reading
+round: Phase 1
+stage: noop_config
 status: complete
-source_changed: false
-experiments_run: false
+source_changed: true
+source_files_changed:
+  - src/gpgpu-sim/shader.h
+  - src/gpgpu-sim/shader.cc
+  - src/gpgpu-sim/gpu-sim.cc
+experiments_run: true
+workloads_run: [vecadd, rodinia_hotspot, rodinia_bfs]
+configs_run: [mascar_noop_off, mascar_noop_on]
 mechanism_chain:
   - memory stall probe (per-warp stall streak counter)
   - pitstop detection (stall_streak > threshold)
@@ -11,8 +17,12 @@ mechanism_chain:
   - scheduler skip (minimal issue-order proxy, no replay)
 gpgpu_sim_mapping:
   - scheduler_unit::cycle() (hook for issue-order skip)
-  - per-warp stall streak counter in shader_t or warp_inst_t context
+  - per-warp stall streak counter in shader_core_ctx
   - gpu-sim.cc (stats printing)
 highest_risk_change: Phase 4 scheduler skip logic (deadlock risk if not guarded)
 known_hard_stop: pipeline replay / re-execution not implemented
-recommend_next: Phase 1 no-op config
+recommend_next: Phase 2 memory pressure telemetry
+feature_off_baseline:
+  vecadd: 5569
+  rodinia_hotspot: 6931
+  rodinia_bfs: 6665

@@ -762,6 +762,29 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_daws_debug", OPT_INT32,
                          &gpgpu_daws_debug,
                          "DAWS per-cycle debug trace (0=off)", "0");
+
+  // Mascar: Speeding up GPU Warps by Reducing Memory Pitstops (HPCA 2015)
+  option_parser_register(opp, "-gpgpu_enable_mascar", OPT_INT32,
+                         &gpgpu_enable_mascar,
+                         "Enable Mascar memory-pitstop-aware scheduling (0=off)", "0");
+  option_parser_register(opp, "-gpgpu_mascar_enable_telemetry", OPT_INT32,
+                         &gpgpu_mascar_enable_telemetry,
+                         "Mascar Phase 2: enable memory stall probe (0=off)", "0");
+  option_parser_register(opp, "-gpgpu_mascar_enable_would_deprioritize", OPT_INT32,
+                         &gpgpu_mascar_enable_would_deprioritize,
+                         "Mascar Phase 3: enable would-deprioritize telemetry (0=off)", "0");
+  option_parser_register(opp, "-gpgpu_mascar_enable_scheduling", OPT_INT32,
+                         &gpgpu_mascar_enable_scheduling,
+                         "Mascar Phase 4: enable actual scheduler skip (0=off)", "0");
+  option_parser_register(opp, "-gpgpu_mascar_stall_threshold", OPT_UINT32,
+                         &gpgpu_mascar_stall_threshold,
+                         "Mascar consecutive stall cycles to trigger deprioritize (default 8)", "8");
+  option_parser_register(opp, "-gpgpu_mascar_max_skip_streak", OPT_UINT32,
+                         &gpgpu_mascar_max_skip_streak,
+                         "Mascar max consecutive skips before force-allow (default 4)", "4");
+  option_parser_register(opp, "-gpgpu_mascar_debug", OPT_INT32,
+                         &gpgpu_mascar_debug,
+                         "Mascar per-cycle debug trace (0=off)", "0");
 }
 
 void gpgpu_sim_config::reg_options(option_parser_t opp) {
@@ -1788,6 +1811,25 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
       m_cluster[i]->get_daws_lg_stats(lg_block, lg_allow);
     fprintf(stdout, "paper_daws_throttle_block = %llu\n", lg_block);
     fprintf(stdout, "paper_daws_throttle_allow = %llu\n", lg_allow);
+  }
+
+  // paper_mascar: Mascar reproduction stats (Mahmoud et al. HPCA 2015)
+  fprintf(stdout, "paper_mascar_enabled = %d\n",
+          m_shader_config->gpgpu_enable_mascar);
+  {
+    unsigned long long mem_stall_event = 0, saturation_event = 0,
+                       pitstop_event = 0, would_deprioritize = 0,
+                       skip_count = 0, allow_count = 0;
+    for (unsigned i = 0; i < m_config.num_cluster(); i++)
+      m_cluster[i]->get_mascar_stats(mem_stall_event, saturation_event,
+                                     pitstop_event, would_deprioritize,
+                                     skip_count, allow_count);
+    fprintf(stdout, "paper_mascar_mem_stall_event = %llu\n", mem_stall_event);
+    fprintf(stdout, "paper_mascar_saturation_event = %llu\n", saturation_event);
+    fprintf(stdout, "paper_mascar_pitstop_event = %llu\n", pitstop_event);
+    fprintf(stdout, "paper_mascar_would_deprioritize = %llu\n", would_deprioritize);
+    fprintf(stdout, "paper_mascar_skip_count = %llu\n", skip_count);
+    fprintf(stdout, "paper_mascar_allow_count = %llu\n", allow_count);
   }
 
   if (m_config.gpgpu_cflog_interval != 0) {

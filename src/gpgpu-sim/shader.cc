@@ -516,6 +516,17 @@ shader_core_ctx::shader_core_ctx(class gpgpu_sim *gpu,
   m_daws_gate_streak.assign(config->max_warps_per_shader, 0);
   m_daws_lg_block = 0;
   m_daws_lg_allow = 0;
+  // Mascar Phase 2: initialize memory stall telemetry counters
+  m_mascar_stall_streak.assign(config->max_warps_per_shader, 0);
+  m_mascar_mem_stall_event = 0;
+  m_mascar_saturation_event = 0;
+  m_mascar_pitstop_event = 0;
+  // Mascar Phase 3: initialize would-deprioritize counter
+  m_mascar_would_deprioritize = 0;
+  // Mascar Phase 4: initialize skip policy counters
+  m_mascar_skip_streak.assign(config->max_warps_per_shader, 0);
+  m_mascar_skip_count = 0;
+  m_mascar_allow_count = 0;
 }
 
 void shader_core_ctx::reinit(unsigned start_thread, unsigned end_thread,
@@ -5241,6 +5252,16 @@ void simt_core_cluster::get_daws_lg_stats(unsigned long long &block,
                                            unsigned long long &allow) const {
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
     m_core[i]->get_daws_lg_stats(block, allow);
+}
+
+void simt_core_cluster::get_mascar_stats(
+    unsigned long long &mem_stall_event, unsigned long long &saturation_event,
+    unsigned long long &pitstop_event, unsigned long long &would_deprioritize,
+    unsigned long long &skip_count, unsigned long long &allow_count) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
+    m_core[i]->get_mascar_stats(mem_stall_event, saturation_event,
+                                pitstop_event, would_deprioritize,
+                                skip_count, allow_count);
 }
 
 void exec_shader_core_ctx::checkExecutionStatusAndUpdate(warp_inst_t &inst,

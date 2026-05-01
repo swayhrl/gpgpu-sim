@@ -38,15 +38,16 @@ memory stall probe
 - [x] 阅读笔记
 - [x] 复现计划
 - [x] 实验目录结构
-- [ ] commit
+- [x] commit (5979161)
 
 ### Phase 1：No-op Config + Stats
 
-- 添加 config knobs（全部默认关闭）
-- 添加 paper_mascar_* stats 占位（行为不变）
-- 创建 feature_off / feature_on_noop 配置
-- 验证：vecadd, rodinia_hotspot, rodinia_bfs
-- 成功标准：编译通过；feature_off cycle = baseline；stats = 0
+- [x] 添加 config knobs（全部默认关闭）
+- [x] 添加 paper_mascar_* stats 占位（行为不变）
+- [x] 创建 feature_off / feature_on_noop 配置
+- [x] 验证：vecadd, rodinia_hotspot, rodinia_bfs
+- [x] 成功标准：编译通过；feature_off cycle = baseline；stats = 0
+- [x] commit
 
 ### Phase 2：Memory Pressure / Pitstop Telemetry
 
@@ -122,8 +123,8 @@ memory stall probe
 
 | Phase | 状态 | commit | 备注 |
 |-------|------|--------|------|
-| Phase 0 | in_progress | — | reading + plan |
-| Phase 1 | pending | — | |
+| Phase 0 | complete | 5979161 | reading + plan |
+| Phase 1 | complete | — | noop config; 待 commit |
 | Phase 2 | pending | — | |
 | Phase 3 | pending | — | |
 | Phase 4 | pending | — | 高风险 |

@@ -1809,6 +1809,16 @@ class shader_core_config : public core_config {
   unsigned gpgpu_daws_footprint_threshold; // L1 capacity fraction (0-100)
   unsigned gpgpu_daws_min_active_threads;  // min active threads to trigger (default 1)
   int gpgpu_daws_debug;
+
+  // Mascar: Speeding up GPU Warps by Reducing Memory Pitstops (HPCA 2015)
+  // All default off (0). gpgpu_enable_mascar=0 → zero behavior change vs. baseline.
+  int gpgpu_enable_mascar;
+  int gpgpu_mascar_enable_telemetry;       // Phase 2: memory stall probe
+  int gpgpu_mascar_enable_would_deprioritize; // Phase 3: would-deprioritize telemetry
+  int gpgpu_mascar_enable_scheduling;      // Phase 4: actual scheduler skip
+  unsigned gpgpu_mascar_stall_threshold;   // consecutive stall cycles to trigger (default 8)
+  unsigned gpgpu_mascar_max_skip_streak;   // max consecutive skips before force-allow (default 4)
+  int gpgpu_mascar_debug;
 };
 
 struct shader_core_stats_pod {
@@ -2352,6 +2362,21 @@ class shader_core_ctx : public core_t {
     allow += m_daws_lg_allow;
   }
 
+  // Mascar: aggregate all Mascar counters from this SM
+  void get_mascar_stats(unsigned long long &mem_stall_event,
+                        unsigned long long &saturation_event,
+                        unsigned long long &pitstop_event,
+                        unsigned long long &would_deprioritize,
+                        unsigned long long &skip_count,
+                        unsigned long long &allow_count) const {
+    mem_stall_event    += m_mascar_mem_stall_event;
+    saturation_event   += m_mascar_saturation_event;
+    pitstop_event      += m_mascar_pitstop_event;
+    would_deprioritize += m_mascar_would_deprioritize;
+    skip_count         += m_mascar_skip_count;
+    allow_count        += m_mascar_allow_count;
+  }
+
   void get_icnt_power_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
 
   // debug:
@@ -2806,6 +2831,18 @@ class shader_core_ctx : public core_t {
   std::vector<unsigned> m_daws_gate_streak;  // per-warp consecutive gate count
   unsigned long long m_daws_lg_block;
   unsigned long long m_daws_lg_allow;
+
+  // Mascar Phase 2: memory stall telemetry counters (per-SM, passive)
+  std::vector<unsigned> m_mascar_stall_streak;  // per-warp consecutive stall count
+  unsigned long long m_mascar_mem_stall_event;
+  unsigned long long m_mascar_saturation_event;
+  unsigned long long m_mascar_pitstop_event;
+  // Mascar Phase 3: would-deprioritize telemetry counters (per-SM, passive)
+  unsigned long long m_mascar_would_deprioritize;
+  // Mascar Phase 4: real scheduling policy counters
+  std::vector<unsigned> m_mascar_skip_streak;   // per-warp consecutive skip count
+  unsigned long long m_mascar_skip_count;
+  unsigned long long m_mascar_allow_count;
 };
 
 class exec_shader_core_ctx : public shader_core_ctx {
@@ -2915,6 +2952,14 @@ class simt_core_cluster {
   // DAWS Round 04: real throttle aggregation
   void get_daws_lg_stats(unsigned long long &block,
                          unsigned long long &allow) const;
+
+  // Mascar: aggregate Mascar counters across all cores in this cluster
+  void get_mascar_stats(unsigned long long &mem_stall_event,
+                        unsigned long long &saturation_event,
+                        unsigned long long &pitstop_event,
+                        unsigned long long &would_deprioritize,
+                        unsigned long long &skip_count,
+                        unsigned long long &allow_count) const;
 
   void get_icnt_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
   float get_current_occupancy(unsigned long long &active,
