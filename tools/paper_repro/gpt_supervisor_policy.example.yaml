@@ -1,0 +1,32 @@
+enabled: false   # set to true only when OPENAI_API_KEY is present and human approves
+
+expires_at: "2026-05-02T23:59:59"   # API permission auto-expires; re-enable manually
+
+allowed_actions:
+  - review_round_state       # read round_state.yaml, summarize status
+  - classify_risk            # classify a job's risk level given stage + diff
+  - generate_next_prompt     # produce the next stage prompt text
+  - summarize_diff           # summarize git diff --stat output
+
+forbidden_actions:
+  - commit
+  - push
+  - tag
+  - delete_files
+  - run_standard_validation
+  - modify_src_without_human
+  - continue_high_risk_without_review
+  - execute_shell_commands
+  - write_to_repo
+
+max_review_packets: 10      # per session
+max_generated_prompts: 5    # per session
+
+require_human_for:
+  - minimal_mechanism
+  - standard_validation
+  - src_diff_outside_expected_modules
+  - deadlock
+  - timeout_exceeded
+  - extreme_slowdown          # sim_cycle increase > 20% on feature_on
+  - cycle_direction_unexpected

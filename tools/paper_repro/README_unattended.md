@@ -96,3 +96,50 @@ runs/paper_repro_queue/
     gpt_review_packet.md      # 发给 GPT 的 review packet
     next_action.yaml          # 机器可读的 action 决策
 ```
+
+---
+
+## L3-lite 文件式 Review（推荐方式）
+
+明天实际使用仍以**文件式 review** 为主：
+
+1. 运行 `run_queue.sh` 生成 review packet
+2. 手动读取 `gpt_review_packet.md`
+3. 粘贴到 ChatGPT / Claude Web 获取建议
+4. 自行决定是否继续
+
+---
+
+## GPT API Review Stub（将来扩展）
+
+`tools/paper_repro/gpt_review_stub.py` 是 API review 的 stub：
+
+```bash
+# 当前默认：stub 模式，不调用 API，返回 stop_for_review
+python3 tools/paper_repro/gpt_review_stub.py \
+  --review-packet runs/paper_repro_queue/<job_id>/gpt_review_packet.md
+```
+
+若要启用真实 API：
+1. 设置 `OPENAI_API_KEY`
+2. 编辑 `gpt_supervisor_policy.example.yaml`，将 `enabled: true`
+3. API **只允许** review / prompt generation
+4. API **禁止** commit / push / 执行 shell / 修改 src/
+
+权限策略见 `gpt_supervisor_policy.example.yaml`。风险分级见 `risk_policy.md`。
+
+---
+
+## 新字段支持（supervisor v2）
+
+`job_queue.yaml` 现在支持以下 job-level 字段：
+
+| 字段 | 说明 | 默认值 |
+|------|------|--------|
+| `risk` | `low` / `medium` / `high` | `low` |
+| `stop_after_completion` | 完成后必须 stop_for_review | `false` |
+| `requires_gpt_review` | 需要 GPT review 才能继续 | `false` |
+| `allow_src_change` | `false` 时 src/ diff 触发 blocked | `true` |
+
+`risk=high` 的 job 永远输出 `blocked_high_risk_stage`，无论 stage key 是什么。
+

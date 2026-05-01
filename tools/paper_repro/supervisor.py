@@ -61,20 +61,39 @@ def generate_prompt(paper: str, stage: str, dry_run: bool) -> str:
     return result.stdout.strip()
 
 
+def check_src_diff() -> bool:
+    """Return True if there are staged/unstaged changes under src/."""
+    result = subprocess.run(
+        ["git", "diff", "--name-only", "HEAD"],
+        capture_output=True, text=True, cwd=REPO_ROOT,
+    )
+    return any(line.startswith("src/") for line in result.stdout.splitlines())
+
+
 def apply_stop_rules(job: dict, queue_cfg: dict, round_state: dict | None,
                      is_dirty: bool) -> tuple[str, str]:
     """Return (action, reason). action is one of:
       continue / stop_for_review / blocked_dirty_repo /
-      blocked_missing_round_state / blocked_high_risk_stage
+      blocked_missing_round_state / blocked_high_risk_stage /
+      blocked_unexpected_src_diff
     """
     if is_dirty and queue_cfg.get("stop_on_dirty_repo", True):
         return "blocked_dirty_repo", "Working tree is dirty"
+
+    # Job-level risk field: high → always block
+    if job.get("risk", "low") == "high":
+        return "blocked_high_risk_stage", f"Job risk=high requires human review"
 
     stage = job.get("stage", "")
     stage_key = stage.split("_", 1)[-1] if "_" in stage else stage  # strip NN_ prefix
 
     if stage_key in HIGH_RISK_STAGES or stage_key in queue_cfg.get("require_human_review", []):
         return "blocked_high_risk_stage", f"Stage '{stage_key}' requires human review"
+
+    # allow_src_change=false + src/ diff → stop
+    if not job.get("allow_src_change", True) and queue_cfg.get("stop_on_src_diff", True):
+        if check_src_diff():
+            return "blocked_unexpected_src_diff", "Unexpected src/ changes with allow_src_change=false"
 
     if queue_cfg.get("stop_on_missing_round_state", True) and round_state is None:
         round_state_path = job.get("round_state_path", "<unknown>")
@@ -85,6 +104,14 @@ def apply_stop_rules(job: dict, queue_cfg: dict, round_state: dict | None,
         rs_status = round_state.get("status", "")
         if rs_status not in ("done", "complete", "pending", ""):
             return "stop_for_review", f"round_state status='{rs_status}' (not done/complete/pending)"
+
+    # stop_after_completion=true → stage may run, but review after
+    if job.get("stop_after_completion", False):
+        return "stop_for_review", "stop_after_completion=true; human review required after execution"
+
+    # requires_gpt_review=true without stop_after_completion → still stop
+    if job.get("requires_gpt_review", False):
+        return "stop_for_review", "requires_gpt_review=true; send review packet to GPT before continuing"
 
     if stage_key in queue_cfg.get("allow_auto_continue", []):
         return "continue", "Stage is in allow_auto_continue list"
@@ -131,6 +158,10 @@ Generated: {ts}
 ## Job Info
 - paper: {job.get('paper')}
 - stage: {job.get('stage')}
+- risk: {job.get('risk', 'low')}
+- stop_after_completion: {job.get('stop_after_completion', False)}
+- requires_gpt_review: {job.get('requires_gpt_review', False)}
+- allow_src_change: {job.get('allow_src_change', True)}
 - description: {job.get('description', '')}
 
 ## Generated Prompt

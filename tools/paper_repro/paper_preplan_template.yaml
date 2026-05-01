@@ -1,0 +1,74 @@
+paper_key: REPLACE_ME          # e.g. ccws, daws, new_paper
+title: "REPLACE: Full paper title"
+target_branch: hrl/paper/REPLACE_ME-repro-v0
+paper_source: REPLACE_ME        # e.g. path/to/paper.pdf or URL note
+
+mechanism_category: REPLACE_ME  # e.g. warp_scheduler / cache_replacement / prefetch
+
+# Modules expected to be modified
+expected_modules:
+  - src/gpgpu-sim/shader.h
+  - src/gpgpu-sim/shader.cc
+  # Add others as needed: gpu-sim.cc, gpu-cache.h, etc.
+
+max_rounds: 8   # guideline; adjust per complexity
+
+stage_sequence:
+  - 00_reading
+  - 01_noop
+  - 02_telemetry
+  - 03_would_change
+  - 04_minimal_mechanism
+  - 05_focused_validation
+  # 06_standard_validation  # skip unless explicitly needed
+  - 07_final_report
+
+allowed_auto_stages:
+  - 00_reading
+  - 01_noop
+  - 02_telemetry
+  - 03_would_change
+  - 07_final_report
+
+require_review_stages:
+  - 04_minimal_mechanism
+  - 05_focused_validation
+  - 06_standard_validation
+
+known_approximations:
+  - description: REPLACE_ME  # e.g. "no loop detection; global scope instead of per-loop"
+    impact: REPLACE_ME        # e.g. "triggers on non-loop divergence"
+    fix_direction: REPLACE_ME # e.g. "implement back-edge detection"
+
+success_criteria:
+  feature_off_cycle_unchanged: true
+  feature_on_signal_present: true    # paper_<key>_* stats non-zero on target workloads
+  no_deadlock: true
+  focused_validation_complete: true
+  final_report_created: true
+  approximate_reproduction_acceptable: true  # faithful repro not required
+
+stop_rules:
+  - feature_off_sim_cycle_changed
+  - deadlock_or_hang
+  - timeout_per_stage_10min
+  - unexpected_modules_touched
+  - scope_creep_detected
+
+version_control_plan:
+  base_branch: hrl/paper/REPLACE_ME-repro-v0
+  tag_each_milestone: true
+  milestone_tags:
+    - REPLACE_ME-config-noop
+    - REPLACE_ME-telemetry
+    - REPLACE_ME-would-change
+    - REPLACE_ME-minimal-mechanism
+    - REPLACE_ME-focused-validation
+    - REPLACE_ME-final-report
+
+final_report_policy:
+  create_report_doc: true
+  update_round_state: true
+  update_CLAUDE_md: true
+  do_not_continue_mechanism_refinement: true
+  recommend_next_branch: hrl/idea/cache-policy-experiments-v0

@@ -1,0 +1,143 @@
+queue_name: tomorrow_queue
+description: "Editable template for tomorrow's unattended run — fill in paper/stage before use"
+
+max_minutes_per_stage: 10
+stop_on_dirty_repo: true
+stop_on_src_diff: true
+stop_on_missing_round_state: false
+
+allow_auto_continue:
+  - reading
+  - noop
+  - telemetry
+  - would_change
+  - final_report
+  - workload_audit
+
+require_human_review:
+  - minimal_mechanism
+  - standard_validation
+  - behavior_change
+
+jobs:
+  # ── LOW RISK ────────────────────────────────────────────────────────────────
+  # No code changes; auto-continue is safe.
+  - id: example_low_risk_reading
+    paper: REPLACE_PAPER_KEY
+    stage: 00_reading
+    expected_branch: REPLACE_BRANCH
+    risk: low
+    allow_src_change: false
+    stop_after_completion: false
+    requires_gpt_review: false
+    max_minutes: 10
+    expected_outputs:
+      - docs/papers/<paper>_repro_plan.md
+      - experiments/paper-<paper>/round_state.yaml
+    success_criteria: "round_state.status == complete; no src/ diff"
+    stop_rules:
+      - dirty_repo
+      - missing_round_state_after_completion
+      - unexpected_src_diff
+
+  - id: example_low_risk_noop
+    paper: REPLACE_PAPER_KEY
+    stage: 01_noop
+    expected_branch: REPLACE_BRANCH
+    risk: low
+    allow_src_change: true         # config changes OK; no scheduler logic
+    stop_after_completion: false
+    requires_gpt_review: false
+    max_minutes: 10
+    expected_outputs:
+      - configs/hrl-repro/<paper>_feature_off/gpgpusim.config
+      - experiments/paper-<paper>/round_state.yaml
+    success_criteria: "feature_off sim_cycle == baseline; round_state.status == complete"
+    stop_rules:
+      - dirty_repo
+      - sim_cycle_changed_on_feature_off
+      - unexpected_src_diff
+
+  - id: example_low_risk_telemetry
+    paper: REPLACE_PAPER_KEY
+    stage: 02_telemetry
+    expected_branch: REPLACE_BRANCH
+    risk: low
+    allow_src_change: true         # passive probe only; baseline unchanged
+    stop_after_completion: false
+    requires_gpt_review: false
+    max_minutes: 10
+    expected_outputs:
+      - src/gpgpu-sim/shader.h
+      - src/gpgpu-sim/shader.cc
+      - experiments/paper-<paper>/round_state.yaml
+    success_criteria: "feature_off sim_cycle == baseline; new stats non-zero on feature_on"
+    stop_rules:
+      - dirty_repo
+      - feature_off_sim_cycle_changed
+      - unexpected_modules_touched
+
+  # ── MEDIUM RISK ─────────────────────────────────────────────────────────────
+  # Safe to execute but must stop for review after completion.
+  - id: example_medium_risk_would_change
+    paper: REPLACE_PAPER_KEY
+    stage: 03_would_change
+    expected_branch: REPLACE_BRANCH
+    risk: medium
+    allow_src_change: true
+    stop_after_completion: true    # review after; don't auto-continue
+    requires_gpt_review: true
+    max_minutes: 10
+    expected_outputs:
+      - experiments/paper-<paper>/round_state.yaml
+    success_criteria: "would_change counters non-zero; feature_off sim_cycle unchanged"
+    stop_rules:
+      - dirty_repo
+      - feature_off_sim_cycle_changed
+      - unexpected_modules_touched
+      - would_change_zero_on_target_workloads
+
+  # ── HIGH RISK ───────────────────────────────────────────────────────────────
+  # Must stop for review BEFORE and AFTER execution.
+  - id: example_high_risk_minimal_mechanism
+    paper: REPLACE_PAPER_KEY
+    stage: 04_minimal_mechanism
+    expected_branch: REPLACE_BRANCH
+    risk: high
+    allow_src_change: true
+    stop_after_completion: true
+    requires_gpt_review: true
+    max_minutes: 10
+    expected_outputs:
+      - src/gpgpu-sim/shader.h
+      - src/gpgpu-sim/shader.cc
+      - experiments/paper-<paper>/round_state.yaml
+    success_criteria: |
+      feature_off sim_cycle == baseline;
+      feature_on shows gating activity (paper_<key>_gate_count > 0);
+      no deadlock
+    stop_rules:
+      - dirty_repo
+      - feature_off_sim_cycle_changed
+      - deadlock
+      - timeout_10min
+      - scope_exceeded_expected_modules
+
+  - id: example_high_risk_standard_validation
+    paper: REPLACE_PAPER_KEY
+    stage: 06_standard_validation
+    expected_branch: REPLACE_BRANCH
+    risk: high
+    allow_src_change: false
+    stop_after_completion: true
+    requires_gpt_review: true
+    max_minutes: 10
+    expected_outputs:
+      - experiments/paper-<paper>/standard_validation.csv
+      - experiments/paper-<paper>/round_state.yaml
+    success_criteria: "all 13 workloads complete; no hang; cycle direction documented"
+    stop_rules:
+      - dirty_repo
+      - hang_or_deadlock
+      - timeout_10min
+      - unexpected_src_diff

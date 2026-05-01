@@ -361,6 +361,7 @@ cycle 方向相反（应减少）原因：tiny workload，throttle 阻止有效 
 - [x] WORKLOAD-AUDIT：cache policy workload coverage audit 完成（23 workloads 审计，7 focused + 5 controls 确定）
 - [x] AUTO-SUPERVISOR-0：L3-lite unattended supervisor scaffold 建立（supervisor.py + run_queue.sh + stop_rules.md + README_unattended.md）
 - [x] AUTO-SUPERVISOR-1：supervisor smoke test 通过（3 jobs，stop rules 正确，runs/ gitignore 验证）
+- [x] AUTO-PREPLAN-0：tomorrow queue + GPT review preplan templates（risk_policy, paper_preplan_template, job_queue.tomorrow.template, gpt_review_stub）
 - [ ] **下一步**：进入 `hrl/idea/cache-policy-experiments-v0` 自研 cache policy
 
 ---
