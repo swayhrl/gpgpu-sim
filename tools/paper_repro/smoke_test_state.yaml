@@ -1,0 +1,36 @@
+round: AUTO-0
+stage: scaffold_smoke_test
+status: complete
+date: 2026-05-01
+branch: hrl/repro-auto-smoke-v0
+
+source_changed: false
+experiments_run: false
+workloads_run: []
+
+smoke_test_results:
+  check_repo_clean: PASS
+  make_round_prompt_00_reading: PASS
+  make_round_prompt_05_focused_validation: PASS
+  make_round_prompt_07_final_report: PASS
+  stage_guard: PASS
+  template_lengths_ok: true
+  ccws_yaml_usable_as_example: true
+
+issues_found:
+  - id: no_list_stages_option
+    severity: minor
+    description: "make_round_prompt.py lacks --list-stages; user must check templates/ manually"
+    action: defer
+
+recommend_next: >
+  Enter AUTO-1: select second paper, create tools/paper_repro/papers/<key>.yaml,
+  run make_round_prompt.py --paper <key> --stage 00_reading --round AUTO-1
+
+commit_recommended: true
+suggested_commit: "tools: validate paper reproduction scaffold (AUTO-0 smoke test)"
+suggested_tag: paper-repro-scaffold-smoke
+
+new_files:
+  - docs/papers/paper_repro_scaffold_smoke_test.md
+  - tools/paper_repro/smoke_test_state.yaml
