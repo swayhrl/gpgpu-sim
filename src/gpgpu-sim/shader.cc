@@ -1413,6 +1413,15 @@ void scheduler_unit::cycle() {
                    (pI->op == TENSOR_CORE_LOAD_OP))) {
                 m_shader->m_ldst_unit->ccws_wg_check_load(warp_id);
               }
+              // Mascar Phase 4: post-scoreboard skip gate for memory-pitstop warps.
+              // Fires only when the current instruction is a memory op, so we know
+              // the stall_streak reflects this warp's actual memory pressure.
+              // Deadlock prevention handled inside mascar_skip_gate_warp via
+              // max_skip_streak force-allow.
+              if (m_shader->mascar_skip_gate_warp(warp_id)) {
+                checked++;
+                break;
+              }
               if (m_mem_out->has_free(m_shader->m_config->sub_core_model,
                                       m_id) &&
                   (!diff_exec_units ||
@@ -1425,6 +1434,8 @@ void scheduler_unit::cycle() {
                 previous_issued_inst_exec_type = exec_unit_type_t::MEM;
                 // Mascar Phase 2: successful issue resets stall streak
                 m_shader->mascar_reset_stall_streak(warp_id);
+                // Mascar Phase 4: successful issue resets skip streak
+                m_shader->mascar_reset_skip_streak(warp_id);
               } else {
                 // Mascar Phase 2: memory pipeline full → record stall event
                 m_shader->mascar_record_mem_stall(warp_id);

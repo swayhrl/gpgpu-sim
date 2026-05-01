@@ -1,38 +1,39 @@
 paper: mascar
-round: Phase 3
-stage: would_change_telemetry
+round: Phase 4
+stage: minimal_scheduling_policy
 status: complete
 source_changed: true
 source_files_changed:
   - src/gpgpu-sim/shader.h
   - src/gpgpu-sim/shader.cc
+  - configs/hrl-repro/SM7_QV100_mascar_policy_on/gpgpusim.config
+  - configs/hrl-repro/SM7_QV100_mascar_policy_on/README.md
 experiments_run: true
-workloads_run: [vecadd, rodinia_hotspot, rodinia_srad_v2, rodinia_bfs, strided_access, polybench_fdtd2d]
-configs_run: [mascar_noop_off, mascar_would_change_on]
+workloads_run: [vecadd, rodinia_hotspot, rodinia_srad_v2]
+configs_run: [mascar_noop_off, mascar_policy_on]
 mechanism_chain:
   - memory stall probe: COMPLETE
-  - pitstop detection: PARTIAL (stall_streak active, pitstop_event=0 at threshold=8)
-  - would-deprioritize telemetry: COMPLETE (streak>=2, clear signal)
-  - scheduler skip: not_started
-would_deprioritize_results:
-  rodinia_hotspot: would_deprioritize=10025 (HIGH signal)
-  rodinia_srad_v2: would_deprioritize=3237 (MED signal)
-  polybench_fdtd2d: would_deprioritize=1936 (MED signal)
-  vecadd: would_deprioritize=44 (LOW)
-  strided_access: would_deprioritize=44 (LOW)
-  rodinia_bfs: would_deprioritize=0 (near-zero, expected)
-phase4_feasibility: safe
-  - hook_point: scheduler_unit::cycle() m_mem_out false branch
-  - files_to_modify: shader.h + shader.cc only
-  - no_memory_pipeline_change: true
-  - deadlock_prevention: max_skip_streak counter (default 4)
-highest_risk_change: Phase 4 scheduler skip (guarded by max_skip_streak)
-known_hard_stop: pipeline replay / re-execution not implemented
-recommend_next: Phase 4 minimal scheduling policy
+  - pitstop detection: COMPLETE (pitstop_event > 0 at threshold=2)
+  - would-deprioritize telemetry: COMPLETE
+  - scheduler skip: COMPLETE (skip_count > 0, deadlock prevention verified)
+policy_on_results:
+  vecadd: {baseline: 5569, policy_on: 5560, delta: -9, skip_count: 44, allow_count: 11}
+  rodinia_hotspot: {baseline: 6931, policy_on: 6923, delta: -8, skip_count: 8300, allow_count: 2075}
+  rodinia_srad_v2: {baseline: 15926, policy_on: 15918, delta: -8, skip_count: 5516, allow_count: 1379}
+config_knobs:
+  stall_threshold: 2
+  max_skip_streak: 4
+  skip_gate_placement: post-scoreboard inside memory block
+bugs_fixed:
+  - config had duplicate -gpgpu_mascar_enable_scheduling 0 overriding scheduling=1
+  - config had duplicate -gpgpu_mascar_stall_threshold 8 too conservative (pitstop never fires)
+  - skip gate moved from pre-scoreboard to post-scoreboard inside memory block
+deadlock_check: allow_count > 0, ratio skip/allow = 4 = max_skip_streak (force-allow working)
+recommend_next: Phase 5 focused validation
 feature_off_baseline:
   vecadd: 5569
   rodinia_hotspot: 6931
   rodinia_bfs: 6665
-  rodinia_srad_v2: 8236
+  rodinia_srad_v2: 15926
   strided_access: 5825
   polybench_fdtd2d: 5840

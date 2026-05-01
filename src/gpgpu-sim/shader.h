@@ -2424,6 +2424,41 @@ class shader_core_ctx : public core_t {
       m_mascar_would_deprioritize++;
   }
 
+  // Mascar Phase 4: scheduler skip gate — returns true if warp should be
+  // skipped this cycle. Only fires when enable_scheduling=1.
+  // Skip condition: stall_streak >= stall_threshold.
+  // Deadlock prevention: per-warp skip_streak — after max_skip_streak
+  // consecutive skips, force-allow for one cycle and reset skip_streak.
+  bool mascar_skip_gate_warp(unsigned warp_id) {
+    if (!m_config->gpgpu_enable_mascar ||
+        !m_config->gpgpu_mascar_enable_scheduling)
+      return false;
+    if (warp_id >= m_mascar_stall_streak.size()) return false;
+    if (m_mascar_stall_streak[warp_id] < m_config->gpgpu_mascar_stall_threshold)
+      return false;
+    // Force-allow after max_skip_streak to prevent deadlock
+    if (warp_id < m_mascar_skip_streak.size() &&
+        m_mascar_skip_streak[warp_id] >= m_config->gpgpu_mascar_max_skip_streak) {
+      m_mascar_skip_streak[warp_id] = 0;
+      m_mascar_allow_count++;
+      return false;
+    }
+    // Skip this warp
+    if (warp_id < m_mascar_skip_streak.size())
+      m_mascar_skip_streak[warp_id]++;
+    m_mascar_skip_count++;
+    return true;
+  }
+
+  // Reset skip_streak when warp successfully issues (no longer in pitstop)
+  void mascar_reset_skip_streak(unsigned warp_id) {
+    if (!m_config->gpgpu_enable_mascar ||
+        !m_config->gpgpu_mascar_enable_scheduling)
+      return;
+    if (warp_id < m_mascar_skip_streak.size())
+      m_mascar_skip_streak[warp_id] = 0;
+  }
+
   void get_icnt_power_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
 
   // debug:

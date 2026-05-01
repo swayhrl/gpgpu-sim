@@ -109,3 +109,29 @@ append-only log — 每个 Phase 结束时追加一次。
 - 当前风险: 低（纯被动）
 - 是否建议继续: 是，进入 Phase 4（附 risk checkpoint）
 - 下一步: Phase 4 minimal scheduling policy
+
+---
+
+## Checkpoint: Phase 4 — Minimal Scheduling Policy
+
+- Phase: 4 (Minimal Scheduling Policy)
+- 当前状态: complete
+- 已完成:
+  - config bug 修复：policy_on 有重复行 `-gpgpu_mascar_enable_scheduling 0` 和 `-gpgpu_mascar_stall_threshold 8` 覆盖了正确值 → scheduling 实际=0 导致 skip_count=0
+  - stall_threshold 调整：8→2（threshold=8 时 pitstop_event=0，streak 从未达到 8；threshold=2 立即有信号）
+  - skip gate 从 pre-scoreboard 移到 post-scoreboard（memory block 内部，CCWS would-gate 之后，m_mem_out->has_free 之前）
+  - 编译通过（warnings only）
+  - noop_off regression：vecadd=5569 ✓
+  - policy_on 验证：skip_count > 0，allow_count > 0，ratio = max_skip_streak = 4（deadlock prevention ✓）
+- policy_on 结果:
+  - vecadd: 5569→5560 (-0.2%), skip=44, allow=11
+  - hotspot: 6931→6923 (-0.1%), skip=8300, allow=2075
+  - srad_v2: 15926→15918 (-0.05%), skip=5516, allow=1379
+- 修改文件:
+  - src/gpgpu-sim/shader.cc (gate 移位：pre→post-scoreboard)
+  - configs/hrl-repro/SM7_QV100_mascar_policy_on/gpgpusim.config (bug fix + threshold=2)
+  - configs/hrl-repro/SM7_QV100_mascar_policy_on/README.md (更新)
+  - experiments/paper-mascar/round_state.yaml (更新)
+- 根本原因分析：config 有重复 option 行，GPGPU-Sim option_parser 后值覆盖前值 → enable_scheduling=0 → skip gate always false
+- 是否建议继续: 是，进入 Phase 5 focused validation
+- 下一步: Phase 5 focused validation
