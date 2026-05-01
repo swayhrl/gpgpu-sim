@@ -1,0 +1,70 @@
+paper: daws
+round: AUTO-2
+stage: reading
+status: complete
+date: 2026-05-01
+branch: hrl/repro-auto-smoke-v0
+
+source_changed: false
+experiments_run: false
+
+paper_source_available: false
+paper_source_note: >
+  No PDF available. Used web search summary. Key facts confirmed:
+  Rogers/O'Connor/Aamodt, MICRO 2013 (not 2011 as initially assumed).
+  daws.yaml authors/venue corrected.
+
+key_mechanism_summary: >
+  DAWS proactively predicts per-warp L1 cache footprint based on branch divergence
+  (active thread count). When sum of predicted footprints exceeds L1 capacity,
+  throttle high-footprint (low active_count) warps. Proactive vs CCWS reactive.
+
+expected_modules:
+  - src/gpgpu-sim/shader.h      # per-warp footprint array, scheduler gate
+  - src/gpgpu-sim/shader.cc     # scheduler_unit::cycle() throttle logic
+  - src/gpgpu-sim/gpu-sim.cc    # config knobs, stats registration
+
+mechanism_chain:
+  - divergence_probe: active_count() < warp_size → divergence_event
+  - footprint_prediction: predicted_footprint[wid] = f(warp_size, active_count)
+  - would_throttle: sum(footprint) > threshold → would_throttle[wid] = true
+  - actual_throttle: block warp from issuing in scheduler_unit::cycle()
+
+gpgpu_sim_mapping:
+  active_count: "warp_inst_t::active_count() — abstract_hardware_model.h:1191"
+  divergence_state: "simt_stack pdom reconvergence — abstract_hardware_model.h:439"
+  scheduler_hook: "scheduler_unit::cycle() — shader.cc"
+  per_warp_array: "new m_daws_footprint[] in ldst_unit or scheduler_unit"
+
+known_risks:
+  - loop_detection_missing: "Approximate: use active_count globally, not loop-scoped"
+  - load_classification_missing: "Approximate: all loads treated as divergence-sensitive"
+  - tiny_workload_no_divergence: "64x64 workloads may have active_count=warp_size always"
+  - throttle_direction: "DAWS throttles low active_count (high footprint), opposite of CCWS"
+
+approximations_accepted:
+  - skip_loop_detection: true
+  - skip_load_classification: true
+  - footprint_proxy: "(warp_size - active_count) * cache_line_size or similar"
+
+highest_risk_change: >
+  Loop detection: DAWS only predicts footprint inside loops. Without loop detection,
+  the mechanism may fire in non-loop regions and cause over-throttling.
+
+recommend_next: >
+  AUTO-3: Stage 01 no-op config. Create hrl/paper/daws-repro-v0 branch.
+  Add config knobs (gpgpu_enable_daws etc.) with feature_off default.
+  Verify feature_off does not change baseline sim_cycle.
+
+commit_recommended: true
+suggested_commit: "daws: add reading notes and reproduction plan"
+suggested_tag: daws-reading-plan
+
+new_files:
+  - docs/papers/daws_reading_notes.md
+  - docs/papers/daws_repro_plan.md
+  - experiments/paper-daws/README.md
+  - experiments/paper-daws/config_matrix.csv
+  - experiments/paper-daws/result_manifest.csv
+  - experiments/paper-daws/round_state.yaml
+  - tools/paper_repro/papers/daws.yaml (updated)

@@ -264,7 +264,15 @@ cycle 方向相反（应减少）原因：cutoff 高估 8×，gate 触发时机�
 
 - [x] Round S–AK：CCWS paper reproduction 完成（tag `ccws-final-report`）
 - [x] FINAL-INFRA：`tools/paper_repro/` scaffold 建立（tag `paper-repro-scaffold-v0`）
-- [ ] **下一步**：开 `hrl/idea/cache-policy-experiments-v0` 做自研 cache policy，或选第二篇论文用 `tools/paper_repro/` 框架复现
+- [x] AUTO-0：scaffold smoke test 通过（tag `paper-repro-scaffold-smoke`）
+- [x] AUTO-1：DAWS paper.yaml 创建（tag `paper-repro-daws-config`）
+- [x] AUTO-2：DAWS reading stage 完成（tag `daws-reading-plan`）
+- [ ] **下一步 AUTO-3**：创建 `hrl/paper/daws-repro-v0` 分支，添加 no-op config knobs，验证 feature_off 不改 baseline
+
+**DAWS 论文**：Rogers/O'Connor/Aamodt — MICRO 2013（与 CCWS 同一作者组）
+**DAWS 核心**：divergence → footprint prediction → warp throttling（proactive，比 CCWS reactive 更激进）
+**DAWS 近似方案**：用 `active_count()` 作为 footprint proxy，跳过 loop detection 和 load classification
+**DAWS 最高风险**：loop detection 缺失可能导致 over-throttle；tiny workload 可能无 divergence 信号
 
 ---
 

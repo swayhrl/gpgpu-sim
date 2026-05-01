@@ -1,7 +1,8 @@
 paper_key: daws
 title: "Divergence-Aware Warp Scheduling"
-authors: "Fung, Sham, Yuan, Aamodt"
-venue: "MICRO 2011"
+authors: "Rogers, O'Connor, Aamodt"
+venue: "MICRO 2013"
+venue_note: "Corrected in AUTO-2: initial config had wrong authors/venue"
 branch: hrl/paper/daws-repro-v0
 base_branch: main
 final_tag: daws-final-report
@@ -43,16 +44,32 @@ mechanism_chain:
 likely_config_knobs:
   - gpgpu_enable_daws
   - gpgpu_daws_enable_telemetry
-  - gpgpu_daws_enable_would_schedule
-  - gpgpu_daws_enable_scheduler
+  - gpgpu_daws_enable_would_throttle
+  - gpgpu_daws_enable_throttling
+  - gpgpu_daws_footprint_threshold
+  - gpgpu_daws_min_active_threads
+
+likely_stats:
+  - paper_daws_divergence_event
+  - paper_daws_footprint_update
+  - paper_daws_would_throttle_block
+  - paper_daws_throttle_block
 
 known_risks:
-  - id: divergence_metric_approximation
-    description: "Exact DAWS divergence metric may require approximation in GPGPU-Sim"
-    impact: "signal direction may be correct but semantics differ from paper"
+  - id: loop_detection_missing
+    description: "DAWS footprint prediction is loop-scoped; approximate impl uses global active_count"
+    impact: "may over-throttle in non-loop regions"
+    fix: "implement back-edge detection or PC-range loop tracking"
+  - id: load_classification_missing
+    description: "DAWS classifies load instructions by divergence behavior; approximate impl treats all loads equally"
+    impact: "may over-throttle non-divergent loads"
+    fix: "add per-static-PC classification table in decode stage"
   - id: tiny_workload_low_divergence
     description: "Tiny workloads may not expose enough branch divergence to trigger mechanism"
     impact: "need divergence-heavy workloads (e.g., BFS, graph workloads)"
+  - id: throttle_direction
+    description: "DAWS throttles high-footprint (low active_count) warps; opposite of CCWS LLS gating"
+    impact: "easy to get direction wrong; verify carefully"
   - id: scheduler_nonlocal_timing
     description: "Scheduler interaction can affect timing nonlocally across warps"
     impact: "cycle delta may be noisy; need careful baseline comparison"
