@@ -1,0 +1,113 @@
+paper_key: daws
+title: "Divergence-Aware Warp Scheduling"
+authors: "Fung, Sham, Yuan, Aamodt"
+venue: "MICRO 2011"
+branch: hrl/paper/daws-repro-v0
+base_branch: main
+final_tag: daws-final-report
+
+mechanism_category: warp scheduling / divergence-aware scheduling
+
+target_modules:
+  - src/gpgpu-sim/shader.h
+  - src/gpgpu-sim/shader.cc
+  - src/gpgpu-sim/gpu-sim.cc
+
+config_root: configs/hrl-repro
+experiment_root: experiments/paper-daws
+doc_root: docs/papers
+
+# DAWS core idea: when a warp diverges (threads take different branch paths),
+# prioritize warps that are "reconverging" (fewer active threads) to reduce
+# the number of cycles spent on diverged execution.
+mechanism_chain:
+  - name: divergence metric probe
+    stage: 02_telemetry
+    knob: gpgpu_daws_enable_telemetry
+    stat: paper_daws_divergence_event
+    faithful: unknown
+    approximation: "TBD during reading stage"
+  - name: would-schedule telemetry
+    stage: 03_would_change
+    knob: gpgpu_daws_enable_would_schedule
+    stat: paper_daws_would_schedule_change
+    faithful: unknown
+    approximation: "TBD during reading stage"
+  - name: divergence-aware scheduler
+    stage: 04_minimal_mechanism
+    knob: gpgpu_daws_enable_scheduler
+    stat: paper_daws_schedule_override
+    faithful: unknown
+    approximation: "TBD during reading stage"
+
+likely_config_knobs:
+  - gpgpu_enable_daws
+  - gpgpu_daws_enable_telemetry
+  - gpgpu_daws_enable_would_schedule
+  - gpgpu_daws_enable_scheduler
+
+known_risks:
+  - id: divergence_metric_approximation
+    description: "Exact DAWS divergence metric may require approximation in GPGPU-Sim"
+    impact: "signal direction may be correct but semantics differ from paper"
+  - id: tiny_workload_low_divergence
+    description: "Tiny workloads may not expose enough branch divergence to trigger mechanism"
+    impact: "need divergence-heavy workloads (e.g., BFS, graph workloads)"
+  - id: scheduler_nonlocal_timing
+    description: "Scheduler interaction can affect timing nonlocally across warps"
+    impact: "cycle delta may be noisy; need careful baseline comparison"
+  - id: no_original_benchmarks
+    description: "No exact original benchmark suite available; must use available workloads"
+    impact: "workload selection may not match paper's evaluation set"
+
+workload_sets:
+  quick:
+    size: 7
+    workloads: [vecadd, strided_access, page_stride_access, atomic_contention, mutual_tiled, polybench_2dconv, rodinia_hotspot]
+    purpose: smoke test; feature_off must pass before any feature_on
+  divergence_focus:
+    size: 7
+    workloads: [rodinia_bfs, rodinia_hotspot, rodinia_srad_v2, polybench_fdtd2d, strided_access, mutual_tiled, atomic_contention]
+    purpose: divergence-heavy workloads for mechanism signal validation
+    note: "BFS and hotspot expected to have higher branch divergence"
+  standard:
+    size: 13
+    workloads: all_ready_workloads
+    purpose: full regression; only after focused passes
+
+expected_stage_sequence:
+  - 00_reading
+  - 01_noop
+  - 02_telemetry
+  - 03_would_change
+  - 04_minimal_mechanism
+  - 05_focused_validation
+  - 06_standard_validation
+  - 07_final_report
+
+success_rules:
+  - id: feature_off_no_change
+    description: "feature_off sim_cycle must equal baseline; all paper_daws_* counters = 0"
+    required: true
+  - id: no_src_change_for_validation
+    description: "validation rounds must not modify src/"
+    required: true
+  - id: no_standard_before_focused
+    description: "standard validation only after focused validation passes"
+    required: true
+  - id: round_state_required
+    description: "every round must update round_state.yaml before ending"
+    required: true
+  - id: do_not_require_100_percent_faithful
+    description: "approximate reproduction is acceptable; document deviations explicitly"
+    required: true
+
+reproduction_status:
+  mechanism_chain: not_started
+  faithful_divergence_metric: unknown
+  real_scheduler_override: not_started
+  focused_validation: not_started
+  standard_validation: not_started
+  cycle_direction_correct: unknown
+  final_report: not_started
+  overall: not_started
