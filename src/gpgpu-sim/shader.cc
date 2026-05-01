@@ -501,6 +501,11 @@ shader_core_ctx::shader_core_ctx(class gpgpu_sim *gpu,
   m_occupied_ctas = 0;
   m_occupied_hwtid.reset();
   m_occupied_cta_to_hwtid.clear();
+  // DAWS Round 02: initialize divergence telemetry counters
+  m_daws_divergence_event = 0;
+  m_daws_active_thread_sum = 0;
+  m_daws_active_thread_samples = 0;
+  m_daws_min_active_seen = ~0ULL;
 }
 
 void shader_core_ctx::reinit(unsigned start_thread, unsigned end_thread,
@@ -1348,6 +1353,15 @@ void scheduler_unit::cycle() {
 
             const active_mask_t &active_mask =
                 m_shader->get_active_mask(warp_id, pI);
+
+            // DAWS Round 02: passive divergence telemetry
+            // Record when active thread count < warp_size (diverged warp).
+            // No scheduling behavior change.
+            {
+              unsigned ac = active_mask.count();
+              if (ac < (unsigned)m_shader->m_config->warp_size)
+                m_shader->daws_record_divergence(ac);
+            }
 
             assert(warp(warp_id).inst_in_pipeline());
 
@@ -5177,6 +5191,15 @@ void simt_core_cluster::get_ccws_lg_stats(unsigned long long &attempt,
                                            unsigned long long &allow) const {
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
     m_core[i]->get_ccws_lg_stats(attempt, block, allow);
+}
+
+void simt_core_cluster::get_daws_telemetry_stats(
+    unsigned long long &divergence_event, unsigned long long &active_thread_sum,
+    unsigned long long &active_thread_samples,
+    unsigned long long &min_active_seen) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
+    m_core[i]->get_daws_telemetry_stats(divergence_event, active_thread_sum,
+                                        active_thread_samples, min_active_seen);
 }
 
 void exec_shader_core_ctx::checkExecutionStatusAndUpdate(warp_inst_t &inst,

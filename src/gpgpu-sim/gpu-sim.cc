@@ -1758,7 +1758,19 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
   // paper_daws: DAWS reproduction stats (Rogers/O'Connor/Aamodt MICRO 2013)
   fprintf(stdout, "paper_daws_enabled = %d\n",
           m_shader_config->gpgpu_enable_daws);
-  fprintf(stdout, "paper_daws_divergence_event = 0\n");
+  {
+    unsigned long long divergence_event = 0, active_thread_sum = 0,
+                       active_thread_samples = 0,
+                       min_active_seen = ~0ULL;
+    for (unsigned i = 0; i < m_config.num_cluster(); i++)
+      m_cluster[i]->get_daws_telemetry_stats(divergence_event, active_thread_sum,
+                                             active_thread_samples, min_active_seen);
+    fprintf(stdout, "paper_daws_divergence_event = %llu\n", divergence_event);
+    fprintf(stdout, "paper_daws_active_thread_sum = %llu\n", active_thread_sum);
+    fprintf(stdout, "paper_daws_active_thread_samples = %llu\n", active_thread_samples);
+    fprintf(stdout, "paper_daws_min_active_seen = %llu\n",
+            (min_active_seen == UINT64_MAX) ? 0 : min_active_seen);
+  }
   fprintf(stdout, "paper_daws_footprint_update = 0\n");
   fprintf(stdout, "paper_daws_would_throttle = 0\n");
   fprintf(stdout, "paper_daws_throttle_block = 0\n");

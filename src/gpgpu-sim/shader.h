@@ -2247,6 +2247,27 @@ class shader_core_ctx : public core_t {
   void get_ccws_lg_stats(unsigned long long &attempt, unsigned long long &block,
                          unsigned long long &allow) const;
 
+  // DAWS Round 02: divergence telemetry (passive, no scheduling change)
+  void daws_record_divergence(unsigned active_count) {
+    if (!m_config->gpgpu_enable_daws || !m_config->gpgpu_daws_enable_telemetry)
+      return;
+    m_daws_divergence_event++;
+    m_daws_active_thread_sum += active_count;
+    m_daws_active_thread_samples++;
+    if (active_count < m_daws_min_active_seen)
+      m_daws_min_active_seen = active_count;
+  }
+  void get_daws_telemetry_stats(unsigned long long &divergence_event,
+                                unsigned long long &active_thread_sum,
+                                unsigned long long &active_thread_samples,
+                                unsigned long long &min_active_seen) const {
+    divergence_event += m_daws_divergence_event;
+    active_thread_sum += m_daws_active_thread_sum;
+    active_thread_samples += m_daws_active_thread_samples;
+    if (m_daws_min_active_seen < min_active_seen)
+      min_active_seen = m_daws_min_active_seen;
+  }
+
   void get_icnt_power_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
 
   // debug:
@@ -2685,6 +2706,12 @@ class shader_core_ctx : public core_t {
   unsigned int m_occupied_ctas;
   std::bitset<MAX_THREAD_PER_SM> m_occupied_hwtid;
   std::map<unsigned int, unsigned int> m_occupied_cta_to_hwtid;
+
+  // DAWS Round 02: divergence telemetry counters (per-SM, passive)
+  unsigned long long m_daws_divergence_event;
+  unsigned long long m_daws_active_thread_sum;
+  unsigned long long m_daws_active_thread_samples;
+  unsigned long long m_daws_min_active_seen;
 };
 
 class exec_shader_core_ctx : public shader_core_ctx {
@@ -2780,6 +2807,12 @@ class simt_core_cluster {
                          unsigned long long &allow) const;
   void get_ccws_lg_stats(unsigned long long &attempt, unsigned long long &block,
                          unsigned long long &allow) const;
+
+  // DAWS Round 02: divergence telemetry aggregation
+  void get_daws_telemetry_stats(unsigned long long &divergence_event,
+                                unsigned long long &active_thread_sum,
+                                unsigned long long &active_thread_samples,
+                                unsigned long long &min_active_seen) const;
 
   void get_icnt_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
   float get_current_occupancy(unsigned long long &active,

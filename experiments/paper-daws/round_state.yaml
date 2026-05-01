@@ -1,6 +1,6 @@
 paper: daws
-round: AUTO-3
-stage: noop_config
+round: AUTO-4
+stage: divergence_telemetry
 status: complete
 date: 2026-05-01
 branch: hrl/paper/daws-repro-v0
@@ -8,46 +8,40 @@ branch: hrl/paper/daws-repro-v0
 source_changed: true
 changed_files:
   - src/gpgpu-sim/shader.h
+  - src/gpgpu-sim/shader.cc
   - src/gpgpu-sim/gpu-sim.cc
 
 experiments_run: true
 workloads_run: [vecadd, rodinia_hotspot, rodinia_bfs]
-configs_run: [SM7_QV100_daws_noop_off, SM7_QV100_daws_noop_on]
+configs_run: [SM7_QV100_daws_noop_off, SM7_QV100_daws_telemetry_on]
 
 feature_off_unchanged: true
-feature_on_noop_unchanged: true
-paper_daws_stats_zero: true
+telemetry_on_cycle_unchanged: true
+throttle_block_zero: true
 
-build_status: success
-new_knobs:
-  - gpgpu_enable_daws (default 0)
-  - gpgpu_daws_enable_telemetry (default 0)
-  - gpgpu_daws_enable_would_throttle (default 0)
-  - gpgpu_daws_enable_throttling (default 0)
-  - gpgpu_daws_footprint_threshold (default 50)
-  - gpgpu_daws_min_active_threads (default 1)
-  - gpgpu_daws_debug (default 0)
+telemetry_signal_summary:
+  vecadd: "divergence_event=0 (no branches, expected)"
+  rodinia_hotspot: "divergence_event=7655, min_active=8/32 (75% divergence)"
+  rodinia_bfs: "divergence_event=78, min_active=1/32 (extreme divergence)"
 
 new_stats:
-  - paper_daws_enabled
-  - paper_daws_divergence_event (placeholder=0)
-  - paper_daws_footprint_update (placeholder=0)
-  - paper_daws_would_throttle (placeholder=0)
-  - paper_daws_throttle_block (placeholder=0)
+  - paper_daws_divergence_event (live counter)
+  - paper_daws_active_thread_sum (live counter)
+  - paper_daws_active_thread_samples (live counter)
+  - paper_daws_min_active_seen (live counter)
 
 recommend_next: >
-  AUTO-4 / Round 02: Add divergence event probe in scheduler_unit::cycle().
-  When active_count() < warp_size, increment paper_daws_divergence_event counter.
-  No scheduling behavior change. Verify divergence-heavy workloads (BFS, hotspot)
-  show divergence_event > 0.
+  AUTO-5 / Round 03: Implement would-throttle telemetry.
+  Compute predicted_footprint[wid] = (warp_size - active_count) * cache_line_size.
+  When sum(footprint) > threshold, increment paper_daws_would_throttle counter.
+  No actual scheduling change. Verify would_throttle > 0 for hotspot/bfs.
 
 commit_recommended: true
-suggested_commit: "daws: add no-op config and stats"
-suggested_tag: daws-config-noop
+suggested_commit: "daws: add divergence telemetry instrumentation"
+suggested_tag: daws-divergence-telemetry
 
 new_files:
-  - configs/hrl-repro/SM7_QV100_daws_noop_off/
-  - configs/hrl-repro/SM7_QV100_daws_noop_on/
-  - docs/papers/daws_round_01_noop_config.md
-  - experiments/paper-daws/noop_behavior_check.csv
+  - configs/hrl-repro/SM7_QV100_daws_telemetry_on/
+  - docs/papers/daws_round_02_divergence_telemetry.md
+  - experiments/paper-daws/divergence_telemetry_check.csv
   - experiments/paper-daws/config_matrix.csv (updated)

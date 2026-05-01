@@ -1,0 +1,7 @@
+paper,round,stage,workload,set,config,pass,sim_cycle,baseline_cycle,cycle_delta,cycle_delta_pct,divergence_event,active_thread_sum,active_thread_samples,min_active_seen,throttle_block,notes
+daws,AUTO-4,divergence_telemetry,vecadd,quick,SM7_QV100_daws_noop_off,1,5569,5569,0,0%,0,0,0,0,0,feature_off baseline
+daws,AUTO-4,divergence_telemetry,rodinia_hotspot,quick,SM7_QV100_daws_noop_off,1,6931,6931,0,0%,0,0,0,0,0,feature_off baseline
+daws,AUTO-4,divergence_telemetry,rodinia_bfs,quick,SM7_QV100_daws_noop_off,1,6665,6665,0,0%,0,0,0,0,0,feature_off baseline
+daws,AUTO-4,divergence_telemetry,vecadd,quick,SM7_QV100_daws_telemetry_on,1,5569,5569,0,0%,0,0,0,0,0,no divergence (expected)
+daws,AUTO-4,divergence_telemetry,rodinia_hotspot,quick,SM7_QV100_daws_telemetry_on,1,6931,6931,0,0%,7655,176992,7655,8,0,divergence signal present; min_active=8/32
+daws,AUTO-4,divergence_telemetry,rodinia_bfs,quick,SM7_QV100_daws_telemetry_on,1,6665,6665,0,0%,78,78,78,1,0,extreme divergence; min_active=1/32
