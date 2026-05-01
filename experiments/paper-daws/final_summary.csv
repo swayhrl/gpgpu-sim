@@ -1,0 +1,2 @@
+paper,stage,status,mechanism_chain_reproduced,faithful_reproduction_status,telemetry_signal,real_mechanism_signal,focused_validation,standard_validation,recommendation,notes
+daws,final_report,complete,yes,partial_approximate,yes,yes,pass,skipped,stop_and_proceed_to_idea_branch,cycle direction reversed due to tiny workload; mechanism chain intact

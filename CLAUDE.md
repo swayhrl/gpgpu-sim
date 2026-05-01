@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-05-01 — FINAL-INFRA complete; tools/paper_repro/ scaffold 建立；CCWS paper reproduction 完成到 ccws-final-report tag；后续论文复现使用 paper.yaml + stage templates + round_state.yaml 流程。_
+_Last updated: 2026-05-01 — DAWS paper reproduction 完成到 daws-final-report tag；CCWS + DAWS 两篇论文复现完成；后续进入 hrl/idea/cache-policy-experiments-v0 自研 cache policy。_
 
 ---
 
@@ -271,8 +271,9 @@ cycle 方向相反（应减少）原因：cutoff 高估 8×，gate 触发时机�
 - [x] AUTO-4：DAWS divergence telemetry 实现，hotspot/bfs 有信号，sim_cycle 不变（tag `daws-divergence-telemetry`）
 - [x] AUTO-5：DAWS footprint + would-throttle telemetry，hotspot/srad_v2 有信号，sim_cycle 不变（tag `daws-would-throttle-telemetry`）
 - [x] AUTO-6：DAWS minimal real throttling，streak-based deadlock prevention，hotspot/srad_v2 throttle_block 有信号（tag `daws-minimal-throttling`）
-- [x] AUTO-7：DAWS focused validation，7 workloads × 3 configs，无 deadlock，feature_off 不变（tag 待提交 `daws-focused-validation`）
-- [ ] **下一步 AUTO-8**：DAWS final reproduction report
+- [x] AUTO-7：DAWS focused validation，7 workloads × 3 configs，无 deadlock，feature_off 不变（tag `daws-focused-validation`）
+- [x] AUTO-8：DAWS final reproduction report（tag 待提交 `daws-final-report`）
+- [ ] **下一步**：进入 `hrl/idea/cache-policy-experiments-v0` 自研 cache policy
 
 **DAWS 论文**：Rogers/O'Connor/Aamodt — MICRO 2013（与 CCWS 同一作者组）
 **DAWS 核心**：divergence → footprint prediction → warp throttling（proactive，比 CCWS reactive 更激进）

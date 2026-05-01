@@ -2,7 +2,7 @@
 
 **Paper**: Divergence-Aware Warp Scheduling (Rogers, O'Connor, Aamodt — MICRO 2013)
 **Branch**: hrl/paper/daws-repro-v0
-**Round**: AUTO-7 (focused validation complete)
+**Round**: AUTO-8 (final report complete)
 **Date**: 2026-05-01
 
 ---
@@ -23,7 +23,7 @@
 | 03_would_change | would-throttle telemetry（不实际 gate） | shader.h/cc | AUTO-5 ✓ |
 | 04_minimal_mechanism | 实际 warp throttling（approximate footprint） | shader.h/cc | AUTO-6 ✓ |
 | 05_focused_validation | 7 divergence-heavy workloads × 3 configs | 无 | AUTO-7 ✓ |
-| 07_final_report | 复现报告 | 无 | AUTO-8 |
+| 07_final_report | 复现报告 | 无 | AUTO-8 ✓ |
 
 ---
 

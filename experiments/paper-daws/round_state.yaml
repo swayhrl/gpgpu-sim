@@ -1,64 +1,58 @@
 paper: daws
-round: AUTO-7
-stage: focused_validation
+round: AUTO-8
+stage: final_report
 status: complete
 date: 2026-05-01
 branch: hrl/paper/daws-repro-v0
 
 source_changed: false
+experiments_run: false
+final_report_created: true
 
-experiments_run: true
-workloads_run:
-  - vecadd
-  - rodinia_hotspot
-  - rodinia_srad_v2
-  - rodinia_bfs
-  - rodinia_pathfinder
-  - polybench_2dconv
-  - polybench_fdtd2d
-configs_run:
-  - SM7_QV100_daws_noop_off
-  - SM7_QV100_daws_would_throttle_on
-  - SM7_QV100_daws_throttle_on
+mechanism_chain_reproduced: true
+faithful_reproduction_status: partial_approximate
 
-feature_off_unchanged: true
-would_throttle_behavior_unchanged: true
-no_deadlock: true
+focused_validation_summary:
+  workloads_run: 7
+  configs_run: 3
+  no_deadlock: true
+  feature_off_unchanged: true
+  would_throttle_cycle_unchanged: true
+  throttle_signal_workloads: [rodinia_hotspot, rodinia_srad_v2]
+  throttle_block_hotspot: 79030
+  throttle_block_srad_v2: 38769
+  cycle_delta_hotspot: "+2.0%"
+  cycle_delta_srad_v2: "+3.9%"
+  cycle_direction: "increased (tiny workload limitation, same as CCWS)"
 
-throttle_signal_summary:
-  vecadd: "throttle_block=0 (no divergence)"
-  rodinia_hotspot: "throttle_block=79030 (strong signal, cycle+2%)"
-  rodinia_srad_v2: "throttle_block=38769 (strong signal, cycle+4%)"
-  rodinia_bfs: "throttle_block=0 (fp_sum_max=31 < threshold=32)"
-  rodinia_pathfinder: "throttle_block=0 (fp_sum_max=32 = threshold, not exceeded)"
-  polybench_2dconv: "throttle_block=0 (fp_max=8, low divergence)"
-  polybench_fdtd2d: "throttle_block=0 (no divergence)"
+approximation_summary:
+  footprint_predictor: "warp_size - active_count (no loop detection)"
+  loop_scope: "global (not loop-scoped)"
+  load_classification: "not implemented (all instructions gated)"
+  deadlock_prevention: "streak counter max=8 (not original DAWS mechanism)"
 
-slowdown_summary:
-  rodinia_hotspot: "+2.0% (6931→7072)"
-  rodinia_srad_v2: "+3.9% (8236→8561)"
-  others: "0% (gate never fires)"
-
-workloads_sensitive_to_daws:
-  - rodinia_hotspot
-  - rodinia_srad_v2
-
-cycle_direction_note: >
-  Cycle increases (+2-4%) for hotspot/srad_v2. Same root cause as CCWS:
-  tiny workload (64x64), few warps per SM, throttle blocks effective warps
-  rather than reducing cache pressure. Mechanism is correct; larger workloads
-  needed to see cycle reduction.
+automation_workflow_assessment:
+  paper_yaml: useful
+  stage_templates: useful
+  round_state_yaml: critical_for_cross_session_context
+  ten_minute_checkpoint: effective
+  rounds_to_complete: 6
+  comparison_to_ccws: "significantly fewer rounds; simpler signal source"
+  improvement_needed: "deadlock troubleshooting template; mechanism_chain backfill after telemetry"
 
 recommend_next: >
-  AUTO-8: DAWS final reproduction report.
-  Document mechanism chain, approximation strategy, validation results,
-  gap analysis vs original paper. No src changes needed.
+  Stop DAWS paper branch. Do not continue mechanism refinement.
+  Proceed to hrl/idea/cache-policy-experiments-v0 for original cache policy work.
+  Optionally do one small automation refinement round first.
 
 commit_recommended: true
-suggested_commit: "daws: validate minimal throttling on focused workloads"
-suggested_tag: daws-focused-validation
+suggested_commit: "daws: add final reproduction report"
+suggested_tag: daws-final-report
 
 new_files:
-  - experiments/paper-daws/focused_validation.csv
-  - docs/papers/daws_round_05_focused_validation.md
-  - experiments/paper-daws/config_matrix.csv (updated)
+  - docs/papers/daws_final_reproduction_report.md
+  - experiments/paper-daws/final_summary.csv
+  - experiments/paper-daws/round_state.yaml (updated)
+  - docs/papers/daws_repro_plan.md (updated)
+  - tools/paper_repro/papers/daws.yaml (updated)
+  - CLAUDE.md (updated)

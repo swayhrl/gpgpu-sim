@@ -126,5 +126,5 @@ reproduction_status:
   focused_validation: complete
   standard_validation: skipped
   cycle_direction_correct: no_tiny_workload_limitation
-  final_report: not_started
-  overall: ready_for_final_report
+  final_report: complete
+  overall: approximate_reproduction_complete
