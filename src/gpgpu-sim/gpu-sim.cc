@@ -739,6 +739,29 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          "CCWS Round AA: per-warp LLS score threshold for gating cutoff"
                          " (default 100; independent of lls_base_score)",
                          "100");
+
+  // DAWS: Divergence-Aware Warp Scheduling (Rogers/O'Connor/Aamodt MICRO 2013)
+  option_parser_register(opp, "-gpgpu_enable_daws", OPT_INT32,
+                         &gpgpu_enable_daws,
+                         "Enable DAWS divergence-aware warp throttling (0=off, 1=on)", "0");
+  option_parser_register(opp, "-gpgpu_daws_enable_telemetry", OPT_INT32,
+                         &gpgpu_daws_enable_telemetry,
+                         "DAWS Round 02: enable divergence event probe (0=off)", "0");
+  option_parser_register(opp, "-gpgpu_daws_enable_would_throttle", OPT_INT32,
+                         &gpgpu_daws_enable_would_throttle,
+                         "DAWS Round 03: enable would-throttle telemetry (0=off)", "0");
+  option_parser_register(opp, "-gpgpu_daws_enable_throttling", OPT_INT32,
+                         &gpgpu_daws_enable_throttling,
+                         "DAWS Round 04: enable actual warp throttling (0=off)", "0");
+  option_parser_register(opp, "-gpgpu_daws_footprint_threshold", OPT_UINT32,
+                         &gpgpu_daws_footprint_threshold,
+                         "DAWS L1 capacity fraction threshold (0-100)", "50");
+  option_parser_register(opp, "-gpgpu_daws_min_active_threads", OPT_UINT32,
+                         &gpgpu_daws_min_active_threads,
+                         "DAWS minimum active threads to trigger divergence probe (default 1)", "1");
+  option_parser_register(opp, "-gpgpu_daws_debug", OPT_INT32,
+                         &gpgpu_daws_debug,
+                         "DAWS per-cycle debug trace (0=off)", "0");
 }
 
 void gpgpu_sim_config::reg_options(option_parser_t opp) {
@@ -1731,6 +1754,14 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
     fprintf(stdout, "paper_ccws_would_gate_block = %llu\n", wg_block);
     fprintf(stdout, "paper_ccws_would_gate_allow = %llu\n", wg_allow);
   }
+
+  // paper_daws: DAWS reproduction stats (Rogers/O'Connor/Aamodt MICRO 2013)
+  fprintf(stdout, "paper_daws_enabled = %d\n",
+          m_shader_config->gpgpu_enable_daws);
+  fprintf(stdout, "paper_daws_divergence_event = 0\n");
+  fprintf(stdout, "paper_daws_footprint_update = 0\n");
+  fprintf(stdout, "paper_daws_would_throttle = 0\n");
+  fprintf(stdout, "paper_daws_throttle_block = 0\n");
 
   if (m_config.gpgpu_cflog_interval != 0) {
     spill_log_to_file(stdout, 1, gpu_sim_cycle);

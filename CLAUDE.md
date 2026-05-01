@@ -267,7 +267,8 @@ cycle 方向相反（应减少）原因：cutoff 高估 8×，gate 触发时机�
 - [x] AUTO-0：scaffold smoke test 通过（tag `paper-repro-scaffold-smoke`）
 - [x] AUTO-1：DAWS paper.yaml 创建（tag `paper-repro-daws-config`）
 - [x] AUTO-2：DAWS reading stage 完成（tag `daws-reading-plan`）
-- [ ] **下一步 AUTO-3**：创建 `hrl/paper/daws-repro-v0` 分支，添加 no-op config knobs，验证 feature_off 不改 baseline
+- [x] AUTO-3：DAWS no-op config + stats 添加，feature_off 验证通过（tag `daws-config-noop`）
+- [ ] **下一步 AUTO-4**：在 `scheduler_unit::cycle()` 添加 divergence event probe（`active_count() < warp_size` → 递增计数器），不改调度行为
 
 **DAWS 论文**：Rogers/O'Connor/Aamodt — MICRO 2013（与 CCWS 同一作者组）
 **DAWS 核心**：divergence → footprint prediction → warp throttling（proactive，比 CCWS reactive 更激进）

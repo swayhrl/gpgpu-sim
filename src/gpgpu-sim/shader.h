@@ -1799,6 +1799,16 @@ class shader_core_config : public core_config {
   int gpgpu_ccws_load_gate_debug;     // per-gate debug trace (default 0)
   // CCWS Round AA: independent gating threshold (decoupled from lls_base_score)
   unsigned gpgpu_ccws_lg_score_threshold;  // per-warp score cutoff for gating (default 100)
+
+  // DAWS: Divergence-Aware Warp Scheduling (Rogers/O'Connor/Aamodt MICRO 2013)
+  // All default off (0). gpgpu_enable_daws=0 → zero behavior change vs. baseline.
+  int gpgpu_enable_daws;
+  int gpgpu_daws_enable_telemetry;    // Round 02: divergence event probe
+  int gpgpu_daws_enable_would_throttle; // Round 03: would-throttle telemetry
+  int gpgpu_daws_enable_throttling;   // Round 04: actual warp throttling
+  unsigned gpgpu_daws_footprint_threshold; // L1 capacity fraction (0-100)
+  unsigned gpgpu_daws_min_active_threads;  // min active threads to trigger (default 1)
+  int gpgpu_daws_debug;
 };
 
 struct shader_core_stats_pod {

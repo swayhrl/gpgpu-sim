@@ -1,0 +1,5 @@
+paper,round,stage,workload,set,config,pass,sim_cycle,baseline_cycle,cycle_delta,cycle_delta_pct,main_signal,notes
+daws,AUTO-3,noop_config,vecadd,quick,SM7_QV100_daws_noop_off,1,5569,5569,0,0%,0,feature_off baseline
+daws,AUTO-3,noop_config,vecadd,quick,SM7_QV100_daws_noop_on,1,5569,5569,0,0%,0,noop_on: paper_daws_enabled=1 only
+daws,AUTO-3,noop_config,rodinia_hotspot,quick,SM7_QV100_daws_noop_off,1,6931,6931,0,0%,0,feature_off baseline
+daws,AUTO-3,noop_config,rodinia_bfs,quick,SM7_QV100_daws_noop_off,1,136110,136110,0,0%,0,feature_off baseline
