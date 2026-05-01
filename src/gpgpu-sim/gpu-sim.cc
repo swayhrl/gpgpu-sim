@@ -762,6 +762,27 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_daws_debug", OPT_INT32,
                          &gpgpu_daws_debug,
                          "DAWS per-cycle debug trace (0=off)", "0");
+  option_parser_register(opp, "-gpgpu_enable_pcal", OPT_INT32,
+                         &gpgpu_enable_pcal,
+                         "Enable PCAL priority-based cache allocation (0=off, 1=on)", "0");
+  option_parser_register(opp, "-gpgpu_pcal_enable_telemetry", OPT_INT32,
+                         &gpgpu_pcal_enable_telemetry,
+                         "PCAL Phase 2: enable cache pressure probe (0=off)", "0");
+  option_parser_register(opp, "-gpgpu_pcal_enable_would_bypass", OPT_INT32,
+                         &gpgpu_pcal_enable_would_bypass,
+                         "PCAL Phase 3: enable would-bypass telemetry (0=off)", "0");
+  option_parser_register(opp, "-gpgpu_pcal_enable_bypass", OPT_INT32,
+                         &gpgpu_pcal_enable_bypass,
+                         "PCAL Phase 4: enable actual L1D bypass (0=off)", "0");
+  option_parser_register(opp, "-gpgpu_pcal_miss_rate_threshold", OPT_UINT32,
+                         &gpgpu_pcal_miss_rate_threshold,
+                         "PCAL miss rate % threshold for low-priority classification (default 50)", "50");
+  option_parser_register(opp, "-gpgpu_pcal_window_size", OPT_UINT32,
+                         &gpgpu_pcal_window_size,
+                         "PCAL per-warp sliding window size for miss rate (default 64)", "64");
+  option_parser_register(opp, "-gpgpu_pcal_debug", OPT_INT32,
+                         &gpgpu_pcal_debug,
+                         "PCAL per-cycle debug trace (0=off)", "0");
 }
 
 void gpgpu_sim_config::reg_options(option_parser_t opp) {
@@ -1788,6 +1809,27 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
       m_cluster[i]->get_daws_lg_stats(lg_block, lg_allow);
     fprintf(stdout, "paper_daws_throttle_block = %llu\n", lg_block);
     fprintf(stdout, "paper_daws_throttle_allow = %llu\n", lg_allow);
+  }
+
+  // paper_pcal: PCAL reproduction stats (HPCA 2015)
+  fprintf(stdout, "paper_pcal_enabled = %d\n",
+          m_shader_config->gpgpu_enable_pcal);
+  {
+    unsigned long long miss_event = 0, access_event = 0, classified_high = 0,
+                       classified_low = 0, would_bypass = 0, bypass_count = 0,
+                       bypass_hit = 0, window_reset = 0;
+    for (unsigned i = 0; i < m_config.num_cluster(); i++)
+      m_cluster[i]->get_pcal_stats(miss_event, access_event, classified_high,
+                                    classified_low, would_bypass, bypass_count,
+                                    bypass_hit, window_reset);
+    fprintf(stdout, "paper_pcal_miss_event = %llu\n", miss_event);
+    fprintf(stdout, "paper_pcal_access_event = %llu\n", access_event);
+    fprintf(stdout, "paper_pcal_warp_classified_high = %llu\n", classified_high);
+    fprintf(stdout, "paper_pcal_warp_classified_low = %llu\n", classified_low);
+    fprintf(stdout, "paper_pcal_would_bypass = %llu\n", would_bypass);
+    fprintf(stdout, "paper_pcal_bypass_count = %llu\n", bypass_count);
+    fprintf(stdout, "paper_pcal_bypass_hit = %llu\n", bypass_hit);
+    fprintf(stdout, "paper_pcal_window_reset = %llu\n", window_reset);
   }
 
   if (m_config.gpgpu_cflog_interval != 0) {

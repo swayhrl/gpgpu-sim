@@ -516,6 +516,15 @@ shader_core_ctx::shader_core_ctx(class gpgpu_sim *gpu,
   m_daws_gate_streak.assign(config->max_warps_per_shader, 0);
   m_daws_lg_block = 0;
   m_daws_lg_allow = 0;
+  // PCAL Phase 1: initialize stats placeholders (zero until Phase 2+)
+  m_pcal_miss_event = 0;
+  m_pcal_access_event = 0;
+  m_pcal_warp_classified_high = 0;
+  m_pcal_warp_classified_low = 0;
+  m_pcal_would_bypass = 0;
+  m_pcal_bypass_count = 0;
+  m_pcal_bypass_hit = 0;
+  m_pcal_window_reset = 0;
 }
 
 void shader_core_ctx::reinit(unsigned start_thread, unsigned end_thread,
@@ -5241,6 +5250,20 @@ void simt_core_cluster::get_daws_lg_stats(unsigned long long &block,
                                            unsigned long long &allow) const {
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
     m_core[i]->get_daws_lg_stats(block, allow);
+}
+
+void simt_core_cluster::get_pcal_stats(unsigned long long &miss_event,
+                                        unsigned long long &access_event,
+                                        unsigned long long &classified_high,
+                                        unsigned long long &classified_low,
+                                        unsigned long long &would_bypass,
+                                        unsigned long long &bypass_count,
+                                        unsigned long long &bypass_hit,
+                                        unsigned long long &window_reset) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
+    m_core[i]->get_pcal_stats(miss_event, access_event, classified_high,
+                               classified_low, would_bypass, bypass_count,
+                               bypass_hit, window_reset);
 }
 
 void exec_shader_core_ctx::checkExecutionStatusAndUpdate(warp_inst_t &inst,

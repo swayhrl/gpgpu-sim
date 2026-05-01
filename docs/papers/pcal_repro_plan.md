@@ -1,8 +1,8 @@
 # PCAL Reproduction Plan
 
-**Round**: AUTO-9 (pcal_reading)
+**Round**: Phase 1 (noop_config) 完成
 **Date**: 2026-05-01
-**状态**: Stage 00 reading 完成，进入 Stage 01 no-op config
+**状态**: Phase 1 完成 ✓，进入 Phase 2 cache pressure telemetry
 
 ---
 

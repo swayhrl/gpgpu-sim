@@ -1809,6 +1809,16 @@ class shader_core_config : public core_config {
   unsigned gpgpu_daws_footprint_threshold; // L1 capacity fraction (0-100)
   unsigned gpgpu_daws_min_active_threads;  // min active threads to trigger (default 1)
   int gpgpu_daws_debug;
+
+  // PCAL: Priority-Based Cache Allocation (HPCA 2015)
+  // All default off (0). gpgpu_enable_pcal=0 → zero behavior change vs. baseline.
+  int gpgpu_enable_pcal;
+  int gpgpu_pcal_enable_telemetry;    // Phase 2: cache pressure probe
+  int gpgpu_pcal_enable_would_bypass; // Phase 3: would-bypass telemetry
+  int gpgpu_pcal_enable_bypass;       // Phase 4: actual L1D bypass
+  unsigned gpgpu_pcal_miss_rate_threshold; // miss rate % to classify low-priority (default 50)
+  unsigned gpgpu_pcal_window_size;         // per-warp sliding window size (default 64)
+  int gpgpu_pcal_debug;
 };
 
 struct shader_core_stats_pod {
@@ -2352,6 +2362,25 @@ class shader_core_ctx : public core_t {
     allow += m_daws_lg_allow;
   }
 
+  // PCAL Phase 1: stats aggregation (all zero until Phase 2+)
+  void get_pcal_stats(unsigned long long &miss_event,
+                      unsigned long long &access_event,
+                      unsigned long long &classified_high,
+                      unsigned long long &classified_low,
+                      unsigned long long &would_bypass,
+                      unsigned long long &bypass_count,
+                      unsigned long long &bypass_hit,
+                      unsigned long long &window_reset) const {
+    miss_event += m_pcal_miss_event;
+    access_event += m_pcal_access_event;
+    classified_high += m_pcal_warp_classified_high;
+    classified_low += m_pcal_warp_classified_low;
+    would_bypass += m_pcal_would_bypass;
+    bypass_count += m_pcal_bypass_count;
+    bypass_hit += m_pcal_bypass_hit;
+    window_reset += m_pcal_window_reset;
+  }
+
   void get_icnt_power_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
 
   // debug:
@@ -2806,6 +2835,15 @@ class shader_core_ctx : public core_t {
   std::vector<unsigned> m_daws_gate_streak;  // per-warp consecutive gate count
   unsigned long long m_daws_lg_block;
   unsigned long long m_daws_lg_allow;
+  // PCAL Phase 1: stats placeholders (all zero until Phase 2+)
+  unsigned long long m_pcal_miss_event;
+  unsigned long long m_pcal_access_event;
+  unsigned long long m_pcal_warp_classified_high;
+  unsigned long long m_pcal_warp_classified_low;
+  unsigned long long m_pcal_would_bypass;
+  unsigned long long m_pcal_bypass_count;
+  unsigned long long m_pcal_bypass_hit;
+  unsigned long long m_pcal_window_reset;
 };
 
 class exec_shader_core_ctx : public shader_core_ctx {
@@ -2915,6 +2953,16 @@ class simt_core_cluster {
   // DAWS Round 04: real throttle aggregation
   void get_daws_lg_stats(unsigned long long &block,
                          unsigned long long &allow) const;
+
+  // PCAL Phase 1: cluster-level stats aggregation
+  void get_pcal_stats(unsigned long long &miss_event,
+                      unsigned long long &access_event,
+                      unsigned long long &classified_high,
+                      unsigned long long &classified_low,
+                      unsigned long long &would_bypass,
+                      unsigned long long &bypass_count,
+                      unsigned long long &bypass_hit,
+                      unsigned long long &window_reset) const;
 
   void get_icnt_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
   float get_current_occupancy(unsigned long long &active,

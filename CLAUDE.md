@@ -365,7 +365,9 @@ cycle 方向相反（应减少）原因：tiny workload，throttle 阻止有效 
 - [x] AUTO-SUPERVISOR-2：Codex CLI reviewer stub smoke test（codex v0.125.0 可用；stub dry-run 通过；high-risk stage 强制 blocked）
 - [x] TOMORROW-RUN-PREP：tomorrow queue end-to-end rehearsal 通过（4 jobs，low/medium/high risk 判断全部正确）
 - [x] TOMORROW-PAPERS：PCAL + Mascar preplan / paper.yaml / reading prompt / job_queue.tomorrow.yaml 准备完成（5 jobs dry-run 通过）
-- [ ] **下一步**：进入 `hrl/idea/cache-policy-experiments-v0` 自研 cache policy
+- [x] PCAL-Phase0：preflight 通过，reading 产物确认
+- [x] PCAL-Phase1：no-op config + stats 完成（7 knobs + 9 stats；feature_off/noop 均不改 cycle；tag 待定）
+- [ ] **下一步**：PCAL Phase 2 cache pressure telemetry
 
 ---
 

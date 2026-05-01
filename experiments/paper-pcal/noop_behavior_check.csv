@@ -1,0 +1,7 @@
+workload,config,sim_cycle,paper_pcal_enabled,paper_pcal_miss_event,paper_pcal_access_event,paper_pcal_warp_classified_high,paper_pcal_warp_classified_low,paper_pcal_would_bypass,paper_pcal_bypass_count,paper_pcal_bypass_hit,paper_pcal_window_reset,cycle_delta_vs_baseline,pass
+vecadd,pcal_noop_off,5569,0,0,0,0,0,0,0,0,0,0,PASS
+vecadd,pcal_noop_on,5569,1,0,0,0,0,0,0,0,0,0,PASS
+rodinia_hotspot,pcal_noop_off,6931,0,0,0,0,0,0,0,0,0,0,PASS
+rodinia_hotspot,pcal_noop_on,6931,1,0,0,0,0,0,0,0,0,0,PASS
+rodinia_srad_v2_k1,pcal_noop_off,8236,0,0,0,0,0,0,0,0,0,0,PASS
+rodinia_srad_v2_k1,pcal_noop_on,8236,1,0,0,0,0,0,0,0,0,0,PASS
