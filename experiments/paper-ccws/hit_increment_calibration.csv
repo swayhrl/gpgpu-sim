@@ -1,0 +1,29 @@
+workload,config,lls_hit_increment,lg_score_threshold,pass,sim_cycle,baseline_cycle,cycle_delta,vta_hit,lls_update,would_gate_block,load_gate_block,notes
+rodinia_hotspot,SM7_QV100_ccws_noop_off,1,off,1,6931,6931,0,0,0,0,0,feature_off baseline
+strided_access,SM7_QV100_ccws_noop_off,1,off,1,5825,5825,0,0,0,0,0,feature_off baseline
+page_stride_access,SM7_QV100_ccws_noop_off,1,off,1,5851,5851,0,0,0,0,0,feature_off baseline
+rodinia_srad_v2,SM7_QV100_ccws_noop_off,1,off,1,15926,15926,0,0,0,0,0,feature_off baseline
+polybench_fdtd2d,SM7_QV100_ccws_noop_off,1,off,1,35681,35681,0,0,0,0,0,feature_off baseline
+rodinia_bfs,SM7_QV100_ccws_noop_off,1,off,1,136110,136110,0,0,0,0,0,feature_off baseline
+mutual_tiled,SM7_QV100_ccws_noop_off,1,off,1,7479,7479,0,0,0,0,0,feature_off baseline
+rodinia_hotspot,SM7_QV100_ccws_load_gate_inc5_th100,5,100,1,6931,6931,0,1328,1328,0,0,0 blocks; high-LLS warps already stalled by memory
+strided_access,SM7_QV100_ccws_load_gate_inc5_th100,5,100,1,5825,5825,0,24,24,0,0,0 blocks
+page_stride_access,SM7_QV100_ccws_load_gate_inc5_th100,5,100,1,5851,5851,0,24,24,0,0,0 blocks
+rodinia_srad_v2,SM7_QV100_ccws_load_gate_inc5_th100,5,100,1,15926,15926,0,3924,3924,0,0,0 blocks; same root cause
+polybench_fdtd2d,SM7_QV100_ccws_load_gate_inc5_th100,5,100,1,35681,35681,0,8338,8338,0,0,0 blocks
+rodinia_bfs,SM7_QV100_ccws_load_gate_inc5_th100,5,100,1,136110,136110,0,124,124,0,0,0 blocks
+mutual_tiled,SM7_QV100_ccws_load_gate_inc5_th100,5,100,1,7479,7479,0,384,384,0,0,0 blocks
+rodinia_hotspot,SM7_QV100_ccws_load_gate_inc20_th100,20,100,1,6931,6931,0,1328,1328,0,0,0 blocks; max_score=204 but wg_attempt=16415 wg_block=0
+strided_access,SM7_QV100_ccws_load_gate_inc20_th100,20,100,1,5825,5825,0,24,24,0,0,0 blocks
+page_stride_access,SM7_QV100_ccws_load_gate_inc20_th100,20,100,1,5851,5851,0,24,24,0,0,0 blocks
+rodinia_srad_v2,SM7_QV100_ccws_load_gate_inc20_th100,20,100,1,15926,15926,0,3924,3924,0,0,0 blocks; max_score=413 but wg_block=0
+polybench_fdtd2d,SM7_QV100_ccws_load_gate_inc20_th100,20,100,1,35681,35681,0,8338,8338,0,0,0 blocks; max_score=863 but wg_block=0
+rodinia_bfs,SM7_QV100_ccws_load_gate_inc20_th100,20,100,1,136110,136110,0,124,124,0,0,0 blocks
+mutual_tiled,SM7_QV100_ccws_load_gate_inc20_th100,20,100,1,7479,7479,0,384,384,0,0,0 blocks
+rodinia_hotspot,SM7_QV100_ccws_load_gate_inc30_th100,30,100,1,6931,6931,0,1328,1328,0,0,0 blocks
+strided_access,SM7_QV100_ccws_load_gate_inc30_th100,30,100,1,5825,5825,0,24,24,0,0,0 blocks
+page_stride_access,SM7_QV100_ccws_load_gate_inc30_th100,30,100,1,5851,5851,0,24,24,0,0,0 blocks
+rodinia_srad_v2,SM7_QV100_ccws_load_gate_inc30_th100,30,100,1,15926,15926,0,3924,3924,0,0,0 blocks
+polybench_fdtd2d,SM7_QV100_ccws_load_gate_inc30_th100,30,100,1,35681,35681,0,8338,8338,0,0,0 blocks; wg_attempt=16580 vs inc50 470559
+rodinia_bfs,SM7_QV100_ccws_load_gate_inc30_th100,30,100,1,136110,136110,0,124,124,0,0,0 blocks
+mutual_tiled,SM7_QV100_ccws_load_gate_inc30_th100,30,100,1,7479,7479,0,384,384,0,0,0 blocks

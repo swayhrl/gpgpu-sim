@@ -174,6 +174,7 @@ All stats gated by `gpgpu_enable_ccws`. Prefix: `paper_ccws_`.
 | **AA** | Independent `lg_score_threshold` knob; decouple from `lls_base_score`; tiny validation | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AA) | Low |
 | **AB** | Focused threshold validation: 7 workloads × th99/100/101; signal analysis | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AB) | Low |
 | **AC** | LLS hit-increment sensitivity: inc1/10/50 × 7 workloads; find working range | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AC) | Low |
+| **AD** | Hit-increment calibration: inc5/20/30 × 7 workloads; all 0 blocks; root cause confirmed | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AD) | Low |
 | **S8** | Standard / `cache_focus` set validation | `hrl/paper/ccws-repro-v0` | — | Low |
 | **S9** | K_THROTTLE sweep; result notes | `hrl/paper/ccws-repro-v0` | — | Low |
 

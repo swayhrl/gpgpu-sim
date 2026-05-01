@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-05-01 — Round AC complete; LLS hit-increment sensitivity validation. **Round AC 变更尚未提交（working tree dirty）。**_
+_Last updated: 2026-05-01 — Round AD complete; hit-increment calibration (inc=5/20/30 all 0 blocks; root cause confirmed). **Round AD 变更尚未提交（working tree dirty）。**_
 
 ## Git 工作流
 
@@ -222,7 +222,8 @@ Four days of deep read-through of the PTX functional simulation → timing model
 - [x] **Round AA**：新增独立 knob `gpgpu_ccws_lg_score_threshold`（default 100）；`cum_cutoff = nw * lg_score_threshold`（不再用 `lls_base_score`）；tiny validation 3 workload × 4 threshold：th99/100 → hotspot `lg_block=5`，th101/200 → 0 blocks；threshold 有效 ✓；注意：threshold < base_score 会 deadlock（已删除 th50 config）；有效范围 `lg_score_threshold >= lls_base_score`
 - [x] **Round AB**：Focused threshold validation — 7 workload × th99/100/101；28 runs 全部 pass；只有 `rodinia_hotspot` 出现 `lg_block=5`（th99/100），th101 → 0 blocks；趋势单调正确 ✓；sim_cycle 未变化；信号弱（tiny workload + `lls_hit_increment=1`）；建议 standard validation 前先增大 `lls_hit_increment`（10–50）
 - [x] **Round AC**：LLS hit-increment sensitivity — 7 workload × inc1/10/50（th100）+ inc10（th101）；inc=1：只 hotspot 5 blocks（弱）；inc=10：全部 0 blocks（timing 问题）；inc=50：srad_v2 +45% cycle / fdtd2d +61% cycle（过度 gating）；建议 standard validation 前先试 inc=5 或 inc=20
-- [ ] **Round（后置）**：inc=5/20 tiny check；standard set 验证；至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
+- [x] **Round AD**：Hit-increment calibration — 7 workload × inc5/20/30（th100）；全部 0 blocks；根本原因确认：gate 只在 warp 有 LOAD_OP 准备发射时触发，高 LLS warp 已被 scoreboard stall，无法到达 issue 阶段；inc=50 通过正反馈绕过此限制但过度 gating
+- [ ] **Round（后置）**：选择下一步方向（A: inc=50+高 threshold；B: 更早 pipeline 插入点；C: 接受当前行为进入 standard validation）；至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
 
 ## Workload Management Framework（Round B 新增）
 
