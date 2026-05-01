@@ -69,3 +69,7 @@ setup
 
 # paper_repro supervisor runtime outputs
 runs/paper_repro_queue/
+
+# Python cache
+__pycache__/
+*.py[cod]
