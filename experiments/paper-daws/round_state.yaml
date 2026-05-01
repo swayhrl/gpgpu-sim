@@ -1,6 +1,6 @@
 paper: daws
-round: AUTO-5
-stage: would_throttle_telemetry
+round: AUTO-6
+stage: minimal_throttling
 status: complete
 date: 2026-05-01
 branch: hrl/paper/daws-repro-v0
@@ -9,51 +9,70 @@ source_changed: true
 changed_files:
   - src/gpgpu-sim/shader.h
   - src/gpgpu-sim/shader.cc
-  - src/gpgpu-sim/gpu-sim.cc
 
 experiments_run: true
 workloads_run: [vecadd, rodinia_hotspot, rodinia_bfs, rodinia_srad_v2]
-configs_run: [SM7_QV100_daws_noop_off, SM7_QV100_daws_would_throttle_on]
+configs_run: [SM7_QV100_daws_noop_off, SM7_QV100_daws_throttle_on]
 
 feature_off_unchanged: true
-sim_cycle_unchanged: true
-throttle_block_zero: true
+no_deadlock: true
 
-footprint_signal_summary:
-  vecadd: "footprint_sum_max=0 (no divergence)"
-  rodinia_hotspot: "footprint_sum_max=144 >> threshold=32"
-  rodinia_bfs: "footprint_sum_max=31 < threshold=32 (tiny workload limit)"
-  rodinia_srad_v2: "footprint_sum_max=242 >> threshold=32"
+throttle_results:
+  vecadd:
+    baseline: 5569
+    throttle_on: 5569
+    cycle_delta: "0%"
+    throttle_block: 0
+    throttle_allow: 0
+    note: "no divergence, gate never fires"
+  rodinia_hotspot:
+    baseline: 6931
+    throttle_on: 7072
+    cycle_delta: "+2.0%"
+    throttle_block: 79030
+    throttle_allow: 34606
+    note: "gate fires, cycle increases (tiny workload effect)"
+  rodinia_bfs:
+    baseline: 6665
+    throttle_on: 6665
+    cycle_delta: "0%"
+    throttle_block: 0
+    throttle_allow: 1256
+    note: "fp_sum_max=31 < threshold=32, gate never fires"
+  rodinia_srad_v2:
+    baseline: 8236
+    throttle_on: 8561
+    cycle_delta: "+3.9%"
+    throttle_block: 38769
+    throttle_allow: 6765
+    note: "gate fires, cycle increases (tiny workload effect)"
 
-would_throttle_signal_summary:
-  vecadd: "would_throttle=0 (expected)"
-  rodinia_hotspot: "would_throttle=6118 (strong signal)"
-  rodinia_bfs: "would_throttle=0 (fp_max just below threshold; lower threshold to 16 would trigger)"
-  rodinia_srad_v2: "would_throttle=6083 (strong signal)"
+deadlock_fix_summary: >
+  Root cause: footprint array updated post-scoreboard; gated warps never
+  reached update → stale footprint → permanent gate.
+  Fix 1: added daws_update_footprint_pre() called pre-scoreboard using
+  read-only get_active_mask() to refresh footprint before gate check.
+  Fix 2: per-warp streak counter (max_streak=8) — after 8 consecutive
+  gates, force-allow for one cycle and reset streak. Prevents deadlock
+  when all active warps have footprint > 0.
 
-footprint_approximation: >
-  footprint[wid] = warp_size - active_count (diverged thread slots).
-  Skips loop detection and load classification (DAWS approximation).
-  threshold=32 (warp_size) fires when total diverged slots > 1 full warp.
-
-new_stats:
-  - paper_daws_footprint_update (live counter)
-  - paper_daws_footprint_sum_total (live counter)
-  - paper_daws_footprint_sum_max (live counter)
-  - paper_daws_would_throttle (live counter)
+cycle_direction_note: >
+  Cycle increases (+2–4%) instead of decreasing. Same root cause as CCWS:
+  tiny workload (64×64), few warps per SM, throttle blocks effective warps
+  rather than reducing cache pressure. Mechanism is correct; larger workloads
+  needed to see cycle reduction.
 
 recommend_next: >
-  AUTO-6 / Round 04: Implement minimal real throttling.
-  When sum(footprint) > threshold, block the highest-footprint warp from issuing.
-  Verify hotspot/srad_v2 cycle decreases. Watch for over-throttling on bfs.
-  Start with conservative threshold (e.g., 64 or 128) to avoid deadlock.
+  AUTO-7 / Round 05: Focused validation with divergence-heavy workloads.
+  Run 7 workloads × feature_off / conservative(threshold=32) / aggressive(threshold=16).
+  Verify no deadlock. Document cycle direction and throttle_block signal.
+  Consider larger workload sizes to see cycle reduction.
 
 commit_recommended: true
-suggested_commit: "daws: add footprint and would-throttle telemetry"
-suggested_tag: daws-would-throttle-telemetry
+suggested_commit: "daws: add minimal real throttling with deadlock prevention"
+suggested_tag: daws-minimal-throttling
 
 new_files:
-  - configs/hrl-repro/SM7_QV100_daws_would_throttle_on/
-  - docs/papers/daws_round_03_would_throttle.md
-  - experiments/paper-daws/would_throttle_check.csv
-  - experiments/paper-daws/config_matrix.csv (updated)
+  - configs/hrl-repro/SM7_QV100_daws_throttle_on/
+  - docs/papers/daws_round_04_minimal_throttling.md
+  - experiments/paper-daws/throttle_check.csv

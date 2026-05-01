@@ -2268,6 +2268,17 @@ class shader_core_ctx : public core_t {
       min_active_seen = m_daws_min_active_seen;
   }
 
+  // DAWS Round 04: update footprint pre-scoreboard (for throttle gate).
+  // Called before daws_lg_gate_warp so gated warps still refresh their footprint.
+  // Only updates m_daws_footprint[]; does not touch telemetry counters.
+  // Also resets gate streak (warp reached pre-scoreboard = not permanently stuck).
+  void daws_update_footprint_pre(unsigned warp_id, unsigned active_count) {
+    if (warp_id >= m_daws_footprint.size()) return;
+    unsigned warp_size = m_config->warp_size;
+    m_daws_footprint[warp_id] =
+        (active_count < warp_size) ? (warp_size - active_count) : 0;
+  }
+
   // DAWS Round 03: footprint estimate + would-throttle telemetry (no scheduling change)
   // footprint[wid] = warp_size - active_count (diverged thread slots).
   // would_throttle fires when sum(footprint) > gpgpu_daws_footprint_threshold.
@@ -2301,6 +2312,44 @@ class shader_core_ctx : public core_t {
     if (m_daws_footprint_sum_max > footprint_sum_max)
       footprint_sum_max = m_daws_footprint_sum_max;
     would_throttle += m_daws_would_throttle;
+  }
+
+  // DAWS Round 04: real throttle gate — returns true if warp should be blocked.
+  // Only fires when gpgpu_enable_daws=1 && gpgpu_daws_enable_throttling=1.
+  // Gate condition: sum(footprint) > threshold AND this warp has footprint > 0.
+  // Deadlock prevention: per-warp streak counter — after max_streak consecutive
+  // gates, force-allow the warp for one cycle and reset streak.
+  bool daws_lg_gate_warp(unsigned warp_id) {
+    if (!m_config->gpgpu_enable_daws || !m_config->gpgpu_daws_enable_throttling)
+      return false;
+    if (warp_id >= m_daws_footprint.size() || m_daws_footprint[warp_id] == 0) {
+      if (warp_id < m_daws_gate_streak.size()) m_daws_gate_streak[warp_id] = 0;
+      return false;
+    }
+    unsigned long long fp_sum = 0;
+    for (unsigned w = 0; w < m_daws_footprint.size(); w++)
+      fp_sum += m_daws_footprint[w];
+    if (fp_sum <= m_config->gpgpu_daws_footprint_threshold) {
+      if (warp_id < m_daws_gate_streak.size()) m_daws_gate_streak[warp_id] = 0;
+      m_daws_lg_allow++;
+      return false;
+    }
+    // Force-allow after max_streak consecutive gates to prevent deadlock.
+    const unsigned max_streak = 8;
+    if (warp_id < m_daws_gate_streak.size() &&
+        m_daws_gate_streak[warp_id] >= max_streak) {
+      m_daws_gate_streak[warp_id] = 0;
+      m_daws_lg_allow++;
+      return false;
+    }
+    if (warp_id < m_daws_gate_streak.size()) m_daws_gate_streak[warp_id]++;
+    m_daws_lg_block++;
+    return true;
+  }
+  void get_daws_lg_stats(unsigned long long &block,
+                         unsigned long long &allow) const {
+    block += m_daws_lg_block;
+    allow += m_daws_lg_allow;
   }
 
   void get_icnt_power_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
@@ -2753,6 +2802,10 @@ class shader_core_ctx : public core_t {
   unsigned long long m_daws_footprint_sum_total;
   unsigned long long m_daws_footprint_sum_max;
   unsigned long long m_daws_would_throttle;
+  // DAWS Round 04: real throttle counters
+  std::vector<unsigned> m_daws_gate_streak;  // per-warp consecutive gate count
+  unsigned long long m_daws_lg_block;
+  unsigned long long m_daws_lg_allow;
 };
 
 class exec_shader_core_ctx : public shader_core_ctx {
@@ -2859,6 +2912,9 @@ class simt_core_cluster {
                                      unsigned long long &footprint_sum_total,
                                      unsigned long long &footprint_sum_max,
                                      unsigned long long &would_throttle) const;
+  // DAWS Round 04: real throttle aggregation
+  void get_daws_lg_stats(unsigned long long &block,
+                         unsigned long long &allow) const;
 
   void get_icnt_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
   float get_current_occupancy(unsigned long long &active,

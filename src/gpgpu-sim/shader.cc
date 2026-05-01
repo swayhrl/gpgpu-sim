@@ -512,6 +512,10 @@ shader_core_ctx::shader_core_ctx(class gpgpu_sim *gpu,
   m_daws_footprint_sum_total = 0;
   m_daws_footprint_sum_max = 0;
   m_daws_would_throttle = 0;
+  // DAWS Round 04: initialize real throttle counters
+  m_daws_gate_streak.assign(config->max_warps_per_shader, 0);
+  m_daws_lg_block = 0;
+  m_daws_lg_allow = 0;
 }
 
 void shader_core_ctx::reinit(unsigned start_thread, unsigned end_thread,
@@ -1347,6 +1351,20 @@ void scheduler_unit::cycle() {
               m_shader->m_config->gpgpu_ccws_enable_load_gating &&
               ((pI->op == LOAD_OP) || (pI->op == TENSOR_CORE_LOAD_OP)) &&
               m_shader->m_ldst_unit->ccws_lg_gate_load(warp_id)) {
+            checked++;
+            break;
+          }
+          // DAWS Round 04: pre-scoreboard warp throttle gate.
+          // Footprint must be updated here (pre-scoreboard) because gated warps
+          // never reach the post-scoreboard telemetry hook — stale footprint
+          // would cause permanent gating (deadlock). get_active_mask is read-only.
+          if (m_shader->m_config->gpgpu_enable_daws &&
+              m_shader->m_config->gpgpu_daws_enable_throttling) {
+            const active_mask_t &pre_mask =
+                m_shader->get_active_mask(warp_id, pI);
+            m_shader->daws_update_footprint_pre(warp_id, pre_mask.count());
+          }
+          if (m_shader->daws_lg_gate_warp(warp_id)) {
             checked++;
             break;
           }
@@ -5217,6 +5235,12 @@ void simt_core_cluster::get_daws_would_throttle_stats(
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
     m_core[i]->get_daws_would_throttle_stats(footprint_update, footprint_sum_total,
                                              footprint_sum_max, would_throttle);
+}
+
+void simt_core_cluster::get_daws_lg_stats(unsigned long long &block,
+                                           unsigned long long &allow) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
+    m_core[i]->get_daws_lg_stats(block, allow);
 }
 
 void exec_shader_core_ctx::checkExecutionStatusAndUpdate(warp_inst_t &inst,

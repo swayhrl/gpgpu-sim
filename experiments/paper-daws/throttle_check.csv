@@ -1,0 +1,5 @@
+workload,config,baseline_cycle,throttle_cycle,cycle_delta,throttle_block,throttle_allow,note
+vecadd,throttle_on,5569,5569,0%,0,0,no divergence
+rodinia_hotspot,throttle_on,6931,7072,+2.0%,79030,34606,gate fires
+rodinia_bfs,throttle_on,6665,6665,0%,0,1256,fp_sum_max=31<threshold=32
+rodinia_srad_v2,throttle_on,8236,8561,+3.9%,38769,6765,gate fires

@@ -1782,7 +1782,13 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
     fprintf(stdout, "paper_daws_footprint_sum_max = %llu\n", fp_sum_max);
     fprintf(stdout, "paper_daws_would_throttle = %llu\n", would_throttle);
   }
-  fprintf(stdout, "paper_daws_throttle_block = 0\n");
+  {
+    unsigned long long lg_block = 0, lg_allow = 0;
+    for (unsigned i = 0; i < m_config.num_cluster(); i++)
+      m_cluster[i]->get_daws_lg_stats(lg_block, lg_allow);
+    fprintf(stdout, "paper_daws_throttle_block = %llu\n", lg_block);
+    fprintf(stdout, "paper_daws_throttle_allow = %llu\n", lg_allow);
+  }
 
   if (m_config.gpgpu_cflog_interval != 0) {
     spill_log_to_file(stdout, 1, gpu_sim_cycle);
