@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-05-01 — Round AA complete; independent `gpgpu_ccws_lg_score_threshold` knob added. **Round AA 变更尚未提交（working tree dirty）。**_
+_Last updated: 2026-05-01 — Round AB complete; focused threshold validation on 7 workloads × th99/100/101. **Round AB 变更尚未提交（working tree dirty）。**_
 
 ## Git 工作流
 
@@ -220,7 +220,8 @@ Four days of deep read-through of the PTX functional simulation → timing model
 - [x] **Round Y**：Stage S6+S7 完成 — 真实 load-only gating；`ccws_lg_gate_load(wid)` 查询 `would_can_issue[wid]`，阻塞 LOAD_OP / TENSOR_CORE_LOAD_OP；2 个新 knob（`enable_load_gating`, `load_gate_debug`）；feature_off 7/7 pass（cycle=baseline，所有计数器=0）；load_gate_on 7/7 pass：`rodinia_hotspot` `lg_block=5`（真实 gating 生效），`lg_block=wg_block` ✓；STORE / compute 不受影响 ✓
 - [x] **Round Z**：Post-gating validation — 7 workload × 3 threshold（default/conservative/aggressive）；feature_off 7/7 pass；load_gate_on 7/7 pass；只有 `rodinia_hotspot` 出现 `lg_block=5`；threshold sweep 无效（`base_score` 同时控制初始值和 cutoff，不是独立 threshold）；高 vta_hit workload（srad_v2/fdtd2d）无 gating（hits 分散）；sim_cycle 未变化（5 blocks 太少）；关键发现：需要独立 `lls_gate_threshold` knob
 - [x] **Round AA**：新增独立 knob `gpgpu_ccws_lg_score_threshold`（default 100）；`cum_cutoff = nw * lg_score_threshold`（不再用 `lls_base_score`）；tiny validation 3 workload × 4 threshold：th99/100 → hotspot `lg_block=5`，th101/200 → 0 blocks；threshold 有效 ✓；注意：threshold < base_score 会 deadlock（已删除 th50 config）；有效范围 `lg_score_threshold >= lls_base_score`
-- [ ] **Round（后置）**：standard set 验证；增大 `lls_hit_increment` 使更多 workload 出现 gating；至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
+- [x] **Round AB**：Focused threshold validation — 7 workload × th99/100/101；28 runs 全部 pass；只有 `rodinia_hotspot` 出现 `lg_block=5`（th99/100），th101 → 0 blocks；趋势单调正确 ✓；sim_cycle 未变化；信号弱（tiny workload + `lls_hit_increment=1`）；建议 standard validation 前先增大 `lls_hit_increment`（10–50）
+- [ ] **Round（后置）**：调整 `lls_hit_increment` 增强信号；standard set 验证；至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
 
 ## Workload Management Framework（Round B 新增）
 

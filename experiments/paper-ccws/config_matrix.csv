@@ -18,3 +18,5 @@ ccws_load_gate_th99,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_loa
 ccws_load_gate_th100,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_load_gate_th100,load_gate_th100,lg_score_threshold=100; default; equivalent to Round Y,Round AA; independent threshold knob
 ccws_load_gate_th101,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_load_gate_th101,load_gate_th101,lg_score_threshold=101; cutoff=6464; hotspot lg_block=0,Round AA; independent threshold knob
 ccws_load_gate_th200,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_load_gate_th200,load_gate_th200,lg_score_threshold=200; cutoff=12800; 0 blocks all workloads,Round AA; independent threshold knob
+ccws_load_gate_th99_ab,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_load_gate_th99,load_gate_th99,Round AB focused validation; hotspot lg_block=5,Round AB; 7 workloads validated
+ccws_load_gate_th101_ab,hrl/paper/ccws-repro-v0,configs/hrl-repro/SM7_QV100_ccws_load_gate_th101,load_gate_th101,Round AB focused validation; hotspot lg_block=0,Round AB; 7 workloads validated

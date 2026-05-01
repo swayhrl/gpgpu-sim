@@ -172,6 +172,7 @@ All stats gated by `gpgpu_enable_ccws`. Prefix: `paper_ccws_`.
 | **S7** | Quick set validation: `feature_off ≈ baseline`, `feature_on` triggers | `hrl/paper/ccws-repro-v0` | ✓ Done (Round Y) | Medium |
 | **Z** | Post-gating validation: 7 workloads × 3 thresholds; signal analysis | `hrl/paper/ccws-repro-v0` | ✓ Done (Round Z) | Low |
 | **AA** | Independent `lg_score_threshold` knob; decouple from `lls_base_score`; tiny validation | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AA) | Low |
+| **AB** | Focused threshold validation: 7 workloads × th99/100/101; signal analysis | `hrl/paper/ccws-repro-v0` | ✓ Done (Round AB) | Low |
 | **S8** | Standard / `cache_focus` set validation | `hrl/paper/ccws-repro-v0` | — | Low |
 | **S9** | K_THROTTLE sweep; result notes | `hrl/paper/ccws-repro-v0` | — | Low |
 
@@ -226,6 +227,12 @@ sim_cycle unchanged for all workloads (5 gate blocks too few to affect timing).
 from `lls_base_score`. `cum_cutoff = nw * lg_score_threshold`. Threshold sweep now effective:
 th99/100 → hotspot lg_block=5; th101/200 → 0 blocks. Warning: threshold < lls_base_score causes
 deadlock (all warps gated at init). Valid range: `lg_score_threshold >= lls_base_score`.
+
+**Round AB note**: Focused threshold validation on 7 workloads × th99/100/101. Only `rodinia_hotspot`
+shows gating (lg_block=5 for th99/100, 0 for th101). Threshold trend monotone and correct. Signal
+weak because tiny workloads have few active warps and `lls_hit_increment=1` causes slow score
+accumulation. Recommendation before standard validation: increase `lls_hit_increment` (e.g. 10–50)
+to amplify LLS score differentiation. Current mechanism is functionally correct.
 
 **Rules**:
 - Feature flag **always default 0**.
