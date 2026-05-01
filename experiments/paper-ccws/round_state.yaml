@@ -1,92 +1,77 @@
-round: AF
-stage: early_gate_minimal_implementation
+round: AG
+stage: can_issue_cutoff_audit
 status: complete
 date: 2026-05-01
 branch: hrl/paper/ccws-repro-v0
 
-source_changed: true
-modified_files:
-  - src/gpgpu-sim/shader.cc
+source_changed: false
+experiments_run: true  # re-ran inc=20 srad_v2/hotspot/fdtd2d for occupancy data
 
-gate_location_before: >
-  shader.cc ~line 1356 (Round Y position).
-  Inside LOAD_OP branch, after checkCollision() passes.
-  Only reached by warps that pass scoreboard check.
+current_cutoff_basis: >
+  nw = m_ccws_lls.size() = max_warps_per_shader = 64 (SM7_QV100).
+  cum_cutoff = 64 * lg_score_threshold = 64 * 100 = 6400.
+  All 64 warp slots included in sort+prefix-sum, including inactive slots.
+  Inactive warp LLS = base_score = 100 (decay floor, never gets VTA hits).
 
-gate_location_after: >
-  shader.cc ~line 1332 (Round AF position).
-  Before valid_inst=true assignment, before checkCollision() call.
-  Reached by any warp with a valid instruction (ibuffer non-empty, not waiting).
-  Gate triggers: checked++; break; (while condition checked<=issued fails naturally)
+suspected_bug: confirmed
+bug_description: >
+  cutoff uses max_warps_per_shader (64) instead of actual active warps (~8).
+  Inactive warp base_score sum = 56 * 100 = 5600 = 87.5% of cutoff(6400).
+  would_can_issue=false only falls on inactive warp slots (last in sorted order).
+  Inactive warps never issue loads, so gate never triggers.
 
-workloads_run:
-  - rodinia_hotspot
-  - rodinia_srad_v2
-  - polybench_fdtd2d
-  - strided_access
-  - page_stride_access
+evidence_summary:
+  occupancy_data:
+    rodinia_srad_v2: "12.4% → ~8 active warps/SM"
+    rodinia_hotspot: "12.3% → ~8 active warps/SM"
+    polybench_fdtd2d: "11.6% → ~7 active warps/SM"
+  lls_stats_inc20_srad_v2:
+    max_score: 413
+    sum_score: 584424  # across 80 SMs, ~7305/SM
+    nonzero_warps: 256  # across 80 SMs, ~3.2/SM
+    load_gate_attempt: 27193
+    load_gate_block: 0
+  prefix_sum_analysis:
+    inactive_warps: 56
+    inactive_base_score_sum: 5600
+    cutoff: 6400
+    active_prefix_max: "~1113 (8 warps × avg ~139)"
+    conclusion: "prefix never exceeds 6400 within active warp range"
+  why_inc50_works: >
+    inc=50 makes active warp scores accumulate fast enough that
+    prefix sum exceeds 6400 within the active warp range itself
+    (not waiting for inactive warps). This gates active warps,
+    but causes feedback loop → over-gating (+45-61% cycle).
 
-configs_run:
-  - SM7_QV100_ccws_noop_off (feature_off, 7 workloads)
-  - SM7_QV100_ccws_load_gate_inc5_th100
-  - SM7_QV100_ccws_load_gate_inc20_th100
-  - SM7_QV100_ccws_load_gate_inc30_th100
-  - SM7_QV100_ccws_load_gate_inc50_th100 (sanity)
+paper_semantics:
+  NumActiveWarps: "current active warps in SM (not max slots)"
+  CumLLSCutoff: "NumActiveWarps × BaseScore"
+  reference: "CCWS paper Section 3.3"
 
-behavior_off_unchanged: true  # feature_off 7/7 pass, all cycle = baseline
+recommended_fix: >
+  Replace nw = m_ccws_lls.size() with active warp count.
+  Best source: m_core->get_not_completed() / m_config->warp_size
+  (rounds up to avoid zero). Also restrict sort+prefix to active
+  warp slots only (skip warp slots where done_exit() is true).
+  Simpler alternative: only include warps with LLS > 0 in sort,
+  but this may miss warps at base_score that are still active.
 
-workloads_with_load_gate_block:
-  inc5_th100: {}   # 0 blocks all workloads
-  inc20_th100: {}  # 0 blocks all workloads
-  inc30_th100: {}  # 0 blocks all workloads
-  inc50_th100:
-    rodinia_srad_v2: 34572   # +45% cycle (same as Round Y post-scoreboard)
-    polybench_fdtd2d: 454219 # +61% cycle (same as Round Y post-scoreboard)
-
-signal_strength_summary:
-  inc5_20_30: none (0 blocks; gate position change had no effect)
-  inc50: same as before (srad_v2 +45%, fdtd2d +61%)
-
-root_cause_revised: >
-  Gate position was NOT the root cause. The actual problem:
-  would_can_issue is all-true for inc=5/20/30 because VTA hits are
-  dispersed across too many warps. Per-warp LLS scores never exceed
-  cutoff/nw (6400/64 = 100 per warp). The prefix sum never exceeds
-  the cutoff, so would_can_issue[wid]=true for all warps.
-
-  inc=20 srad_v2 diagnostic:
-    max_score=413, sum_score=550736, nonzero_warps=128 (across 80 SMs)
-    per-SM avg nonzero warps = 1.6
-    per-SM cutoff = 6400
-    prefix[0] = max_score = 413 << 6400 → would_can_issue all true
-
-  inc=50 works because scores accumulate fast enough that some warps
-  exceed cutoff/nw=100, making prefix sum exceed cutoff.
-  But this gates non-stalled warps too → feedback loop → over-gating.
-
-round_ae_hypothesis_status: incorrect
-round_ae_hypothesis: >
-  AE assumed high-LLS warps were stalled and couldn't reach the gate.
-  AF shows the gate IS reached (lg_attempt=12416 for inc=20 srad_v2),
-  but would_can_issue is all-true, so gate always returns allow.
-  The stall hypothesis was a red herring.
-
-recommend_next: >
-  Three new directions:
-  D) Lower lg_score_threshold to 1-10 so cutoff = nw*threshold is
-     small enough for dispersed LLS scores to exceed it.
-     Risk: threshold too low may gate all warps (deadlock if < base_score).
-  E) Accept inc=50, raise threshold (150/200) to reduce over-gating.
-     This is parameter tuning, not mechanism fix.
-  F) Revisit VTA approximation: current intra-warp miss-side VTA
-     disperses hits across many warps. Paper VTA (inter-warp eviction)
-     concentrates signal on warps that lose locality to other warps.
-     Implementing faithful eviction-based VTA may concentrate LLS scores.
+next_round_proposal: >
+  Round AH: Fix cutoff calculation.
+  1. In ldst_unit::cycle() would_can_issue update block:
+     Replace: unsigned nw = m_ccws_lls.size();
+     With: unsigned nw = (m_core->get_not_completed() +
+                          m_config->warp_size - 1) / m_config->warp_size;
+           if (nw == 0) nw = 1;
+  2. In sort vector construction, skip done_exit() warp slots:
+     Only add warp w to sv if !m_core->warp_done_exit(w).
+  3. cum_cutoff = nw * lg_score_threshold (unchanged formula, but nw is now correct).
+  4. Validate: feature_off 7/7 pass + inc=5/20/30 lg_block > 0 on srad_v2/fdtd2d.
+  Expected: cutoff drops from 6400 to ~700-800; moderate gating signal.
 
 commit_recommended: true
-suggested_commit: "ccws: move load gating before scoreboard collision check"
-suggested_tag: ccws-early-load-gate
+suggested_commit: "ccws: audit can-issue cutoff calculation (Round AG)"
+suggested_tag: ccws-can-issue-audit
 
 new_files:
-  - experiments/paper-ccws/early_gate_validation.csv
-  - docs/papers/ccws_round_af_early_gate.md
+  - docs/papers/ccws_round_ag_can_issue_audit.md

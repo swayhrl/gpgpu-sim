@@ -1,6 +1,6 @@
 # GPGPU-Sim Development Notes
 
-_Last updated: 2026-05-01 — Round AF complete; pre-scoreboard gate implemented; inc=5/20/30 still 0 blocks; root cause revised: VTA hits dispersed, per-warp LLS never exceeds cutoff/nw. **Round AF 变更尚未提交（working tree dirty）。**_
+_Last updated: 2026-05-01 — Round AG complete; confirmed cutoff bug: uses max_warps(64) not active_warps(~8); inactive warp base_score consumes 87.5% of cutoff budget. **Round AG 变更尚未提交（working tree dirty）。**_
 
 ## Git 工作流
 
@@ -225,7 +225,8 @@ Four days of deep read-through of the PTX functional simulation → timing model
 - [x] **Round AD**：Hit-increment calibration — 7 workload × inc5/20/30（th100）；全部 0 blocks；根本原因确认：gate 只在 warp 有 LOAD_OP 准备发射时触发，高 LLS warp 已被 scoreboard stall，无法到达 issue 阶段；inc=50 通过正反馈绕过此限制但过度 gating
 - [x] **Round AE**：Gating insertion point audit — 确认当前 gate 在 `checkCollision()` 之后（post-scoreboard）；高 LLS stall warp 永远不到达 gate；推荐方向 B1：将 gate 移到 `checkCollision()` 之前（pre-scoreboard），约 10 行改动；不改变 non-load 指令行为
 - [x] **Round AF**：Pre-scoreboard gate 实现 — 将 `ccws_lg_gate_load()` 移到 `checkCollision()` 之前；feature_off 7/7 pass；inc=5/20/30 仍全 0 blocks；根本原因修正：VTA hit 分散在太多 warp，每个 warp 的 LLS 分数远低于 cutoff/nw（6400/64=100）；inc=50 行为与 post-scoreboard 完全相同（srad_v2 +45%，fdtd2d +61%）；gate 位置不是问题所在
-- [ ] **Round AG**：选择下一步方向（D: 降低 threshold；E: inc=50+高 threshold；F: 重新审视 VTA 近似方案）
+- [x] **Round AG**：Can-Issue cutoff 审计 — 确认主要 bug：`nw = max_warps_per_shader = 64`，而实际 active warps ≈ 8（occupancy 12%）；`cum_cutoff = 64×100 = 6400`，正确值应为 `8×100 = 800`；inactive warp 的 base_score(100) 合计 5600，消耗 cutoff budget 的 87.5%；`would_can_issue=false` 只落在 inactive warp slot 上，这些 warp 不发射 load，gate 永远不触发；修复方案：用 `not_completed/warp_size` 替换 `max_warps_per_shader` 作为 nw
+- [ ] **Round AH**：修复 cutoff 计算 — 用 active warp 数替换 max_warps；只遍历 active warp slot；feature_off 7/7 pass；inc=5/20/30 预期出现 lg_block > 0
 - [ ] **Round（后置）**：选择下一步方向（A: inc=50+高 threshold；B: 更早 pipeline 插入点；C: 接受当前行为进入 standard validation）；至少一篇论文 standard_pass 后，开 `hrl/idea/cache-policy-experiments-v0`
 
 ## Workload Management Framework（Round B 新增）
