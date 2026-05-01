@@ -1,35 +1,3 @@
-# MASCAR-ONE-SHOT-V1：Mascar approximate reproduction
-
-建议保存到仓库内：
-
-```text
-tools/paper_repro/task_prompts/mascar_one_shot_v1.md
-```
-
-给 Claude 的短提示词：
-
-```text
-请读取并严格执行：
-tools/paper_repro/task_prompts/mascar_one_shot_v1.md
-
-执行前请先 summarize 你理解的 Phase 0-6、stop rules、版本管理规则和 Phase 4 风险边界，确认：
-1. 当前工作目录是 /workspace/repos/gpgpu-sim_distribution；
-2. 当前分支是 hrl/paper/mascar-repro-v0；
-3. 本任务是 Mascar approximate reproduction，不是 PCAL/CCWS/DAWS，也不是自研 cache policy；
-4. 本任务允许推进到完整 minimal mechanism，但如果需要真实 replay/re-execution 或大范围 memory pipeline 重构，必须停下并文档化 limitation；
-5. 不自动 push/tag/save-session；
-6. 每个 Phase 完成后可以本地 commit；
-7. 不跑 standard/extended。
-
-确认理解后，从 Phase 0 preflight/reading 开始执行。
-全程用中文输出，不要使用韩文或日文；代码标识符、文件名、config knob、workload 名称保持英文。
-```
-
----
-
-## 给 Claude 的完整提示词
-
-```text
 MASCAR-ONE-SHOT-V1：Mascar approximate reproduction
 
 当前工作目录必须是：
@@ -40,6 +8,7 @@ hrl/paper/mascar-repro-v0
 
 本任务目标：
 对 Mascar: Speeding up GPU Warps by Reducing Memory Pitstops（HPCA 2015）做 approximate reproduction。
+
 目标不是 100% faithful reproduction，而是跑通机制链路：
 
 reading/plan
@@ -51,7 +20,10 @@ reading/plan
 → final report
 
 本任务希望像 PCAL one-shot 一样，在明确 stop rules 和 checkpoint 约束下，尽量推进到完整 minimal mechanism。
-但必须注意：Mascar 的原始机制可能涉及 memory saturation、warp scheduling、memory request prioritization、甚至 re-execution/replay 语义。GPGPU-Sim 中如果没有安全、局部、可解释的 hook，就不要硬做真实 replay/re-execution。
+
+但必须注意：
+Mascar 的原始机制可能涉及 memory saturation、warp scheduling、memory request prioritization、甚至 re-execution/replay 语义。
+GPGPU-Sim 中如果没有安全、局部、可解释的 hook，就不要硬做真实 replay/re-execution。
 
 在整体规划中的位置：
 - CCWS 已作为第一篇手动小 Round 复现样板完成；
@@ -62,87 +34,131 @@ reading/plan
 - 本轮不是自研 cache policy，不要混入 hrl/idea/cache-policy-experiments-v0；
 - 本轮不是继续改 PCAL/CCWS/DAWS。
 
-执行总规则：
-- 全部用中文输出，不要使用韩文或日文；代码标识符、文件名、config knob、workload 名称保持英文。
-- 不追求 100% faithful Mascar；允许 engineering approximation，但必须文档说明。
-- 每个 Phase 开始前，先确认本 Phase 目标、允许改动、禁止事项。
-- 每个 Phase 完成后必须输出 checkpoint summary。
-- 每个 Phase 完成且验证通过后，可以本地 git commit。
-- 不自动 push。
-- 不自动 tag。
-- 不运行 /save-session。
-- 不运行 full standard / extended。
-- 不做大参数 sweep。
-- 不改与 Mascar 无关的源码。
-- 不删除、不重写 PCAL / CCWS / DAWS 相关文件。
-- 如果任一 Phase 超过 10 分钟，暂停当前扩展，输出 checkpoint summary，再决定是否继续。
-- 如果出现 hang/deadlock/extreme slowdown，停止扩大实验，记录并收尾。
-- 如果需要大范围重构 scheduler / ldst_unit / scoreboard / memory queue / cache miss return path / interconnect / DRAM，停止并文档化，不要硬做。
+============================================================
+全局执行规则
+============================================================
+
+- 全部用中文输出，不要使用韩文或日文；
+- 代码标识符、文件名、config knob、workload 名称保持英文；
+- 不追求 100% faithful Mascar；
+- 允许 engineering approximation，但必须文档说明；
+- 每个 Phase 开始前，先确认本 Phase 目标、允许改动、禁止事项；
+- 每个 Phase 完成后必须输出 checkpoint summary；
+- 每个 Phase 只有在满足成功标准、git diff 已检查、无异常/无越界改动后，才可以本地 commit；
+- 不自动 push；
+- 不自动 tag；
+- 不运行 /save-session；
+- 不运行 full standard / extended；
+- 不做大参数 sweep；
+- 不改与 Mascar 无关的源码；
+- 不删除、不重写 PCAL / CCWS / DAWS 相关文件；
+- 如果任一 Phase 超过 10 分钟，暂停当前扩展，输出 checkpoint summary，再决定是否继续；
+- 如果出现 hang/deadlock/extreme slowdown，停止扩大实验，记录并收尾；
+- 如果需要大范围重构 scheduler / ldst_unit / scoreboard / memory queue / cache miss return path / interconnect / DRAM，停止并文档化，不要硬做；
 - 如果 Phase 4 minimal mechanism 需要真实 replay/re-execution 或 memory pipeline 大范围重构，宁可停在 would-change + final report，也不要硬做。
 
-开始前检查：
+============================================================
+开始前检查
+============================================================
+
 1. 执行：
-   pwd
-   git branch --show-current
-   git status --short
-   git diff --stat
-   git log --oneline -5
+
+```bash
+pwd
+git branch --show-current
+git status --short
+git diff --stat
+git log --oneline -5
+```
 
 2. pwd 必须是：
-   /workspace/repos/gpgpu-sim_distribution
+
+```text
+/workspace/repos/gpgpu-sim_distribution
+```
 
 3. 当前分支必须是：
-   hrl/paper/mascar-repro-v0
+
+```text
+hrl/paper/mascar-repro-v0
+```
 
 4. git status --short 必须干净。
 
 5. 确认基础文件存在：
-   tools/paper_repro/papers/mascar.yaml
-   tools/paper_repro/preplans/mascar_preplan.yaml
-   docs/papers/mascar_auto_reading_prompt_preview.md
+
+```text
+tools/paper_repro/papers/mascar.yaml
+tools/paper_repro/preplans/mascar_preplan.yaml
+docs/papers/mascar_auto_reading_prompt_preview.md
+```
 
 6. 如果不满足，停止并报告原因，不要继续。
 
-版本管理规则：
-- 每个 Phase 通过后允许本地 commit。
-- commit 前必须执行：
-  git status --short
-  git diff --stat
-- 每个 commit message 按本提示词给定建议。
-- 不自动 push。
-- 不自动 tag。
-- 如果某个 Phase 没通过，不要 commit，写清楚原因并停止。
-- 禁止删除 PCAL / CCWS / DAWS 相关文件。
-- 禁止修改其他 paper branch 的语义文档，除非只是 CLAUDE.md 状态记录。
-- 每个 Phase 的 commit 只包含本 Phase 相关文件。
-- 如果某 Phase 改动失败且要回退，只回退本 Phase 改动。
+7. 如后续需要编译或运行 workload，先执行：
 
-Mascar approximate reproduction 原则：
+```bash
+source /workspace/repos/load_gpgpusim.sh
+```
+
+============================================================
+版本管理规则
+============================================================
+
+- 每个 Phase 只有在满足该 Phase 成功标准后，才允许本地 commit；
+- commit 前必须执行：
+
+```bash
+git status --short
+git diff --stat
+```
+
+- 每个 commit message 按本提示词给定建议；
+- 不自动 push；
+- 不自动 tag；
+- 不自动 /save-session；
+- 如果某个 Phase 没通过，不要 commit，写清楚原因并停止；
+- 禁止删除 PCAL / CCWS / DAWS 相关文件；
+- 禁止修改其他 paper branch 的语义文档，除非只是 CLAUDE.md 状态记录；
+- 每个 Phase 的 commit 只包含本 Phase 相关文件；
+- 如果某 Phase 改动失败且要回退，只回退本 Phase 改动；
+- 如果 Phase 4 因高风险停机，不 commit 失败源码。
+
+============================================================
+Mascar approximate reproduction 原则
+============================================================
+
 1. 优先复现机制链路，不追求论文 exact numbers。
+
 2. 允许将 Mascar 的 memory pitstop / saturation / warp scheduling 近似为：
    - per-warp memory pressure telemetry；
    - per-warp memory stall / long-latency activity；
    - per-core / per-SM memory saturation proxy；
    - would-prioritize / would-delay telemetry；
    - minimal scheduler priority/delay 或 issue-order proxy。
-3. 如果无法安全实现真实 re-execution/replay，不要硬做；可以用 scheduler prioritization / delay proxy 作为 minimal mechanism。
-4. focused validation 优先，不跑 standard。
-5. workload 使用 WORKLOAD-AUDIT 和前面论文经验：
-   focused candidates：
-   - rodinia_hotspot
-   - rodinia_srad_v2
-   - rodinia_bfs
-   - strided_access
-   - polybench_fdtd2d
-   - polybench_2dconv
-   - mutual_tiled
-   - parboil_histo
 
-   controls：
-   - vecadd
-   - polybench_gemm
-   - mutual_naive
-   - rodinia_backprop
+3. 如果无法安全实现真实 re-execution/replay，不要硬做；
+   可以用 scheduler prioritization / delay proxy 作为 minimal mechanism。
+
+4. focused validation 优先，不跑 standard。
+
+5. workload 使用 WORKLOAD-AUDIT 和前面论文经验。
+
+focused candidates：
+- rodinia_hotspot
+- rodinia_srad_v2
+- rodinia_bfs
+- strided_access
+- polybench_fdtd2d
+- polybench_2dconv
+- mutual_tiled
+- parboil_histo
+
+controls：
+- vecadd
+- polybench_gemm
+- mutual_naive
+- rodinia_backprop
 
 ============================================================
 Phase 0：reading / plan / preflight
@@ -173,7 +189,10 @@ Phase 0：reading / plan / preflight
 6. 更新 tools/paper_repro/papers/mascar.yaml
 7. 更新 CLAUDE.md
 8. 创建轻量 checkpoint log：
-   experiments/paper-mascar/mascar_one_shot_checkpoint_log.md
+
+```text
+experiments/paper-mascar/mascar_one_shot_checkpoint_log.md
+```
 
 reading notes 至少包含：
 - 研究对象；
@@ -186,13 +205,16 @@ reading notes 至少包含：
 - 高风险点。
 
 round_state.yaml 至少包含：
-- paper: mascar
-- round: Phase 0
-- stage: reading
-- status
-- source_changed: false
-- experiments_run: false
-- recommend_next: Phase 1
+
+```yaml
+paper: mascar
+round: Phase 0
+stage: reading
+status:
+source_changed: false
+experiments_run: false
+recommend_next: Phase 1
+```
 
 成功标准：
 - reading notes 和 repro plan 存在；
@@ -201,7 +223,10 @@ round_state.yaml 至少包含：
 - 可以进入 Phase 1。
 
 Phase 0 通过后 commit：
+
+```bash
 git commit -m "mascar: add reading notes and reproduction plan"
+```
 
 ============================================================
 Phase 1：no-op config + stats
@@ -282,7 +307,10 @@ Phase 1：no-op config + stats
 - 没有真实 Mascar 行为改动。
 
 Phase 1 通过后 commit：
+
+```bash
 git commit -m "mascar: add no-op config and stats"
+```
 
 ============================================================
 Phase 2：memory pressure / pitstop telemetry instrumentation-only
@@ -354,7 +382,10 @@ focused 小集合：
 - 无真实 policy 行为。
 
 Phase 2 通过后 commit：
+
+```bash
 git commit -m "mascar: add memory pressure telemetry"
+```
 
 ============================================================
 Phase 3：would-change prioritization / delay telemetry
@@ -413,7 +444,10 @@ Phase 3：would-change prioritization / delay telemetry
 - 可判断是否进入 minimal mechanism。
 
 Phase 3 通过后 commit：
+
+```bash
 git commit -m "mascar: add would-change scheduling telemetry"
+```
 
 ============================================================
 Phase 4：minimal Mascar mechanism，允许推进但必须谨慎
@@ -428,6 +462,7 @@ Phase 4：minimal Mascar mechanism，允许推进但必须谨慎
 
 重要：
 这是最高风险阶段。进入前必须先输出 risk checkpoint，并 append 到 checkpoint log：
+
 - Phase 2/3 的信号是否足够；
 - 计划改哪些文件；
 - 找到的具体 hook 点是什么；
@@ -443,7 +478,10 @@ Phase 4：minimal Mascar mechanism，允许推进但必须谨慎
 3. 不要为了出信号改大范围路径；
 4. 文档化 limitation；
 5. 保留 Phase 3 would-change 作为 Mascar approximate reproduction 的主要结果；
-6. 直接进入 Phase 6 final report。
+6. 不运行 policy_on focused validation；
+7. 不新增大规模实验；
+8. 如确需补充一个极小 telemetry/would-change summary，只允许使用已有结果或 1-2 个 quick workload；
+9. 直接进入 Phase 6 final report。
 
 允许的最小实现方向：
 1. 优先选择局部、可回退的 scheduler priority / delay proxy；
@@ -458,7 +496,7 @@ Phase 4：minimal Mascar mechanism，允许推进但必须谨慎
 可考虑 hook：
 - scheduler_unit::cycle() 中候选 warp 选择 / issue-order 相关位置；
 - 仅在 issue 前读取 per-warp Mascar telemetry score；
-- 若 candidate 被 would_delay，则跳过该 warp并继续尝试下一个候选；
+- 若 candidate 被 would_delay，则跳过该 warp 并继续尝试下一个候选；
 - 不要结束整个 scheduler cycle；
 - 不要造成所有 warp 都被 delay；
 - 必须有 allow/fallback 机制，避免 deadlock。
@@ -509,13 +547,17 @@ quick/focused 小集合：
 - 改动范围可解释。
 
 Phase 4 通过后 commit：
+
+```bash
 git commit -m "mascar: add minimal scheduling policy"
+```
 
 如果 Phase 4 因高风险停止：
 - 不 commit 失败源码；
-- 回退源码或保留文档化状态；
+- 回退源码或只保留文档化状态；
 - 输出明确 limitation；
-- 进入 Phase 6 final report。
+- 不进入 policy_on focused validation；
+- 直接进入 Phase 6 final report。
 
 ============================================================
 Phase 5：focused validation
@@ -527,7 +569,7 @@ Phase 5：focused validation
 
 前置：
 只有在 Phase 4 成功实现 minimal policy 时，才运行 policy_on focused validation。
-如果 Phase 4 被安全停机，则可对 telemetry / would_change 结果做 focused summary，但不要伪装成 policy validation。
+如果 Phase 4 被安全停机，则不要伪装成 policy validation，应跳过本 Phase 并在 Phase 6 总结 Phase 2/3 的 telemetry / would-change 结果。
 
 配置比较：
 - feature_off / baseline
@@ -585,7 +627,10 @@ controls：
 - 能判断 final report。
 
 Phase 5 通过后 commit：
+
+```bash
 git commit -m "mascar: validate approximate scheduling policy on focused workloads"
+```
 
 ============================================================
 Phase 6：final report
@@ -619,7 +664,8 @@ final report 结构：
 - 是否建议停止 Mascar；
 - 是否建议进入 cache policy 自研；
 - 如果 Phase 4 停在 limitation，要清楚说明原因；
-- 如果 Phase 4 成功，要说明 focused validation 是否支持大致预期。
+- 如果 Phase 4 成功，要说明 focused validation 是否支持大致预期；
+- 如果 Phase 5 因 Phase 4 停机而跳过，要明确说明没有做 policy validation。
 
 需要产出：
 1. docs/papers/mascar_final_reproduction_report.md
@@ -631,7 +677,10 @@ final report 结构：
 7. 追加 checkpoint log
 
 Phase 6 通过后 commit：
+
+```bash
 git commit -m "mascar: add final reproduction report"
+```
 
 ============================================================
 Checkpoint log 要求
@@ -639,19 +688,22 @@ Checkpoint log 要求
 
 从 Phase 0 开始维护轻量 checkpoint log：
 
+```text
 experiments/paper-mascar/mascar_one_shot_checkpoint_log.md
+```
 
 要求：
-1. append-only，不要重写已有内容。
-2. 每个 Phase 结束时追加一次。
-3. 如果某个 Phase 执行接近或超过 10 分钟，先追加 checkpoint，再决定是否继续。
-4. 进入 Phase 4 minimal mechanism 前必须追加 risk checkpoint。
-5. 每次 checkpoint 控制在 8-12 行，不要写长篇叙述。
-6. 不要把完整命令输出、大段 diff、完整 CSV 内容写进 log。
+1. append-only，不要重写已有内容；
+2. 每个 Phase 结束时追加一次；
+3. 如果某个 Phase 执行接近或超过 10 分钟，先追加 checkpoint，再决定是否继续；
+4. 进入 Phase 4 minimal mechanism 前必须追加 risk checkpoint；
+5. 每次 checkpoint 控制在 8-12 行，不要写长篇叙述；
+6. 不要把完整命令输出、大段 diff、完整 CSV 内容写进 log；
 7. 如果任务中断，log 应能说明当前停在哪个 Phase、已改哪些文件、是否可以继续。
 
 checkpoint 格式：
 
+```markdown
 ## Checkpoint: <timestamp or Phase name>
 
 - Phase:
@@ -663,6 +715,7 @@ checkpoint 格式：
 - 当前风险:
 - 是否建议继续:
 - 下一步:
+```
 
 ============================================================
 每 10 分钟 checkpoint 格式
@@ -670,6 +723,7 @@ checkpoint 格式：
 
 如果任一阶段超过 10 分钟，请暂停扩展并输出：
 
+```text
 ---
 Checkpoint Summary
 - 当前 Phase：
@@ -683,6 +737,7 @@ Checkpoint Summary
 - 是否建议继续：
 - 是否建议停止 review：
 ---
+```
 
 不要在 checkpoint 后继续扩大任务，除非当前阶段已经接近完成且没有风险。
 
@@ -692,6 +747,7 @@ Checkpoint Summary
 
 每个 Phase 结束时输出：
 
+```text
 ---
 Phase Summary
 - Phase：
@@ -706,6 +762,7 @@ Phase Summary
 - 是否建议进入下一 Phase：
 - 是否需要 GPT/Codex review：
 ---
+```
 
 ============================================================
 最终输出要求
@@ -713,13 +770,12 @@ Phase Summary
 
 任务结束时输出：
 
-1. Mascar 复现进行到哪个 Phase。
-2. 每个 Phase 是否完成。
-3. 生成了哪些 commits。
-4. 是否有未提交改动。
-5. 是否存在 src 改动。
-6. 是否出现 hang/deadlock/extreme slowdown。
-7. 是否建议进入 GPT/Codex review。
-8. 是否建议后续继续 Mascar，还是收束。
+1. Mascar 复现进行到哪个 Phase；
+2. 每个 Phase 是否完成；
+3. 生成了哪些 commits；
+4. 是否有未提交改动；
+5. 是否存在 src 改动；
+6. 是否出现 hang/deadlock/extreme slowdown；
+7. 是否建议进入 GPT/Codex review；
+8. 是否建议后续继续 Mascar，还是收束；
 9. 不要 push，不要 tag，不要 /save-session。
-```
