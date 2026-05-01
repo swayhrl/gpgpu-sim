@@ -1,0 +1,77 @@
+paper: pcal
+round: AUTO-9
+stage: reading
+status: complete
+date: 2026-05-01
+branch: hrl/paper/pcal-repro-v0
+
+source_changed: false
+experiments_run: false
+
+# 论文机制链
+mechanism_chain:
+  - name: miss-rate probe
+    description: "per-warp L1D miss / access count in sliding window"
+    stage: 02_telemetry
+    hook_location: "shader.cc:2213 (MISS path), shader.cc:2191 (HIT path)"
+    approximation: "global access count not split by instruction type"
+  - name: priority classification
+    description: "miss_rate > threshold → low priority → bypass"
+    stage: 03_would_change
+    hook_location: "shader.cc:2463 (bypass decision)"
+    approximation: "per-warp binary classification; no per-CTA or per-PC"
+  - name: L1 bypass gate
+    description: "low-priority warp loads bypass L1D, go directly to ICNT"
+    stage: 04_minimal_mechanism
+    hook_location: "shader.cc:2463-2470 (bypassL1D condition)"
+    approximation: "only L1D bypass; L2 bypass not implemented"
+
+# GPGPU-Sim 映射点
+gpgpu_sim_mapping:
+  - file: src/gpgpu-sim/shader.h
+    purpose: "per-warp miss/access counters; miss_rate array; config knobs"
+  - file: src/gpgpu-sim/shader.cc
+    purpose: "miss probe hook (2213); bypass decision (2463); access tracking"
+  - file: src/gpgpu-sim/gpu-sim.cc
+    purpose: "option_parser_register for knobs; stat output"
+  - file: src/gpgpu-sim/gpu-cache.h
+    purpose: "read-only reference: cache_operator_type (CACHE_GLOBAL, CACHE_ALL)"
+
+# 最高风险修改
+highest_risk_change: "hooking per-warp access counter into hot path (shader.cc:2140-2224); must guard with gpgpu_enable_pcal"
+
+# 已规划的 knobs（Stage 01 时实现）
+planned_knobs:
+  - gpgpu_enable_pcal            # master switch
+  - gpgpu_pcal_enable_telemetry  # stage 02
+  - gpgpu_pcal_enable_would_bypass  # stage 03
+  - gpgpu_pcal_enable_bypass     # stage 04
+  - gpgpu_pcal_miss_rate_threshold  # default 50
+  - gpgpu_pcal_window_size       # default 64
+
+# 已规划的 stats（Stage 01 时注册）
+planned_stats:
+  - paper_pcal_miss_event
+  - paper_pcal_access_event
+  - paper_pcal_warp_classified_high
+  - paper_pcal_warp_classified_low
+  - paper_pcal_would_bypass
+  - paper_pcal_bypass_count
+  - paper_pcal_bypass_hit
+  - paper_pcal_window_reset
+  - paper_pcal_all_low_priority
+  - paper_pcal_high_priority_warps
+  - paper_pcal_low_priority_warps
+
+# 近似说明
+approximation_notes:
+  - "per-warp (not per-CTA) classification"
+  - "simple miss/access ratio (not full CSI metric)"
+  - "only L1D bypass (no L2 bypass)"
+  - "binary priority (not multi-level)"
+  - "fixed window size (not adaptive)"
+
+recommend_next: "Stage 01 no-op config — implement 6 knobs + 11 stats in shader.h/cc/gpu-sim.cc; verify feature_off sim_cycle=5569"
+
+# 分支说明
+branch_note: "分支从 hrl/paper/daws-repro-v0 创建（含 CCWS+DAWS instrumentation），pcal.yaml 中 base_branch=main 为规划时编写，实际继承了 DAWS。所有旧 feature flag 默认 0/off，不影响 PCAL baseline 验证。"
