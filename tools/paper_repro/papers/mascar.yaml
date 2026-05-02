@@ -2,7 +2,7 @@ paper_key: mascar
 title: "Mascar: Speeding up GPU Warps by Reducing Memory Pitstops"
 authors:
   - "Ankit Sethia"
-  - "D. Anoushe Jamshidi"
+  - "Davoud Anoushe Jamshidi"
   - "Scott Mahlke"
 venue: "HPCA"
 year: 2015
