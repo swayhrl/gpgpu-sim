@@ -2,7 +2,7 @@ paper: mascar
 branch: hrl/paper/mascar-repro-v0
 overall_status: complete
 reproduction_status: approximate_reproduction_complete
-reproduction_type: approximate mechanism reproduction, not approximate reproduction
+reproduction_type: proxy-based approximate mechanism reproduction
 last_updated: "2026-05-02"
 
 phases:
