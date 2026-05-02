@@ -93,7 +93,7 @@ is appropriate for our approximation level.
 - skip/allow ratio = 4.0 for all workloads (= max_skip_streak) ✓
 - Deadlock prevention verified in all 9 workloads ✓
 - BFS: skip_count=0 correct (BFS is branch-heavy, low per-warp memory pressure) ✓
-- 6/9 workloads show improvement or neutral; 2/9 show small regression (<0.2%)
+- 7/9 workloads improve-or-neutral (6 improved + 1 neutral/unchanged); 2/9 show small regression (<0.2%)
 
 ---
 

@@ -1,39 +1,75 @@
 paper: mascar
-round: Phase 6
-stage: final_report
-status: complete
-source_changed: true
-source_files_changed:
-  - src/gpgpu-sim/shader.h
-  - src/gpgpu-sim/shader.cc
-  - configs/hrl-repro/SM7_QV100_mascar_policy_on/gpgpusim.config
-  - configs/hrl-repro/SM7_QV100_mascar_policy_on/README.md
-experiments_run: true
-workloads_run: [vecadd, rodinia_hotspot, rodinia_srad_v2]
-configs_run: [mascar_noop_off, mascar_policy_on]
-mechanism_chain:
-  - memory stall probe: COMPLETE
-  - pitstop detection: COMPLETE (pitstop_event > 0 at threshold=2)
-  - would-deprioritize telemetry: COMPLETE
-  - scheduler skip: COMPLETE (skip_count > 0, deadlock prevention verified)
-policy_on_results:
-  vecadd: {baseline: 5569, policy_on: 5560, delta: -9, skip_count: 44, allow_count: 11}
-  rodinia_hotspot: {baseline: 6931, policy_on: 6923, delta: -8, skip_count: 8300, allow_count: 2075}
-  rodinia_srad_v2: {baseline: 15926, policy_on: 15918, delta: -8, skip_count: 5516, allow_count: 1379}
-config_knobs:
-  stall_threshold: 2
-  max_skip_streak: 4
-  skip_gate_placement: post-scoreboard inside memory block
-bugs_fixed:
-  - config had duplicate -gpgpu_mascar_enable_scheduling 0 overriding scheduling=1
-  - config had duplicate -gpgpu_mascar_stall_threshold 8 too conservative (pitstop never fires)
-  - skip gate moved from pre-scoreboard to post-scoreboard inside memory block
-deadlock_check: allow_count > 0, ratio skip/allow = 4 = max_skip_streak (force-allow working)
-recommend_next: Phase 5 focused validation
+reproduction_status: approximate_reproduction_complete
+overall_status: complete
+
+phases:
+  phase0_reading: complete
+  phase1_noop_config: complete
+  phase2_memory_pressure_telemetry: complete
+  phase3_would_change_telemetry: complete
+  phase4_minimal_skip_gate_proxy: complete
+  phase5_focused_validation: "complete — 9 workloads, no deadlock"
+  phase6_final_report: complete
+
+# Phase 4 summary
+phase4_notes: >
+  Minimal scheduling skip-gate proxy (approximate, not faithful reproduction).
+  Skip gate placed post-scoreboard inside memory instruction block.
+  stall_threshold=2, max_skip_streak=4 (deadlock prevention).
+  skip_count > 0 for 8/9 workloads. No replay/re-execution implemented.
+
+# Phase 5 focused validation — 9 workloads
+phase5_workloads_run: [vecadd, rodinia_hotspot, rodinia_srad_v2, rodinia_bfs,
+                        strided_access, polybench_fdtd2d, polybench_2dconv,
+                        mutual_tiled, parboil_histo]
+phase5_configs_run: [mascar_noop_off, mascar_policy_on]
+phase5_summary:
+  total_workloads: 9
+  improve_or_neutral: 7
+  regressed: 2
+  deadlock: 0
+  skip_count_nonzero: 8
+  skip_allow_ratio: 4.0  # = max_skip_streak for all workloads
+
+phase5_results:
+  vecadd:            {noop_off: 5569,  policy_on: 5560,  delta: -9,   pct: "-0.16%", skip: 44,    outcome: improved}
+  rodinia_hotspot:   {noop_off: 6931,  policy_on: 6923,  delta: -8,   pct: "-0.12%", skip: 8300,  outcome: improved}
+  rodinia_srad_v2:   {noop_off: 15926, policy_on: 15918, delta: -8,   pct: "-0.05%", skip: 5516,  outcome: improved}
+  rodinia_bfs:       {noop_off: 136110,policy_on: 136110,delta: 0,    pct: "0%",     skip: 0,     outcome: neutral}
+  strided_access:    {noop_off: 5825,  policy_on: 5821,  delta: -4,   pct: "-0.07%", skip: 44,    outcome: improved}
+  polybench_fdtd2d:  {noop_off: 35681, policy_on: 35720, delta: +39,  pct: "+0.11%", skip: 1728,  outcome: regressed}
+  polybench_2dconv:  {noop_off: 6652,  policy_on: 6651,  delta: -1,   pct: "-0.02%", skip: 2984,  outcome: improved}
+  mutual_tiled:      {noop_off: 7479,  policy_on: 7472,  delta: -7,   pct: "-0.09%", skip: 216,   outcome: improved}
+  parboil_histo:     {noop_off: 35472, policy_on: 35519, delta: +47,  pct: "+0.13%", skip: 13440, outcome: regressed}
+
 feature_off_baseline:
   vecadd: 5569
   rodinia_hotspot: 6931
-  rodinia_bfs: 6665
-  rodinia_srad_v2: 15926
+  rodinia_bfs: 136110  # total (multi-kernel)
+  rodinia_srad_v2: 15926  # total (multi-kernel)
   strided_access: 5825
-  polybench_fdtd2d: 5840
+  polybench_fdtd2d: 35681  # total (multi-kernel)
+  polybench_2dconv: 6652
+  mutual_tiled: 7479
+  parboil_histo: 35472  # total (multi-kernel)
+
+mechanism_chain_status:
+  memory_stall_probe: complete
+  pitstop_detection: complete  # pitstop_event > 0 at threshold=2
+  would_deprioritize_telemetry: complete
+  scheduler_skip_gate: complete  # skip_count > 0, deadlock prevention verified
+
+config_knobs_final:
+  stall_threshold: 2
+  max_skip_streak: 4
+  skip_gate_placement: post-scoreboard inside memory instruction block
+  enable_scheduling: 1
+
+recommend_next: close — push after review; no further src changes planned
+artifacts:
+  - docs/papers/mascar_final_report.md
+  - docs/papers/mascar_round_05_focused_validation.md
+  - experiments/paper-mascar/focused_validation_check.csv
+  - experiments/paper-mascar/round_state.yaml
+
+last_updated: "2026-05-02"

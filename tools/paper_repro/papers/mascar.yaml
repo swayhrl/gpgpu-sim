@@ -109,9 +109,20 @@ reproduction_status:
   phase1_noop: complete
   phase2_telemetry: complete
   phase3_would_change: complete
-  phase4_minimal_policy: complete
-  phase5_focused_validation: complete
+  phase4_minimal_policy: "complete — minimal skip-gate proxy (approximate, not faithful)"
+  phase5_focused_validation: "complete — 9 workloads, 7/9 improve-or-neutral, 2/9 regress, no deadlock"
   phase6_final_report: complete
   overall: approximate_reproduction_complete
-  last_updated: "2026-05-01"
-  notes: "skip gate post-scoreboard in memory block; threshold=2; skip_count>0 for 8/9 workloads; no deadlock"
+  last_updated: "2026-05-02"
+  notes: >
+    Skip gate post-scoreboard in memory instruction block. stall_threshold=2,
+    max_skip_streak=4. skip_count > 0 for 8/9 workloads. No replay/re-execution.
+    Memory pressure proxy uses m_mem_out (scheduler slot), NOT true MSHR occupancy.
+    Cycle deltas <0.2%; paper-level speedup (5-15%) is NOT reproduced.
+
+artifacts:
+  final_report: docs/papers/mascar_final_report.md
+  focused_validation_doc: docs/papers/mascar_round_05_focused_validation.md
+  focused_validation_data: experiments/paper-mascar/focused_validation_check.csv
+  round_state: experiments/paper-mascar/round_state.yaml
+  repro_plan: docs/papers/mascar_repro_plan.md
