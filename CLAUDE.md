@@ -77,8 +77,8 @@ tools/paper_repro/      论文复现自动化脚手架
 - `tools/paper_repro/` 脚手架可用，AUTO-0 smoke test 通过
 
 **不视为完成的 WIP**：
-- CCWS faithful reproduction（miss-side VTA 近似、max_warps cutoff 近似）
-- DAWS faithful reproduction（无 loop detection、无 load classification）
+- CCWS approximate reproduction（miss-side VTA 近似、max_warps cutoff 近似）
+- DAWS approximate reproduction（无 loop detection、无 load classification）
 - 两个 paper branch 的 standard validation（cycle 方向相反，不建议跑）
 - 自研 cache policy（尚未开 idea branch）
 
@@ -217,7 +217,7 @@ tools/paper_repro/
   templates/04_minimal_mechanism.md  # Stage 4: minimal mechanism
   templates/05_focused_validation.md # Stage 5: focused validation
   templates/06_standard_validation.md # Stage 6: standard validation（通常跳过）
-  templates/07_final_report.md # Stage 7: final report
+  templates/phase_6_final_report.md # Stage 7: final report
   schemas/                     # round_state / paper_config / result_csv 规范
 ```
 

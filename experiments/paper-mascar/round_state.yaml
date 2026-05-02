@@ -1,75 +1,54 @@
 paper: mascar
-reproduction_status: approximate_reproduction_complete
+branch: hrl/paper/mascar-repro-v0
 overall_status: complete
+reproduction_status: approximate_reproduction_complete
+reproduction_type: approximate mechanism reproduction, not approximate reproduction
+last_updated: "2026-05-02"
 
 phases:
-  phase0_reading: complete
-  phase1_noop_config: complete
-  phase2_memory_pressure_telemetry: complete
-  phase3_would_change_telemetry: complete
-  phase4_minimal_skip_gate_proxy: complete
-  phase5_focused_validation: "complete — 9 workloads, no deadlock"
-  phase6_final_report: complete
+  phase_0_reading: complete
+  phase_1_noop_config_stats: complete
+  phase_2_memory_pressure_telemetry: complete
+  phase_3_would_change_telemetry: complete
+  phase_4_minimal_scheduling_skip_gate_proxy: complete
+  phase_5_focused_validation: complete
+  phase_6_final_report: complete
 
-# Phase 4 summary
-phase4_notes: >
-  Minimal scheduling skip-gate proxy (approximate, not faithful reproduction).
-  Skip gate placed post-scoreboard inside memory instruction block.
-  stall_threshold=2, max_skip_streak=4 (deadlock prevention).
-  skip_count > 0 for 8/9 workloads. No replay/re-execution implemented.
+phase_4_summary:
+  mechanism: minimal scheduling skip-gate proxy
+  approximation: true
+  faithful_replay_or_reexecution: false
+  true_mshr_occupancy_tracking: false
+  memory_pressure_signal: m_mem_out / scheduler-side proxy
+  skip_gate_position: post-scoreboard memory instruction branch
+  deadlock_prevention: max_skip_streak force-allow
 
-# Phase 5 focused validation — 9 workloads
-phase5_workloads_run: [vecadd, rodinia_hotspot, rodinia_srad_v2, rodinia_bfs,
-                        strided_access, polybench_fdtd2d, polybench_2dconv,
-                        mutual_tiled, parboil_histo]
-phase5_configs_run: [mascar_noop_off, mascar_policy_on]
-phase5_summary:
-  total_workloads: 9
+phase_5_summary:
+  validation_type: focused_validation
+  workloads: 9
   improve_or_neutral: 7
-  regressed: 2
+  regress: 2
   deadlock: 0
   skip_count_nonzero: 8
-  skip_allow_ratio: 4.0  # = max_skip_streak for all workloads
+  configs:
+    - mascar_noop_off
+    - mascar_policy_on
 
-phase5_results:
-  vecadd:            {noop_off: 5569,  policy_on: 5560,  delta: -9,   pct: "-0.16%", skip: 44,    outcome: improved}
-  rodinia_hotspot:   {noop_off: 6931,  policy_on: 6923,  delta: -8,   pct: "-0.12%", skip: 8300,  outcome: improved}
-  rodinia_srad_v2:   {noop_off: 15926, policy_on: 15918, delta: -8,   pct: "-0.05%", skip: 5516,  outcome: improved}
-  rodinia_bfs:       {noop_off: 136110,policy_on: 136110,delta: 0,    pct: "0%",     skip: 0,     outcome: neutral}
-  strided_access:    {noop_off: 5825,  policy_on: 5821,  delta: -4,   pct: "-0.07%", skip: 44,    outcome: improved}
-  polybench_fdtd2d:  {noop_off: 35681, policy_on: 35720, delta: +39,  pct: "+0.11%", skip: 1728,  outcome: regressed}
-  polybench_2dconv:  {noop_off: 6652,  policy_on: 6651,  delta: -1,   pct: "-0.02%", skip: 2984,  outcome: improved}
-  mutual_tiled:      {noop_off: 7479,  policy_on: 7472,  delta: -7,   pct: "-0.09%", skip: 216,   outcome: improved}
-  parboil_histo:     {noop_off: 35472, policy_on: 35519, delta: +47,  pct: "+0.13%", skip: 13440, outcome: regressed}
+limitations:
+  - no true replay/re-execution
+  - no true MSHR occupancy tracking
+  - m_mem_out / scheduler-side proxy
+  - small focused workloads
+  - tiny cycle impact
+  - paper-level speedup not reproduced
 
-feature_off_baseline:
-  vecadd: 5569
-  rodinia_hotspot: 6931
-  rodinia_bfs: 136110  # total (multi-kernel)
-  rodinia_srad_v2: 15926  # total (multi-kernel)
-  strided_access: 5825
-  polybench_fdtd2d: 35681  # total (multi-kernel)
-  polybench_2dconv: 6652
-  mutual_tiled: 7479
-  parboil_histo: 35472  # total (multi-kernel)
+canonical_artifacts:
+  final_report: docs/papers/mascar_final_reproduction_report.md
+  final_summary: experiments/paper-mascar/final_summary.csv
+  focused_validation: experiments/paper-mascar/focused_validation.csv
+  round_state: experiments/paper-mascar/round_state.yaml
+  paper_yaml: tools/paper_repro/papers/mascar.yaml
 
-mechanism_chain_status:
-  memory_stall_probe: complete
-  pitstop_detection: complete  # pitstop_event > 0 at threshold=2
-  would_deprioritize_telemetry: complete
-  scheduler_skip_gate: complete  # skip_count > 0, deadlock prevention verified
-
-config_knobs_final:
-  stall_threshold: 2
-  max_skip_streak: 4
-  skip_gate_placement: post-scoreboard inside memory instruction block
-  enable_scheduling: 1
-
-recommend_next: close_after_review — push after review; no further src changes planned
-artifacts:
-  - docs/papers/mascar_final_reproduction_report.md
-  - experiments/paper-mascar/final_summary.csv
-  - experiments/paper-mascar/focused_validation.csv
-  - experiments/paper-mascar/round_state.yaml
-
-last_updated: "2026-05-02"
+recommend_next: push_after_review
+tag_recommended: false
+source_changes_planned: false

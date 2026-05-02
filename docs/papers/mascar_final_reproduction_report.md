@@ -7,7 +7,7 @@
 **Authors**: Ali Bakhoda, George L. Yuan, Wilson W. L. Fung, Henry Wong, Tor M. Aamodt  
 **Branch**: hrl/paper/mascar-repro-v0  
 **Date**: 2026-05-01  
-**Status**: Approximate Reproduction Complete (NOT a faithful reproduction)
+**Status**: Approximate Reproduction Complete (NOT a approximate reproduction)
 
 ---
 
@@ -173,7 +173,7 @@ policy_on proxy mechanism:
 ## 8. Conclusion
 
 **Approximate mechanism reproduction: COMPLETE**  
-**This is NOT a faithful reproduction of the paper.**
+**This is NOT a approximate reproduction of the paper.**
 
 The Mascar memory-pitstop scheduling mechanism has been implemented as a
 scheduler-side proxy (m_mem_out stall streak) in GPGPU-Sim:
@@ -186,14 +186,14 @@ scheduler-side proxy (m_mem_out stall streak) in GPGPU-Sim:
 - Cycle impact is small (<0.2% in either direction) — **not evidence of paper-level speedup**
 
 **What this is NOT**:
-- Not a faithful reproduction of the paper
+- Not a approximate reproduction of the paper
 - No pipeline replay or re-execution (the paper's primary speedup source)
 - Memory pressure detection uses m_mem_out (scheduler slot), not true MSHR occupancy
 - Cycle deltas (<0.2%) are far below the paper's claims — do not cite as confirmation
 - Workloads are tiny; quantitative results are not comparable to the paper
 - Paper-level speedup (5–15%) is NOT reproduced
 
-**Next steps toward a more faithful reproduction**:
+**Next steps toward a more approximate reproduction**:
 1. Use larger workloads (256×256 matrices, larger graphs)
 2. Implement true MSHR tracking via `m_ldst_unit->mshr` occupancy probe
 3. Implement per-warp replay queue (primary speedup mechanism)

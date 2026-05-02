@@ -1,129 +1,80 @@
 paper_key: mascar
 title: "Mascar: Speeding up GPU Warps by Reducing Memory Pitstops"
-authors: "Mahmoud, Jog, Srikantaiah, Narayanan, Xiao"
-venue: "HPCA 2015"
-branch: hrl/paper/mascar-repro-v0
-base_branch: main
+authors:
+  - "Ankit Sethia"
+  - "D. Anoushe Jamshidi"
+  - "Scott Mahlke"
+venue: "HPCA"
+year: 2015
+doi: "10.1109/HPCA.2015.7056031"
 
-mechanism_category: memory-aware warp scheduling / memory saturation detection
+branch: "hrl/paper/mascar-repro-v0"
+base_branch: "main"
+experiment_root: "experiments/paper-mascar"
+docs_root: "docs/papers"
 
-target_modules:
-  - src/gpgpu-sim/shader.h    # modified: knobs + stats + mechanism methods
-  - src/gpgpu-sim/shader.cc   # modified: scheduler hook + cluster aggregation
-  - src/gpgpu-sim/gpu-sim.cc  # modified: option registration + stats printing
-  # note: src/gpgpu-sim/mem_fetch.h was NOT modified
-
-config_root: configs/hrl-repro
-experiment_root: experiments/paper-mascar
-doc_root: docs/papers
-
-# Mascar core idea: detect when a warp's memory requests are "saturating"
-# the memory subsystem (MSHR full, memory queue stalled). Schedule other
-# warps to run while the saturated warp waits ("memory pitstop"). Resume
-# the saturated warp after the memory queue drains.
-#
-# First-pass approximation: use warp stall signal (ldst unit busy) as
-# saturation proxy. NO pipeline replay or re-execution in first pass.
-mechanism_chain:
-  - name: memory stall probe
-    stage: phase_2_telemetry
-    knob: gpgpu_mascar_enable_telemetry
-    stat: paper_mascar_mem_stall_event
-    faithful: approximate
-    approximation: "count cycles where m_mem_out slot full per warp; skip true MSHR-level detail"
-  - name: would-deprioritize telemetry
-    stage: phase_3_would_change
-    knob: gpgpu_mascar_enable_would_deprioritize
-    stat: paper_mascar_would_deprioritize
-    faithful: approximate
-    approximation: "flag warp if stall_streak >= 2; no real scheduling change"
-  - name: minimal scheduling skip-gate proxy
-    stage: phase_4_minimal_mechanism
-    knob: gpgpu_mascar_enable_scheduling
-    stat: paper_mascar_skip_count
-    faithful: approximate
-    approximation: "post-scoreboard skip gate in memory block; streak counter prevents deadlock"
-    critical_constraint: "NO pipeline replay or re-execution; NO true MSHR occupancy tracking"
-
-likely_config_knobs:
-  - gpgpu_enable_mascar
-  - gpgpu_mascar_enable_telemetry
-  - gpgpu_mascar_enable_would_deprioritize
-  - gpgpu_mascar_enable_scheduling
-  - gpgpu_mascar_stall_threshold
-  - gpgpu_mascar_max_skip_streak
-
-likely_stats:
-  - paper_mascar_mem_stall_event
-  - paper_mascar_pitstop_event
-  - paper_mascar_would_deprioritize
-  - paper_mascar_skip_count
-  - paper_mascar_allow_count
-
-known_risks:
-  - id: no_pipeline_replay
-    description: "Mascar's 'pitstop' involves re-executing cache-missing loads; NOT implemented in first pass"
-    impact: "significant speedup may be lost; document as known limitation"
-  - id: memory_pipeline_interaction
-    description: "Scheduler changes interact nonlocally with memory pipeline timing"
-    impact: "cycle deltas may be noisy; deadlock risk if skip too aggressive"
-  - id: stall_signal_accuracy
-    description: "ldst stall is a coarse proxy for MSHR saturation"
-    impact: "may over-skip on non-memory-bound workloads"
-
-workload_sets:
-  focused:
-    size: 7
-    workloads: [rodinia_hotspot, rodinia_srad_v2, polybench_fdtd2d, mutual_tiled, polybench_2dconv, strided_access, parboil_histo]
-    purpose: memory-bound workloads likely to show stall signal
-  controls:
-    size: 5
-    workloads: [vecadd, polybench_gemm, mutual_naive, rodinia_backprop, atomic_contention]
-    purpose: compute-bound; should show minimal stall activity
+reproduction_status: "approximate_reproduction_complete"
+reproduction_type: "approximate mechanism reproduction, not approximate reproduction"
+last_updated: "2026-05-02"
 
 expected_stage_sequence:
   - phase_0_reading
-  - phase_1_noop
-  - phase_2_telemetry
-  - phase_3_would_change
-  - phase_4_minimal_mechanism
+  - phase_1_noop_config_stats
+  - phase_2_memory_pressure_telemetry
+  - phase_3_would_change_telemetry
+  - phase_4_minimal_scheduling_skip_gate_proxy
   - phase_5_focused_validation
   - phase_6_final_report
 
-success_rules:
-  - id: feature_off_no_change
-    description: "feature_off sim_cycle must equal baseline; all paper_mascar_* counters = 0"
-    required: true
-  - id: no_pipeline_replay
-    description: "first pass must NOT implement replay or re-execution"
-    required: true
-  - id: no_memory_pipeline_change_without_review
-    description: "any change to memory pipeline ordering requires explicit human review"
-    required: true
-  - id: do_not_require_100_percent_faithful
-    description: "approximate reproduction acceptable; document deviations"
-    required: true
+phase_status:
+  phase_0: complete
+  phase_1: complete
+  phase_2: complete
+  phase_3: complete
+  phase_4: complete
+  phase_5: complete
+  phase_6: complete
 
-reproduction_status:
-  mechanism_chain: complete
-  phase0_reading: complete
-  phase1_noop: complete
-  phase2_telemetry: complete
-  phase3_would_change: complete
-  phase4_minimal_policy: "complete — minimal skip-gate proxy (approximate, not faithful)"
-  phase5_focused_validation: "complete — 9 workloads, 7/9 improve-or-neutral, 2/9 regress, no deadlock"
-  phase6_final_report: complete
-  overall: approximate_reproduction_complete
-  last_updated: "2026-05-02"
-  notes: >
-    Skip gate post-scoreboard in memory instruction block. stall_threshold=2,
-    max_skip_streak=4. skip_count > 0 for 8/9 workloads. No replay/re-execution.
-    Memory pressure proxy uses m_mem_out (scheduler slot), NOT true MSHR occupancy.
-    Cycle deltas <0.2%; paper-level speedup (5-15%) is NOT reproduced.
+mechanism_chain_status:
+  memory_stall_probe: complete
+  pitstop_detection: complete
+  would_deprioritize_telemetry: complete
+  scheduler_skip_gate_proxy: complete
+
+implemented_mechanism:
+  type: "minimal scheduling skip-gate proxy"
+  approximation: true
+  faithful_replay_or_reexecution: false
+  true_mshr_occupancy_tracking: false
+  memory_pressure_signal: "m_mem_out / scheduler-side coarse proxy"
+  skip_gate_position: "post-scoreboard memory instruction branch"
+  deadlock_prevention: "max_skip_streak force-allow"
+
+focused_validation:
+  workloads: 9
+  improve_or_neutral: 7
+  regress: 2
+  deadlock: 0
+  skip_count_nonzero: 8
+  configs:
+    - mascar_noop_off
+    - mascar_policy_on
+
+limitations:
+  - "No true replay/re-execution."
+  - "No true MSHR occupancy tracking."
+  - "Memory pressure and pitstop signals use m_mem_out / scheduler-side proxy."
+  - "Focused workloads are small."
+  - "Observed cycle impact is tiny and does not reproduce paper-level speedup."
+  - "Paper-level 5-15% speedup is not reproduced."
 
 artifacts:
-  final_report: docs/papers/mascar_final_reproduction_report.md
-  final_summary: experiments/paper-mascar/final_summary.csv
-  focused_validation_data: experiments/paper-mascar/focused_validation.csv
-  round_state: experiments/paper-mascar/round_state.yaml
-  repro_plan: docs/papers/mascar_repro_plan.md
+  final_report: "docs/papers/mascar_final_reproduction_report.md"
+  final_summary: "experiments/paper-mascar/final_summary.csv"
+  focused_validation: "experiments/paper-mascar/focused_validation.csv"
+  round_state: "experiments/paper-mascar/round_state.yaml"
+  repro_plan: "docs/papers/mascar_repro_plan.md"
+
+recommend_next: "push_after_review"
+tag_recommended: false
+notes: "Approximate reproduction complete at mechanism-chain level; no further source changes planned."

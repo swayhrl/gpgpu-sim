@@ -1,7 +1,7 @@
 # Mascar Reading Notes
 
 **论文**：Mascar: Speeding up GPU Warps by Reducing Memory Pitstops
-**作者**：Mahmoud, Jog, Srikantaiah, Narayanan, Xiao
+**作者**：Ankit Sethia, D. Anoushe Jamshidi, Scott Mahlke
 **会议**：HPCA 2015
 **阅读日期**：2026-05-01
 
