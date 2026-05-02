@@ -1,0 +1,41 @@
+field,value
+paper_key,mascar
+paper_title,Speeding Up GPU Warps by Reducing Memory Pitstops
+venue,HPCA 2015
+branch,hrl/paper/mascar-repro-v0
+reproduction_type,approximate_reproduction_only
+reproduction_status,approximate_reproduction_complete
+faithful_reproduction,false
+phase_0_reading,complete
+phase_1_noop_config,complete
+phase_2_memory_pressure_telemetry,complete
+phase_3_would_change_telemetry,complete
+phase_4_minimal_skip_gate_proxy,complete
+phase_5_focused_validation,complete
+phase_6_final_report,complete
+mechanism_chain_status,complete
+phase_4_mechanism,minimal scheduling skip-gate proxy (NOT faithful replay/re-execution)
+phase_4_no_replay_reexecution,true
+phase_4_no_true_mshr_tracking,true
+phase_4_proxy,m_mem_out scheduler-side slot (coarser than true MSHR occupancy)
+phase_5_total_workloads,9
+phase_5_improve_or_neutral,7
+phase_5_regressed,2
+phase_5_deadlock,0
+phase_5_skip_count_nonzero,8
+phase_5_max_cycle_improvement_pct,-0.16
+phase_5_max_cycle_regression_pct,+0.13
+paper_claimed_speedup_pct,5 to 15
+paper_speedup_reproduced,false
+cycle_deltas_comparable_to_paper,false
+key_limitation_1,no true pipeline replay or re-execution
+key_limitation_2,no true MSHR occupancy tracking
+key_limitation_3,memory pressure proxy uses m_mem_out (scheduler slot)
+key_limitation_4,tiny workloads; cycle impact <0.2%; not comparable to paper claims
+key_limitation_5,paper-level speedup (5-15%) is NOT reproduced
+config_stall_threshold,2
+config_max_skip_streak,4
+config_skip_gate_placement,post-scoreboard inside memory instruction block
+feature_off_baseline_vecadd,5569
+feature_off_verified,true
+last_updated,2026-05-02

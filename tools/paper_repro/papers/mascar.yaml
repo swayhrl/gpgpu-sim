@@ -8,10 +8,10 @@ base_branch: main
 mechanism_category: memory-aware warp scheduling / memory saturation detection
 
 target_modules:
-  - src/gpgpu-sim/shader.h
-  - src/gpgpu-sim/shader.cc
-  - src/gpgpu-sim/gpu-sim.cc
-  - src/gpgpu-sim/mem_fetch.h
+  - src/gpgpu-sim/shader.h    # modified: knobs + stats + mechanism methods
+  - src/gpgpu-sim/shader.cc   # modified: scheduler hook + cluster aggregation
+  - src/gpgpu-sim/gpu-sim.cc  # modified: option registration + stats printing
+  # note: src/gpgpu-sim/mem_fetch.h was NOT modified
 
 config_root: configs/hrl-repro
 experiment_root: experiments/paper-mascar
@@ -26,24 +26,24 @@ doc_root: docs/papers
 # saturation proxy. NO pipeline replay or re-execution in first pass.
 mechanism_chain:
   - name: memory stall probe
-    stage: 02_telemetry
-    knob: gpgpu_enable_mascar_telemetry
+    stage: phase_2_telemetry
+    knob: gpgpu_mascar_enable_telemetry
     stat: paper_mascar_mem_stall_event
     faithful: approximate
-    approximation: "count cycles where warp is stalled on ldst; skip MSHR-level detail"
+    approximation: "count cycles where m_mem_out slot full per warp; skip true MSHR-level detail"
   - name: would-deprioritize telemetry
-    stage: 03_would_change
-    knob: gpgpu_enable_mascar_would_deprioritize
+    stage: phase_3_would_change
+    knob: gpgpu_mascar_enable_would_deprioritize
     stat: paper_mascar_would_deprioritize
     faithful: approximate
-    approximation: "flag warp if stall_streak > threshold; no real scheduling change"
-  - name: memory-saturated warp deprioritization
-    stage: 04_minimal_mechanism
-    knob: gpgpu_enable_mascar_scheduling
+    approximation: "flag warp if stall_streak >= 2; no real scheduling change"
+  - name: minimal scheduling skip-gate proxy
+    stage: phase_4_minimal_mechanism
+    knob: gpgpu_mascar_enable_scheduling
     stat: paper_mascar_skip_count
     faithful: approximate
-    approximation: "skip warp issue when mem_stall_flag set; streak counter prevents deadlock"
-    critical_constraint: "NO pipeline replay or re-execution"
+    approximation: "post-scoreboard skip gate in memory block; streak counter prevents deadlock"
+    critical_constraint: "NO pipeline replay or re-execution; NO true MSHR occupancy tracking"
 
 likely_config_knobs:
   - gpgpu_enable_mascar
@@ -55,9 +55,10 @@ likely_config_knobs:
 
 likely_stats:
   - paper_mascar_mem_stall_event
-  - paper_mascar_stall_streak
+  - paper_mascar_pitstop_event
   - paper_mascar_would_deprioritize
   - paper_mascar_skip_count
+  - paper_mascar_allow_count
 
 known_risks:
   - id: no_pipeline_replay
@@ -81,13 +82,13 @@ workload_sets:
     purpose: compute-bound; should show minimal stall activity
 
 expected_stage_sequence:
-  - 00_reading
-  - 01_noop
-  - 02_telemetry
-  - 03_would_change
-  - 04_minimal_mechanism
-  - 05_focused_validation
-  - 07_final_report
+  - phase_0_reading
+  - phase_1_noop
+  - phase_2_telemetry
+  - phase_3_would_change
+  - phase_4_minimal_mechanism
+  - phase_5_focused_validation
+  - phase_6_final_report
 
 success_rules:
   - id: feature_off_no_change
@@ -121,8 +122,8 @@ reproduction_status:
     Cycle deltas <0.2%; paper-level speedup (5-15%) is NOT reproduced.
 
 artifacts:
-  final_report: docs/papers/mascar_final_report.md
-  focused_validation_doc: docs/papers/mascar_round_05_focused_validation.md
-  focused_validation_data: experiments/paper-mascar/focused_validation_check.csv
+  final_report: docs/papers/mascar_final_reproduction_report.md
+  final_summary: experiments/paper-mascar/final_summary.csv
+  focused_validation_data: experiments/paper-mascar/focused_validation.csv
   round_state: experiments/paper-mascar/round_state.yaml
   repro_plan: docs/papers/mascar_repro_plan.md

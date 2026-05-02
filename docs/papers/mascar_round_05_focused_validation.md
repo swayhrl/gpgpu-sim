@@ -29,19 +29,19 @@
 
 ## Analysis
 
-### Mechanism Correctness
+### Mechanism Consistency
 - skip/allow ratio = 4.0 for ALL workloads (= max_skip_streak) ✓
 - Deadlock prevention verified: allow_count > 0 wherever skip_count > 0 ✓
-- BFS: skip_count=0 expected — BFS is branch-heavy, low per-warp memory pressure ✓
+- BFS: skip_count=0 consistent with low per-warp memory pressure under this proxy ✓
 
 ### pitstop_event == would_deprioritize
 With threshold=2, pitstop fires when streak==2 and would_deprioritize fires when streak>=2
 after increment — both conditions are equivalent at threshold=2. Ratio is always 1:1. ✓
 
 ### Cycle Direction
-- 6/9 workloads: improvement or neutral (cycles decrease or unchanged)
+- 7/9 workloads: improvement or neutral (6 improved + 1 unchanged)
 - 2/9 workloads: small regression (fdtd2d +0.11%, parboil_histo +0.13%)
-- Regressions are small and expected: threshold=2 is aggressive; some skipped warps
+- Regressions are small and observed: threshold=2 is aggressive; some skipped warps
   were productive (could have issued to free memory slots in the next cycle)
 
 ### Memory Signal vs Effect
@@ -51,11 +51,12 @@ after increment — both conditions are equivalent at threshold=2. Ratio is alwa
 
 ## Conclusion
 
-Phase 5 PASS:
+Phase 5 PASS (proxy mechanism functional):
 1. Mechanism functional: skip_count > 0 for 8/9 workloads ✓
 2. No deadlock in any workload ✓
 3. Deadlock prevention (max_skip_streak force-allow) verified ✓
-4. Cycle impact: mostly neutral to slightly positive ✓
-5. BFS zero-skip correct (memory-bound detection working) ✓
+4. Cycle impact: mostly neutral to slightly improved under this proxy ✓
+5. BFS zero-skip consistent with low per-warp memory pressure ✓
 
-**Approximate reproduction confirmed**. Ready for Phase 6 final report.
+**Approximate proxy mechanism confirmed functional**. Ready for Phase 6 final report.
+Note: paper-level speedup (5–15%) is NOT reproduced; see mascar_final_reproduction_report.md.

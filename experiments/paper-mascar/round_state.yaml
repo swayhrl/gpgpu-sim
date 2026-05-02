@@ -65,11 +65,11 @@ config_knobs_final:
   skip_gate_placement: post-scoreboard inside memory instruction block
   enable_scheduling: 1
 
-recommend_next: close — push after review; no further src changes planned
+recommend_next: close_after_review — push after review; no further src changes planned
 artifacts:
-  - docs/papers/mascar_final_report.md
-  - docs/papers/mascar_round_05_focused_validation.md
-  - experiments/paper-mascar/focused_validation_check.csv
+  - docs/papers/mascar_final_reproduction_report.md
+  - experiments/paper-mascar/final_summary.csv
+  - experiments/paper-mascar/focused_validation.csv
   - experiments/paper-mascar/round_state.yaml
 
 last_updated: "2026-05-02"

@@ -12,7 +12,7 @@ _Last updated: 2026-05-01 — CCWS + DAWS + PCAL + Mascar 四篇论文复现完�
 
 | 项目 | 值 |
 |------|-----|
-| 当前活跃分支 | `hrl/paper/daws-repro-v0`（DAWS 已完成，下一步开新 branch） |
+| 当前活跃分支 | `hrl/paper/mascar-repro-v0`（Mascar 已完成，下一步开 idea branch） |
 | CCWS 分支 | `hrl/paper/ccws-repro-v0`（已完成，不再修改） |
 | 主 remote | `origin` → `git@github.com:swayhrl/gpgpu-sim.git` |
 | 上游 remote | `upstream` → `https://github.com/gpgpu-sim/gpgpu-sim_distribution.git` |
