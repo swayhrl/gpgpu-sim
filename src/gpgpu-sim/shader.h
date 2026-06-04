@@ -428,6 +428,66 @@ struct mascar_m2_stats {
   }
 };
 
+struct mascar_m3_stats {
+  unsigned long long probe_attempt;
+  unsigned long long probe_hit;
+  unsigned long long probe_nack;
+  unsigned long long probe_nack_miss;
+  unsigned long long probe_nack_reserved;
+  unsigned long long probe_skip_not_mp;
+  unsigned long long probe_skip_no_owner;
+  unsigned long long probe_skip_owner;
+  unsigned long long probe_skip_nonload;
+  unsigned long long probe_skip_disabled;
+  unsigned long long nonowner_lsu_probe_allowed;
+  unsigned long long nonowner_lsu_probe_block_nonload;
+  unsigned long long hitonly_access_attempt;
+  unsigned long long hitonly_access_hit;
+  unsigned long long hitonly_access_nack;
+  unsigned long long hitonly_access_nack_miss;
+  unsigned long long hitonly_access_nack_reserved;
+  unsigned long long hitonly_access_nack_other;
+  unsigned long long hitonly_access_owner_bypass;
+  unsigned long long hitonly_access_mp_off_bypass;
+  unsigned long long nack_guard_owner_release;
+
+  void clear() {
+    probe_attempt = probe_hit = probe_nack = 0;
+    probe_nack_miss = probe_nack_reserved = 0;
+    probe_skip_not_mp = probe_skip_no_owner = probe_skip_owner = 0;
+    probe_skip_nonload = probe_skip_disabled = 0;
+    nonowner_lsu_probe_allowed = nonowner_lsu_probe_block_nonload = 0;
+    hitonly_access_attempt = hitonly_access_hit = hitonly_access_nack = 0;
+    hitonly_access_nack_miss = hitonly_access_nack_reserved = 0;
+    hitonly_access_nack_other = hitonly_access_owner_bypass = 0;
+    hitonly_access_mp_off_bypass = nack_guard_owner_release = 0;
+  }
+
+  void add(const mascar_m3_stats &rhs) {
+    probe_attempt += rhs.probe_attempt;
+    probe_hit += rhs.probe_hit;
+    probe_nack += rhs.probe_nack;
+    probe_nack_miss += rhs.probe_nack_miss;
+    probe_nack_reserved += rhs.probe_nack_reserved;
+    probe_skip_not_mp += rhs.probe_skip_not_mp;
+    probe_skip_no_owner += rhs.probe_skip_no_owner;
+    probe_skip_owner += rhs.probe_skip_owner;
+    probe_skip_nonload += rhs.probe_skip_nonload;
+    probe_skip_disabled += rhs.probe_skip_disabled;
+    nonowner_lsu_probe_allowed += rhs.nonowner_lsu_probe_allowed;
+    nonowner_lsu_probe_block_nonload += rhs.nonowner_lsu_probe_block_nonload;
+    hitonly_access_attempt += rhs.hitonly_access_attempt;
+    hitonly_access_hit += rhs.hitonly_access_hit;
+    hitonly_access_nack += rhs.hitonly_access_nack;
+    hitonly_access_nack_miss += rhs.hitonly_access_nack_miss;
+    hitonly_access_nack_reserved += rhs.hitonly_access_nack_reserved;
+    hitonly_access_nack_other += rhs.hitonly_access_nack_other;
+    hitonly_access_owner_bypass += rhs.hitonly_access_owner_bypass;
+    hitonly_access_mp_off_bypass += rhs.hitonly_access_mp_off_bypass;
+    nack_guard_owner_release += rhs.nack_guard_owner_release;
+  }
+};
+
 enum scheduler_prioritization_type {
   SCHEDULER_PRIORITIZATION_LRR = 0,   // Loose Round Robin
   SCHEDULER_PRIORITIZATION_SRR,       // Strict Round Robin
@@ -1520,6 +1580,7 @@ class ldst_unit : public pipelined_simd_unit {
   bool mascar_l1_saturation_recent(unsigned recent_window) const;
   void get_mascar_l1_recent_stats(unsigned long long &recent_set,
                                   unsigned long long &recent_clear) const;
+  void get_mascar_m3_stats(mascar_m3_stats &stats) const;
 
  protected:
   ldst_unit(mem_fetch_interface *icnt,
@@ -1555,6 +1616,11 @@ class ldst_unit : public pipelined_simd_unit {
                                                            warp_inst_t &inst);
   void mascar_sample_l1_saturation(l1_cache *cache, new_addr_type addr);
   void mascar_note_l1_reservation_fail();
+  void mascar_m3_probe_l1_hit_only(l1_cache *cache, mem_fetch *mf,
+                                   const warp_inst_t &inst);
+  enum cache_request_status mascar_m3_l1d_access(
+      l1_cache *cache, mem_fetch *mf, const warp_inst_t &inst,
+      std::list<cache_event> &events, bool &m3_nack);
   gpgpu_sim *m_gpu;
 
   const memory_config *m_memory_config;
@@ -1926,12 +1992,16 @@ class shader_core_config : public core_config {
   int gpgpu_mascar_enable_mp_owner_telemetry;  // M2A: passive EP/MP owner telemetry
   int gpgpu_mascar_enable_mp_owner_scheduling; // M2B: active MP owner scheduling
   int gpgpu_mascar_m2_compute_first;           // M2B: compute-ready priority in MP
+  int gpgpu_mascar_enable_nonowner_hit_only_probe; // M3A: passive non-owner L1 hit-only probe
+  int gpgpu_mascar_enable_nonowner_hit_only;       // M3B: active non-owner hit-only/NACK
+  int gpgpu_mascar_nonowner_hit_only_loads_only;   // M3: only non-owner loads use hit-only path
   unsigned gpgpu_mascar_stall_threshold;   // consecutive stall cycles to trigger (default 8)
   unsigned gpgpu_mascar_max_skip_streak;   // max consecutive skips before force-allow (default 4)
   unsigned gpgpu_mascar_l1_saturation_margin; // M1: almost-full distance (default 1)
   unsigned gpgpu_mascar_l1_saturation_recent_window; // M2: recent L1 sat window
   unsigned gpgpu_mascar_owner_max_hold_cycles;       // M2: owner hold guard
   unsigned gpgpu_mascar_owner_no_progress_limit;     // M2: owner progress guard
+  unsigned gpgpu_mascar_nonowner_nack_release_threshold; // M3: owner release guard
   int gpgpu_mascar_debug;
 };
 
@@ -2534,6 +2604,27 @@ class shader_core_ctx : public core_t {
   unsigned mascar_m2_owner_warp() const { return m_mascar_m2_owner_warp; }
   bool mascar_m2_mp_mode() const { return m_mascar_m2_mp_mode; }
   void get_mascar_m2_stats(mascar_m2_stats &stats) const;
+  bool mascar_m3_probe_enabled() const {
+    return m_config->gpgpu_enable_mascar &&
+           m_config->gpgpu_mascar_enable_nonowner_hit_only_probe;
+  }
+  bool mascar_m3_active_hit_only_enabled() const {
+    return m_config->gpgpu_enable_mascar &&
+           m_config->gpgpu_mascar_enable_mp_owner_scheduling &&
+           m_config->gpgpu_mascar_enable_nonowner_hit_only;
+  }
+  bool mascar_m3_inst_is_load_candidate(const warp_inst_t *pI) const;
+  bool mascar_m3_should_probe_nonowner_hit_only(unsigned warp_id,
+                                                const warp_inst_t *pI);
+  void mascar_m3_note_probe_result(unsigned warp_id,
+                                   enum cache_request_status status);
+  bool mascar_m3_allow_nonowner_lsu_probe(unsigned warp_id,
+                                          const warp_inst_t *pI);
+  bool mascar_m3_should_use_active_hit_only(unsigned warp_id,
+                                            const warp_inst_t *pI);
+  void mascar_m3_note_hitonly_access_result(unsigned warp_id,
+                                            enum cache_request_status status);
+  void get_mascar_m3_stats(mascar_m3_stats &stats) const;
 
   // Mascar Phase 2: record when a warp's memory instruction can't issue
   // (m_mem_out pipeline register full → memory pressure stall).
@@ -3092,6 +3183,8 @@ class shader_core_ctx : public core_t {
   std::vector<unsigned char> m_mascar_m2_wst_mem_bit;
   std::vector<unsigned char> m_mascar_m2_wst_stall_bit;
   mascar_m2_stats m_mascar_m2_stats;
+  mascar_m3_stats m_mascar_m3_stats;
+  std::vector<unsigned> m_mascar_m3_nonowner_nack_streak;
 
   enum mascar_m2_release_reason {
     MASCAR_M2_RELEASE_SATURATION_CLEAR = 0,
@@ -3228,6 +3321,7 @@ class simt_core_cluster {
       unsigned long long &mshr_used_sum, unsigned long long &mshr_used_max,
       unsigned long long &missq_used_sum, unsigned long long &missq_used_max) const;
   void get_mascar_m2_stats(mascar_m2_stats &stats) const;
+  void get_mascar_m3_stats(mascar_m3_stats &stats) const;
 
   void get_icnt_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
   float get_current_occupancy(unsigned long long &active,

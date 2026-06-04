@@ -1,0 +1,37 @@
+# git status --short
+ M src/gpgpu-sim/gpu-cache.cc
+ M src/gpgpu-sim/gpu-cache.h
+ M src/gpgpu-sim/gpu-sim.cc
+ M src/gpgpu-sim/shader.cc
+ M src/gpgpu-sim/shader.h
+?? configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on/
+?? configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_probe_on/
+?? docs/papers/mascar_m3_status.md
+?? docs/papers/mascar_m3a_nonowner_hitonly_probe.md
+?? docs/papers/mascar_m3b_active_hitonly_nack.md
+?? experiments/paper-mascar/m3_diff_name_status.txt
+?? experiments/paper-mascar/m3_postcheck.md
+?? experiments/paper-mascar/m3_symbol_grep.txt
+?? experiments/paper-mascar/m3a_notes.md
+
+# git diff --name-status
+M	src/gpgpu-sim/gpu-cache.cc
+M	src/gpgpu-sim/gpu-cache.h
+M	src/gpgpu-sim/gpu-sim.cc
+M	src/gpgpu-sim/shader.cc
+M	src/gpgpu-sim/shader.h
+
+# untracked directories/files
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on/README.md
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on/config_volta_islip.icnt
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on/gpgpusim.config
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_probe_on/README.md
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_probe_on/config_volta_islip.icnt
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_probe_on/gpgpusim.config
+docs/papers/mascar_m3_status.md
+docs/papers/mascar_m3a_nonowner_hitonly_probe.md
+docs/papers/mascar_m3b_active_hitonly_nack.md
+experiments/paper-mascar/m3_diff_name_status.txt
+experiments/paper-mascar/m3_postcheck.md
+experiments/paper-mascar/m3_symbol_grep.txt
+experiments/paper-mascar/m3a_notes.md

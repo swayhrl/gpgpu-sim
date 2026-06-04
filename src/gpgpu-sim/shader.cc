@@ -537,6 +537,8 @@ shader_core_ctx::shader_core_ctx(class gpgpu_sim *gpu,
   m_mascar_m2_wst_mem_bit.assign(config->max_warps_per_shader, 0);
   m_mascar_m2_wst_stall_bit.assign(config->max_warps_per_shader, 0);
   m_mascar_m2_stats.clear();
+  m_mascar_m3_stats.clear();
+  m_mascar_m3_nonowner_nack_streak.assign(config->max_warps_per_shader, 0);
 }
 
 void shader_core_ctx::reinit(unsigned start_thread, unsigned end_thread,
@@ -2221,6 +2223,51 @@ void ldst_unit::mascar_note_l1_reservation_fail() {
   m_mascar_l1_sat_recent_set++;
 }
 
+void ldst_unit::mascar_m3_probe_l1_hit_only(l1_cache *cache, mem_fetch *mf,
+                                            const warp_inst_t &inst) {
+  if (!cache || !mf) return;
+  unsigned warp_id = inst.warp_id();
+  if (!m_core->mascar_m3_should_probe_nonowner_hit_only(warp_id, &inst)) return;
+
+  enum cache_request_status status =
+      cache->mascar_l1_hit_only_probe(mf->get_addr(), mf);
+  m_core->mascar_m3_note_probe_result(warp_id, status);
+}
+
+enum cache_request_status ldst_unit::mascar_m3_l1d_access(
+    l1_cache *cache, mem_fetch *mf, const warp_inst_t &inst,
+    std::list<cache_event> &events, bool &m3_nack) {
+  m3_nack = false;
+  if (!cache) return RESERVATION_FAIL;
+  if (!mf ||
+      !m_core->mascar_m3_should_use_active_hit_only(inst.warp_id(), &inst)) {
+    return cache->access(
+        mf->get_addr(), mf,
+        m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle,
+        events);
+  }
+
+  enum cache_request_status probe_status =
+      cache->mascar_l1_hit_only_probe(mf->get_addr(), mf);
+  if (probe_status == HIT) {
+    enum cache_request_status status = cache->mascar_l1_access_hit_only(
+        mf->get_addr(), mf,
+        m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle,
+        events);
+    if (status == HIT) {
+      m_core->mascar_m3_note_hitonly_access_result(inst.warp_id(), status);
+      return status;
+    }
+    m3_nack = true;
+    m_core->mascar_m3_note_hitonly_access_result(inst.warp_id(), status);
+    return RESERVATION_FAIL;
+  }
+
+  m3_nack = true;
+  m_core->mascar_m3_note_hitonly_access_result(inst.warp_id(), probe_status);
+  return RESERVATION_FAIL;
+}
+
 void ldst_unit::get_mascar_l1_saturation_stats(
     unsigned long long &sample, unsigned long long &sample_saturated,
     unsigned long long &mshr_full, unsigned long long &mshr_almost_full,
@@ -2259,6 +2306,10 @@ void ldst_unit::get_mascar_l1_recent_stats(
     unsigned long long &recent_set, unsigned long long &recent_clear) const {
   recent_set += m_mascar_l1_sat_recent_set;
   recent_clear += m_mascar_l1_sat_recent_clear;
+}
+
+void ldst_unit::get_mascar_m3_stats(mascar_m3_stats &stats) const {
+  m_core->get_mascar_m3_stats(stats);
 }
 
 unsigned long long shader_core_ctx::mascar_m2_current_cycle() const {
@@ -2451,6 +2502,7 @@ bool shader_core_ctx::mascar_m2_should_block_memory_warp(unsigned warp_id,
     return false;
   }
   if (m_mascar_m2_owner_warp == warp_id) return false;
+  if (mascar_m3_allow_nonowner_lsu_probe(warp_id, pI)) return false;
   m_mascar_m2_stats.nonowner_mem_block++;
   if (warp_id < m_mascar_m2_wst_stall_bit.size()) {
     m_mascar_m2_wst_stall_bit[warp_id] = 1;
@@ -2464,6 +2516,127 @@ void shader_core_ctx::get_mascar_m2_stats(mascar_m2_stats &stats) const {
   if (m_ldst_unit)
     m_ldst_unit->get_mascar_l1_recent_stats(stats.l1_recent_set,
                                             stats.l1_recent_clear);
+}
+
+bool shader_core_ctx::mascar_m3_inst_is_load_candidate(
+    const warp_inst_t *pI) const {
+  if (!pI) return false;
+  if (m_config->gpgpu_mascar_nonowner_hit_only_loads_only &&
+      !((pI->op == LOAD_OP) || (pI->op == TENSOR_CORE_LOAD_OP)))
+    return false;
+  return pI->is_load() && !pI->is_store() && !pI->isatomic();
+}
+
+bool shader_core_ctx::mascar_m3_should_probe_nonowner_hit_only(
+    unsigned warp_id, const warp_inst_t *pI) {
+  if (!mascar_m3_probe_enabled()) {
+    if (m_config->gpgpu_enable_mascar) m_mascar_m3_stats.probe_skip_disabled++;
+    return false;
+  }
+  if (!m_mascar_m2_mp_mode) {
+    m_mascar_m3_stats.probe_skip_not_mp++;
+    return false;
+  }
+  if (!m_mascar_m2_owner_valid) {
+    m_mascar_m3_stats.probe_skip_no_owner++;
+    return false;
+  }
+  if (m_mascar_m2_owner_warp == warp_id) {
+    m_mascar_m3_stats.probe_skip_owner++;
+    return false;
+  }
+  if (!mascar_m3_inst_is_load_candidate(pI)) {
+    m_mascar_m3_stats.probe_skip_nonload++;
+    return false;
+  }
+  return true;
+}
+
+void shader_core_ctx::mascar_m3_note_probe_result(
+    unsigned warp_id, enum cache_request_status status) {
+  (void)warp_id;
+  if (!mascar_m3_probe_enabled()) return;
+  m_mascar_m3_stats.probe_attempt++;
+  if (status == HIT) {
+    m_mascar_m3_stats.probe_hit++;
+    return;
+  }
+
+  m_mascar_m3_stats.probe_nack++;
+  if (status == MISS || status == SECTOR_MISS) {
+    m_mascar_m3_stats.probe_nack_miss++;
+  } else if (status == HIT_RESERVED || status == RESERVATION_FAIL ||
+             status == MSHR_HIT) {
+    m_mascar_m3_stats.probe_nack_reserved++;
+  }
+}
+
+bool shader_core_ctx::mascar_m3_allow_nonowner_lsu_probe(
+    unsigned warp_id, const warp_inst_t *pI) {
+  if (!mascar_m3_active_hit_only_enabled() || !m_mascar_m2_mp_mode ||
+      !m_mascar_m2_owner_valid || m_mascar_m2_owner_warp == warp_id)
+    return false;
+  if (mascar_m3_inst_is_load_candidate(pI)) {
+    m_mascar_m3_stats.nonowner_lsu_probe_allowed++;
+    return true;
+  }
+
+  m_mascar_m3_stats.nonowner_lsu_probe_block_nonload++;
+  return false;
+}
+
+bool shader_core_ctx::mascar_m3_should_use_active_hit_only(
+    unsigned warp_id, const warp_inst_t *pI) {
+  if (!mascar_m3_active_hit_only_enabled()) return false;
+  if (!m_mascar_m2_mp_mode) {
+    m_mascar_m3_stats.hitonly_access_mp_off_bypass++;
+    return false;
+  }
+  if (!m_mascar_m2_owner_valid || m_mascar_m2_owner_warp == warp_id) {
+    m_mascar_m3_stats.hitonly_access_owner_bypass++;
+    return false;
+  }
+  return mascar_m3_inst_is_load_candidate(pI);
+}
+
+void shader_core_ctx::mascar_m3_note_hitonly_access_result(
+    unsigned warp_id, enum cache_request_status status) {
+  if (!mascar_m3_active_hit_only_enabled()) return;
+  m_mascar_m3_stats.hitonly_access_attempt++;
+  if (status == HIT) {
+    m_mascar_m3_stats.hitonly_access_hit++;
+    if (warp_id < m_mascar_m3_nonowner_nack_streak.size())
+      m_mascar_m3_nonowner_nack_streak[warp_id] = 0;
+    return;
+  }
+
+  m_mascar_m3_stats.hitonly_access_nack++;
+  if (status == MISS || status == SECTOR_MISS) {
+    m_mascar_m3_stats.hitonly_access_nack_miss++;
+  } else if (status == HIT_RESERVED || status == RESERVATION_FAIL ||
+             status == MSHR_HIT) {
+    m_mascar_m3_stats.hitonly_access_nack_reserved++;
+  } else {
+    m_mascar_m3_stats.hitonly_access_nack_other++;
+  }
+
+  if (warp_id >= m_mascar_m3_nonowner_nack_streak.size()) return;
+  unsigned threshold = m_config->gpgpu_mascar_nonowner_nack_release_threshold;
+  if (threshold == 0) return;
+  m_mascar_m3_nonowner_nack_streak[warp_id]++;
+  if (m_mascar_m3_nonowner_nack_streak[warp_id] < threshold) return;
+  m_mascar_m3_nonowner_nack_streak[warp_id] = 0;
+  if (m_mascar_m2_owner_valid) {
+    m_mascar_m2_owner_valid = false;
+    m_mascar_m2_stats.owner_release++;
+    std::fill(m_mascar_m2_wst_stall_bit.begin(),
+              m_mascar_m2_wst_stall_bit.end(), 0);
+    m_mascar_m3_stats.nack_guard_owner_release++;
+  }
+}
+
+void shader_core_ctx::get_mascar_m3_stats(mascar_m3_stats &stats) const {
+  stats.add(m_mascar_m3_stats);
 }
 
 // Add this function to unset depbar
@@ -2720,11 +2893,12 @@ mem_stage_stall_type ldst_unit::process_memory_access_queue_l1cache(
                                   m_core->get_gpu()->gpu_tot_sim_cycle);
     std::list<cache_event> events;
     mascar_sample_l1_saturation(cache, mf->get_addr());
-    enum cache_request_status status = cache->access(
-        mf->get_addr(), mf,
-        m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle,
-        events);
-    if (status == RESERVATION_FAIL) mascar_note_l1_reservation_fail();
+    mascar_m3_probe_l1_hit_only(cache, mf, inst);
+    bool m3_nack = false;
+    enum cache_request_status status =
+        mascar_m3_l1d_access(cache, mf, inst, events, m3_nack);
+    if (status == RESERVATION_FAIL && !m3_nack)
+      mascar_note_l1_reservation_fail();
     return process_cache_access(cache, mf->get_addr(), inst, events, mf,
                                 status);
   }
@@ -2736,12 +2910,13 @@ void ldst_unit::L1_latency_queue_cycle() {
       mem_fetch *mf_next = l1_latency_queue[j][0];
       std::list<cache_event> events;
       mascar_sample_l1_saturation(m_L1D, mf_next->get_addr());
+      mascar_m3_probe_l1_hit_only(m_L1D, mf_next, mf_next->get_inst());
+      bool m3_nack = false;
       enum cache_request_status status =
-          m_L1D->access(mf_next->get_addr(), mf_next,
-                        m_core->get_gpu()->gpu_sim_cycle +
-                            m_core->get_gpu()->gpu_tot_sim_cycle,
-                        events);
-      if (status == RESERVATION_FAIL) mascar_note_l1_reservation_fail();
+          mascar_m3_l1d_access(m_L1D, mf_next, mf_next->get_inst(), events,
+                               m3_nack);
+      if (status == RESERVATION_FAIL && !m3_nack)
+        mascar_note_l1_reservation_fail();
 
       bool write_sent = was_write_sent(events);
       bool read_sent = was_read_sent(events);
@@ -5716,6 +5891,11 @@ void simt_core_cluster::get_mascar_l1_saturation_stats(
 void simt_core_cluster::get_mascar_m2_stats(mascar_m2_stats &stats) const {
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
     m_core[i]->get_mascar_m2_stats(stats);
+}
+
+void simt_core_cluster::get_mascar_m3_stats(mascar_m3_stats &stats) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
+    m_core[i]->get_mascar_m3_stats(stats);
 }
 
 void exec_shader_core_ctx::checkExecutionStatusAndUpdate(warp_inst_t &inst,

@@ -1603,6 +1603,11 @@ class data_cache : public baseline_cache {
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events);
+  enum cache_request_status mascar_l1_hit_only_probe(new_addr_type addr,
+                                                     mem_fetch *mf) const;
+  enum cache_request_status mascar_l1_access_hit_only(
+      new_addr_type addr, mem_fetch *mf, unsigned time,
+      std::list<cache_event> &events);
 
  protected:
   data_cache(const char *name, cache_config &config, int core_id, int type_id,

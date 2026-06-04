@@ -2079,6 +2079,37 @@ enum cache_request_status data_cache::access(new_addr_type addr, mem_fetch *mf,
   return access_status;
 }
 
+enum cache_request_status data_cache::mascar_l1_hit_only_probe(
+    new_addr_type addr, mem_fetch *mf) const {
+  assert(mf->get_data_size() <= m_config.get_atom_sz());
+  new_addr_type block_addr = m_config.block_addr(addr);
+  unsigned cache_index = (unsigned)-1;
+  return m_tag_array->probe(block_addr, cache_index, mf, mf->is_write(), true);
+}
+
+enum cache_request_status data_cache::mascar_l1_access_hit_only(
+    new_addr_type addr, mem_fetch *mf, unsigned time,
+    std::list<cache_event> &events) {
+  assert(mf->get_data_size() <= m_config.get_atom_sz());
+  if (mf->get_is_write() || mf->isatomic()) return RESERVATION_FAIL;
+
+  new_addr_type block_addr = m_config.block_addr(addr);
+  unsigned cache_index = (unsigned)-1;
+  enum cache_request_status probe_status =
+      m_tag_array->probe(block_addr, cache_index, mf, mf->is_write(), true);
+  if (probe_status != HIT) return RESERVATION_FAIL;
+
+  enum cache_request_status access_status =
+      process_tag_probe(false, HIT, addr, cache_index, mf, time, events);
+  m_stats.inc_stats(mf->get_access_type(),
+                    m_stats.select_stats_status(probe_status, access_status),
+                    mf->get_streamID());
+  m_stats.inc_stats_pw(mf->get_access_type(),
+                       m_stats.select_stats_status(probe_status, access_status),
+                       mf->get_streamID());
+  return access_status;
+}
+
 /// This is meant to model the first level data cache in Fermi.
 /// It is write-evict (global) or write-back (local) at the
 /// granularity of individual blocks (Set by GPGPU-Sim configuration file)

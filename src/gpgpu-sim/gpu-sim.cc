@@ -792,6 +792,20 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          &gpgpu_mascar_m2_compute_first,
                          "Mascar M2: prioritize compute-ready warps in MP (default 1)",
                          "1");
+  option_parser_register(opp, "-gpgpu_mascar_enable_nonowner_hit_only_probe",
+                         OPT_INT32,
+                         &gpgpu_mascar_enable_nonowner_hit_only_probe,
+                         "Mascar M3A: enable passive non-owner L1 hit-only probe",
+                         "0");
+  option_parser_register(opp, "-gpgpu_mascar_enable_nonowner_hit_only",
+                         OPT_INT32, &gpgpu_mascar_enable_nonowner_hit_only,
+                         "Mascar M3B: enable active non-owner L1 hit-only/NACK",
+                         "0");
+  option_parser_register(opp, "-gpgpu_mascar_nonowner_hit_only_loads_only",
+                         OPT_INT32,
+                         &gpgpu_mascar_nonowner_hit_only_loads_only,
+                         "Mascar M3: restrict non-owner hit-only to loads",
+                         "1");
   option_parser_register(opp, "-gpgpu_mascar_stall_threshold", OPT_UINT32,
                          &gpgpu_mascar_stall_threshold,
                          "Mascar consecutive stall cycles to trigger deprioritize (default 8)", "8");
@@ -814,6 +828,11 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_mascar_owner_no_progress_limit",
                          OPT_UINT32, &gpgpu_mascar_owner_no_progress_limit,
                          "Mascar M2: owner no-progress release limit",
+                         "64");
+  option_parser_register(opp, "-gpgpu_mascar_nonowner_nack_release_threshold",
+                         OPT_UINT32,
+                         &gpgpu_mascar_nonowner_nack_release_threshold,
+                         "Mascar M3: repeated non-owner NACK owner-release guard",
                          "64");
   option_parser_register(opp, "-gpgpu_mascar_debug", OPT_INT32,
                          &gpgpu_mascar_debug,
@@ -1964,6 +1983,60 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
             m2.deadlock_force_release);
     fprintf(stdout, "paper_mascar_m2_active_block_guard_allow = %llu\n",
             m2.active_block_guard_allow);
+  }
+  fprintf(stdout, "paper_mascar_m3_nonowner_hit_only_probe_enabled = %d\n",
+          m_shader_config->gpgpu_enable_mascar &&
+              m_shader_config->gpgpu_mascar_enable_nonowner_hit_only_probe);
+  fprintf(stdout, "paper_mascar_m3_nonowner_hit_only_enabled = %d\n",
+          m_shader_config->gpgpu_enable_mascar &&
+              m_shader_config->gpgpu_mascar_enable_nonowner_hit_only);
+  {
+    mascar_m3_stats m3;
+    m3.clear();
+    for (unsigned i = 0; i < m_config.num_cluster(); i++)
+      m_cluster[i]->get_mascar_m3_stats(m3);
+    fprintf(stdout, "paper_mascar_m3_probe_attempt = %llu\n",
+            m3.probe_attempt);
+    fprintf(stdout, "paper_mascar_m3_probe_hit = %llu\n", m3.probe_hit);
+    fprintf(stdout, "paper_mascar_m3_probe_nack = %llu\n", m3.probe_nack);
+    fprintf(stdout, "paper_mascar_m3_probe_nack_miss = %llu\n",
+            m3.probe_nack_miss);
+    fprintf(stdout, "paper_mascar_m3_probe_nack_reserved = %llu\n",
+            m3.probe_nack_reserved);
+    fprintf(stdout, "paper_mascar_m3_probe_skip_not_mp = %llu\n",
+            m3.probe_skip_not_mp);
+    fprintf(stdout, "paper_mascar_m3_probe_skip_no_owner = %llu\n",
+            m3.probe_skip_no_owner);
+    fprintf(stdout, "paper_mascar_m3_probe_skip_owner = %llu\n",
+            m3.probe_skip_owner);
+    fprintf(stdout, "paper_mascar_m3_probe_skip_nonload = %llu\n",
+            m3.probe_skip_nonload);
+    fprintf(stdout, "paper_mascar_m3_probe_skip_disabled = %llu\n",
+            m3.probe_skip_disabled);
+    fprintf(stdout, "paper_mascar_m3_nonowner_lsu_probe_allowed = %llu\n",
+            m3.nonowner_lsu_probe_allowed);
+    fprintf(stdout, "paper_mascar_m3_nonowner_lsu_probe_block_nonload = %llu\n",
+            m3.nonowner_lsu_probe_block_nonload);
+    fprintf(stdout, "paper_mascar_m3_hitonly_access_attempt = %llu\n",
+            m3.hitonly_access_attempt);
+    fprintf(stdout, "paper_mascar_m3_hitonly_access_hit = %llu\n",
+            m3.hitonly_access_hit);
+    fprintf(stdout, "paper_mascar_m3_hitonly_access_nack = %llu\n",
+            m3.hitonly_access_nack);
+    fprintf(stdout, "paper_mascar_m3_hitonly_access_nack_miss = %llu\n",
+            m3.hitonly_access_nack_miss);
+    fprintf(stdout, "paper_mascar_m3_hitonly_access_nack_reserved = %llu\n",
+            m3.hitonly_access_nack_reserved);
+    fprintf(stdout, "paper_mascar_m3_hitonly_access_nack_other = %llu\n",
+            m3.hitonly_access_nack_other);
+    fprintf(stdout, "paper_mascar_m3_hitonly_access_owner_bypass = %llu\n",
+            m3.hitonly_access_owner_bypass);
+    fprintf(stdout, "paper_mascar_m3_hitonly_access_mp_off_bypass = %llu\n",
+            m3.hitonly_access_mp_off_bypass);
+    fprintf(stdout, "paper_mascar_m3_nack_guard_owner_release = %llu\n",
+            m3.nack_guard_owner_release);
+    fprintf(stdout, "paper_mascar_m3_nack_guard_threshold = %u\n",
+            m_shader_config->gpgpu_mascar_nonowner_nack_release_threshold);
   }
 
   if (m_config.gpgpu_cflog_interval != 0) {

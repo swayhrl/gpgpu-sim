@@ -1,0 +1,229 @@
+# M3 knobs
+experiments/paper-mascar/m3a_notes.md:5:- Added default-off M3 knobs: `gpgpu_mascar_enable_nonowner_hit_only_probe`, `gpgpu_mascar_enable_nonowner_hit_only`, `gpgpu_mascar_nonowner_hit_only_loads_only`, and `gpgpu_mascar_nonowner_nack_release_threshold`.
+docs/papers/mascar_m3b_active_hitonly_nack.md:11:`gpgpu_mascar_enable_nonowner_hit_only=1`. If the L1D probe reports `HIT`, the
+docs/papers/mascar_m3_status.md:20:- `gpgpu_mascar_enable_nonowner_hit_only=1`
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:46:- gpgpu_mascar_enable_nonowner_hit_only != 0
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:199:- If the same non-owner warp gets more than gpgpu_mascar_nonowner_nack_release_threshold NACKs while owner remains valid:
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:242:- -gpgpu_mascar_enable_nonowner_hit_only_probe 1
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:243:- -gpgpu_mascar_enable_nonowner_hit_only 1
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:244:- -gpgpu_mascar_nonowner_hit_only_loads_only 1
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:245:- -gpgpu_mascar_nonowner_nack_release_threshold 64
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:293:   gpgpu_mascar_enable_nonowner_hit_only_probe
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:294:   gpgpu_mascar_enable_nonowner_hit_only
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:295:   gpgpu_mascar_nonowner_hit_only_loads_only
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:296:   gpgpu_mascar_nonowner_nack_release_threshold
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:34:- int gpgpu_mascar_enable_nonowner_hit_only_probe
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:35:- int gpgpu_mascar_enable_nonowner_hit_only
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:36:- int gpgpu_mascar_nonowner_hit_only_loads_only
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:37:- unsigned gpgpu_mascar_nonowner_nack_release_threshold
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:41:- gpgpu_mascar_enable_nonowner_hit_only_probe = 0
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:42:- gpgpu_mascar_enable_nonowner_hit_only = 0
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:43:- gpgpu_mascar_nonowner_hit_only_loads_only = 1
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:44:- gpgpu_mascar_nonowner_nack_release_threshold = 64
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:128:- gpgpu_mascar_enable_nonowner_hit_only_probe is nonzero.
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:165:- -gpgpu_mascar_enable_nonowner_hit_only_probe 1
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:166:- -gpgpu_mascar_enable_nonowner_hit_only 0
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:167:- -gpgpu_mascar_nonowner_hit_only_loads_only 1
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on/README.md:10:- `gpgpu_mascar_enable_nonowner_hit_only_probe=1`
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on/README.md:11:- `gpgpu_mascar_enable_nonowner_hit_only=1`
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on/README.md:12:- `gpgpu_mascar_nonowner_hit_only_loads_only=1`
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on/README.md:13:- `gpgpu_mascar_nonowner_nack_release_threshold=64`
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on/gpgpusim.config:250:-gpgpu_mascar_enable_nonowner_hit_only_probe 1
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on/gpgpusim.config:251:-gpgpu_mascar_enable_nonowner_hit_only 1
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on/gpgpusim.config:252:-gpgpu_mascar_nonowner_hit_only_loads_only 1
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on/gpgpusim.config:253:-gpgpu_mascar_nonowner_nack_release_threshold 64
+src/gpgpu-sim/gpu-sim.cc:795:  option_parser_register(opp, "-gpgpu_mascar_enable_nonowner_hit_only_probe",
+src/gpgpu-sim/gpu-sim.cc:797:                         &gpgpu_mascar_enable_nonowner_hit_only_probe,
+src/gpgpu-sim/gpu-sim.cc:800:  option_parser_register(opp, "-gpgpu_mascar_enable_nonowner_hit_only",
+src/gpgpu-sim/gpu-sim.cc:801:                         OPT_INT32, &gpgpu_mascar_enable_nonowner_hit_only,
+src/gpgpu-sim/gpu-sim.cc:804:  option_parser_register(opp, "-gpgpu_mascar_nonowner_hit_only_loads_only",
+src/gpgpu-sim/gpu-sim.cc:806:                         &gpgpu_mascar_nonowner_hit_only_loads_only,
+src/gpgpu-sim/gpu-sim.cc:832:  option_parser_register(opp, "-gpgpu_mascar_nonowner_nack_release_threshold",
+src/gpgpu-sim/gpu-sim.cc:834:                         &gpgpu_mascar_nonowner_nack_release_threshold,
+src/gpgpu-sim/gpu-sim.cc:1989:              m_shader_config->gpgpu_mascar_enable_nonowner_hit_only_probe);
+src/gpgpu-sim/gpu-sim.cc:1992:              m_shader_config->gpgpu_mascar_enable_nonowner_hit_only);
+src/gpgpu-sim/gpu-sim.cc:2039:            m_shader_config->gpgpu_mascar_nonowner_nack_release_threshold);
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_probe_on/README.md:10:- `gpgpu_mascar_enable_nonowner_hit_only_probe=1`
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_probe_on/README.md:11:- `gpgpu_mascar_enable_nonowner_hit_only=0`
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_probe_on/README.md:12:- `gpgpu_mascar_nonowner_hit_only_loads_only=1`
+src/gpgpu-sim/shader.cc:2524:  if (m_config->gpgpu_mascar_nonowner_hit_only_loads_only &&
+src/gpgpu-sim/shader.cc:2624:  unsigned threshold = m_config->gpgpu_mascar_nonowner_nack_release_threshold;
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_probe_on/gpgpusim.config:250:-gpgpu_mascar_enable_nonowner_hit_only_probe 1
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_probe_on/gpgpusim.config:251:-gpgpu_mascar_enable_nonowner_hit_only 0
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_probe_on/gpgpusim.config:252:-gpgpu_mascar_nonowner_hit_only_loads_only 1
+configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_probe_on/gpgpusim.config:253:-gpgpu_mascar_nonowner_nack_release_threshold 64
+src/gpgpu-sim/shader.h:1995:  int gpgpu_mascar_enable_nonowner_hit_only_probe; // M3A: passive non-owner L1 hit-only probe
+src/gpgpu-sim/shader.h:1996:  int gpgpu_mascar_enable_nonowner_hit_only;       // M3B: active non-owner hit-only/NACK
+src/gpgpu-sim/shader.h:1997:  int gpgpu_mascar_nonowner_hit_only_loads_only;   // M3: only non-owner loads use hit-only path
+src/gpgpu-sim/shader.h:2004:  unsigned gpgpu_mascar_nonowner_nack_release_threshold; // M3: owner release guard
+src/gpgpu-sim/shader.h:2609:           m_config->gpgpu_mascar_enable_nonowner_hit_only_probe;
+src/gpgpu-sim/shader.h:2614:           m_config->gpgpu_mascar_enable_nonowner_hit_only;
+
+# M3 stats
+docs/papers/mascar_m3b_active_hitonly_nack.md:69:`paper_mascar_m3_nack_guard_owner_release`:
+docs/papers/mascar_m3b_active_hitonly_nack.md:83:Active M3 stats are printed as `paper_mascar_m3_*`:
+docs/papers/mascar_m3a_nonowner_hitonly_probe.md:39:M3 stats live in `mascar_m3_stats`: `src/gpgpu-sim/shader.h:431` through
+docs/papers/mascar_m3a_nonowner_hitonly_probe.md:41:`paper_mascar_m3_probe_*` counters in `src/gpgpu-sim/gpu-sim.cc:1987` through
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:70:      increment paper_mascar_m3_nonowner_lsu_probe_allowed.
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:74:      increment paper_mascar_m3_nonowner_lsu_probe_block_nonload.
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:92:      note m3 nonowner_lsu_probe_allowed
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:201:    increment paper_mascar_m3_nack_guard_owner_release.
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:211:Print these stats as paper_mascar_m3_*:
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:213:- paper_mascar_m3_nonowner_lsu_probe_allowed
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:214:- paper_mascar_m3_nonowner_lsu_probe_block_nonload
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:215:- paper_mascar_m3_hitonly_access_attempt
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:216:- paper_mascar_m3_hitonly_access_hit
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:217:- paper_mascar_m3_hitonly_access_nack
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:218:- paper_mascar_m3_hitonly_access_nack_miss
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:219:- paper_mascar_m3_hitonly_access_nack_reserved
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:220:- paper_mascar_m3_hitonly_access_nack_other
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:221:- paper_mascar_m3_hitonly_access_owner_bypass
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:222:- paper_mascar_m3_hitonly_access_mp_off_bypass
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:223:- paper_mascar_m3_nack_guard_owner_release
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:224:- paper_mascar_m3_nack_guard_threshold
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:226:If exact names differ, keep them under paper_mascar_m3_* and document them.
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:298:   paper_mascar_m3_probe_attempt
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:299:   paper_mascar_m3_nonowner_lsu_probe_allowed
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:300:   paper_mascar_m3_hitonly_access_attempt
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:301:   paper_mascar_m3_hitonly_access_nack
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:88:Suggested stat names to print as paper_mascar_m3_*:
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:90:- paper_mascar_m3_nonowner_hit_only_probe_enabled
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:91:- paper_mascar_m3_nonowner_hit_only_enabled
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:92:- paper_mascar_m3_probe_attempt
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:93:- paper_mascar_m3_probe_hit
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:94:- paper_mascar_m3_probe_nack
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:95:- paper_mascar_m3_probe_nack_miss
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:96:- paper_mascar_m3_probe_nack_reserved
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:97:- paper_mascar_m3_probe_skip_not_mp
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:98:- paper_mascar_m3_probe_skip_no_owner
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:99:- paper_mascar_m3_probe_skip_owner
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:100:- paper_mascar_m3_probe_skip_nonload
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:101:- paper_mascar_m3_probe_skip_disabled
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:112:- void get_mascar_m3_stats(mascar_m3_stats &stats) const
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:201:- grep for paper_mascar_m3_probe_* stats
+src/gpgpu-sim/shader.cc:540:  m_mascar_m3_stats.clear();
+src/gpgpu-sim/shader.cc:2311:void ldst_unit::get_mascar_m3_stats(mascar_m3_stats &stats) const {
+src/gpgpu-sim/shader.cc:2312:  m_core->get_mascar_m3_stats(stats);
+src/gpgpu-sim/shader.cc:2533:    if (m_config->gpgpu_enable_mascar) m_mascar_m3_stats.probe_skip_disabled++;
+src/gpgpu-sim/shader.cc:2537:    m_mascar_m3_stats.probe_skip_not_mp++;
+src/gpgpu-sim/shader.cc:2541:    m_mascar_m3_stats.probe_skip_no_owner++;
+src/gpgpu-sim/shader.cc:2545:    m_mascar_m3_stats.probe_skip_owner++;
+src/gpgpu-sim/shader.cc:2549:    m_mascar_m3_stats.probe_skip_nonload++;
+src/gpgpu-sim/shader.cc:2559:  m_mascar_m3_stats.probe_attempt++;
+src/gpgpu-sim/shader.cc:2561:    m_mascar_m3_stats.probe_hit++;
+src/gpgpu-sim/shader.cc:2565:  m_mascar_m3_stats.probe_nack++;
+src/gpgpu-sim/shader.cc:2567:    m_mascar_m3_stats.probe_nack_miss++;
+src/gpgpu-sim/shader.cc:2570:    m_mascar_m3_stats.probe_nack_reserved++;
+src/gpgpu-sim/shader.cc:2580:    m_mascar_m3_stats.nonowner_lsu_probe_allowed++;
+src/gpgpu-sim/shader.cc:2584:  m_mascar_m3_stats.nonowner_lsu_probe_block_nonload++;
+src/gpgpu-sim/shader.cc:2592:    m_mascar_m3_stats.hitonly_access_mp_off_bypass++;
+src/gpgpu-sim/shader.cc:2596:    m_mascar_m3_stats.hitonly_access_owner_bypass++;
+src/gpgpu-sim/shader.cc:2605:  m_mascar_m3_stats.hitonly_access_attempt++;
+src/gpgpu-sim/shader.cc:2607:    m_mascar_m3_stats.hitonly_access_hit++;
+src/gpgpu-sim/shader.cc:2613:  m_mascar_m3_stats.hitonly_access_nack++;
+src/gpgpu-sim/shader.cc:2615:    m_mascar_m3_stats.hitonly_access_nack_miss++;
+src/gpgpu-sim/shader.cc:2618:    m_mascar_m3_stats.hitonly_access_nack_reserved++;
+src/gpgpu-sim/shader.cc:2620:    m_mascar_m3_stats.hitonly_access_nack_other++;
+src/gpgpu-sim/shader.cc:2634:    m_mascar_m3_stats.nack_guard_owner_release++;
+src/gpgpu-sim/shader.cc:2638:void shader_core_ctx::get_mascar_m3_stats(mascar_m3_stats &stats) const {
+src/gpgpu-sim/shader.cc:2639:  stats.add(m_mascar_m3_stats);
+src/gpgpu-sim/shader.cc:5896:void simt_core_cluster::get_mascar_m3_stats(mascar_m3_stats &stats) const {
+src/gpgpu-sim/shader.cc:5898:    m_core[i]->get_mascar_m3_stats(stats);
+src/gpgpu-sim/shader.h:431:struct mascar_m3_stats {
+src/gpgpu-sim/shader.h:432:  unsigned long long probe_attempt;
+src/gpgpu-sim/shader.h:442:  unsigned long long nonowner_lsu_probe_allowed;
+src/gpgpu-sim/shader.h:444:  unsigned long long hitonly_access_attempt;
+src/gpgpu-sim/shader.h:446:  unsigned long long hitonly_access_nack;
+src/gpgpu-sim/shader.h:447:  unsigned long long hitonly_access_nack_miss;
+src/gpgpu-sim/shader.h:448:  unsigned long long hitonly_access_nack_reserved;
+src/gpgpu-sim/shader.h:449:  unsigned long long hitonly_access_nack_other;
+src/gpgpu-sim/shader.h:452:  unsigned long long nack_guard_owner_release;
+src/gpgpu-sim/shader.h:455:    probe_attempt = probe_hit = probe_nack = 0;
+src/gpgpu-sim/shader.h:459:    nonowner_lsu_probe_allowed = nonowner_lsu_probe_block_nonload = 0;
+src/gpgpu-sim/shader.h:460:    hitonly_access_attempt = hitonly_access_hit = hitonly_access_nack = 0;
+src/gpgpu-sim/shader.h:461:    hitonly_access_nack_miss = hitonly_access_nack_reserved = 0;
+src/gpgpu-sim/shader.h:462:    hitonly_access_nack_other = hitonly_access_owner_bypass = 0;
+src/gpgpu-sim/shader.h:463:    hitonly_access_mp_off_bypass = nack_guard_owner_release = 0;
+src/gpgpu-sim/shader.h:466:  void add(const mascar_m3_stats &rhs) {
+src/gpgpu-sim/shader.h:467:    probe_attempt += rhs.probe_attempt;
+src/gpgpu-sim/shader.h:477:    nonowner_lsu_probe_allowed += rhs.nonowner_lsu_probe_allowed;
+src/gpgpu-sim/shader.h:479:    hitonly_access_attempt += rhs.hitonly_access_attempt;
+src/gpgpu-sim/shader.h:481:    hitonly_access_nack += rhs.hitonly_access_nack;
+src/gpgpu-sim/shader.h:482:    hitonly_access_nack_miss += rhs.hitonly_access_nack_miss;
+src/gpgpu-sim/shader.h:483:    hitonly_access_nack_reserved += rhs.hitonly_access_nack_reserved;
+src/gpgpu-sim/shader.h:484:    hitonly_access_nack_other += rhs.hitonly_access_nack_other;
+src/gpgpu-sim/shader.h:487:    nack_guard_owner_release += rhs.nack_guard_owner_release;
+src/gpgpu-sim/shader.h:1583:  void get_mascar_m3_stats(mascar_m3_stats &stats) const;
+src/gpgpu-sim/shader.h:2627:  void get_mascar_m3_stats(mascar_m3_stats &stats) const;
+src/gpgpu-sim/shader.h:3186:  mascar_m3_stats m_mascar_m3_stats;
+src/gpgpu-sim/shader.h:3324:  void get_mascar_m3_stats(mascar_m3_stats &stats) const;
+src/gpgpu-sim/gpu-sim.cc:1987:  fprintf(stdout, "paper_mascar_m3_nonowner_hit_only_probe_enabled = %d\n",
+src/gpgpu-sim/gpu-sim.cc:1990:  fprintf(stdout, "paper_mascar_m3_nonowner_hit_only_enabled = %d\n",
+src/gpgpu-sim/gpu-sim.cc:1994:    mascar_m3_stats m3;
+src/gpgpu-sim/gpu-sim.cc:1997:      m_cluster[i]->get_mascar_m3_stats(m3);
+src/gpgpu-sim/gpu-sim.cc:1998:    fprintf(stdout, "paper_mascar_m3_probe_attempt = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1999:            m3.probe_attempt);
+src/gpgpu-sim/gpu-sim.cc:2000:    fprintf(stdout, "paper_mascar_m3_probe_hit = %llu\n", m3.probe_hit);
+src/gpgpu-sim/gpu-sim.cc:2001:    fprintf(stdout, "paper_mascar_m3_probe_nack = %llu\n", m3.probe_nack);
+src/gpgpu-sim/gpu-sim.cc:2002:    fprintf(stdout, "paper_mascar_m3_probe_nack_miss = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2004:    fprintf(stdout, "paper_mascar_m3_probe_nack_reserved = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2006:    fprintf(stdout, "paper_mascar_m3_probe_skip_not_mp = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2008:    fprintf(stdout, "paper_mascar_m3_probe_skip_no_owner = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2010:    fprintf(stdout, "paper_mascar_m3_probe_skip_owner = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2012:    fprintf(stdout, "paper_mascar_m3_probe_skip_nonload = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2014:    fprintf(stdout, "paper_mascar_m3_probe_skip_disabled = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2016:    fprintf(stdout, "paper_mascar_m3_nonowner_lsu_probe_allowed = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2017:            m3.nonowner_lsu_probe_allowed);
+src/gpgpu-sim/gpu-sim.cc:2018:    fprintf(stdout, "paper_mascar_m3_nonowner_lsu_probe_block_nonload = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2020:    fprintf(stdout, "paper_mascar_m3_hitonly_access_attempt = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2021:            m3.hitonly_access_attempt);
+src/gpgpu-sim/gpu-sim.cc:2022:    fprintf(stdout, "paper_mascar_m3_hitonly_access_hit = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2024:    fprintf(stdout, "paper_mascar_m3_hitonly_access_nack = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2025:            m3.hitonly_access_nack);
+src/gpgpu-sim/gpu-sim.cc:2026:    fprintf(stdout, "paper_mascar_m3_hitonly_access_nack_miss = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2027:            m3.hitonly_access_nack_miss);
+src/gpgpu-sim/gpu-sim.cc:2028:    fprintf(stdout, "paper_mascar_m3_hitonly_access_nack_reserved = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2029:            m3.hitonly_access_nack_reserved);
+src/gpgpu-sim/gpu-sim.cc:2030:    fprintf(stdout, "paper_mascar_m3_hitonly_access_nack_other = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2031:            m3.hitonly_access_nack_other);
+src/gpgpu-sim/gpu-sim.cc:2032:    fprintf(stdout, "paper_mascar_m3_hitonly_access_owner_bypass = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2034:    fprintf(stdout, "paper_mascar_m3_hitonly_access_mp_off_bypass = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2036:    fprintf(stdout, "paper_mascar_m3_nack_guard_owner_release = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2037:            m3.nack_guard_owner_release);
+src/gpgpu-sim/gpu-sim.cc:2038:    fprintf(stdout, "paper_mascar_m3_nack_guard_threshold = %u\n",
+
+# M3 cache and LSU hooks
+experiments/paper-mascar/m3a_notes.md:6:- Added read-only `data_cache::mascar_l1_hit_only_probe()` using tag-array probe mode only; it does not call `process_tag_probe()`, allocate MSHRs, update LRU, emit events, or update cache stats.
+docs/papers/mascar_m3b_active_hitonly_nack.md:31:`data_cache::mascar_l1_access_hit_only()` first probes with
+docs/papers/mascar_m3b_active_hitonly_nack.md:55:The L1 latency queue path uses the same `mascar_m3_l1d_access()` wrapper:
+docs/papers/mascar_m3a_nonowner_hitonly_probe.md:18:`data_cache::mascar_l1_hit_only_probe()` computes the block address and calls
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:78:- bool shader_core_ctx::mascar_m3_allow_nonowner_lsu_probe(unsigned warp_id, const warp_inst_t *pI) const
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:91:  if mascar_m3_allow_nonowner_lsu_probe(warp_id, pI):
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:106:- enum cache_request_status mascar_m3_l1d_access(l1_cache *cache, mem_fetch *mf, warp_inst_t &inst, std::list<cache_event> &events, bool &m3_nack)
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:114:     call cache->mascar_l1_hit_only_probe(addr, mf)
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:135:- enum cache_request_status mascar_l1_access_hit_only(new_addr_type addr, mem_fetch *mf, unsigned time, std::list<cache_event> &events)
+docs/papers/mascar_m3b_active_hitonly_nack_guidance.md:167:  Use mascar_m3_l1d_access wrapper instead of direct cache->access.
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:62:- enum cache_request_status mascar_l1_hit_only_probe(new_addr_type addr, mem_fetch *mf) const
+docs/papers/mascar_m3a_nonowner_hitonly_probe_guidance.md:139:- Call cache->mascar_l1_hit_only_probe(addr, mf).
+src/gpgpu-sim/gpu-cache.h:1606:  enum cache_request_status mascar_l1_hit_only_probe(new_addr_type addr,
+src/gpgpu-sim/gpu-cache.h:1608:  enum cache_request_status mascar_l1_access_hit_only(
+src/gpgpu-sim/shader.cc:2233:      cache->mascar_l1_hit_only_probe(mf->get_addr(), mf);
+src/gpgpu-sim/shader.cc:2237:enum cache_request_status ldst_unit::mascar_m3_l1d_access(
+src/gpgpu-sim/shader.cc:2243:      !m_core->mascar_m3_should_use_active_hit_only(inst.warp_id(), &inst)) {
+src/gpgpu-sim/shader.cc:2251:      cache->mascar_l1_hit_only_probe(mf->get_addr(), mf);
+src/gpgpu-sim/shader.cc:2253:    enum cache_request_status status = cache->mascar_l1_access_hit_only(
+src/gpgpu-sim/shader.cc:2258:      m_core->mascar_m3_note_hitonly_access_result(inst.warp_id(), status);
+src/gpgpu-sim/shader.cc:2262:    m_core->mascar_m3_note_hitonly_access_result(inst.warp_id(), status);
+src/gpgpu-sim/shader.cc:2267:  m_core->mascar_m3_note_hitonly_access_result(inst.warp_id(), probe_status);
+src/gpgpu-sim/shader.cc:2505:  if (mascar_m3_allow_nonowner_lsu_probe(warp_id, pI)) return false;
+src/gpgpu-sim/shader.cc:2574:bool shader_core_ctx::mascar_m3_allow_nonowner_lsu_probe(
+src/gpgpu-sim/shader.cc:2588:bool shader_core_ctx::mascar_m3_should_use_active_hit_only(
+src/gpgpu-sim/shader.cc:2602:void shader_core_ctx::mascar_m3_note_hitonly_access_result(
+src/gpgpu-sim/shader.cc:2899:        mascar_m3_l1d_access(cache, mf, inst, events, m3_nack);
+src/gpgpu-sim/shader.cc:2916:          mascar_m3_l1d_access(m_L1D, mf_next, mf_next->get_inst(), events,
+src/gpgpu-sim/shader.h:1621:  enum cache_request_status mascar_m3_l1d_access(
+src/gpgpu-sim/shader.h:2621:  bool mascar_m3_allow_nonowner_lsu_probe(unsigned warp_id,
+src/gpgpu-sim/shader.h:2623:  bool mascar_m3_should_use_active_hit_only(unsigned warp_id,
+src/gpgpu-sim/shader.h:2625:  void mascar_m3_note_hitonly_access_result(unsigned warp_id,
+src/gpgpu-sim/gpu-cache.cc:2082:enum cache_request_status data_cache::mascar_l1_hit_only_probe(
+src/gpgpu-sim/gpu-cache.cc:2090:enum cache_request_status data_cache::mascar_l1_access_hit_only(
