@@ -1,0 +1,267 @@
+# M2 knobs
+docs/papers/mascar_m2b_active_owner_scheduling.md:7:`gpgpu_mascar_enable_mp_owner_scheduling=1`; baseline and M2A telemetry configs
+docs/papers/mascar_m2a_ep_mp_owner_telemetry.md:11:- `gpgpu_mascar_enable_mp_owner_telemetry` enables passive M2 owner telemetry:
+docs/papers/mascar_m2a_ep_mp_owner_telemetry.md:13:- `gpgpu_mascar_enable_mp_owner_scheduling` is registered but defaults off:
+docs/papers/mascar_m2a_ep_mp_owner_telemetry.md:15:- `gpgpu_mascar_m2_compute_first`,
+docs/papers/mascar_m2a_ep_mp_owner_telemetry.md:16:  `gpgpu_mascar_l1_saturation_recent_window`,
+docs/papers/mascar_m2a_ep_mp_owner_telemetry.md:17:  `gpgpu_mascar_owner_max_hold_cycles`, and
+docs/papers/mascar_m2a_ep_mp_owner_telemetry.md:18:  `gpgpu_mascar_owner_no_progress_limit` are config fields:
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:54:- int gpgpu_mascar_enable_mp_owner_telemetry
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:55:- int gpgpu_mascar_enable_mp_owner_scheduling
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:56:- int gpgpu_mascar_m2_compute_first
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:57:- unsigned gpgpu_mascar_l1_saturation_recent_window
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:58:- unsigned gpgpu_mascar_owner_max_hold_cycles
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:59:- unsigned gpgpu_mascar_owner_no_progress_limit
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:63:- gpgpu_mascar_enable_mp_owner_telemetry = 0
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:64:- gpgpu_mascar_enable_mp_owner_scheduling = 0
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:65:- gpgpu_mascar_m2_compute_first = 1
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:66:- gpgpu_mascar_l1_saturation_recent_window = 8
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:67:- gpgpu_mascar_owner_max_hold_cycles = 256
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:68:- gpgpu_mascar_owner_no_progress_limit = 64
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:80:  M2 active scheduling must use gpgpu_mascar_enable_mp_owner_scheduling.
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:275:- -gpgpu_mascar_enable_mp_owner_telemetry 1
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:276:- -gpgpu_mascar_enable_mp_owner_scheduling 0
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:279:- -gpgpu_mascar_m2_compute_first 1
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:280:- -gpgpu_mascar_l1_saturation_recent_window 8
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:281:- -gpgpu_mascar_owner_max_hold_cycles 256
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:282:- -gpgpu_mascar_owner_no_progress_limit 64
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:12:  gpgpu_mascar_enable_mp_owner_scheduling = 1
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:38:- gpgpu_mascar_enable_mp_owner_scheduling is nonzero
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:39:- gpgpu_mascar_enable_mp_owner_telemetry is also enabled or implicitly treated as enabled
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:120:  gpgpu_mascar_enable_mp_owner_scheduling
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:121:  gpgpu_mascar_m2_compute_first
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:217:  gpgpu_mascar_enable_mp_owner_scheduling = 1 for M2 active
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:251:- -gpgpu_mascar_enable_mp_owner_telemetry 1
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:252:- -gpgpu_mascar_enable_mp_owner_scheduling 1
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:255:- -gpgpu_mascar_m2_compute_first 1
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:256:- -gpgpu_mascar_l1_saturation_recent_window 8
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:257:- -gpgpu_mascar_owner_max_hold_cycles 256
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:258:- -gpgpu_mascar_owner_no_progress_limit 64
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:292:   gpgpu_mascar_enable_mp_owner_telemetry
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:293:   gpgpu_mascar_enable_mp_owner_scheduling
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:294:   gpgpu_mascar_m2_compute_first
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on/README.md:8:- `gpgpu_mascar_enable_mp_owner_telemetry=1`
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on/README.md:9:- `gpgpu_mascar_enable_mp_owner_scheduling=1`
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on/README.md:12:- `gpgpu_mascar_m2_compute_first=1`
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on/README.md:13:- `gpgpu_mascar_l1_saturation_recent_window=8`
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on/README.md:14:- `gpgpu_mascar_owner_max_hold_cycles=256`
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on/README.md:15:- `gpgpu_mascar_owner_no_progress_limit=64`
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on/gpgpusim.config:247:-gpgpu_mascar_enable_mp_owner_telemetry 1
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on/gpgpusim.config:248:-gpgpu_mascar_enable_mp_owner_scheduling 1
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on/gpgpusim.config:249:-gpgpu_mascar_m2_compute_first 1
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on/gpgpusim.config:250:-gpgpu_mascar_l1_saturation_recent_window 8
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on/gpgpusim.config:251:-gpgpu_mascar_owner_max_hold_cycles 256
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on/gpgpusim.config:252:-gpgpu_mascar_owner_no_progress_limit 64
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_telemetry_on/gpgpusim.config:247:-gpgpu_mascar_enable_mp_owner_telemetry 1
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_telemetry_on/gpgpusim.config:248:-gpgpu_mascar_enable_mp_owner_scheduling 0
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_telemetry_on/gpgpusim.config:249:-gpgpu_mascar_m2_compute_first 1
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_telemetry_on/gpgpusim.config:250:-gpgpu_mascar_l1_saturation_recent_window 8
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_telemetry_on/gpgpusim.config:251:-gpgpu_mascar_owner_max_hold_cycles 256
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_telemetry_on/gpgpusim.config:252:-gpgpu_mascar_owner_no_progress_limit 64
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_telemetry_on/README.md:8:- `gpgpu_mascar_enable_mp_owner_telemetry=1`
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_telemetry_on/README.md:9:- `gpgpu_mascar_enable_mp_owner_scheduling=0`
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_telemetry_on/README.md:12:- `gpgpu_mascar_m2_compute_first=1`
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_telemetry_on/README.md:13:- `gpgpu_mascar_l1_saturation_recent_window=8`
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_telemetry_on/README.md:14:- `gpgpu_mascar_owner_max_hold_cycles=256`
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_telemetry_on/README.md:15:- `gpgpu_mascar_owner_no_progress_limit=64`
+src/gpgpu-sim/shader.h:1926:  int gpgpu_mascar_enable_mp_owner_telemetry;  // M2A: passive EP/MP owner telemetry
+src/gpgpu-sim/shader.h:1927:  int gpgpu_mascar_enable_mp_owner_scheduling; // M2B: active MP owner scheduling
+src/gpgpu-sim/shader.h:1928:  int gpgpu_mascar_m2_compute_first;           // M2B: compute-ready priority in MP
+src/gpgpu-sim/shader.h:1932:  unsigned gpgpu_mascar_l1_saturation_recent_window; // M2: recent L1 sat window
+src/gpgpu-sim/shader.h:1933:  unsigned gpgpu_mascar_owner_max_hold_cycles;       // M2: owner hold guard
+src/gpgpu-sim/shader.h:1934:  unsigned gpgpu_mascar_owner_no_progress_limit;     // M2: owner progress guard
+src/gpgpu-sim/shader.h:2509:           (m_config->gpgpu_mascar_enable_mp_owner_telemetry ||
+src/gpgpu-sim/shader.h:2510:            m_config->gpgpu_mascar_enable_mp_owner_scheduling);
+src/gpgpu-sim/shader.h:2514:           m_config->gpgpu_mascar_enable_mp_owner_scheduling;
+src/gpgpu-sim/gpu-sim.cc:783:  option_parser_register(opp, "-gpgpu_mascar_enable_mp_owner_telemetry",
+src/gpgpu-sim/gpu-sim.cc:784:                         OPT_INT32, &gpgpu_mascar_enable_mp_owner_telemetry,
+src/gpgpu-sim/gpu-sim.cc:787:  option_parser_register(opp, "-gpgpu_mascar_enable_mp_owner_scheduling",
+src/gpgpu-sim/gpu-sim.cc:788:                         OPT_INT32, &gpgpu_mascar_enable_mp_owner_scheduling,
+src/gpgpu-sim/gpu-sim.cc:791:  option_parser_register(opp, "-gpgpu_mascar_m2_compute_first", OPT_INT32,
+src/gpgpu-sim/gpu-sim.cc:792:                         &gpgpu_mascar_m2_compute_first,
+src/gpgpu-sim/gpu-sim.cc:805:  option_parser_register(opp, "-gpgpu_mascar_l1_saturation_recent_window",
+src/gpgpu-sim/gpu-sim.cc:807:                         &gpgpu_mascar_l1_saturation_recent_window,
+src/gpgpu-sim/gpu-sim.cc:810:  option_parser_register(opp, "-gpgpu_mascar_owner_max_hold_cycles",
+src/gpgpu-sim/gpu-sim.cc:811:                         OPT_UINT32, &gpgpu_mascar_owner_max_hold_cycles,
+src/gpgpu-sim/gpu-sim.cc:814:  option_parser_register(opp, "-gpgpu_mascar_owner_no_progress_limit",
+src/gpgpu-sim/gpu-sim.cc:815:                         OPT_UINT32, &gpgpu_mascar_owner_no_progress_limit,
+src/gpgpu-sim/gpu-sim.cc:1903:              (m_shader_config->gpgpu_mascar_enable_mp_owner_telemetry ||
+src/gpgpu-sim/gpu-sim.cc:1904:               m_shader_config->gpgpu_mascar_enable_mp_owner_scheduling));
+src/gpgpu-sim/gpu-sim.cc:1907:              m_shader_config->gpgpu_mascar_enable_mp_owner_scheduling);
+src/gpgpu-sim/shader.cc:1680:      !m_shader->m_config->gpgpu_mascar_m2_compute_first ||
+src/gpgpu-sim/shader.cc:2283:      m_config->gpgpu_mascar_l1_saturation_recent_window);
+src/gpgpu-sim/shader.cc:2355:  if (m_config->gpgpu_mascar_owner_max_hold_cycles > 0 &&
+src/gpgpu-sim/shader.cc:2358:          m_config->gpgpu_mascar_owner_max_hold_cycles) {
+src/gpgpu-sim/shader.cc:2362:  if (m_config->gpgpu_mascar_owner_no_progress_limit > 0 &&
+src/gpgpu-sim/shader.cc:2365:          m_config->gpgpu_mascar_owner_no_progress_limit) {
+src/gpgpu-sim/shader.cc:2401:    if (m_config->gpgpu_mascar_m2_compute_first)
+
+# M2 stats
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:87:    increment nonowner_mem_block
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:168:- On successful issue, increment owner_mem_issue and update owner_last_mem_issue_cycle.
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:227:- paper_mascar_m2_nonowner_mem_block
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:228:- paper_mascar_m2_owner_mem_issue
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:229:- paper_mascar_m2_owner_compute_issue
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:230:- paper_mascar_m2_owner_first_acquire
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:231:- paper_mascar_m2_compute_priority_reorder
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:232:- paper_mascar_m2_compute_priority_candidates
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:233:- paper_mascar_m2_memory_priority_candidates
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:234:- paper_mascar_m2_deadlock_force_release
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:235:- paper_mascar_m2_active_block_guard_allow
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:237:If names differ, keep them clearly under paper_mascar_m2_* and document them.
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:296:   paper_mascar_m2_ep_cycles
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:297:   paper_mascar_m2_mp_cycles
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:298:   paper_mascar_m2_owner_acquire
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:299:   paper_mascar_m2_nonowner_mem_block
+docs/papers/mascar_m2b_active_owner_scheduling.md:39:and `owner_mem_issue`: `src/gpgpu-sim/shader.cc:2412`. Owner compute issue is
+docs/papers/mascar_m2b_active_owner_scheduling.md:64:Active stats are printed as `paper_mascar_m2_*`, including
+docs/papers/mascar_m2b_active_owner_scheduling.md:65:`paper_mascar_m2_nonowner_mem_block`,
+docs/papers/mascar_m2b_active_owner_scheduling.md:66:`paper_mascar_m2_owner_mem_issue`,
+docs/papers/mascar_m2b_active_owner_scheduling.md:67:`paper_mascar_m2_owner_compute_issue`,
+docs/papers/mascar_m2b_active_owner_scheduling.md:68:`paper_mascar_m2_compute_priority_reorder`, and deadlock guard counters:
+docs/papers/mascar_m2a_ep_mp_owner_telemetry.md:41:memory/stall approximations, and `mascar_m2_stats`:
+docs/papers/mascar_m2a_ep_mp_owner_telemetry.md:65:M2 stats live in `mascar_m2_stats`: `src/gpgpu-sim/shader.h:360` through
+docs/papers/mascar_m2a_ep_mp_owner_telemetry.md:66:`src/gpgpu-sim/shader.h:382`. They are printed with `paper_mascar_m2_*` names:
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:210:    increment would_owner_mem_issue or owner_mem_ready
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:233:- paper_mascar_m2_owner_telemetry_enabled
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:234:- paper_mascar_m2_owner_scheduling_enabled
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:235:- paper_mascar_m2_ep_cycles
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:236:- paper_mascar_m2_mp_cycles
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:237:- paper_mascar_m2_owner_valid_cycles
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:238:- paper_mascar_m2_owner_acquire
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:239:- paper_mascar_m2_owner_release
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:240:- paper_mascar_m2_owner_release_saturation_clear
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:241:- paper_mascar_m2_owner_release_scoreboard
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:242:- paper_mascar_m2_owner_release_warp_done
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:243:- paper_mascar_m2_owner_release_max_hold
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:244:- paper_mascar_m2_owner_release_no_progress
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:245:- paper_mascar_m2_compute_ready_in_mp
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:246:- paper_mascar_m2_memory_ready_in_mp
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:247:- paper_mascar_m2_would_block_nonowner_mem
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:248:- paper_mascar_m2_would_owner_mem_issue
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:249:- paper_mascar_m2_would_prioritize_compute
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:250:- paper_mascar_m2_wst_mem_bit_set
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:251:- paper_mascar_m2_wst_stall_bit_set
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:252:- paper_mascar_m2_l1_recent_set
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:253:- paper_mascar_m2_l1_recent_clear
+src/gpgpu-sim/shader.cc:539:  m_mascar_m2_stats.clear();
+src/gpgpu-sim/shader.cc:2292:  m_mascar_m2_stats.owner_acquire++;
+src/gpgpu-sim/shader.cc:2293:  if (m_mascar_m2_stats.owner_acquire == 1)
+src/gpgpu-sim/shader.cc:2294:    m_mascar_m2_stats.owner_first_acquire++;
+src/gpgpu-sim/shader.cc:2301:  m_mascar_m2_stats.owner_release++;
+src/gpgpu-sim/shader.cc:2304:      m_mascar_m2_stats.owner_release_saturation_clear++;
+src/gpgpu-sim/shader.cc:2307:      m_mascar_m2_stats.owner_release_scoreboard++;
+src/gpgpu-sim/shader.cc:2310:      m_mascar_m2_stats.owner_release_warp_done++;
+src/gpgpu-sim/shader.cc:2313:      m_mascar_m2_stats.owner_release_max_hold++;
+src/gpgpu-sim/shader.cc:2314:      m_mascar_m2_stats.deadlock_force_release++;
+src/gpgpu-sim/shader.cc:2317:      m_mascar_m2_stats.owner_release_no_progress++;
+src/gpgpu-sim/shader.cc:2318:      m_mascar_m2_stats.deadlock_force_release++;
+src/gpgpu-sim/shader.cc:2338:    m_mascar_m2_stats.mp_cycles++;
+src/gpgpu-sim/shader.cc:2341:    m_mascar_m2_stats.ep_cycles++;
+src/gpgpu-sim/shader.cc:2354:  m_mascar_m2_stats.owner_valid_cycles++;
+src/gpgpu-sim/shader.cc:2379:    m_mascar_m2_stats.wst_mem_bit_set++;
+src/gpgpu-sim/shader.cc:2383:    m_mascar_m2_stats.wst_stall_bit_set++;
+src/gpgpu-sim/shader.cc:2389:    m_mascar_m2_stats.memory_ready_in_mp++;
+src/gpgpu-sim/shader.cc:2393:      m_mascar_m2_stats.would_owner_mem_issue++;
+src/gpgpu-sim/shader.cc:2395:      m_mascar_m2_stats.would_block_nonowner_mem++;
+src/gpgpu-sim/shader.cc:2397:      m_mascar_m2_stats.wst_stall_bit_set++;
+src/gpgpu-sim/shader.cc:2400:    m_mascar_m2_stats.compute_ready_in_mp++;
+src/gpgpu-sim/shader.cc:2402:      m_mascar_m2_stats.would_prioritize_compute++;
+src/gpgpu-sim/shader.cc:2416:    m_mascar_m2_stats.owner_mem_issue++;
+src/gpgpu-sim/shader.cc:2423:    m_mascar_m2_stats.owner_compute_issue++;
+src/gpgpu-sim/shader.cc:2438:  m_mascar_m2_stats.compute_priority_candidates += compute_candidates;
+src/gpgpu-sim/shader.cc:2439:  m_mascar_m2_stats.memory_priority_candidates += memory_candidates;
+src/gpgpu-sim/shader.cc:2440:  if (reordered) m_mascar_m2_stats.compute_priority_reorder++;
+src/gpgpu-sim/shader.cc:2450:    m_mascar_m2_stats.active_block_guard_allow++;
+src/gpgpu-sim/shader.cc:2454:  m_mascar_m2_stats.nonowner_mem_block++;
+src/gpgpu-sim/shader.cc:2457:    m_mascar_m2_stats.wst_stall_bit_set++;
+src/gpgpu-sim/shader.cc:2462:void shader_core_ctx::get_mascar_m2_stats(mascar_m2_stats &stats) const {
+src/gpgpu-sim/shader.cc:2463:  stats.add(m_mascar_m2_stats);
+src/gpgpu-sim/shader.cc:5716:void simt_core_cluster::get_mascar_m2_stats(mascar_m2_stats &stats) const {
+src/gpgpu-sim/shader.cc:5718:    m_core[i]->get_mascar_m2_stats(stats);
+src/gpgpu-sim/gpu-sim.cc:1901:  fprintf(stdout, "paper_mascar_m2_owner_telemetry_enabled = %d\n",
+src/gpgpu-sim/gpu-sim.cc:1905:  fprintf(stdout, "paper_mascar_m2_owner_scheduling_enabled = %d\n",
+src/gpgpu-sim/gpu-sim.cc:1909:    mascar_m2_stats m2;
+src/gpgpu-sim/gpu-sim.cc:1912:      m_cluster[i]->get_mascar_m2_stats(m2);
+src/gpgpu-sim/gpu-sim.cc:1913:    fprintf(stdout, "paper_mascar_m2_ep_cycles = %llu\n", m2.ep_cycles);
+src/gpgpu-sim/gpu-sim.cc:1914:    fprintf(stdout, "paper_mascar_m2_mp_cycles = %llu\n", m2.mp_cycles);
+src/gpgpu-sim/gpu-sim.cc:1915:    fprintf(stdout, "paper_mascar_m2_owner_valid_cycles = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1917:    fprintf(stdout, "paper_mascar_m2_owner_acquire = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1919:    fprintf(stdout, "paper_mascar_m2_owner_release = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1921:    fprintf(stdout, "paper_mascar_m2_owner_release_saturation_clear = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1923:    fprintf(stdout, "paper_mascar_m2_owner_release_scoreboard = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1925:    fprintf(stdout, "paper_mascar_m2_owner_release_warp_done = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1927:    fprintf(stdout, "paper_mascar_m2_owner_release_max_hold = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1929:    fprintf(stdout, "paper_mascar_m2_owner_release_no_progress = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1931:    fprintf(stdout, "paper_mascar_m2_compute_ready_in_mp = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1933:    fprintf(stdout, "paper_mascar_m2_memory_ready_in_mp = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1935:    fprintf(stdout, "paper_mascar_m2_would_block_nonowner_mem = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1937:    fprintf(stdout, "paper_mascar_m2_would_owner_mem_issue = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1938:            m2.would_owner_mem_issue);
+src/gpgpu-sim/gpu-sim.cc:1939:    fprintf(stdout, "paper_mascar_m2_would_prioritize_compute = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1941:    fprintf(stdout, "paper_mascar_m2_wst_mem_bit_set = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1943:    fprintf(stdout, "paper_mascar_m2_wst_stall_bit_set = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1945:    fprintf(stdout, "paper_mascar_m2_l1_recent_set = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1947:    fprintf(stdout, "paper_mascar_m2_l1_recent_clear = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1949:    fprintf(stdout, "paper_mascar_m2_nonowner_mem_block = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1950:            m2.nonowner_mem_block);
+src/gpgpu-sim/gpu-sim.cc:1951:    fprintf(stdout, "paper_mascar_m2_owner_mem_issue = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1952:            m2.owner_mem_issue);
+src/gpgpu-sim/gpu-sim.cc:1953:    fprintf(stdout, "paper_mascar_m2_owner_compute_issue = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1955:    fprintf(stdout, "paper_mascar_m2_owner_first_acquire = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1957:    fprintf(stdout, "paper_mascar_m2_compute_priority_reorder = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1958:            m2.compute_priority_reorder);
+src/gpgpu-sim/gpu-sim.cc:1959:    fprintf(stdout, "paper_mascar_m2_compute_priority_candidates = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1961:    fprintf(stdout, "paper_mascar_m2_memory_priority_candidates = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1963:    fprintf(stdout, "paper_mascar_m2_deadlock_force_release = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1964:            m2.deadlock_force_release);
+src/gpgpu-sim/gpu-sim.cc:1965:    fprintf(stdout, "paper_mascar_m2_active_block_guard_allow = %llu\n",
+src/gpgpu-sim/shader.h:354:struct mascar_m2_stats {
+src/gpgpu-sim/shader.h:368:  unsigned long long would_owner_mem_issue;
+src/gpgpu-sim/shader.h:374:  unsigned long long nonowner_mem_block;
+src/gpgpu-sim/shader.h:375:  unsigned long long owner_mem_issue;
+src/gpgpu-sim/shader.h:378:  unsigned long long compute_priority_reorder;
+src/gpgpu-sim/shader.h:381:  unsigned long long deadlock_force_release;
+src/gpgpu-sim/shader.h:390:    would_block_nonowner_mem = would_owner_mem_issue = 0;
+src/gpgpu-sim/shader.h:393:    nonowner_mem_block = owner_mem_issue = owner_compute_issue = 0;
+src/gpgpu-sim/shader.h:394:    owner_first_acquire = compute_priority_reorder = 0;
+src/gpgpu-sim/shader.h:396:    deadlock_force_release = active_block_guard_allow = 0;
+src/gpgpu-sim/shader.h:399:  void add(const mascar_m2_stats &rhs) {
+src/gpgpu-sim/shader.h:413:    would_owner_mem_issue += rhs.would_owner_mem_issue;
+src/gpgpu-sim/shader.h:419:    nonowner_mem_block += rhs.nonowner_mem_block;
+src/gpgpu-sim/shader.h:420:    owner_mem_issue += rhs.owner_mem_issue;
+src/gpgpu-sim/shader.h:423:    compute_priority_reorder += rhs.compute_priority_reorder;
+src/gpgpu-sim/shader.h:426:    deadlock_force_release += rhs.deadlock_force_release;
+src/gpgpu-sim/shader.h:2536:  void get_mascar_m2_stats(mascar_m2_stats &stats) const;
+src/gpgpu-sim/shader.h:3094:  mascar_m2_stats m_mascar_m2_stats;
+src/gpgpu-sim/shader.h:3230:  void get_mascar_m2_stats(mascar_m2_stats &stats) const;
+
+# M2 active scheduler hooks
+docs/papers/mascar_m2b_active_owner_scheduling.md:14:saturation flag in `mascar_m2_cycle_begin()`:
+docs/papers/mascar_m2b_active_owner_scheduling.md:25:`apply_mascar_m2_priority_ordering()` returns immediately unless active
+docs/papers/mascar_m2b_active_owner_scheduling.md:32:`mascar_m2_note_priority_reorder()`:
+docs/papers/mascar_m2b_active_owner_scheduling.md:52:`mascar_m2_should_block_memory_warp()` returns false unless active scheduling,
+docs/papers/mascar_m2a_ep_mp_owner_telemetry.md:44:Each scheduler cycle calls `mascar_m2_cycle_begin()` after the existing scheduler
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:74:- bool shader_core_ctx::mascar_m2_should_block_memory_warp(unsigned warp_id, const warp_inst_t *pI)
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:110:- void scheduler_unit::apply_mascar_m2_priority_ordering()
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:115:  m_shader->mascar_m2_cycle_begin();
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:116:  apply_mascar_m2_priority_ordering();
+docs/papers/mascar_m2b_active_owner_scheduling_guidance.md:184:     m_shader->mascar_m2_note_scoreboard_block(warp_id, pI)
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:159:- void mascar_m2_cycle_begin()
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:164:- void mascar_m2_note_scoreboard_block(unsigned warp_id, const warp_inst_t *pI)
+docs/papers/mascar_m2a_ep_mp_owner_telemetry_guidance.md:181:mascar_m2_cycle_begin should:
+src/gpgpu-sim/shader.h:490:  void apply_mascar_m2_priority_ordering();
+src/gpgpu-sim/shader.h:2519:  void mascar_m2_cycle_begin();
+src/gpgpu-sim/shader.h:2526:  void mascar_m2_note_scoreboard_block(unsigned warp_id,
+src/gpgpu-sim/shader.h:2528:  void mascar_m2_note_priority_reorder(bool reordered,
+src/gpgpu-sim/shader.h:2531:  bool mascar_m2_should_block_memory_warp(unsigned warp_id,
+src/gpgpu-sim/shader.cc:1305:  m_shader->mascar_m2_cycle_begin();
+src/gpgpu-sim/shader.cc:1306:  apply_mascar_m2_priority_ordering();
+src/gpgpu-sim/shader.cc:1441:              if (m_shader->mascar_m2_should_block_memory_warp(warp_id, pI)) {
+src/gpgpu-sim/shader.cc:1620:            m_shader->mascar_m2_note_scoreboard_block(warp_id, pI);
+src/gpgpu-sim/shader.cc:1678:void scheduler_unit::apply_mascar_m2_priority_ordering() {
+src/gpgpu-sim/shader.cc:1747:  m_shader->mascar_m2_note_priority_reorder(
+src/gpgpu-sim/shader.cc:2325:void shader_core_ctx::mascar_m2_cycle_begin() {
+src/gpgpu-sim/shader.cc:2426:void shader_core_ctx::mascar_m2_note_scoreboard_block(unsigned warp_id,
+src/gpgpu-sim/shader.cc:2435:void shader_core_ctx::mascar_m2_note_priority_reorder(
+src/gpgpu-sim/shader.cc:2443:bool shader_core_ctx::mascar_m2_should_block_memory_warp(unsigned warp_id,

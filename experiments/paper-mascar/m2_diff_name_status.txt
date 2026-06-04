@@ -1,0 +1,31 @@
+# git status --short
+ M src/gpgpu-sim/gpu-sim.cc
+ M src/gpgpu-sim/shader.cc
+ M src/gpgpu-sim/shader.h
+?? configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on/
+?? configs/hrl-repro/SM7_QV100_mascar_m2_owner_telemetry_on/
+?? docs/papers/mascar_m2a_ep_mp_owner_telemetry.md
+?? docs/papers/mascar_m2b_active_owner_scheduling.md
+?? experiments/paper-mascar/m2_diff_name_status.txt
+?? experiments/paper-mascar/m2_postcheck.md
+?? experiments/paper-mascar/m2_symbol_grep.txt
+?? experiments/paper-mascar/m2a_notes.md
+
+# git diff --name-status
+M	src/gpgpu-sim/gpu-sim.cc
+M	src/gpgpu-sim/shader.cc
+M	src/gpgpu-sim/shader.h
+
+# untracked directories/files
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on/README.md
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on/config_volta_islip.icnt
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on/gpgpusim.config
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_telemetry_on/README.md
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_telemetry_on/config_volta_islip.icnt
+configs/hrl-repro/SM7_QV100_mascar_m2_owner_telemetry_on/gpgpusim.config
+docs/papers/mascar_m2a_ep_mp_owner_telemetry.md
+docs/papers/mascar_m2b_active_owner_scheduling.md
+experiments/paper-mascar/m2_diff_name_status.txt
+experiments/paper-mascar/m2_postcheck.md
+experiments/paper-mascar/m2_symbol_grep.txt
+experiments/paper-mascar/m2a_notes.md

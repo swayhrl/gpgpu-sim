@@ -351,6 +351,83 @@ class shader_core_ctx;
 class shader_core_config;
 class shader_core_stats;
 
+struct mascar_m2_stats {
+  unsigned long long ep_cycles;
+  unsigned long long mp_cycles;
+  unsigned long long owner_valid_cycles;
+  unsigned long long owner_acquire;
+  unsigned long long owner_release;
+  unsigned long long owner_release_saturation_clear;
+  unsigned long long owner_release_scoreboard;
+  unsigned long long owner_release_warp_done;
+  unsigned long long owner_release_max_hold;
+  unsigned long long owner_release_no_progress;
+  unsigned long long compute_ready_in_mp;
+  unsigned long long memory_ready_in_mp;
+  unsigned long long would_block_nonowner_mem;
+  unsigned long long would_owner_mem_issue;
+  unsigned long long would_prioritize_compute;
+  unsigned long long wst_mem_bit_set;
+  unsigned long long wst_stall_bit_set;
+  unsigned long long l1_recent_set;
+  unsigned long long l1_recent_clear;
+  unsigned long long nonowner_mem_block;
+  unsigned long long owner_mem_issue;
+  unsigned long long owner_compute_issue;
+  unsigned long long owner_first_acquire;
+  unsigned long long compute_priority_reorder;
+  unsigned long long compute_priority_candidates;
+  unsigned long long memory_priority_candidates;
+  unsigned long long deadlock_force_release;
+  unsigned long long active_block_guard_allow;
+
+  void clear() {
+    ep_cycles = mp_cycles = owner_valid_cycles = owner_acquire = 0;
+    owner_release = owner_release_saturation_clear = 0;
+    owner_release_scoreboard = owner_release_warp_done = 0;
+    owner_release_max_hold = owner_release_no_progress = 0;
+    compute_ready_in_mp = memory_ready_in_mp = 0;
+    would_block_nonowner_mem = would_owner_mem_issue = 0;
+    would_prioritize_compute = wst_mem_bit_set = wst_stall_bit_set = 0;
+    l1_recent_set = l1_recent_clear = 0;
+    nonowner_mem_block = owner_mem_issue = owner_compute_issue = 0;
+    owner_first_acquire = compute_priority_reorder = 0;
+    compute_priority_candidates = memory_priority_candidates = 0;
+    deadlock_force_release = active_block_guard_allow = 0;
+  }
+
+  void add(const mascar_m2_stats &rhs) {
+    ep_cycles += rhs.ep_cycles;
+    mp_cycles += rhs.mp_cycles;
+    owner_valid_cycles += rhs.owner_valid_cycles;
+    owner_acquire += rhs.owner_acquire;
+    owner_release += rhs.owner_release;
+    owner_release_saturation_clear += rhs.owner_release_saturation_clear;
+    owner_release_scoreboard += rhs.owner_release_scoreboard;
+    owner_release_warp_done += rhs.owner_release_warp_done;
+    owner_release_max_hold += rhs.owner_release_max_hold;
+    owner_release_no_progress += rhs.owner_release_no_progress;
+    compute_ready_in_mp += rhs.compute_ready_in_mp;
+    memory_ready_in_mp += rhs.memory_ready_in_mp;
+    would_block_nonowner_mem += rhs.would_block_nonowner_mem;
+    would_owner_mem_issue += rhs.would_owner_mem_issue;
+    would_prioritize_compute += rhs.would_prioritize_compute;
+    wst_mem_bit_set += rhs.wst_mem_bit_set;
+    wst_stall_bit_set += rhs.wst_stall_bit_set;
+    l1_recent_set += rhs.l1_recent_set;
+    l1_recent_clear += rhs.l1_recent_clear;
+    nonowner_mem_block += rhs.nonowner_mem_block;
+    owner_mem_issue += rhs.owner_mem_issue;
+    owner_compute_issue += rhs.owner_compute_issue;
+    owner_first_acquire += rhs.owner_first_acquire;
+    compute_priority_reorder += rhs.compute_priority_reorder;
+    compute_priority_candidates += rhs.compute_priority_candidates;
+    memory_priority_candidates += rhs.memory_priority_candidates;
+    deadlock_force_release += rhs.deadlock_force_release;
+    active_block_guard_allow += rhs.active_block_guard_allow;
+  }
+};
+
 enum scheduler_prioritization_type {
   SCHEDULER_PRIORITIZATION_LRR = 0,   // Loose Round Robin
   SCHEDULER_PRIORITIZATION_SRR,       // Strict Round Robin
@@ -410,6 +487,7 @@ class scheduler_unit {  // this can be copied freely, so can be used in std
   // modified by changing the contents of the m_next_cycle_prioritized_warps
   // list.
   void cycle();
+  void apply_mascar_m2_priority_ordering();
 
   // These are some common ordering fucntions that the
   // higher order schedulers can take advantage of
@@ -1439,6 +1517,9 @@ class ldst_unit : public pipelined_simd_unit {
       unsigned long long &reservation_fail,
       unsigned long long &mshr_used_sum, unsigned long long &mshr_used_max,
       unsigned long long &missq_used_sum, unsigned long long &missq_used_max) const;
+  bool mascar_l1_saturation_recent(unsigned recent_window) const;
+  void get_mascar_l1_recent_stats(unsigned long long &recent_set,
+                                  unsigned long long &recent_clear) const;
 
  protected:
   ldst_unit(mem_fetch_interface *icnt,
@@ -1549,6 +1630,10 @@ class ldst_unit : public pipelined_simd_unit {
   unsigned long long m_mascar_l1_sat_mshr_used_max;
   unsigned long long m_mascar_l1_sat_missq_used_sum;
   unsigned long long m_mascar_l1_sat_missq_used_max;
+  bool m_mascar_l1_sat_recent_flag;
+  unsigned long long m_mascar_l1_sat_last_update_cycle;
+  unsigned long long m_mascar_l1_sat_recent_set;
+  unsigned long long m_mascar_l1_sat_recent_clear;
 };
 
 enum pipeline_stage_name_t {
@@ -1838,9 +1923,15 @@ class shader_core_config : public core_config {
   int gpgpu_mascar_enable_would_deprioritize; // Phase 3: would-deprioritize telemetry
   int gpgpu_mascar_enable_scheduling;      // Phase 4: actual scheduler skip
   int gpgpu_mascar_enable_l1_saturation_probe; // M1: passive L1-side saturation probe
+  int gpgpu_mascar_enable_mp_owner_telemetry;  // M2A: passive EP/MP owner telemetry
+  int gpgpu_mascar_enable_mp_owner_scheduling; // M2B: active MP owner scheduling
+  int gpgpu_mascar_m2_compute_first;           // M2B: compute-ready priority in MP
   unsigned gpgpu_mascar_stall_threshold;   // consecutive stall cycles to trigger (default 8)
   unsigned gpgpu_mascar_max_skip_streak;   // max consecutive skips before force-allow (default 4)
   unsigned gpgpu_mascar_l1_saturation_margin; // M1: almost-full distance (default 1)
+  unsigned gpgpu_mascar_l1_saturation_recent_window; // M2: recent L1 sat window
+  unsigned gpgpu_mascar_owner_max_hold_cycles;       // M2: owner hold guard
+  unsigned gpgpu_mascar_owner_no_progress_limit;     // M2: owner progress guard
   int gpgpu_mascar_debug;
 };
 
@@ -2413,6 +2504,37 @@ class shader_core_ctx : public core_t {
         missq_used_sum, missq_used_max);
   }
 
+  bool mascar_m2_telemetry_enabled() const {
+    return m_config->gpgpu_enable_mascar &&
+           (m_config->gpgpu_mascar_enable_mp_owner_telemetry ||
+            m_config->gpgpu_mascar_enable_mp_owner_scheduling);
+  }
+  bool mascar_m2_active_scheduling_enabled() const {
+    return m_config->gpgpu_enable_mascar &&
+           m_config->gpgpu_mascar_enable_mp_owner_scheduling;
+  }
+  bool mascar_inst_is_memory(const warp_inst_t *pI) const;
+  bool mascar_inst_is_compute(const warp_inst_t *pI) const;
+  bool mascar_l1_saturation_flag() const;
+  void mascar_m2_cycle_begin();
+  void mascar_m2_note_candidate(unsigned warp_id, const warp_inst_t *pI,
+                                bool scoreboard_blocked);
+  void mascar_m2_note_memory_issue_attempt(unsigned warp_id,
+                                           const warp_inst_t *pI);
+  void mascar_m2_note_memory_issue_success(unsigned warp_id);
+  void mascar_m2_note_compute_issue_success(unsigned warp_id);
+  void mascar_m2_note_scoreboard_block(unsigned warp_id,
+                                       const warp_inst_t *pI);
+  void mascar_m2_note_priority_reorder(bool reordered,
+                                       unsigned compute_candidates,
+                                       unsigned memory_candidates);
+  bool mascar_m2_should_block_memory_warp(unsigned warp_id,
+                                          const warp_inst_t *pI);
+  bool mascar_m2_owner_valid() const { return m_mascar_m2_owner_valid; }
+  unsigned mascar_m2_owner_warp() const { return m_mascar_m2_owner_warp; }
+  bool mascar_m2_mp_mode() const { return m_mascar_m2_mp_mode; }
+  void get_mascar_m2_stats(mascar_m2_stats &stats) const;
+
   // Mascar Phase 2: record when a warp's memory instruction can't issue
   // (m_mem_out pipeline register full → memory pressure stall).
   // Passive: does not change scheduling behavior.
@@ -2961,6 +3083,26 @@ class shader_core_ctx : public core_t {
   std::vector<unsigned> m_mascar_skip_streak;   // per-warp consecutive skip count
   unsigned long long m_mascar_skip_count;
   unsigned long long m_mascar_allow_count;
+  bool m_mascar_m2_mp_mode;
+  bool m_mascar_m2_owner_valid;
+  unsigned m_mascar_m2_owner_warp;
+  unsigned long long m_mascar_m2_last_cycle_update;
+  unsigned long long m_mascar_m2_owner_acquire_cycle;
+  unsigned long long m_mascar_m2_owner_last_mem_issue_cycle;
+  std::vector<unsigned char> m_mascar_m2_wst_mem_bit;
+  std::vector<unsigned char> m_mascar_m2_wst_stall_bit;
+  mascar_m2_stats m_mascar_m2_stats;
+
+  enum mascar_m2_release_reason {
+    MASCAR_M2_RELEASE_SATURATION_CLEAR = 0,
+    MASCAR_M2_RELEASE_SCOREBOARD,
+    MASCAR_M2_RELEASE_WARP_DONE,
+    MASCAR_M2_RELEASE_MAX_HOLD,
+    MASCAR_M2_RELEASE_NO_PROGRESS
+  };
+  unsigned long long mascar_m2_current_cycle() const;
+  void mascar_m2_acquire_owner(unsigned warp_id);
+  void mascar_m2_release_owner(enum mascar_m2_release_reason reason);
 };
 
 class exec_shader_core_ctx : public shader_core_ctx {
@@ -3085,6 +3227,7 @@ class simt_core_cluster {
       unsigned long long &reservation_fail,
       unsigned long long &mshr_used_sum, unsigned long long &mshr_used_max,
       unsigned long long &missq_used_sum, unsigned long long &missq_used_max) const;
+  void get_mascar_m2_stats(mascar_m2_stats &stats) const;
 
   void get_icnt_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
   float get_current_occupancy(unsigned long long &active,

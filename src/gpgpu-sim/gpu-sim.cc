@@ -780,6 +780,18 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          OPT_INT32, &gpgpu_mascar_enable_l1_saturation_probe,
                          "Mascar M1: enable passive L1D saturation probe (0=off)",
                          "0");
+  option_parser_register(opp, "-gpgpu_mascar_enable_mp_owner_telemetry",
+                         OPT_INT32, &gpgpu_mascar_enable_mp_owner_telemetry,
+                         "Mascar M2A: enable passive EP/MP owner telemetry (0=off)",
+                         "0");
+  option_parser_register(opp, "-gpgpu_mascar_enable_mp_owner_scheduling",
+                         OPT_INT32, &gpgpu_mascar_enable_mp_owner_scheduling,
+                         "Mascar M2B: enable active MP owner scheduling (0=off)",
+                         "0");
+  option_parser_register(opp, "-gpgpu_mascar_m2_compute_first", OPT_INT32,
+                         &gpgpu_mascar_m2_compute_first,
+                         "Mascar M2: prioritize compute-ready warps in MP (default 1)",
+                         "1");
   option_parser_register(opp, "-gpgpu_mascar_stall_threshold", OPT_UINT32,
                          &gpgpu_mascar_stall_threshold,
                          "Mascar consecutive stall cycles to trigger deprioritize (default 8)", "8");
@@ -790,6 +802,19 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          OPT_UINT32, &gpgpu_mascar_l1_saturation_margin,
                          "Mascar M1: L1 almost-full margin for passive saturation probe",
                          "1");
+  option_parser_register(opp, "-gpgpu_mascar_l1_saturation_recent_window",
+                         OPT_UINT32,
+                         &gpgpu_mascar_l1_saturation_recent_window,
+                         "Mascar M2: recent L1 saturation window (default 8)",
+                         "8");
+  option_parser_register(opp, "-gpgpu_mascar_owner_max_hold_cycles",
+                         OPT_UINT32, &gpgpu_mascar_owner_max_hold_cycles,
+                         "Mascar M2: owner max hold cycles before release",
+                         "256");
+  option_parser_register(opp, "-gpgpu_mascar_owner_no_progress_limit",
+                         OPT_UINT32, &gpgpu_mascar_owner_no_progress_limit,
+                         "Mascar M2: owner no-progress release limit",
+                         "64");
   option_parser_register(opp, "-gpgpu_mascar_debug", OPT_INT32,
                          &gpgpu_mascar_debug,
                          "Mascar per-cycle debug trace (0=off)", "0");
@@ -1872,6 +1897,73 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
             missq_used_sum);
     fprintf(stdout, "paper_mascar_l1_sat_missq_used_max = %llu\n",
             missq_used_max);
+  }
+  fprintf(stdout, "paper_mascar_m2_owner_telemetry_enabled = %d\n",
+          m_shader_config->gpgpu_enable_mascar &&
+              (m_shader_config->gpgpu_mascar_enable_mp_owner_telemetry ||
+               m_shader_config->gpgpu_mascar_enable_mp_owner_scheduling));
+  fprintf(stdout, "paper_mascar_m2_owner_scheduling_enabled = %d\n",
+          m_shader_config->gpgpu_enable_mascar &&
+              m_shader_config->gpgpu_mascar_enable_mp_owner_scheduling);
+  {
+    mascar_m2_stats m2;
+    m2.clear();
+    for (unsigned i = 0; i < m_config.num_cluster(); i++)
+      m_cluster[i]->get_mascar_m2_stats(m2);
+    fprintf(stdout, "paper_mascar_m2_ep_cycles = %llu\n", m2.ep_cycles);
+    fprintf(stdout, "paper_mascar_m2_mp_cycles = %llu\n", m2.mp_cycles);
+    fprintf(stdout, "paper_mascar_m2_owner_valid_cycles = %llu\n",
+            m2.owner_valid_cycles);
+    fprintf(stdout, "paper_mascar_m2_owner_acquire = %llu\n",
+            m2.owner_acquire);
+    fprintf(stdout, "paper_mascar_m2_owner_release = %llu\n",
+            m2.owner_release);
+    fprintf(stdout, "paper_mascar_m2_owner_release_saturation_clear = %llu\n",
+            m2.owner_release_saturation_clear);
+    fprintf(stdout, "paper_mascar_m2_owner_release_scoreboard = %llu\n",
+            m2.owner_release_scoreboard);
+    fprintf(stdout, "paper_mascar_m2_owner_release_warp_done = %llu\n",
+            m2.owner_release_warp_done);
+    fprintf(stdout, "paper_mascar_m2_owner_release_max_hold = %llu\n",
+            m2.owner_release_max_hold);
+    fprintf(stdout, "paper_mascar_m2_owner_release_no_progress = %llu\n",
+            m2.owner_release_no_progress);
+    fprintf(stdout, "paper_mascar_m2_compute_ready_in_mp = %llu\n",
+            m2.compute_ready_in_mp);
+    fprintf(stdout, "paper_mascar_m2_memory_ready_in_mp = %llu\n",
+            m2.memory_ready_in_mp);
+    fprintf(stdout, "paper_mascar_m2_would_block_nonowner_mem = %llu\n",
+            m2.would_block_nonowner_mem);
+    fprintf(stdout, "paper_mascar_m2_would_owner_mem_issue = %llu\n",
+            m2.would_owner_mem_issue);
+    fprintf(stdout, "paper_mascar_m2_would_prioritize_compute = %llu\n",
+            m2.would_prioritize_compute);
+    fprintf(stdout, "paper_mascar_m2_wst_mem_bit_set = %llu\n",
+            m2.wst_mem_bit_set);
+    fprintf(stdout, "paper_mascar_m2_wst_stall_bit_set = %llu\n",
+            m2.wst_stall_bit_set);
+    fprintf(stdout, "paper_mascar_m2_l1_recent_set = %llu\n",
+            m2.l1_recent_set);
+    fprintf(stdout, "paper_mascar_m2_l1_recent_clear = %llu\n",
+            m2.l1_recent_clear);
+    fprintf(stdout, "paper_mascar_m2_nonowner_mem_block = %llu\n",
+            m2.nonowner_mem_block);
+    fprintf(stdout, "paper_mascar_m2_owner_mem_issue = %llu\n",
+            m2.owner_mem_issue);
+    fprintf(stdout, "paper_mascar_m2_owner_compute_issue = %llu\n",
+            m2.owner_compute_issue);
+    fprintf(stdout, "paper_mascar_m2_owner_first_acquire = %llu\n",
+            m2.owner_first_acquire);
+    fprintf(stdout, "paper_mascar_m2_compute_priority_reorder = %llu\n",
+            m2.compute_priority_reorder);
+    fprintf(stdout, "paper_mascar_m2_compute_priority_candidates = %llu\n",
+            m2.compute_priority_candidates);
+    fprintf(stdout, "paper_mascar_m2_memory_priority_candidates = %llu\n",
+            m2.memory_priority_candidates);
+    fprintf(stdout, "paper_mascar_m2_deadlock_force_release = %llu\n",
+            m2.deadlock_force_release);
+    fprintf(stdout, "paper_mascar_m2_active_block_guard_allow = %llu\n",
+            m2.active_block_guard_allow);
   }
 
   if (m_config.gpgpu_cflog_interval != 0) {
