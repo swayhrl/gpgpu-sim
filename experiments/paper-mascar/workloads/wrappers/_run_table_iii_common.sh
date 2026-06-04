@@ -67,6 +67,8 @@ workload_root="${GPGPU_WORKLOAD_ROOT:-/workspace/repos/gpgpu-workloads}"
 gpgpusim_root="${GPGPUSIM_ROOT:-${repo_root}}"
 run_working_dir="${run_working_dir//\/workspace\/repos\/gpgpu-workloads/${workload_root}}"
 run_dir="${MASCAR_RUN_DIR:-${workload_dir}/wrapper_runs/$(date '+%Y%m%d_%H%M%S')}"
+mkdir -p "${run_dir}"
+run_dir="$(cd "${run_dir}" && pwd)"
 
 print_identity() {
   echo "paper_id=${row_id}"
@@ -117,11 +119,22 @@ if [[ ! -d "${run_working_dir}" ]]; then
   exit 77
 fi
 
-mkdir -p "${run_dir}"
 log_path="${run_dir}/${row_id}.log"
 echo "wrapper_log=${log_path}"
 (
   cd "${run_working_dir}"
+  restore_config() {
+    if [[ -n "${config_backup_dir:-}" && -d "${config_backup_dir}" ]]; then
+      for cfg_file in gpgpusim.config config_volta_islip.icnt; do
+        if [[ -f "${config_backup_dir}/${cfg_file}" ]]; then
+          cp -f "${config_backup_dir}/${cfg_file}" "${cfg_file}"
+        else
+          rm -f "${cfg_file}"
+        fi
+      done
+      rm -rf "${config_backup_dir}"
+    fi
+  }
   if [[ -f "${gpgpusim_root}/setup_environment" ]]; then
     set +u
     # shellcheck disable=SC1091
@@ -129,9 +142,19 @@ echo "wrapper_log=${log_path}"
     set -u
   fi
   if [[ -n "${MASCAR_CONFIG_DIR:-}" ]]; then
-    GPGPUSIM_CONFIG_OVERRIDE="${MASCAR_CONFIG_DIR}" \
-    TIMEOUT_SECONDS="${timeout_sec}" \
-    timeout "${timeout_sec}" bash -lc "${run_command}"
+    config_backup_dir="$(mktemp -d "${run_dir}/config_backup.XXXXXX")"
+    for cfg_file in gpgpusim.config config_volta_islip.icnt; do
+      if [[ -f "${cfg_file}" ]]; then
+        cp -f "${cfg_file}" "${config_backup_dir}/${cfg_file}"
+      fi
+      if [[ -f "${MASCAR_CONFIG_DIR}/${cfg_file}" ]]; then
+        cp -f "${MASCAR_CONFIG_DIR}/${cfg_file}" "${cfg_file}"
+      fi
+    done
+    trap restore_config EXIT
+    TIMEOUT_SECONDS="${timeout_sec}" timeout "${timeout_sec}" bash -lc "${run_command}"
+    restore_config
+    trap - EXIT
   else
     TIMEOUT_SECONDS="${timeout_sec}" \
     timeout "${timeout_sec}" bash -lc "${run_command}"

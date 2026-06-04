@@ -1,0 +1,4 @@
+paper_id,paper_name,paper_type,runs,completed_runs,explicit_pass_runs,m2_active,m3_active,m4_active,any_active,activation_status
+mri_q,mri-q,C,4,4,0,1,0,1,1,active_counter_observed
+pathfinder,pathfinder,C,4,4,0,1,0,1,1,active_counter_observed
+spmv,spmv,M,4,4,4,1,0,1,1,active_counter_observed

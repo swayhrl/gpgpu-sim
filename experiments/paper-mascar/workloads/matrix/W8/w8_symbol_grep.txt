@@ -1,0 +1,387 @@
+docs/papers/mascar_w8_activation_trend_report.md:1:# Mascar W8 Activation Trend Report
+docs/papers/mascar_w8_activation_trend_report.md:5:W8 is a focused sweep over the W7 activation-ready candidate subset:
+docs/papers/mascar_w8_activation_trend_report.md:15:W8 keeps the Table III workload manifest at 30 rows and runs only the three W7 focused workloads. Placeholder and unavailable rows remain represented in `w8_workload_manifest.csv`, while `w8_run_plan.csv` contains the 3 workload x 4 config execution matrix.
+docs/papers/mascar_w8_activation_trend_report.md:19:- `experiments/paper-mascar/workloads/matrix/W8/w8_workload_manifest.csv`
+docs/papers/mascar_w8_activation_trend_report.md:20:- `experiments/paper-mascar/workloads/matrix/W8/w8_command_manifest_subset.csv`
+docs/papers/mascar_w8_activation_trend_report.md:21:- `experiments/paper-mascar/workloads/matrix/W8/w8_run_plan.csv`
+docs/papers/mascar_w8_activation_trend_report.md:22:- `experiments/paper-mascar/workloads/matrix/W8/w8_config_matrix.csv`
+docs/papers/mascar_w8_activation_trend_report.md:28:- run directory: `experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix`
+docs/papers/mascar_w8_activation_trend_report.md:29:- latest results: `experiments/paper-mascar/workloads/results/W8/w8_latest_results.csv`
+docs/papers/mascar_w8_activation_trend_report.md:30:- latest status matrix: `experiments/paper-mascar/workloads/results/W8/w8_latest_status_matrix.csv`
+docs/papers/mascar_w8_activation_trend_report.md:31:- latest run manifest: `experiments/paper-mascar/workloads/results/W8/w8_latest_run_manifest.csv`
+docs/papers/mascar_w8_activation_trend_report.md:57:Cycle ratios are computed against `baseline_off` for the same workload. For this W8 focused run, `gpu_tot_sim_cycle` is identical across baseline/M2/M3/M4 for all three workloads, so the cycle-speedup geomean is `1.000000` for each active config.
+docs/papers/mascar_w8_activation_trend_report.md:63:The first W8 actual attempt exposed a wrapper/config bug: direct Table III wrappers execute binaries in workload directories where stale `gpgpusim.config` files can override the intended matrix config. The common wrapper now temporarily installs the requested `MASCAR_CONFIG_DIR` files into the workload CWD before actual execution and restores the original files after the run.
+experiments/paper-mascar/workloads/wrappers/_run_table_iii_common.sh:18:  MASCAR_CONFIG_DIR   Optional GPGPU-Sim config override directory.
+experiments/paper-mascar/workloads/wrappers/_run_table_iii_common.sh:144:  if [[ -n "${MASCAR_CONFIG_DIR:-}" ]]; then
+experiments/paper-mascar/workloads/wrappers/_run_table_iii_common.sh:150:      if [[ -f "${MASCAR_CONFIG_DIR}/${cfg_file}" ]]; then
+experiments/paper-mascar/workloads/wrappers/_run_table_iii_common.sh:151:        cp -f "${MASCAR_CONFIG_DIR}/${cfg_file}" "${cfg_file}"
+experiments/paper-mascar/workloads/matrix/W8/w8_workload_manifest.csv:14:spmv,spmv,M,Parboil,4.2,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_spmv_w7.sh,ready,available,approximate,1,w7_activation_ready,1,0,1,420,W8 selected from W7 activation-ready subset. w7_iter1_1024x1024_d16; classification=completed_explicit_pass; l1_sat_samples=25057; l1_sat_saturated=37; activation observed
+experiments/paper-mascar/workloads/matrix/W8/w8_workload_manifest.csv:25:mri_q,mri-q,C,Parboil,3479,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_mri_q_w7.sh,ready,available,approximate,1,w7_activation_ready,1,0,1,420,W8 selected from W7 activation-ready subset. w7_iter1_k128_x128; classification=completed_stats_found; l1_sat_samples=52; l1_sat_saturated=4; activation observed
+experiments/paper-mascar/workloads/matrix/W8/w8_workload_manifest.csv:27:pathfinder,pathfinder,C,Rodinia,55.83,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_pathfinder_w7.sh,ready,available,approximate,1,w7_activation_ready,1,0,1,420,W8 selected from W7 activation-ready subset. w7_iter1_256x256_p4; classification=completed_stats_found; l1_sat_samples=315; l1_sat_saturated=89; activation observed
+experiments/paper-mascar/workloads/matrix/W8/w8_run_plan.csv:2:w7_activation_ready,baseline_off,configs/hrl-repro/SM7_QV100_mascar_baseline_off,spmv,spmv,M,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_spmv_w7.sh,ready,1,1,420,1,0,1,W8 selected from W7 activation-ready subset. w7_iter1_1024x1024_d16; classification=completed_explicit_pass; l1_sat_samples=25057; l1_sat_saturated=37; activation observed
+experiments/paper-mascar/workloads/matrix/W8/w8_run_plan.csv:3:w7_activation_ready,m2_owner_sched,configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on,spmv,spmv,M,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_spmv_w7.sh,ready,1,1,420,1,0,1,W8 selected from W7 activation-ready subset. w7_iter1_1024x1024_d16; classification=completed_explicit_pass; l1_sat_samples=25057; l1_sat_saturated=37; activation observed
+experiments/paper-mascar/workloads/matrix/W8/w8_run_plan.csv:4:w7_activation_ready,m3_hitonly_nack,configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on,spmv,spmv,M,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_spmv_w7.sh,ready,1,1,420,1,0,1,W8 selected from W7 activation-ready subset. w7_iter1_1024x1024_d16; classification=completed_explicit_pass; l1_sat_samples=25057; l1_sat_saturated=37; activation observed
+experiments/paper-mascar/workloads/matrix/W8/w8_run_plan.csv:5:w7_activation_ready,m4_reexec_load,configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on,spmv,spmv,M,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_spmv_w7.sh,ready,1,1,420,1,0,1,W8 selected from W7 activation-ready subset. w7_iter1_1024x1024_d16; classification=completed_explicit_pass; l1_sat_samples=25057; l1_sat_saturated=37; activation observed
+experiments/paper-mascar/workloads/matrix/W8/w8_run_plan.csv:6:w7_activation_ready,baseline_off,configs/hrl-repro/SM7_QV100_mascar_baseline_off,mri_q,mri-q,C,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_mri_q_w7.sh,ready,1,2,420,1,0,1,W8 selected from W7 activation-ready subset. w7_iter1_k128_x128; classification=completed_stats_found; l1_sat_samples=52; l1_sat_saturated=4; activation observed
+experiments/paper-mascar/workloads/matrix/W8/w8_run_plan.csv:7:w7_activation_ready,m2_owner_sched,configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on,mri_q,mri-q,C,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_mri_q_w7.sh,ready,1,2,420,1,0,1,W8 selected from W7 activation-ready subset. w7_iter1_k128_x128; classification=completed_stats_found; l1_sat_samples=52; l1_sat_saturated=4; activation observed
+experiments/paper-mascar/workloads/matrix/W8/w8_run_plan.csv:8:w7_activation_ready,m3_hitonly_nack,configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on,mri_q,mri-q,C,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_mri_q_w7.sh,ready,1,2,420,1,0,1,W8 selected from W7 activation-ready subset. w7_iter1_k128_x128; classification=completed_stats_found; l1_sat_samples=52; l1_sat_saturated=4; activation observed
+experiments/paper-mascar/workloads/matrix/W8/w8_run_plan.csv:9:w7_activation_ready,m4_reexec_load,configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on,mri_q,mri-q,C,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_mri_q_w7.sh,ready,1,2,420,1,0,1,W8 selected from W7 activation-ready subset. w7_iter1_k128_x128; classification=completed_stats_found; l1_sat_samples=52; l1_sat_saturated=4; activation observed
+experiments/paper-mascar/workloads/matrix/W8/w8_run_plan.csv:10:w7_activation_ready,baseline_off,configs/hrl-repro/SM7_QV100_mascar_baseline_off,pathfinder,pathfinder,C,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_pathfinder_w7.sh,ready,1,2,420,1,0,1,W8 selected from W7 activation-ready subset. w7_iter1_256x256_p4; classification=completed_stats_found; l1_sat_samples=315; l1_sat_saturated=89; activation observed
+experiments/paper-mascar/workloads/matrix/W8/w8_run_plan.csv:11:w7_activation_ready,m2_owner_sched,configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on,pathfinder,pathfinder,C,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_pathfinder_w7.sh,ready,1,2,420,1,0,1,W8 selected from W7 activation-ready subset. w7_iter1_256x256_p4; classification=completed_stats_found; l1_sat_samples=315; l1_sat_saturated=89; activation observed
+experiments/paper-mascar/workloads/matrix/W8/w8_run_plan.csv:12:w7_activation_ready,m3_hitonly_nack,configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on,pathfinder,pathfinder,C,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_pathfinder_w7.sh,ready,1,2,420,1,0,1,W8 selected from W7 activation-ready subset. w7_iter1_256x256_p4; classification=completed_stats_found; l1_sat_samples=315; l1_sat_saturated=89; activation observed
+experiments/paper-mascar/workloads/matrix/W8/w8_run_plan.csv:13:w7_activation_ready,m4_reexec_load,configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on,pathfinder,pathfinder,C,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_pathfinder_w7.sh,ready,1,2,420,1,0,1,W8 selected from W7 activation-ready subset. w7_iter1_256x256_p4; classification=completed_stats_found; l1_sat_samples=315; l1_sat_saturated=89; activation observed
+experiments/paper-mascar/workloads/matrix/W8/w8c_postcheck.md:1:# Mascar W8C Postcheck
+experiments/paper-mascar/workloads/matrix/W8/w8c_postcheck.md:21:- `experiments/paper-mascar/workloads/matrix/W8/w8_trend_results.csv`
+experiments/paper-mascar/workloads/matrix/W8/w8c_postcheck.md:22:- `experiments/paper-mascar/workloads/matrix/W8/w8_activation_summary.csv`
+experiments/paper-mascar/workloads/matrix/W8/w8c_postcheck.md:23:- `experiments/paper-mascar/workloads/matrix/W8/w8_geomean_summary.csv`
+experiments/paper-mascar/workloads/matrix/W8/w8c_postcheck.md:24:- `experiments/paper-mascar/workloads/matrix/W8/w8_trend_summary.md`
+experiments/paper-mascar/workloads/matrix/W8/w8c_postcheck.md:25:- `docs/papers/mascar_w8_activation_trend_report.md`
+experiments/paper-mascar/workloads/matrix/W8/w8c_postcheck.md:34:- W8 run plan rows: 12
+experiments/paper-mascar/workloads/matrix/W8/w8c_postcheck.md:35:- W8 latest result rows: 12
+experiments/paper-mascar/workloads/matrix/W8/w8c_postcheck.md:36:- W8 trend rows: 12
+experiments/paper-mascar/workloads/matrix/W8/w8c_postcheck.md:37:- W8 activation summary rows: 3
+experiments/paper-mascar/workloads/matrix/W8/prepare_w8_run_plan.py:2:"""Prepare W8 focused sweep run plan from W7 activation-ready subset."""
+experiments/paper-mascar/workloads/matrix/W8/prepare_w8_run_plan.py:13:W8_DIR = WORKLOAD_DIR / "matrix" / "W8"
+experiments/paper-mascar/workloads/matrix/W8/prepare_w8_run_plan.py:19:CONFIG_MATRIX = W8_DIR / "w8_config_matrix.csv"
+experiments/paper-mascar/workloads/matrix/W8/prepare_w8_run_plan.py:103:        raise SystemExit("no enabled W8 configs")
+experiments/paper-mascar/workloads/matrix/W8/prepare_w8_run_plan.py:125:            notes = f"W8 selected from W7 activation-ready subset. {subset.get('notes', '')}"
+experiments/paper-mascar/workloads/matrix/W8/prepare_w8_run_plan.py:164:        command_row["notes"] = f"W8 focused sweep; {subset.get('notes', command.get('notes', ''))}"
+experiments/paper-mascar/workloads/matrix/W8/prepare_w8_run_plan.py:187:    write_csv(W8_DIR / "w8_workload_manifest.csv", workload_rows, WORKLOAD_FIELDS)
+experiments/paper-mascar/workloads/matrix/W8/prepare_w8_run_plan.py:188:    write_csv(W8_DIR / "w8_command_manifest_subset.csv", command_subset_rows, COMMAND_FIELDS)
+experiments/paper-mascar/workloads/matrix/W8/prepare_w8_run_plan.py:189:    write_csv(W8_DIR / "w8_run_plan.csv", run_plan_rows, RUN_PLAN_FIELDS)
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:2:"""Analyze W8 focused activation sweep results."""
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:14:W8_DIR = REPO_ROOT / "experiments" / "paper-mascar" / "workloads" / "matrix" / "W8"
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:15:RESULTS_DIR = REPO_ROOT / "experiments" / "paper-mascar" / "workloads" / "results" / "W8"
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:70:        to_int(row.get("paper_mascar_m2_mp_cycles", "0")) > 0
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:71:        or to_int(row.get("paper_mascar_m2_owner_acquire", "0")) > 0
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:72:        or to_int(row.get("paper_mascar_m2_nonowner_mem_block", "0")) > 0
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:77:    return to_int(row.get("paper_mascar_m3_hitonly_access_attempt", "0")) > 0
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:82:        to_int(row.get("paper_mascar_m4_enqueue_success", "0")) > 0
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:83:        or to_int(row.get("paper_mascar_m4_retry_attempt", "0")) > 0
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:84:        or to_int(row.get("paper_mascar_m4_retry_requeue", "0")) > 0
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:94:        default=RESULTS_DIR / "w8_latest_results.csv",
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:99:    run_plan_rows = read_csv(W8_DIR / "w8_run_plan.csv")
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:145:                "m2_mp_cycles": row.get("paper_mascar_m2_mp_cycles", "0"),
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:146:                "m2_owner_acquire": row.get("paper_mascar_m2_owner_acquire", "0"),
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:147:                "m2_nonowner_mem_block": row.get("paper_mascar_m2_nonowner_mem_block", "0"),
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:148:                "m3_hitonly_attempt": row.get("paper_mascar_m3_hitonly_access_attempt", "0"),
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:149:                "m3_hitonly_nack": row.get("paper_mascar_m3_hitonly_access_nack", "0"),
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:150:                "m4_enqueue_success": row.get("paper_mascar_m4_enqueue_success", "0"),
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:151:                "m4_retry_attempt": row.get("paper_mascar_m4_retry_attempt", "0"),
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:152:                "m4_retry_nack": row.get("paper_mascar_m4_retry_nack", "0"),
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:197:        W8_DIR / "w8_trend_results.csv",
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:227:        W8_DIR / "w8_activation_summary.csv",
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:244:        W8_DIR / "w8_geomean_summary.csv",
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:255:    with (W8_DIR / "w8_trend_summary.md").open("w") as f:
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:256:        f.write("# Mascar W8 Trend Summary\n\n")
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:257:        f.write("W8 is a focused activation sweep over the W7 subset: `spmv`, `mri_q`, and `pathfinder`.\n\n")
+experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py:277:        f.write("- W8 does not run the full Table III workload set.\n")
+experiments/paper-mascar/workloads/matrix/W8/run_w8_activation_sweep.sh:6:results_root="${repo_root}/experiments/paper-mascar/workloads/results/W8"
+experiments/paper-mascar/workloads/matrix/W8/run_w8_activation_sweep.sh:8:W8_TIMEOUT_SEC="${W8_TIMEOUT_SEC:-600}"
+experiments/paper-mascar/workloads/matrix/W8/run_w8_activation_sweep.sh:9:W8_MAX_RUNS="${W8_MAX_RUNS:-0}"
+experiments/paper-mascar/workloads/matrix/W8/run_w8_activation_sweep.sh:12:workload_manifest="${script_dir}/w8_command_manifest_subset.csv"
+experiments/paper-mascar/workloads/matrix/W8/run_w8_activation_sweep.sh:19:  default_outdir="${results_root}/w8_focused_dryrun_$(date '+%Y%m%d_%H%M%S')"
+experiments/paper-mascar/workloads/matrix/W8/run_w8_activation_sweep.sh:21:  default_outdir="${results_root}/w8_focused_actual_$(date '+%Y%m%d_%H%M%S')"
+experiments/paper-mascar/workloads/matrix/W8/run_w8_activation_sweep.sh:24:export CONFIG_MATRIX="${CONFIG_MATRIX:-${script_dir}/w8_config_matrix.csv}"
+experiments/paper-mascar/workloads/matrix/W8/run_w8_activation_sweep.sh:27:export TIMEOUT_SEC="${TIMEOUT_SEC:-${W8_TIMEOUT_SEC}}"
+experiments/paper-mascar/workloads/matrix/W8/run_w8_activation_sweep.sh:28:export MAX_RUNS="${MAX_RUNS:-${W8_MAX_RUNS}}"
+experiments/paper-mascar/workloads/matrix/W8/w8_trend_summary.md:1:# Mascar W8 Trend Summary
+experiments/paper-mascar/workloads/matrix/W8/w8_trend_summary.md:3:W8 is a focused activation sweep over the W7 subset: `spmv`, `mri_q`, and `pathfinder`.
+experiments/paper-mascar/workloads/matrix/W8/w8_trend_summary.md:35:- W8 does not run the full Table III workload set.
+experiments/paper-mascar/workloads/matrix/W8/w8_postcheck.md:1:# Mascar W8A Postcheck
+experiments/paper-mascar/workloads/matrix/W8/w8_postcheck.md:14:?? experiments/paper-mascar/workloads/matrix/W8/
+experiments/paper-mascar/workloads/matrix/W8/w8_postcheck.md:17:## W8A Planner
+experiments/paper-mascar/workloads/matrix/W8/w8_postcheck.md:22:python3 experiments/paper-mascar/workloads/matrix/W8/prepare_w8_run_plan.py
+experiments/paper-mascar/workloads/matrix/W8/w8_postcheck.md:27:- w8_workload_manifest.csv rows: 30
+experiments/paper-mascar/workloads/matrix/W8/w8_postcheck.md:28:- w8_command_manifest_subset.csv rows: 3
+experiments/paper-mascar/workloads/matrix/W8/w8_postcheck.md:29:- w8_run_plan.csv rows: 12
+experiments/paper-mascar/workloads/matrix/W8/w8_postcheck.md:35:- W8 workload manifest preserves all Table III rows.
+experiments/paper-mascar/workloads/matrix/W8/w8_postcheck.md:37:- docs/papers/mascar_w6a_activation_run_plan.md remains the W6 activation-plan reference document; W8 does not rewrite it.
+experiments/paper-mascar/workloads/matrix/W8/w8b_postcheck.md:1:# Mascar W8B Postcheck
+experiments/paper-mascar/workloads/matrix/W8/w8b_postcheck.md:11:- dry-run outdir: `experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix`
+experiments/paper-mascar/workloads/matrix/W8/w8b_postcheck.md:12:- actual outdir: `experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix`
+experiments/paper-mascar/workloads/matrix/W8/w8b_postcheck.md:21:W8 found and fixed a wrapper/config override bug in direct workload wrappers. Actual binary runs now temporarily install the selected `MASCAR_CONFIG_DIR` config files into the workload CWD and restore the original files after execution.
+experiments/paper-mascar/workloads/matrix/W8/w8b_postcheck.md:28:- `bash -n` W8 runner and common wrapper: pass
+experiments/paper-mascar/workloads/matrix/W8/w8b_postcheck.md:29:- `python3 -m py_compile` W8 planner/analyzer: pass
+experiments/paper-mascar/workloads/matrix/W8/w8b_postcheck.md:36:?? experiments/paper-mascar/workloads/matrix/W8/
+experiments/paper-mascar/workloads/matrix/W8/w8b_postcheck.md:37:?? experiments/paper-mascar/workloads/results/W8/
+experiments/paper-mascar/workloads/matrix/W8/w8_command_manifest_subset.csv:2:spmv,spmv,M,available,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_spmv_w7.sh,ready,no,,/workspace/repos/gpgpu-workloads/suites/parboil-wrapper/spmv,bash /workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/matrix/W5C/commands/run_spmv_w5c_command.sh,w7_iter1_1024x1024_d16,420,pass,W8 focused sweep; w7_iter1_1024x1024_d16; classification=completed_explicit_pass; l1_sat_samples=25057; l1_sat_saturated=37; activation observed
+experiments/paper-mascar/workloads/matrix/W8/w8_command_manifest_subset.csv:3:mri_q,mri-q,C,available,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_mri_q_w7.sh,ready,no,,/workspace/repos/gpgpu-workloads/suites/parboil-wrapper/mri-q,./mri-q -i /workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/matrix/W5C/data/mriq_k128_x128.bin 128,w7_iter1_k128_x128,420,pass,W8 focused sweep; w7_iter1_k128_x128; classification=completed_stats_found; l1_sat_samples=52; l1_sat_saturated=4; activation observed
+experiments/paper-mascar/workloads/matrix/W8/w8_command_manifest_subset.csv:4:pathfinder,pathfinder,C,available,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_pathfinder_w7.sh,ready,no,,/workspace/repos/gpgpu-workloads/suites/rodinia-wrapper/pathfinder,./pathfinder 256 256 4,w7_iter1_256x256_p4,420,pass,W8 focused sweep; w7_iter1_256x256_p4; classification=completed_stats_found; l1_sat_samples=315; l1_sat_saturated=89; activation observed
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:2:??	docs/papers/mascar_w8_activation_trend_report.md
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:3:??	experiments/paper-mascar/workloads/matrix/W8/analyze_w8_activation.py
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:4:??	experiments/paper-mascar/workloads/matrix/W8/prepare_w8_run_plan.py
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:5:??	experiments/paper-mascar/workloads/matrix/W8/run_w8_activation_sweep.sh
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:6:??	experiments/paper-mascar/workloads/matrix/W8/w8_activation_summary.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:7:??	experiments/paper-mascar/workloads/matrix/W8/w8_command_manifest_subset.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:8:??	experiments/paper-mascar/workloads/matrix/W8/w8_config_matrix.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:9:??	experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:10:??	experiments/paper-mascar/workloads/matrix/W8/w8_geomean_summary.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:11:??	experiments/paper-mascar/workloads/matrix/W8/w8_postcheck.md
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:12:??	experiments/paper-mascar/workloads/matrix/W8/w8_run_plan.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:13:??	experiments/paper-mascar/workloads/matrix/W8/w8_symbol_grep.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:14:??	experiments/paper-mascar/workloads/matrix/W8/w8_trend_results.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:15:??	experiments/paper-mascar/workloads/matrix/W8/w8_trend_summary.md
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:16:??	experiments/paper-mascar/workloads/matrix/W8/w8_workload_manifest.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:17:??	experiments/paper-mascar/workloads/matrix/W8/w8b_postcheck.md
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:18:??	experiments/paper-mascar/workloads/matrix/W8/w8c_postcheck.md
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:19:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/results.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:20:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/run_manifest.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:21:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/baseline_off/mri_q/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:22:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/baseline_off/mri_q/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:23:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/baseline_off/mri_q/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:24:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/baseline_off/mri_q/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:25:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/baseline_off/mri_q/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:26:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/baseline_off/pathfinder/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:27:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/baseline_off/pathfinder/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:28:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/baseline_off/pathfinder/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:29:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/baseline_off/pathfinder/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:30:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/baseline_off/pathfinder/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:31:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/baseline_off/spmv/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:32:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/baseline_off/spmv/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:33:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/baseline_off/spmv/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:34:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/baseline_off/spmv/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:35:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/baseline_off/spmv/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:36:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m2_owner_sched/mri_q/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:37:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m2_owner_sched/mri_q/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:38:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m2_owner_sched/mri_q/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:39:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m2_owner_sched/mri_q/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:40:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m2_owner_sched/mri_q/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:41:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m2_owner_sched/pathfinder/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:42:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m2_owner_sched/pathfinder/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:43:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m2_owner_sched/pathfinder/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:44:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m2_owner_sched/pathfinder/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:45:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m2_owner_sched/pathfinder/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:46:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m2_owner_sched/spmv/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:47:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m2_owner_sched/spmv/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:48:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m2_owner_sched/spmv/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:49:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m2_owner_sched/spmv/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:50:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m2_owner_sched/spmv/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:51:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m3_hitonly_nack/mri_q/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:52:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m3_hitonly_nack/mri_q/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:53:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m3_hitonly_nack/mri_q/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:54:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m3_hitonly_nack/mri_q/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:55:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m3_hitonly_nack/mri_q/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:56:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m3_hitonly_nack/pathfinder/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:57:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m3_hitonly_nack/pathfinder/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:58:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m3_hitonly_nack/pathfinder/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:59:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m3_hitonly_nack/pathfinder/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:60:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m3_hitonly_nack/pathfinder/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:61:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m3_hitonly_nack/spmv/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:62:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m3_hitonly_nack/spmv/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:63:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m3_hitonly_nack/spmv/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:64:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m3_hitonly_nack/spmv/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:65:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m3_hitonly_nack/spmv/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:66:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m4_reexec_load/mri_q/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:67:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m4_reexec_load/mri_q/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:68:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m4_reexec_load/mri_q/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:69:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m4_reexec_load/mri_q/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:70:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m4_reexec_load/mri_q/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:71:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m4_reexec_load/pathfinder/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:72:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m4_reexec_load/pathfinder/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:73:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m4_reexec_load/pathfinder/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:74:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m4_reexec_load/pathfinder/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:75:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m4_reexec_load/pathfinder/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:76:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m4_reexec_load/spmv/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:77:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m4_reexec_load/spmv/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:78:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m4_reexec_load/spmv/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:79:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m4_reexec_load/spmv/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:80:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/runs/m4_reexec_load/spmv/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:81:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/status_matrix.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:82:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual/summary.md
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:83:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/results.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:84:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/run_manifest.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:85:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/baseline_off/mri_q/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:86:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/baseline_off/mri_q/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:87:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/baseline_off/mri_q/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:88:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/baseline_off/mri_q/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:89:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/baseline_off/mri_q/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:90:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/baseline_off/pathfinder/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:91:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/baseline_off/pathfinder/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:92:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/baseline_off/pathfinder/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:93:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/baseline_off/pathfinder/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:94:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/baseline_off/pathfinder/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:95:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/baseline_off/spmv/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:96:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/baseline_off/spmv/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:97:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/baseline_off/spmv/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:98:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/baseline_off/spmv/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:99:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/baseline_off/spmv/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:100:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m2_owner_sched/mri_q/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:101:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m2_owner_sched/mri_q/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:102:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m2_owner_sched/mri_q/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:103:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m2_owner_sched/mri_q/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:104:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m2_owner_sched/mri_q/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:105:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m2_owner_sched/pathfinder/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:106:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m2_owner_sched/pathfinder/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:107:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m2_owner_sched/pathfinder/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:108:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m2_owner_sched/pathfinder/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:109:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m2_owner_sched/pathfinder/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:110:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m2_owner_sched/spmv/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:111:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m2_owner_sched/spmv/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:112:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m2_owner_sched/spmv/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:113:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m2_owner_sched/spmv/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:114:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m2_owner_sched/spmv/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:115:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m3_hitonly_nack/mri_q/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:116:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m3_hitonly_nack/mri_q/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:117:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m3_hitonly_nack/mri_q/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:118:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m3_hitonly_nack/mri_q/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:119:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m3_hitonly_nack/mri_q/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:120:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m3_hitonly_nack/pathfinder/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:121:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m3_hitonly_nack/pathfinder/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:122:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m3_hitonly_nack/pathfinder/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:123:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m3_hitonly_nack/pathfinder/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:124:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m3_hitonly_nack/pathfinder/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:125:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m3_hitonly_nack/spmv/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:126:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m3_hitonly_nack/spmv/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:127:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m3_hitonly_nack/spmv/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:128:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m3_hitonly_nack/spmv/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:129:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m3_hitonly_nack/spmv/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:130:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m4_reexec_load/mri_q/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:131:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m4_reexec_load/mri_q/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:132:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m4_reexec_load/mri_q/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:133:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m4_reexec_load/mri_q/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:134:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m4_reexec_load/mri_q/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:135:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m4_reexec_load/pathfinder/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:136:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m4_reexec_load/pathfinder/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:137:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m4_reexec_load/pathfinder/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:138:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m4_reexec_load/pathfinder/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:139:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m4_reexec_load/pathfinder/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:140:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m4_reexec_load/spmv/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:141:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m4_reexec_load/spmv/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:142:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m4_reexec_load/spmv/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:143:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m4_reexec_load/spmv/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:144:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/runs/m4_reexec_load/spmv/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:145:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/status_matrix.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:146:??	experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/summary.md
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:147:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/results.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:148:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/run_manifest.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:149:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/baseline_off/mri_q/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:150:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/baseline_off/mri_q/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:151:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/baseline_off/mri_q/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:152:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/baseline_off/mri_q/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:153:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/baseline_off/mri_q/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:154:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/baseline_off/pathfinder/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:155:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/baseline_off/pathfinder/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:156:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/baseline_off/pathfinder/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:157:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/baseline_off/pathfinder/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:158:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/baseline_off/pathfinder/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:159:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/baseline_off/spmv/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:160:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/baseline_off/spmv/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:161:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/baseline_off/spmv/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:162:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/baseline_off/spmv/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:163:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/baseline_off/spmv/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:164:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m2_owner_sched/mri_q/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:165:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m2_owner_sched/mri_q/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:166:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m2_owner_sched/mri_q/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:167:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m2_owner_sched/mri_q/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:168:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m2_owner_sched/mri_q/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:169:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m2_owner_sched/pathfinder/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:170:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m2_owner_sched/pathfinder/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:171:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m2_owner_sched/pathfinder/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:172:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m2_owner_sched/pathfinder/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:173:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m2_owner_sched/pathfinder/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:174:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m2_owner_sched/spmv/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:175:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m2_owner_sched/spmv/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:176:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m2_owner_sched/spmv/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:177:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m2_owner_sched/spmv/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:178:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m2_owner_sched/spmv/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:179:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m3_hitonly_nack/mri_q/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:180:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m3_hitonly_nack/mri_q/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:181:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m3_hitonly_nack/mri_q/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:182:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m3_hitonly_nack/mri_q/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:183:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m3_hitonly_nack/mri_q/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:184:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m3_hitonly_nack/pathfinder/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:185:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m3_hitonly_nack/pathfinder/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:186:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m3_hitonly_nack/pathfinder/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:187:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m3_hitonly_nack/pathfinder/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:188:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m3_hitonly_nack/pathfinder/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:189:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m3_hitonly_nack/spmv/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:190:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m3_hitonly_nack/spmv/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:191:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m3_hitonly_nack/spmv/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:192:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m3_hitonly_nack/spmv/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:193:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m3_hitonly_nack/spmv/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:194:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m4_reexec_load/mri_q/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:195:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m4_reexec_load/mri_q/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:196:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m4_reexec_load/mri_q/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:197:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m4_reexec_load/mri_q/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:198:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m4_reexec_load/mri_q/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:199:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m4_reexec_load/pathfinder/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:200:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m4_reexec_load/pathfinder/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:201:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m4_reexec_load/pathfinder/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:202:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m4_reexec_load/pathfinder/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:203:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m4_reexec_load/pathfinder/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:204:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m4_reexec_load/spmv/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:205:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m4_reexec_load/spmv/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:206:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m4_reexec_load/spmv/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:207:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m4_reexec_load/spmv/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:208:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/runs/m4_reexec_load/spmv/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:209:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/status_matrix.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:210:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun/summary.md
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:211:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/results.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:212:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/run_manifest.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:213:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/baseline_off/mri_q/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:214:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/baseline_off/mri_q/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:215:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/baseline_off/mri_q/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:216:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/baseline_off/mri_q/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:217:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/baseline_off/mri_q/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:218:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/baseline_off/pathfinder/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:219:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/baseline_off/pathfinder/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:220:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/baseline_off/pathfinder/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:221:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/baseline_off/pathfinder/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:222:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/baseline_off/pathfinder/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:223:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/baseline_off/spmv/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:224:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/baseline_off/spmv/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:225:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/baseline_off/spmv/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:226:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/baseline_off/spmv/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:227:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/baseline_off/spmv/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:228:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m2_owner_sched/mri_q/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:229:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m2_owner_sched/mri_q/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:230:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m2_owner_sched/mri_q/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:231:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m2_owner_sched/mri_q/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:232:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m2_owner_sched/mri_q/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:233:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m2_owner_sched/pathfinder/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:234:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m2_owner_sched/pathfinder/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:235:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m2_owner_sched/pathfinder/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:236:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m2_owner_sched/pathfinder/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:237:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m2_owner_sched/pathfinder/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:238:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m2_owner_sched/spmv/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:239:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m2_owner_sched/spmv/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:240:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m2_owner_sched/spmv/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:241:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m2_owner_sched/spmv/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:242:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m2_owner_sched/spmv/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:243:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m3_hitonly_nack/mri_q/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:244:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m3_hitonly_nack/mri_q/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:245:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m3_hitonly_nack/mri_q/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:246:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m3_hitonly_nack/mri_q/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:247:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m3_hitonly_nack/mri_q/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:248:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m3_hitonly_nack/pathfinder/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:249:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m3_hitonly_nack/pathfinder/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:250:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m3_hitonly_nack/pathfinder/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:251:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m3_hitonly_nack/pathfinder/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:252:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m3_hitonly_nack/pathfinder/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:253:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m3_hitonly_nack/spmv/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:254:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m3_hitonly_nack/spmv/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:255:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m3_hitonly_nack/spmv/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:256:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m3_hitonly_nack/spmv/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:257:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m3_hitonly_nack/spmv/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:258:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m4_reexec_load/mri_q/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:259:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m4_reexec_load/mri_q/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:260:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m4_reexec_load/mri_q/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:261:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m4_reexec_load/mri_q/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:262:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m4_reexec_load/mri_q/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:263:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m4_reexec_load/pathfinder/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:264:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m4_reexec_load/pathfinder/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:265:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m4_reexec_load/pathfinder/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:266:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m4_reexec_load/pathfinder/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:267:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m4_reexec_load/pathfinder/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:268:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m4_reexec_load/spmv/command.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:269:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m4_reexec_load/spmv/config_volta_islip.icnt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:270:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m4_reexec_load/spmv/env.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:271:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m4_reexec_load/spmv/exit_code.txt
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:272:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/runs/m4_reexec_load/spmv/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:273:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/status_matrix.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:274:??	experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/summary.md
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:275:??	experiments/paper-mascar/workloads/results/W8/w8_latest_results.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:276:??	experiments/paper-mascar/workloads/results/W8/w8_latest_run_manifest.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:277:??	experiments/paper-mascar/workloads/results/W8/w8_latest_status_matrix.csv
+experiments/paper-mascar/workloads/matrix/W8/w8_diff_name_status.txt:278:??	experiments/paper-mascar/workloads/results/W8/w8_latest_summary.md

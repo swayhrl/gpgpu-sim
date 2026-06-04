@@ -1,0 +1,4 @@
+config_id,valid_pairs,cycle_speedup_geomean
+m2_owner_sched,3,1.000000
+m3_hitonly_nack,3,1.000000
+m4_reexec_load,3,1.000000
