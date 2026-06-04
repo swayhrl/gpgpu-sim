@@ -1,0 +1,122 @@
+# git diff --name-status hrl/paper/daws-repro-v0..HEAD
+M	CLAUDE.md
+A	configs/hrl-repro/SM7_QV100_mascar_noop_off/README.md
+A	configs/hrl-repro/SM7_QV100_mascar_noop_off/config_volta_islip.icnt
+A	configs/hrl-repro/SM7_QV100_mascar_noop_off/gpgpusim.config
+A	configs/hrl-repro/SM7_QV100_mascar_noop_on/README.md
+A	configs/hrl-repro/SM7_QV100_mascar_noop_on/config_volta_islip.icnt
+A	configs/hrl-repro/SM7_QV100_mascar_noop_on/gpgpusim.config
+A	configs/hrl-repro/SM7_QV100_mascar_policy_on/README.md
+A	configs/hrl-repro/SM7_QV100_mascar_policy_on/config_volta_islip.icnt
+A	configs/hrl-repro/SM7_QV100_mascar_policy_on/gpgpusim.config
+A	configs/hrl-repro/SM7_QV100_mascar_telemetry_on/README.md
+A	configs/hrl-repro/SM7_QV100_mascar_telemetry_on/config_volta_islip.icnt
+A	configs/hrl-repro/SM7_QV100_mascar_telemetry_on/gpgpusim.config
+A	configs/hrl-repro/SM7_QV100_mascar_would_change_on/README.md
+A	configs/hrl-repro/SM7_QV100_mascar_would_change_on/config_volta_islip.icnt
+A	configs/hrl-repro/SM7_QV100_mascar_would_change_on/gpgpusim.config
+A	docs/papers/mascar_final_reproduction_report.md
+A	docs/papers/mascar_m0_current_gap_audit_guidance.md
+A	docs/papers/mascar_reading_notes.md
+A	docs/papers/mascar_repro_plan.md
+A	docs/papers/mascar_round_01_noop_config.md
+A	docs/papers/mascar_round_02_memory_pressure_telemetry.md
+A	docs/papers/mascar_round_03_would_change.md
+A	docs/papers/mascar_round_05_focused_validation.md
+A	experiments/paper-mascar/README.md
+A	experiments/paper-mascar/config_matrix.csv
+A	experiments/paper-mascar/final_summary.csv
+A	experiments/paper-mascar/focused_validation.csv
+A	experiments/paper-mascar/mascar_one_shot_checkpoint_log.md
+A	experiments/paper-mascar/memory_pressure_telemetry_check.csv
+A	experiments/paper-mascar/noop_behavior_check.csv
+A	experiments/paper-mascar/round_state.yaml
+A	experiments/paper-mascar/would_change_check.csv
+M	src/gpgpu-sim/gpu-sim.cc
+M	src/gpgpu-sim/shader.cc
+M	src/gpgpu-sim/shader.h
+M	tools/paper_repro/papers/mascar.yaml
+A	tools/paper_repro/task_prompts/mascar_one_shot_v1.md
+
+# git diff --stat hrl/paper/daws-repro-v0..HEAD
+ CLAUDE.md                                          |  17 +-
+ .../hrl-repro/SM7_QV100_mascar_noop_off/README.md  |   5 +
+ .../config_volta_islip.icnt                        |  74 ++
+ .../SM7_QV100_mascar_noop_off/gpgpusim.config      | 241 +++++++
+ .../hrl-repro/SM7_QV100_mascar_noop_on/README.md   |   5 +
+ .../config_volta_islip.icnt                        |  74 ++
+ .../SM7_QV100_mascar_noop_on/gpgpusim.config       | 244 +++++++
+ .../hrl-repro/SM7_QV100_mascar_policy_on/README.md |   6 +
+ .../config_volta_islip.icnt                        |  74 ++
+ .../SM7_QV100_mascar_policy_on/gpgpusim.config     | 246 +++++++
+ .../SM7_QV100_mascar_telemetry_on/README.md        |   5 +
+ .../config_volta_islip.icnt                        |  74 ++
+ .../SM7_QV100_mascar_telemetry_on/gpgpusim.config  | 245 +++++++
+ .../SM7_QV100_mascar_would_change_on/README.md     |   5 +
+ .../config_volta_islip.icnt                        |  74 ++
+ .../gpgpusim.config                                | 247 +++++++
+ docs/papers/mascar_final_reproduction_report.md    | 200 ++++++
+ .../papers/mascar_m0_current_gap_audit_guidance.md | 241 +++++++
+ docs/papers/mascar_reading_notes.md                | 117 +++
+ docs/papers/mascar_repro_plan.md                   | 132 ++++
+ docs/papers/mascar_round_01_noop_config.md         |  76 ++
+ .../mascar_round_02_memory_pressure_telemetry.md   |  77 ++
+ docs/papers/mascar_round_03_would_change.md        |  78 ++
+ docs/papers/mascar_round_05_focused_validation.md  |  62 ++
+ experiments/paper-mascar/README.md                 |  32 +
+ experiments/paper-mascar/config_matrix.csv         |  13 +
+ experiments/paper-mascar/final_summary.csv         |  24 +
+ experiments/paper-mascar/focused_validation.csv    |  19 +
+ .../paper-mascar/mascar_one_shot_checkpoint_log.md | 183 +++++
+ .../memory_pressure_telemetry_check.csv            |  13 +
+ experiments/paper-mascar/noop_behavior_check.csv   |   6 +
+ experiments/paper-mascar/round_state.yaml          |  54 ++
+ experiments/paper-mascar/would_change_check.csv    |   9 +
+ src/gpgpu-sim/gpu-sim.cc                           |  42 ++
+ src/gpgpu-sim/shader.cc                            |  39 +
+ src/gpgpu-sim/shader.h                             | 127 ++++
+ tools/paper_repro/papers/mascar.yaml               | 164 ++---
+ .../paper_repro/task_prompts/mascar_one_shot_v1.md | 781 +++++++++++++++++++++
+ 38 files changed, 4024 insertions(+), 101 deletions(-)
+
+# git diff --stat baseline-a4ce3fe..HEAD
+ tools/paper_repro/codex_review_stub.py             | 179 +++++
+ tools/paper_repro/gpt_review_stub.py               |  92 +++
+ .../paper_repro/gpt_supervisor_policy.example.yaml |  32 +
+ tools/paper_repro/job_queue.example.yaml           |  42 ++
+ tools/paper_repro/job_queue.smoke.yaml             |  45 ++
+ tools/paper_repro/job_queue.tomorrow.template.yaml | 143 ++++
+ tools/paper_repro/job_queue.tomorrow.yaml          | 127 ++++
+ tools/paper_repro/job_queue.tomorrow.yaml.example  | 114 +++
+ tools/paper_repro/make_round_prompt.py             | 110 +++
+ tools/paper_repro/next_action.example.yaml         |   6 +
+ .../paper_preplan.tomorrow.example.yaml            |  79 +++
+ tools/paper_repro/paper_preplan_template.yaml      |  74 ++
+ tools/paper_repro/papers/ccws.yaml                 | 104 +++
+ tools/paper_repro/papers/daws.yaml                 | 130 ++++
+ tools/paper_repro/papers/mascar.yaml               |  80 +++
+ tools/paper_repro/papers/pcal.yaml                 | 105 +++
+ tools/paper_repro/preplans/mascar_preplan.yaml     | 109 +++
+ tools/paper_repro/preplans/pcal_preplan.yaml       | 106 +++
+ tools/paper_repro/queue_state.example.yaml         |  18 +
+ tools/paper_repro/review_packet_template.md        |  37 +
+ tools/paper_repro/reviewer_policy.example.yaml     |  30 +
+ tools/paper_repro/risk_policy.md                   |  85 +++
+ tools/paper_repro/run_queue.sh                     |  27 +
+ .../paper_repro/schemas/paper_config.example.yaml  |  65 ++
+ tools/paper_repro/schemas/result_csv_fields.md     |  47 ++
+ tools/paper_repro/schemas/round_state.example.yaml |  37 +
+ tools/paper_repro/smoke_test_state.yaml            |  36 +
+ tools/paper_repro/stage_guard.sh                   |  44 ++
+ tools/paper_repro/stop_rules.md                    |  73 ++
+ tools/paper_repro/supervisor.py                    | 285 ++++++++
+ .../paper_repro/task_prompts/mascar_one_shot_v1.md | 781 +++++++++++++++++++++
+ tools/paper_repro/templates/00_reading.md          |  33 +
+ tools/paper_repro/templates/01_noop.md             |  34 +
+ tools/paper_repro/templates/02_telemetry.md        |  33 +
+ tools/paper_repro/templates/03_would_change.md     |  31 +
+ .../paper_repro/templates/04_minimal_mechanism.md  |  33 +
+ .../paper_repro/templates/05_focused_validation.md |  43 ++
+ .../templates/06_standard_validation.md            |  37 +
+ tools/paper_repro/templates/07_final_report.md     |  43 ++
+ 240 files changed, 23626 insertions(+)

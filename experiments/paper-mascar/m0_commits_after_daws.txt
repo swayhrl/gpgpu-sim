@@ -1,0 +1,17 @@
+c4c9754 docs: add Mascar M0 audit guidance
+a8e9b5e mascar: canonicalize final metadata wording
+b504f27 mascar: fix final report metadata wording
+3671c37 mascar: clean final review metadata
+2f00d92 mascar: finalize review-ready reproduction artifacts
+8f34e18 mascar: align final metadata and limitations
+c2be1c7 mascar: clarify approximate reproduction wording
+1cf21c0 docs: update CLAUDE.md — Mascar reproduction complete
+4fb1338 mascar: Phase 6 final report — approximate reproduction complete
+6506156 mascar: Phase 5 focused validation — 9 workloads, no deadlock
+ee86829 mascar: Phase 4 minimal scheduling policy — skip gate working
+3d18536 mascar: add would-change scheduling telemetry
+4084056 mascar: add memory pressure telemetry
+0f9530f mascar: add no-op config and stats
+5979161 mascar: add reading notes and reproduction plan
+1c06628 tools: add Mascar one-shot reproduction prompt
+32cb97b tools: add Mascar one-shot reproduction prompt

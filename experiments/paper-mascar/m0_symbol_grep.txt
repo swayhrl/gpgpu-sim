@@ -1,0 +1,299 @@
+# Mascar direct symbols in simulator/config/docs
+src/gpgpu-sim/gpu-sim.cc:766:  // Mascar: Speeding up GPU Warps by Reducing Memory Pitstops (HPCA 2015)
+src/gpgpu-sim/gpu-sim.cc:767:  option_parser_register(opp, "-gpgpu_enable_mascar", OPT_INT32,
+src/gpgpu-sim/gpu-sim.cc:768:                         &gpgpu_enable_mascar,
+src/gpgpu-sim/gpu-sim.cc:769:                         "Enable Mascar memory-pitstop-aware scheduling (0=off)", "0");
+src/gpgpu-sim/gpu-sim.cc:770:  option_parser_register(opp, "-gpgpu_mascar_enable_telemetry", OPT_INT32,
+src/gpgpu-sim/gpu-sim.cc:771:                         &gpgpu_mascar_enable_telemetry,
+src/gpgpu-sim/gpu-sim.cc:772:                         "Mascar Phase 2: enable memory stall probe (0=off)", "0");
+src/gpgpu-sim/gpu-sim.cc:773:  option_parser_register(opp, "-gpgpu_mascar_enable_would_deprioritize", OPT_INT32,
+src/gpgpu-sim/gpu-sim.cc:774:                         &gpgpu_mascar_enable_would_deprioritize,
+src/gpgpu-sim/gpu-sim.cc:775:                         "Mascar Phase 3: enable would-deprioritize telemetry (0=off)", "0");
+src/gpgpu-sim/gpu-sim.cc:776:  option_parser_register(opp, "-gpgpu_mascar_enable_scheduling", OPT_INT32,
+src/gpgpu-sim/gpu-sim.cc:777:                         &gpgpu_mascar_enable_scheduling,
+src/gpgpu-sim/gpu-sim.cc:778:                         "Mascar Phase 4: enable actual scheduler skip (0=off)", "0");
+src/gpgpu-sim/gpu-sim.cc:779:  option_parser_register(opp, "-gpgpu_mascar_stall_threshold", OPT_UINT32,
+src/gpgpu-sim/gpu-sim.cc:780:                         &gpgpu_mascar_stall_threshold,
+src/gpgpu-sim/gpu-sim.cc:781:                         "Mascar consecutive stall cycles to trigger deprioritize (default 8)", "8");
+src/gpgpu-sim/gpu-sim.cc:782:  option_parser_register(opp, "-gpgpu_mascar_max_skip_streak", OPT_UINT32,
+src/gpgpu-sim/gpu-sim.cc:783:                         &gpgpu_mascar_max_skip_streak,
+src/gpgpu-sim/gpu-sim.cc:784:                         "Mascar max consecutive skips before force-allow (default 4)", "4");
+src/gpgpu-sim/gpu-sim.cc:785:  option_parser_register(opp, "-gpgpu_mascar_debug", OPT_INT32,
+src/gpgpu-sim/gpu-sim.cc:786:                         &gpgpu_mascar_debug,
+src/gpgpu-sim/gpu-sim.cc:787:                         "Mascar per-cycle debug trace (0=off)", "0");
+src/gpgpu-sim/gpu-sim.cc:1816:  // paper_mascar: Mascar reproduction stats (Mahmoud et al. HPCA 2015)
+src/gpgpu-sim/gpu-sim.cc:1817:  fprintf(stdout, "paper_mascar_enabled = %d\n",
+src/gpgpu-sim/gpu-sim.cc:1818:          m_shader_config->gpgpu_enable_mascar);
+src/gpgpu-sim/gpu-sim.cc:1824:      m_cluster[i]->get_mascar_stats(mem_stall_event, saturation_event,
+src/gpgpu-sim/gpu-sim.cc:1827:    fprintf(stdout, "paper_mascar_mem_stall_event = %llu\n", mem_stall_event);
+src/gpgpu-sim/gpu-sim.cc:1828:    fprintf(stdout, "paper_mascar_saturation_event = %llu\n", saturation_event);
+src/gpgpu-sim/gpu-sim.cc:1829:    fprintf(stdout, "paper_mascar_pitstop_event = %llu\n", pitstop_event);
+src/gpgpu-sim/gpu-sim.cc:1830:    fprintf(stdout, "paper_mascar_would_deprioritize = %llu\n", would_deprioritize);
+src/gpgpu-sim/gpu-sim.cc:1831:    fprintf(stdout, "paper_mascar_skip_count = %llu\n", skip_count);
+src/gpgpu-sim/gpu-sim.cc:1832:    fprintf(stdout, "paper_mascar_allow_count = %llu\n", allow_count);
+src/gpgpu-sim/shader.h:1813:  // Mascar: Speeding up GPU Warps by Reducing Memory Pitstops (HPCA 2015)
+src/gpgpu-sim/shader.h:1814:  // All default off (0). gpgpu_enable_mascar=0 → zero behavior change vs. baseline.
+src/gpgpu-sim/shader.h:1815:  int gpgpu_enable_mascar;
+src/gpgpu-sim/shader.h:1816:  int gpgpu_mascar_enable_telemetry;       // Phase 2: memory stall probe
+src/gpgpu-sim/shader.h:1817:  int gpgpu_mascar_enable_would_deprioritize; // Phase 3: would-deprioritize telemetry
+src/gpgpu-sim/shader.h:1818:  int gpgpu_mascar_enable_scheduling;      // Phase 4: actual scheduler skip
+src/gpgpu-sim/shader.h:1819:  unsigned gpgpu_mascar_stall_threshold;   // consecutive stall cycles to trigger (default 8)
+src/gpgpu-sim/shader.h:1820:  unsigned gpgpu_mascar_max_skip_streak;   // max consecutive skips before force-allow (default 4)
+src/gpgpu-sim/shader.h:1821:  int gpgpu_mascar_debug;
+src/gpgpu-sim/shader.h:2365:  // Mascar: aggregate all Mascar counters from this SM
+src/gpgpu-sim/shader.h:2366:  void get_mascar_stats(unsigned long long &mem_stall_event,
+src/gpgpu-sim/shader.h:2372:    mem_stall_event    += m_mascar_mem_stall_event;
+src/gpgpu-sim/shader.h:2373:    saturation_event   += m_mascar_saturation_event;
+src/gpgpu-sim/shader.h:2374:    pitstop_event      += m_mascar_pitstop_event;
+src/gpgpu-sim/shader.h:2375:    would_deprioritize += m_mascar_would_deprioritize;
+src/gpgpu-sim/shader.h:2376:    skip_count         += m_mascar_skip_count;
+src/gpgpu-sim/shader.h:2377:    allow_count        += m_mascar_allow_count;
+src/gpgpu-sim/shader.h:2380:  // Mascar Phase 2: record when a warp's memory instruction can't issue
+src/gpgpu-sim/shader.h:2383:  void mascar_record_mem_stall(unsigned warp_id) {
+src/gpgpu-sim/shader.h:2384:    if (!m_config->gpgpu_enable_mascar ||
+src/gpgpu-sim/shader.h:2385:        !m_config->gpgpu_mascar_enable_telemetry)
+src/gpgpu-sim/shader.h:2387:    if (warp_id >= m_mascar_stall_streak.size()) return;
+src/gpgpu-sim/shader.h:2388:    m_mascar_stall_streak[warp_id]++;
+src/gpgpu-sim/shader.h:2389:    m_mascar_mem_stall_event++;
+src/gpgpu-sim/shader.h:2390:    unsigned streak = m_mascar_stall_streak[warp_id];
+src/gpgpu-sim/shader.h:2392:    if (streak == m_config->gpgpu_mascar_stall_threshold)
+src/gpgpu-sim/shader.h:2393:      m_mascar_pitstop_event++;
+src/gpgpu-sim/shader.h:2395:    if (streak >= m_config->gpgpu_mascar_stall_threshold) {
+src/gpgpu-sim/shader.h:2397:      for (unsigned w = 0; w < m_mascar_stall_streak.size(); w++)
+src/gpgpu-sim/shader.h:2398:        if (m_mascar_stall_streak[w] >= m_config->gpgpu_mascar_stall_threshold)
+src/gpgpu-sim/shader.h:2400:      unsigned half_warps = (unsigned)m_mascar_stall_streak.size() / 2;
+src/gpgpu-sim/shader.h:2402:        m_mascar_saturation_event++;
+src/gpgpu-sim/shader.h:2406:  // Mascar Phase 2: reset stall streak when warp successfully issues a memory op
+src/gpgpu-sim/shader.h:2407:  void mascar_reset_stall_streak(unsigned warp_id) {
+src/gpgpu-sim/shader.h:2408:    if (!m_config->gpgpu_enable_mascar ||
+src/gpgpu-sim/shader.h:2409:        !m_config->gpgpu_mascar_enable_telemetry)
+src/gpgpu-sim/shader.h:2411:    if (warp_id >= m_mascar_stall_streak.size()) return;
+src/gpgpu-sim/shader.h:2412:    m_mascar_stall_streak[warp_id] = 0;
+src/gpgpu-sim/shader.h:2415:  // Mascar Phase 3: would-deprioritize check — passive, no scheduling change.
+src/gpgpu-sim/shader.h:2418:  void mascar_check_would_deprioritize(unsigned warp_id) {
+src/gpgpu-sim/shader.h:2419:    if (!m_config->gpgpu_enable_mascar ||
+src/gpgpu-sim/shader.h:2420:        !m_config->gpgpu_mascar_enable_would_deprioritize)
+src/gpgpu-sim/shader.h:2422:    if (warp_id >= m_mascar_stall_streak.size()) return;
+src/gpgpu-sim/shader.h:2423:    if (m_mascar_stall_streak[warp_id] >= 2)
+src/gpgpu-sim/shader.h:2424:      m_mascar_would_deprioritize++;
+src/gpgpu-sim/shader.h:2427:  // Mascar Phase 4: scheduler skip gate — returns true if warp should be
+src/gpgpu-sim/shader.h:2432:  bool mascar_skip_gate_warp(unsigned warp_id) {
+src/gpgpu-sim/shader.h:2433:    if (!m_config->gpgpu_enable_mascar ||
+src/gpgpu-sim/shader.h:2434:        !m_config->gpgpu_mascar_enable_scheduling)
+src/gpgpu-sim/shader.h:2436:    if (warp_id >= m_mascar_stall_streak.size()) return false;
+src/gpgpu-sim/shader.h:2437:    if (m_mascar_stall_streak[warp_id] < m_config->gpgpu_mascar_stall_threshold)
+src/gpgpu-sim/shader.h:2440:    if (warp_id < m_mascar_skip_streak.size() &&
+src/gpgpu-sim/shader.h:2441:        m_mascar_skip_streak[warp_id] >= m_config->gpgpu_mascar_max_skip_streak) {
+src/gpgpu-sim/shader.h:2442:      m_mascar_skip_streak[warp_id] = 0;
+src/gpgpu-sim/shader.h:2443:      m_mascar_allow_count++;
+src/gpgpu-sim/shader.h:2447:    if (warp_id < m_mascar_skip_streak.size())
+src/gpgpu-sim/shader.h:2448:      m_mascar_skip_streak[warp_id]++;
+src/gpgpu-sim/shader.h:2449:    m_mascar_skip_count++;
+src/gpgpu-sim/shader.h:2454:  void mascar_reset_skip_streak(unsigned warp_id) {
+src/gpgpu-sim/shader.h:2455:    if (!m_config->gpgpu_enable_mascar ||
+src/gpgpu-sim/shader.h:2456:        !m_config->gpgpu_mascar_enable_scheduling)
+src/gpgpu-sim/shader.h:2458:    if (warp_id < m_mascar_skip_streak.size())
+src/gpgpu-sim/shader.h:2459:      m_mascar_skip_streak[warp_id] = 0;
+src/gpgpu-sim/shader.h:2917:  // Mascar Phase 2: memory stall telemetry counters (per-SM, passive)
+src/gpgpu-sim/shader.h:2918:  std::vector<unsigned> m_mascar_stall_streak;  // per-warp consecutive stall count
+src/gpgpu-sim/shader.h:2919:  unsigned long long m_mascar_mem_stall_event;
+src/gpgpu-sim/shader.h:2920:  unsigned long long m_mascar_saturation_event;
+src/gpgpu-sim/shader.h:2921:  unsigned long long m_mascar_pitstop_event;
+src/gpgpu-sim/shader.h:2922:  // Mascar Phase 3: would-deprioritize telemetry counters (per-SM, passive)
+src/gpgpu-sim/shader.h:2923:  unsigned long long m_mascar_would_deprioritize;
+src/gpgpu-sim/shader.h:2924:  // Mascar Phase 4: real scheduling policy counters
+src/gpgpu-sim/shader.h:2925:  std::vector<unsigned> m_mascar_skip_streak;   // per-warp consecutive skip count
+src/gpgpu-sim/shader.h:2926:  unsigned long long m_mascar_skip_count;
+src/gpgpu-sim/shader.h:2927:  unsigned long long m_mascar_allow_count;
+src/gpgpu-sim/shader.h:3038:  // Mascar: aggregate Mascar counters across all cores in this cluster
+src/gpgpu-sim/shader.h:3039:  void get_mascar_stats(unsigned long long &mem_stall_event,
+docs/papers/mascar_round_02_memory_pressure_telemetry.md:1:# Mascar Round 02：Memory Pressure Telemetry
+docs/papers/mascar_round_02_memory_pressure_telemetry.md:5:**分支**：hrl/paper/mascar-repro-v0
+docs/papers/mascar_round_02_memory_pressure_telemetry.md:20:| src/gpgpu-sim/shader.h | 修改 | 添加 mascar_record_mem_stall / mascar_reset_stall_streak 方法 |
+docs/papers/mascar_round_02_memory_pressure_telemetry.md:22:| configs/hrl-repro/SM7_QV100_mascar_telemetry_on/ | 新建 | telemetry_on config |
+docs/papers/mascar_round_02_memory_pressure_telemetry.md:29:- 成功 issue：调用 `mascar_reset_stall_streak(warp_id)` 重置 streak
+docs/papers/mascar_round_02_memory_pressure_telemetry.md:30:- 失败（m_mem_out 满）：调用 `mascar_record_mem_stall(warp_id)` 记录 stall 事件
+docs/papers/mascar_round_01_noop_config.md:1:# Mascar Round 01：No-op Config + Stats
+docs/papers/mascar_round_01_noop_config.md:5:**分支**：hrl/paper/mascar-repro-v0
+docs/papers/mascar_round_01_noop_config.md:11:添加 Mascar config knobs（全部默认关闭）和 paper_mascar_* stats 占位。
+docs/papers/mascar_round_01_noop_config.md:20:| src/gpgpu-sim/shader.h | 修改 | 添加 Mascar config knobs 和 stats 变量 |
+docs/papers/mascar_round_01_noop_config.md:21:| src/gpgpu-sim/shader.cc | 修改 | 添加 Mascar 计数器初始化和 cluster 聚合方法 |
+docs/papers/mascar_round_01_noop_config.md:23:| configs/hrl-repro/SM7_QV100_mascar_noop_off/ | 新建 | feature_off config |
+docs/papers/mascar_round_01_noop_config.md:24:| configs/hrl-repro/SM7_QV100_mascar_noop_on/ | 新建 | feature_on_noop config |
+docs/papers/mascar_round_01_noop_config.md:32:| gpgpu_enable_mascar | 0 | master enable |
+docs/papers/mascar_round_01_noop_config.md:33:| gpgpu_mascar_enable_telemetry | 0 | Phase 2: memory stall probe |
+docs/papers/mascar_round_01_noop_config.md:34:| gpgpu_mascar_enable_would_deprioritize | 0 | Phase 3: would-deprioritize telemetry |
+docs/papers/mascar_round_01_noop_config.md:35:| gpgpu_mascar_enable_scheduling | 0 | Phase 4: actual scheduler skip |
+docs/papers/mascar_round_01_noop_config.md:36:| gpgpu_mascar_stall_threshold | 8 | consecutive stall cycles to trigger |
+docs/papers/mascar_round_01_noop_config.md:37:| gpgpu_mascar_max_skip_streak | 4 | max consecutive skips before force-allow |
+docs/papers/mascar_round_01_noop_config.md:38:| gpgpu_mascar_debug | 0 | debug trace |
+docs/papers/mascar_round_01_noop_config.md:46:| paper_mascar_enabled | = gpgpu_enable_mascar |
+docs/papers/mascar_round_01_noop_config.md:47:| paper_mascar_mem_stall_event | per-warp stall 累积次数 |
+docs/papers/mascar_round_01_noop_config.md:48:| paper_mascar_saturation_event | 内存饱和事件计数 |
+docs/papers/mascar_round_01_noop_config.md:49:| paper_mascar_pitstop_event | pitstop 进入事件计数 |
+docs/papers/mascar_round_01_noop_config.md:50:| paper_mascar_would_deprioritize | would-deprioritize 计数 |
+docs/papers/mascar_round_01_noop_config.md:51:| paper_mascar_skip_count | 实际 skip 计数 |
+docs/papers/mascar_round_01_noop_config.md:52:| paper_mascar_allow_count | force-allow 计数（防 deadlock） |
+docs/papers/mascar_round_01_noop_config.md:58:| Workload | Config | sim_cycle | baseline_cycle | cycle_delta | mascar_* stats | PASS |
+docs/papers/mascar_round_01_noop_config.md:73:- [x] paper_mascar_* 行为计数全部为 0
+docs/papers/mascar_round_01_noop_config.md:74:- [x] 没有真实 Mascar 行为改动
+docs/papers/mascar_repro_plan.md:1:# Mascar Approximate Reproduction Plan
+docs/papers/mascar_repro_plan.md:3:**论文**：Mascar: Speeding up GPU Warps by Reducing Memory Pitstops (HPCA 2015)
+docs/papers/mascar_repro_plan.md:4:**分支**：hrl/paper/mascar-repro-v0
+docs/papers/mascar_repro_plan.md:11:在 GPGPU-Sim 上实现 Mascar 近似复现（approximate reproduction）：
+docs/papers/mascar_repro_plan.md:21:Mascar 检测 warp 的 memory subsystem 是否饱和（"memory pitstop"），并在 pitstop 状态时降低该 warp 的调度优先级，让 memory subsystem 有机会排空，同时调度其他 warp 执行。
+docs/papers/mascar_repro_plan.md:46:- [x] 添加 paper_mascar_* stats 占位（行为不变）
+docs/papers/mascar_repro_plan.md:94:| SM7_QV100_mascar_noop_off | feature_off，所有 mascar knob = 0 |
+docs/papers/mascar_repro_plan.md:95:| SM7_QV100_mascar_noop_on | feature_on_noop，enable_mascar=1 但无 telemetry |
+docs/papers/mascar_repro_plan.md:96:| SM7_QV100_mascar_telemetry_on | enable_telemetry=1 |
+docs/papers/mascar_repro_plan.md:97:| SM7_QV100_mascar_would_change_on | enable_would_deprioritize=1 |
+docs/papers/mascar_repro_plan.md:98:| SM7_QV100_mascar_policy_on | enable_scheduling=1（最小 policy） |
+docs/papers/mascar_repro_plan.md:104:- `gpgpu_mascar_max_skip_streak >= 1`（防 deadlock）
+docs/papers/mascar_reading_notes.md:1:# Mascar Reading Notes
+docs/papers/mascar_reading_notes.md:3:**论文**：Mascar: Speeding up GPU Warps by Reducing Memory Pitstops
+docs/papers/mascar_reading_notes.md:30:## 3. Mascar 核心方法
+docs/papers/mascar_reading_notes.md:47:- 这是 Mascar 相比简单 DAWS-style throttling 的主要区别；
+docs/papers/mascar_reading_notes.md:59:| 论文 | 核心信号 | 调度动作 | 与 Mascar 区别 |
+docs/papers/mascar_reading_notes.md:61:| CCWS | VTA probe（cache miss 导致的 warp 局部性下降）| 降低 LLS score 低的 warp 优先级 | CCWS 关注 cache 命中率；Mascar 关注 MSHR 饱和 |
+docs/papers/mascar_reading_notes.md:62:| DAWS | Thread divergence（active_count < warp_size） | Throttle 发散 warp | DAWS 关注分叉效率；Mascar 关注内存饱和 |
+docs/papers/mascar_reading_notes.md:63:| PCAL | Cache miss rate + warp priority | Per-warp cache bypass/admission | PCAL 改 cache 行为；Mascar 改 scheduling |
+docs/papers/mascar_reading_notes.md:64:| Mascar | MSHR / memory queue saturation | Deprioritize saturated warp | 内存感知调度，不改 cache 替换 |
+docs/papers/mascar_reading_notes.md:72:| Mascar 概念 | GPGPU-Sim 模块 | 近似实现 |
+docs/papers/mascar_reading_notes.md:80:**关键 hook 位置**：`scheduler_unit::cycle()` 中，在 candidate warp 被 issue 前，检查其 `m_mascar_stall_streak` 是否超过 `gpgpu_mascar_stall_threshold`；若超过且本 warp skip 次数 < `gpgpu_mascar_max_skip_streak`，跳过并继续下一个候选。
+docs/papers/mascar_reading_notes.md:110:**可行性判断**：Mascar approximate reproduction 在不实现 re-execution 的前提下，可以安全地：
+docs/papers/mascar_final_reproduction_report.md:1:# Mascar Approximate Reproduction Final Report
+docs/papers/mascar_final_reproduction_report.md:3:> **Canonical final artifact** for the Mascar approximate reproduction.
+docs/papers/mascar_final_reproduction_report.md:4:> Branch: hrl/paper/mascar-repro-v0
+docs/papers/mascar_final_reproduction_report.md:8:**Branch**: hrl/paper/mascar-repro-v0  
+docs/papers/mascar_final_reproduction_report.md:16:Mascar identifies "memory pitstops" — situations where GPU warps are repeatedly stalled
+docs/papers/mascar_final_reproduction_report.md:39:The original Mascar paper monitors MSHR occupancy and memory pipeline utilization.
+docs/papers/mascar_final_reproduction_report.md:45:- **Streak counter**: Per-warp `m_mascar_stall_streak[]` incremented on each stall
+docs/papers/mascar_final_reproduction_report.md:47:- **Deadlock prevention**: Per-warp `m_mascar_skip_streak[]` + `max_skip_streak` force-allow
+docs/papers/mascar_final_reproduction_report.md:55:[memory inst?] → CCWS check → [Mascar skip gate] → m_mem_out check → issue/stall
+docs/papers/mascar_final_reproduction_report.md:75:All knob names follow the `gpgpu_mascar_*` prefix convention:
+docs/papers/mascar_final_reproduction_report.md:79:| `gpgpu_enable_mascar` | 0 | 1 | Master enable (master guard) |
+docs/papers/mascar_final_reproduction_report.md:80:| `gpgpu_mascar_enable_telemetry` | 0 | 1 | Enable stall streak tracking |
+docs/papers/mascar_final_reproduction_report.md:81:| `gpgpu_mascar_enable_would_deprioritize` | 0 | 1 | Enable would-skip telemetry |
+docs/papers/mascar_final_reproduction_report.md:82:| `gpgpu_mascar_enable_scheduling` | 0 | 1 | Enable real scheduler skip |
+docs/papers/mascar_final_reproduction_report.md:83:| `gpgpu_mascar_stall_threshold` | 8 | 2 | Streak to trigger skip |
+docs/papers/mascar_final_reproduction_report.md:84:| `gpgpu_mascar_max_skip_streak` | 4 | 4 | Skips before force-allow (deadlock guard) |
+docs/papers/mascar_final_reproduction_report.md:85:| `gpgpu_mascar_debug` | 0 | 0 | Debug prints |
+docs/papers/mascar_final_reproduction_report.md:87:**Note on threshold=2**: The original Mascar paper targets significant memory saturation
+docs/papers/mascar_final_reproduction_report.md:95:**Configs**: mascar_noop_off (baseline) vs mascar_policy_on (threshold=2, max_skip_streak=4)  
+docs/papers/mascar_final_reproduction_report.md:96:**Data**: experiments/paper-mascar/focused_validation.csv
+docs/papers/mascar_final_reproduction_report.md:158:  all paper_mascar_* stats = 0 ✓
+docs/papers/mascar_final_reproduction_report.md:178:The Mascar memory-pitstop scheduling mechanism has been implemented as a
+docs/papers/mascar_final_reproduction_report.md:182:- Feature flag (`gpgpu_enable_mascar=0`) preserves baseline exactly
+docs/papers/mascar_m0_current_gap_audit_guidance.md:1:# Mascar M0 Detailed Guidance: Current Branch Audit, Gap Document, and Workspace Cleanup
+docs/papers/mascar_m0_current_gap_audit_guidance.md:5:This is M0 of the Mascar reproduction effort.
+docs/papers/mascar_m0_current_gap_audit_guidance.md:7:M0 is not an implementation round. It must not change simulator behavior. Its purpose is to freeze and understand the existing hrl/paper/mascar-repro-v0 branch, document the exact gap between the current approximate Mascar reproduction and the paper mechanism, and leave a clean review package for GPT.
+docs/papers/mascar_m0_current_gap_audit_guidance.md:20:  hrl/paper/mascar-repro-v0
+docs/papers/mascar_m0_current_gap_audit_guidance.md:39:  docs/papers/mascar_m0_gap_audit.md
+docs/papers/mascar_m0_current_gap_audit_guidance.md:40:  experiments/paper-mascar/m0_postcheck.md
+docs/papers/mascar_m0_current_gap_audit_guidance.md:41:  small audit text files under experiments/paper-mascar/
+docs/papers/mascar_m0_current_gap_audit_guidance.md:44:  /workspace/tmp/mascar_m0_review_pack_YYYYMMDD_HHMMSS.tar.gz
+docs/papers/mascar_m0_current_gap_audit_guidance.md:79:Inspect the current Mascar-related implementation.
+docs/papers/mascar_m0_current_gap_audit_guidance.md:96:  mascar
+docs/papers/mascar_m0_current_gap_audit_guidance.md:97:  MASCAR
+docs/papers/mascar_m0_current_gap_audit_guidance.md:98:  paper_mascar
+docs/papers/mascar_m0_current_gap_audit_guidance.md:111:For each current Mascar-like feature, record:
+docs/papers/mascar_m0_current_gap_audit_guidance.md:163:  docs/papers/mascar_m0_gap_audit.md
+docs/papers/mascar_m0_current_gap_audit_guidance.md:168:   State clearly whether current branch is exact paper-like Mascar, approximate/proxy Mascar, or only telemetry.
+docs/papers/mascar_m0_current_gap_audit_guidance.md:178:   List the target Mascar mechanisms.
+docs/papers/mascar_m0_current_gap_audit_guidance.md:207:  experiments/paper-mascar/m0_postcheck.md
+docs/papers/mascar_m0_current_gap_audit_guidance.md:222:  experiments/paper-mascar/m0_commits_after_daws.txt
+docs/papers/mascar_m0_current_gap_audit_guidance.md:223:  experiments/paper-mascar/m0_diff_name_status_vs_daws.txt
+docs/papers/mascar_m0_current_gap_audit_guidance.md:224:  experiments/paper-mascar/m0_symbol_grep.txt
+docs/papers/mascar_m0_current_gap_audit_guidance.md:231:  /workspace/tmp/mascar_m0_review_pack_YYYYMMDD_HHMMSS.tar.gz
+docs/papers/mascar_m0_current_gap_audit_guidance.md:234:  docs/papers/mascar_m0_gap_audit.md
+docs/papers/mascar_m0_current_gap_audit_guidance.md:235:  docs/papers/mascar_m0_current_gap_audit_guidance.md
+docs/papers/mascar_m0_current_gap_audit_guidance.md:236:  experiments/paper-mascar/m0_postcheck.md
+docs/papers/mascar_m0_current_gap_audit_guidance.md:237:  experiments/paper-mascar/m0_commits_after_daws.txt if present
+docs/papers/mascar_m0_current_gap_audit_guidance.md:238:  experiments/paper-mascar/m0_diff_name_status_vs_daws.txt if present
+docs/papers/mascar_m0_current_gap_audit_guidance.md:239:  experiments/paper-mascar/m0_symbol_grep.txt if present
+src/gpgpu-sim/shader.cc:519:  // Mascar Phase 2: initialize memory stall telemetry counters
+src/gpgpu-sim/shader.cc:520:  m_mascar_stall_streak.assign(config->max_warps_per_shader, 0);
+src/gpgpu-sim/shader.cc:521:  m_mascar_mem_stall_event = 0;
+src/gpgpu-sim/shader.cc:522:  m_mascar_saturation_event = 0;
+src/gpgpu-sim/shader.cc:523:  m_mascar_pitstop_event = 0;
+src/gpgpu-sim/shader.cc:524:  // Mascar Phase 3: initialize would-deprioritize counter
+src/gpgpu-sim/shader.cc:525:  m_mascar_would_deprioritize = 0;
+src/gpgpu-sim/shader.cc:526:  // Mascar Phase 4: initialize skip policy counters
+
+# Missing-mechanism search terms
+tools/paper_repro/papers/mascar.yaml:47:  faithful_replay_or_reexecution: false
+tools/paper_repro/papers/mascar.yaml:64:  - "No true replay/re-execution."
+docs/papers/mascar_repro_plan.md:14:- 不实现 pipeline replay / re-execution；
+docs/papers/mascar_repro_plan.md:71:- 不实现 replay / re-execution
+docs/papers/mascar_repro_plan.md:107:- 不实现 re-execution/replay
+docs/papers/mascar_reading_notes.md:46:- 原论文可能涉及：pitstop warp 在内存返回后需要某种 re-launch 或 re-execution 机制；
+docs/papers/mascar_reading_notes.md:48:- **本次实现不涉及 pipeline replay 或 re-execution**，这是已知限制。
+docs/papers/mascar_reading_notes.md:104:| re-execution 范围蔓延 | 任何 re-execution/replay 语义都是 HARD STOP | Phase 4 前再次确认 |
+docs/papers/mascar_reading_notes.md:110:**可行性判断**：Mascar approximate reproduction 在不实现 re-execution 的前提下，可以安全地：
+docs/papers/mascar_reading_notes.md:115:**不可行部分**：真实 pipeline replay / re-execution（已知限制，文档化即可）。
+docs/papers/mascar_m0_current_gap_audit_guidance.md:10:M2 will implement paper-like EP/MP owner-warp scheduling.
+docs/papers/mascar_m0_current_gap_audit_guidance.md:11:M3 will attempt cache access re-execution.
+docs/papers/mascar_m0_current_gap_audit_guidance.md:99:  reexec
+docs/papers/mascar_m0_current_gap_audit_guidance.md:100:  re-exec
+docs/papers/mascar_m0_current_gap_audit_guidance.md:101:  owner
+docs/papers/mascar_m0_current_gap_audit_guidance.md:102:  owner_warp
+docs/papers/mascar_m0_current_gap_audit_guidance.md:130:   One owner warp has priority/exclusivity for memory requests.
+docs/papers/mascar_m0_current_gap_audit_guidance.md:135:4. WST and WRC:
+docs/papers/mascar_m0_current_gap_audit_guidance.md:136:   Warp Status Table has per-warp memory-operation and stall state.
+docs/papers/mascar_m0_current_gap_audit_guidance.md:137:   Warp Readiness Checker determines next memory operation, owner status, and scoreboard dependency.
+docs/papers/mascar_m0_current_gap_audit_guidance.md:140:   Owner warp keeps issuing memory requests until it reaches an instruction dependent on its own long-latency load, then relinquishes ownership.
+docs/papers/mascar_m0_current_gap_audit_guidance.md:145:7. Non-owner memory handling:
+docs/papers/mascar_m0_current_gap_audit_guidance.md:146:   Non-owner memory requests may be allowed to hit in L1, but should not be allowed to send misses to L2 during MP saturation.
+docs/papers/mascar_m0_current_gap_audit_guidance.md:148:8. Cache access re-execution queue:
+docs/papers/mascar_m0_current_gap_audit_guidance.md:149:   Requests blocked by memory back-pressure can be moved into a re-execution queue.
+docs/papers/mascar_m0_current_gap_audit_guidance.md:151:   Non-owner miss should be NACKed/requeued.
+docs/papers/mascar_m0_current_gap_audit_guidance.md:155:   Only one memory instruction per warp should be in the re-execution queue at a time.
+docs/papers/mascar_m0_current_gap_audit_guidance.md:158:   Required stats include EP cycles, MP cycles, owner switch count, owner issue count, non-owner blocked count, saturation cycles, re-exec enqueue, re-exec hit, re-exec NACK, re-exec retry, and deadlock guard events.
+docs/papers/mascar_m0_current_gap_audit_guidance.md:194:   M2: EP/MP owner scheduling without re-exec
+docs/papers/mascar_m0_current_gap_audit_guidance.md:195:   M3: re-execution queue
+docs/papers/mascar_m0_current_gap_audit_guidance.md:199:   Include cache API risk, LSU request representation risk, scoreboard/owner-release risk, deadlock risk, and validation limitations.
+docs/papers/mascar_auto_reading_prompt_preview.md:12:    - no_pipeline_replay: first pass must NOT implement replay or re-execution
+docs/papers/mascar_final_reproduction_report.md:33:- **No pipeline replay or re-execution** — the paper's primary speedup source
+docs/papers/mascar_final_reproduction_report.md:133:| Replay/re-execution | Core speedup mechanism | NOT implemented |
+docs/papers/mascar_final_reproduction_report.md:145:| No pipeline replay/re-execution | Primary speedup source absent | Implement per-warp replay queue |
+docs/papers/mascar_final_reproduction_report.md:190:- No pipeline replay or re-execution (the paper's primary speedup source)
+experiments/paper-mascar/m0_symbol_grep.txt:163:docs/papers/mascar_reading_notes.md:110:**可行性判断**：Mascar approximate reproduction 在不实现 re-execution 的前提下，可以安全地：
+experiments/paper-mascar/m0_symbol_grep.txt:224:tools/paper_repro/papers/mascar.yaml:47:  faithful_replay_or_reexecution: false
+experiments/paper-mascar/m0_symbol_grep.txt:225:tools/paper_repro/papers/mascar.yaml:64:  - "No true replay/re-execution."
+experiments/paper-mascar/m0_symbol_grep.txt:226:docs/papers/mascar_repro_plan.md:14:- 不实现 pipeline replay / re-execution；
+experiments/paper-mascar/m0_symbol_grep.txt:227:docs/papers/mascar_repro_plan.md:71:- 不实现 replay / re-execution
+experiments/paper-mascar/m0_symbol_grep.txt:228:docs/papers/mascar_repro_plan.md:107:- 不实现 re-execution/replay
+experiments/paper-mascar/m0_symbol_grep.txt:229:docs/papers/mascar_reading_notes.md:46:- 原论文可能涉及：pitstop warp 在内存返回后需要某种 re-launch 或 re-execution 机制；
+experiments/paper-mascar/m0_symbol_grep.txt:230:docs/papers/mascar_reading_notes.md:48:- **本次实现不涉及 pipeline replay 或 re-execution**，这是已知限制。
+experiments/paper-mascar/m0_symbol_grep.txt:231:docs/papers/mascar_reading_notes.md:104:| re-execution 范围蔓延 | 任何 re-execution/replay 语义都是 HARD STOP | Phase 4 前再次确认 |
+experiments/paper-mascar/m0_symbol_grep.txt:232:docs/papers/mascar_reading_notes.md:110:**可行性判断**：Mascar approximate reproduction 在不实现 re-execution 的前提下，可以安全地：
+experiments/paper-mascar/m0_symbol_grep.txt:233:docs/papers/mascar_reading_notes.md:115:**不可行部分**：真实 pipeline replay / re-execution（已知限制，文档化即可）。
+experiments/paper-mascar/m0_symbol_grep.txt:234:docs/papers/mascar_m0_current_gap_audit_guidance.md:10:M2 will implement paper-like EP/MP owner-warp scheduling.
+experiments/paper-mascar/m0_symbol_grep.txt:235:docs/papers/mascar_m0_current_gap_audit_guidance.md:11:M3 will attempt cache access re-execution.
+experiments/paper-mascar/m0_symbol_grep.txt:236:docs/papers/mascar_m0_current_gap_audit_guidance.md:99:  reexec
+experiments/paper-mascar/m0_symbol_grep.txt:237:docs/papers/mascar_m0_current_gap_audit_guidance.md:100:  re-exec
+experiments/paper-mascar/m0_symbol_grep.txt:238:docs/papers/mascar_m0_current_gap_audit_guidance.md:101:  owner
+experiments/paper-mascar/m0_symbol_grep.txt:239:docs/papers/mascar_m0_current_gap_audit_guidance.md:102:  owner_warp
+experiments/paper-mascar/m0_symbol_grep.txt:240:docs/papers/mascar_m0_current_gap_audit_guidance.md:130:   One owner warp has priority/exclusivity for memory requests.
+experiments/paper-mascar/m0_symbol_grep.txt:241:docs/papers/mascar_m0_current_gap_audit_guidance.md:135:4. WST and WRC:
+experiments/paper-mascar/m0_symbol_grep.txt:242:docs/papers/mascar_m0_current_gap_audit_guidance.md:136:   Warp Status Table has per-warp memory-operation and stall state.
+experiments/paper-mascar/m0_symbol_grep.txt:243:docs/papers/mascar_m0_current_gap_audit_guidance.md:137:   Warp Readiness Checker determines next memory operation, owner status, and scoreboard dependency.
+experiments/paper-mascar/m0_symbol_grep.txt:244:docs/papers/mascar_m0_current_gap_audit_guidance.md:140:   Owner warp keeps issuing memory requests until it reaches an instruction dependent on its own long-latency load, then relinquishes ownership.
+experiments/paper-mascar/m0_symbol_grep.txt:245:docs/papers/mascar_m0_current_gap_audit_guidance.md:145:7. Non-owner memory handling:
+experiments/paper-mascar/m0_symbol_grep.txt:246:docs/papers/mascar_m0_current_gap_audit_guidance.md:146:   Non-owner memory requests may be allowed to hit in L1, but should not be allowed to send misses to L2 during MP saturation.
+experiments/paper-mascar/m0_symbol_grep.txt:247:docs/papers/mascar_m0_current_gap_audit_guidance.md:148:8. Cache access re-execution queue:
+experiments/paper-mascar/m0_symbol_grep.txt:248:docs/papers/mascar_m0_current_gap_audit_guidance.md:149:   Requests blocked by memory back-pressure can be moved into a re-execution queue.
+experiments/paper-mascar/m0_symbol_grep.txt:249:docs/papers/mascar_m0_current_gap_audit_guidance.md:151:   Non-owner miss should be NACKed/requeued.
+experiments/paper-mascar/m0_symbol_grep.txt:250:docs/papers/mascar_m0_current_gap_audit_guidance.md:155:   Only one memory instruction per warp should be in the re-execution queue at a time.
+experiments/paper-mascar/m0_symbol_grep.txt:251:docs/papers/mascar_m0_current_gap_audit_guidance.md:158:   Required stats include EP cycles, MP cycles, owner switch count, owner issue count, non-owner blocked count, saturation cycles, re-exec enqueue, re-exec hit, re-exec NACK, re-exec retry, and deadlock guard events.
+experiments/paper-mascar/m0_symbol_grep.txt:252:docs/papers/mascar_m0_current_gap_audit_guidance.md:194:   M2: EP/MP owner scheduling without re-exec
+experiments/paper-mascar/m0_symbol_grep.txt:253:docs/papers/mascar_m0_current_gap_audit_guidance.md:195:   M3: re-execution queue
+experiments/paper-mascar/m0_symbol_grep.txt:254:docs/papers/mascar_m0_current_gap_audit_guidance.md:199:   Include cache API risk, LSU request representation risk, scoreboard/owner-release risk, deadlock risk, and validation limitations.
+experiments/paper-mascar/m0_symbol_grep.txt:255:docs/papers/mascar_auto_reading_prompt_preview.md:12:    - no_pipeline_replay: first pass must NOT implement replay or re-execution
+experiments/paper-mascar/m0_symbol_grep.txt:256:docs/papers/mascar_final_reproduction_report.md:33:- **No pipeline replay or re-execution** — the paper's primary speedup source
+experiments/paper-mascar/m0_symbol_grep.txt:257:docs/papers/mascar_final_reproduction_report.md:133:| Replay/re-execution | Core speedup mechanism | NOT implemented |
+experiments/paper-mascar/m0_symbol_grep.txt:258:docs/papers/mascar_final_reproduction_report.md:145:| No pipeline replay/re-execution |
+experiments/paper-mascar/final_summary.csv:13:faithful_replay_or_reexecution,false
+experiments/paper-mascar/final_summary.csv:22:key_limitation,no true replay/re-execution; no true MSHR occupancy tracking; small workloads; tiny cycle impact
+experiments/paper-mascar/round_state.yaml:20:  faithful_replay_or_reexecution: false
+experiments/paper-mascar/round_state.yaml:38:  - no true replay/re-execution
