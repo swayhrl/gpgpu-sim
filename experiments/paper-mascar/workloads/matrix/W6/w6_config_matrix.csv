@@ -1,0 +1,7 @@
+config_id,config_path,config_role,enabled,notes
+baseline_off,configs/hrl-repro/SM7_QV100_mascar_baseline_off,baseline,1,gpgpu_enable_mascar=0 baseline comparator
+m2_owner_sched,configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on,scheduling_only,1,M2 active EP/MP owner scheduling
+m3_hitonly_nack,configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on,scheduling_hitonly,1,M3 active non-owner hit-only/NACK with M2 scheduling
+m4_reexec_load,configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on,scheduling_hitonly_reexec,1,M4 active load-only re-execution queue with M2/M3
+m1_l1sat_probe,configs/hrl-repro/SM7_QV100_mascar_l1sat_probe_on,l1_probe_only,0,disabled optional probe-only config
+m4_reexec_probe_only,configs/hrl-repro/SM7_QV100_mascar_m4_reexec_probe_on,reexec_probe_only,0,disabled optional passive reexec probe config

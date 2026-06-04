@@ -1,0 +1,10 @@
+config_id,paper_type,valid_pairs,explicit_pass_pairs,active_workloads,cycle_speedup_geomean,interpretation
+m2_owner_sched,M,2,1,0,1.000000,no_activation_no_mechanism_trend
+m2_owner_sched,C,4,0,0,1.000000,no_activation_no_mechanism_trend
+m2_owner_sched,all_ready,6,1,0,1.000000,no_activation_no_mechanism_trend
+m3_hitonly_nack,M,2,1,0,1.000000,no_activation_no_mechanism_trend
+m3_hitonly_nack,C,4,0,0,1.000000,no_activation_no_mechanism_trend
+m3_hitonly_nack,all_ready,6,1,0,1.000000,no_activation_no_mechanism_trend
+m4_reexec_load,M,2,1,0,1.000000,no_activation_no_mechanism_trend
+m4_reexec_load,C,4,0,0,1.000000,no_activation_no_mechanism_trend
+m4_reexec_load,all_ready,6,1,0,1.000000,no_activation_no_mechanism_trend

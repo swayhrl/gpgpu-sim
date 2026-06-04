@@ -1,0 +1,7 @@
+paper_id,paper_name,paper_type,runs,completed_runs,explicit_pass_runs,l1_sat_samples,l1_sat_saturated_samples,m2_active,m3_active,m4_active,any_m2_m3_m4_active,activation_status
+bfs,bfs,M,4,4,0,268,0,0,0,0,0,no_activation_under_current_inputs
+mri_q,mri-q,C,4,4,0,96,0,0,0,0,0,no_activation_under_current_inputs
+pathfinder,pathfinder,C,4,4,0,480,0,0,0,0,0,no_activation_under_current_inputs
+sgemm,sgemm,C,4,4,0,17408,0,0,0,0,0,no_activation_under_current_inputs
+spmv,spmv,M,4,4,4,11744,0,0,0,0,0,no_activation_under_current_inputs
+stencil,stencil,C,4,4,0,2272,0,0,0,0,0,no_activation_under_current_inputs
