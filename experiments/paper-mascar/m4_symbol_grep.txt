@@ -1,0 +1,298 @@
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_probe_on/README.md:1:# SM7_QV100_mascar_m4_reexec_probe_on
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_probe_on/README.md:11:- `gpgpu_mascar_enable_reexec_queue_probe=1`
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_probe_on/README.md:12:- `gpgpu_mascar_enable_reexec_queue=0`
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_probe_on/README.md:13:- `gpgpu_mascar_reexec_loads_only=1`
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_probe_on/README.md:14:- `gpgpu_mascar_reexec_queue_size=32`
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_probe_on/README.md:15:- `gpgpu_mascar_reexec_issue_per_cycle=1`
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:12:  gpgpu_mascar_enable_reexec_queue = 1
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:39:  gpgpu_mascar_enable_reexec_queue != 0
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:51:  issue at most gpgpu_mascar_reexec_issue_per_cycle entries per cycle.
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:57:  void ldst_unit::mascar_m4_reexec_cycle()
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:63:  The queue should still be retried each cycle by mascar_m4_reexec_cycle.
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:129:In mascar_m4_reexec_cycle:
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:186:  void ldst_unit::mascar_m4_complete_reexec_hit(mem_fetch *mf)
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:208:Use m_mascar_m4_warp_has_reexec[wid].
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:241:  configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on/
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:253:  -gpgpu_mascar_enable_reexec_queue_probe 1
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:254:  -gpgpu_mascar_enable_reexec_queue 1
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:255:  -gpgpu_mascar_reexec_loads_only 1
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:256:  -gpgpu_mascar_reexec_owner_takeover 1
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:257:  -gpgpu_mascar_reexec_queue_size 32
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:258:  -gpgpu_mascar_reexec_issue_per_cycle 1
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:298:  gpgpu_mascar_enable_reexec_queue
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:299:  gpgpu_mascar_reexec_queue_size
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:300:  paper_mascar_m4_enqueue_success
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:301:  paper_mascar_m4_retry_hit
+docs/papers/mascar_m4b_active_load_reexec_guidance.md:302:  paper_mascar_m4_retry_requeue
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_probe_on/gpgpusim.config:254:-gpgpu_mascar_enable_reexec_queue_probe 1
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_probe_on/gpgpusim.config:255:-gpgpu_mascar_enable_reexec_queue 0
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_probe_on/gpgpusim.config:256:-gpgpu_mascar_reexec_loads_only 1
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_probe_on/gpgpusim.config:257:-gpgpu_mascar_reexec_owner_takeover 1
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_probe_on/gpgpusim.config:258:-gpgpu_mascar_reexec_queue_size 32
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_probe_on/gpgpusim.config:259:-gpgpu_mascar_reexec_issue_per_cycle 1
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_probe_on/gpgpusim.config:260:-gpgpu_mascar_reexec_nack_rotate_limit 128
+docs/papers/mascar_m4_status.md:10:  `gpgpu_mascar_enable_reexec_queue=1`.
+docs/papers/mascar_m4a_reexec_queue_skeleton.md:5:off unless `gpgpu_mascar_enable_reexec_queue=1`.
+docs/papers/mascar_m4a_reexec_queue_skeleton.md:18:- M4 stats are printed as `paper_mascar_m4_*` at
+docs/papers/mascar_m4a_reexec_queue_skeleton.md:23:`configs/hrl-repro/SM7_QV100_mascar_m4_reexec_probe_on/` enables:
+docs/papers/mascar_m4a_reexec_queue_skeleton.md:36:return behavior when `gpgpu_mascar_enable_reexec_queue=0`.
+docs/papers/mascar_m4c_hardening_validation_guidance.md:19:  gpgpu_mascar_enable_reexec_queue
+docs/papers/mascar_m4c_hardening_validation_guidance.md:22:  gpgpu_mascar_enable_reexec_queue_probe 0
+docs/papers/mascar_m4c_hardening_validation_guidance.md:23:  gpgpu_mascar_enable_reexec_queue 0
+docs/papers/mascar_m4c_hardening_validation_guidance.md:91:  docs/papers/mascar_m4_status.md
+docs/papers/mascar_m4c_hardening_validation_guidance.md:107:  docs/papers/mascar_m4_known_limitations.md
+docs/papers/mascar_m4c_hardening_validation_guidance.md:156:  grep -RIn "gpgpu_mascar_enable_reexec_queue\\|gpgpu_mascar_reexec_queue_size\\|paper_mascar_m4_" src/gpgpu-sim configs docs experiments
+docs/papers/mascar_m4c_hardening_validation_guidance.md:174:  /workspace/tmp/mascar_m4_review_pack_YYYYMMDD_HHMMSS.tar.gz
+docs/papers/mascar_m4c_hardening_validation_guidance.md:183:  configs/hrl-repro/SM7_QV100_mascar_m4_reexec_probe_on/
+docs/papers/mascar_m4c_hardening_validation_guidance.md:184:  configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on/
+docs/papers/mascar_m4c_hardening_validation_guidance.md:187:  docs/papers/mascar_m4_status.md
+docs/papers/mascar_m4c_hardening_validation_guidance.md:188:  docs/papers/mascar_m4_known_limitations.md
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on/README.md:1:# SM7_QV100_mascar_m4_reexec_load_on
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on/README.md:11:- `gpgpu_mascar_enable_reexec_queue_probe=1`
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on/README.md:12:- `gpgpu_mascar_enable_reexec_queue=1`
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on/README.md:13:- `gpgpu_mascar_reexec_loads_only=1`
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on/README.md:14:- `gpgpu_mascar_reexec_owner_takeover=1`
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on/README.md:15:- `gpgpu_mascar_reexec_queue_size=32`
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on/README.md:16:- `gpgpu_mascar_reexec_issue_per_cycle=1`
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on/README.md:17:- `gpgpu_mascar_reexec_nack_rotate_limit=128`
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on/gpgpusim.config:254:-gpgpu_mascar_enable_reexec_queue_probe 1
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on/gpgpusim.config:255:-gpgpu_mascar_enable_reexec_queue 1
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on/gpgpusim.config:256:-gpgpu_mascar_reexec_loads_only 1
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on/gpgpusim.config:257:-gpgpu_mascar_reexec_owner_takeover 1
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on/gpgpusim.config:258:-gpgpu_mascar_reexec_queue_size 32
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on/gpgpusim.config:259:-gpgpu_mascar_reexec_issue_per_cycle 1
+configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on/gpgpusim.config:260:-gpgpu_mascar_reexec_nack_rotate_limit 128
+docs/papers/mascar_m4b_active_load_reexec.md:4:`gpgpu_mascar_enable_reexec_queue=1`.
+docs/papers/mascar_m4b_active_load_reexec.md:9:  `gpgpu_mascar_enable_reexec_queue` at `src/gpgpu-sim/shader.cc:2324`.
+docs/papers/mascar_m4b_active_load_reexec.md:13:- One entry per warp is enforced through `mascar_m4_warp_has_entry` at
+docs/papers/mascar_m4b_active_load_reexec.md:41:`configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on/` enables active M4
+src/gpgpu-sim/gpu-sim.cc:809:  option_parser_register(opp, "-gpgpu_mascar_enable_reexec_queue_probe",
+src/gpgpu-sim/gpu-sim.cc:811:                         &gpgpu_mascar_enable_reexec_queue_probe,
+src/gpgpu-sim/gpu-sim.cc:814:  option_parser_register(opp, "-gpgpu_mascar_enable_reexec_queue", OPT_INT32,
+src/gpgpu-sim/gpu-sim.cc:815:                         &gpgpu_mascar_enable_reexec_queue,
+src/gpgpu-sim/gpu-sim.cc:818:  option_parser_register(opp, "-gpgpu_mascar_reexec_loads_only", OPT_INT32,
+src/gpgpu-sim/gpu-sim.cc:819:                         &gpgpu_mascar_reexec_loads_only,
+src/gpgpu-sim/gpu-sim.cc:821:  option_parser_register(opp, "-gpgpu_mascar_reexec_owner_takeover",
+src/gpgpu-sim/gpu-sim.cc:822:                         OPT_INT32, &gpgpu_mascar_reexec_owner_takeover,
+src/gpgpu-sim/gpu-sim.cc:853:  option_parser_register(opp, "-gpgpu_mascar_reexec_queue_size", OPT_UINT32,
+src/gpgpu-sim/gpu-sim.cc:854:                         &gpgpu_mascar_reexec_queue_size,
+src/gpgpu-sim/gpu-sim.cc:856:  option_parser_register(opp, "-gpgpu_mascar_reexec_issue_per_cycle",
+src/gpgpu-sim/gpu-sim.cc:857:                         OPT_UINT32, &gpgpu_mascar_reexec_issue_per_cycle,
+src/gpgpu-sim/gpu-sim.cc:859:  option_parser_register(opp, "-gpgpu_mascar_reexec_nack_rotate_limit",
+src/gpgpu-sim/gpu-sim.cc:860:                         OPT_UINT32, &gpgpu_mascar_reexec_nack_rotate_limit,
+src/gpgpu-sim/gpu-sim.cc:2066:  fprintf(stdout, "paper_mascar_m4_reexec_queue_probe_enabled = %d\n",
+src/gpgpu-sim/gpu-sim.cc:2068:              m_shader_config->gpgpu_mascar_enable_reexec_queue_probe);
+src/gpgpu-sim/gpu-sim.cc:2069:  fprintf(stdout, "paper_mascar_m4_reexec_queue_enabled = %d\n",
+src/gpgpu-sim/gpu-sim.cc:2071:              m_shader_config->gpgpu_mascar_enable_reexec_queue);
+src/gpgpu-sim/gpu-sim.cc:2073:    mascar_m4_stats m4;
+src/gpgpu-sim/gpu-sim.cc:2076:      m_cluster[i]->get_mascar_m4_stats(m4);
+src/gpgpu-sim/gpu-sim.cc:2077:    fprintf(stdout, "paper_mascar_m4_would_enqueue_attempt = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2079:    fprintf(stdout, "paper_mascar_m4_would_enqueue_success = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2081:    fprintf(stdout, "paper_mascar_m4_enqueue_attempt = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2083:    fprintf(stdout, "paper_mascar_m4_enqueue_success = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2085:    fprintf(stdout, "paper_mascar_m4_enqueue_fail_disabled = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2087:    fprintf(stdout, "paper_mascar_m4_enqueue_fail_nonload = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2089:    fprintf(stdout, "paper_mascar_m4_enqueue_fail_full = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2091:    fprintf(stdout, "paper_mascar_m4_enqueue_fail_warp_in_queue = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2093:    fprintf(stdout, "paper_mascar_m4_enqueue_reason_m3_nack = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2096:            "paper_mascar_m4_enqueue_reason_reservation_fail = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2098:    fprintf(stdout, "paper_mascar_m4_queue_full_stall_new_load = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2100:    fprintf(stdout, "paper_mascar_m4_retry_attempt = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2102:    fprintf(stdout, "paper_mascar_m4_retry_hit = %llu\n", m4.retry_hit);
+src/gpgpu-sim/gpu-sim.cc:2103:    fprintf(stdout, "paper_mascar_m4_retry_miss_sent = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2105:    fprintf(stdout, "paper_mascar_m4_retry_nack = %llu\n", m4.retry_nack);
+src/gpgpu-sim/gpu-sim.cc:2106:    fprintf(stdout, "paper_mascar_m4_retry_reservation_fail = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2108:    fprintf(stdout, "paper_mascar_m4_retry_requeue_tail = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2110:    fprintf(stdout, "paper_mascar_m4_retry_owner_takeover = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2112:    fprintf(stdout, "paper_mascar_m4_retry_deadlock_guard = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2114:    fprintf(stdout, "paper_mascar_m4_active_queue_max_occupancy = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2116:    fprintf(stdout, "paper_mascar_m4_reexec_queue_size = %u\n",
+src/gpgpu-sim/gpu-sim.cc:2117:            m_shader_config->gpgpu_mascar_reexec_queue_size);
+src/gpgpu-sim/gpu-sim.cc:2118:    fprintf(stdout, "paper_mascar_m4_reexec_issue_per_cycle = %u\n",
+src/gpgpu-sim/gpu-sim.cc:2119:            m_shader_config->gpgpu_mascar_reexec_issue_per_cycle);
+src/gpgpu-sim/gpu-sim.cc:2120:    fprintf(stdout, "paper_mascar_m4_reexec_nack_rotate_limit = %u\n",
+src/gpgpu-sim/gpu-sim.cc:2121:            m_shader_config->gpgpu_mascar_reexec_nack_rotate_limit);
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:23:- int gpgpu_mascar_enable_reexec_queue_probe
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:24:- int gpgpu_mascar_enable_reexec_queue
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:25:- int gpgpu_mascar_reexec_loads_only
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:26:- int gpgpu_mascar_reexec_owner_takeover
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:27:- unsigned gpgpu_mascar_reexec_queue_size
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:28:- unsigned gpgpu_mascar_reexec_issue_per_cycle
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:29:- unsigned gpgpu_mascar_reexec_nack_rotate_limit
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:33:- gpgpu_mascar_enable_reexec_queue_probe = 0
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:34:- gpgpu_mascar_enable_reexec_queue = 0
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:35:- gpgpu_mascar_reexec_loads_only = 1
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:36:- gpgpu_mascar_reexec_owner_takeover = 1
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:37:- gpgpu_mascar_reexec_queue_size = 32
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:38:- gpgpu_mascar_reexec_issue_per_cycle = 1
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:39:- gpgpu_mascar_reexec_nack_rotate_limit = 128
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:57:  struct mascar_m4_reexec_entry {
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:75:- std::deque<mascar_m4_reexec_entry> m_mascar_m4_reexec_q
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:76:- std::vector<unsigned char> m_mascar_m4_warp_has_reexec
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:77:- unsigned long long m_mascar_m4_last_retry_cycle if needed
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:92:Add a plain POD stats struct or extend existing style as paper_mascar_m4_*.
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:96:- paper_mascar_m4_probe_enabled
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:97:- paper_mascar_m4_reexec_enabled
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:98:- paper_mascar_m4_queue_capacity
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:99:- paper_mascar_m4_queue_occupancy_max
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:100:- paper_mascar_m4_enqueue_attempt
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:101:- paper_mascar_m4_enqueue_success
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:102:- paper_mascar_m4_enqueue_fail_full
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:103:- paper_mascar_m4_enqueue_fail_warp_in_queue
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:104:- paper_mascar_m4_enqueue_skip_disabled
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:105:- paper_mascar_m4_enqueue_skip_nonload
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:106:- paper_mascar_m4_enqueue_m3_nack
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:107:- paper_mascar_m4_enqueue_l1_reservation_fail
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:108:- paper_mascar_m4_retry_attempt
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:109:- paper_mascar_m4_retry_hit
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:110:- paper_mascar_m4_retry_miss_sent
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:111:- paper_mascar_m4_retry_nack
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:112:- paper_mascar_m4_retry_reservation_fail
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:113:- paper_mascar_m4_retry_requeue
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:114:- paper_mascar_m4_retry_owner_takeover
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:115:- paper_mascar_m4_queue_full_stall_new
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:116:- paper_mascar_m4_warp_in_queue_block
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:117:- paper_mascar_m4_deadlock_guard
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:129:- bool mascar_m4_probe_enabled() const
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:130:- bool mascar_m4_active_enabled() const
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:131:- bool mascar_m4_is_load_candidate(mem_fetch *mf, const warp_inst_t &inst) const
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:132:- bool mascar_m4_warp_has_entry(unsigned wid) const
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:133:- bool mascar_m4_queue_full() const
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:134:- bool mascar_m4_should_enqueue(mem_fetch *mf, const warp_inst_t &inst, bool m3_nack, enum cache_request_status status) const
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:135:- bool mascar_m4_try_enqueue(mem_fetch *mf, const warp_inst_t &inst, unsigned reason, bool from_latency_queue)
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:136:- void mascar_m4_clear_warp_entry(unsigned wid)
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:137:- void mascar_m4_note_would_enqueue(mem_fetch *mf, const warp_inst_t &inst, bool m3_nack, enum cache_request_status status)
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:175:  configs/hrl-repro/SM7_QV100_mascar_m4_reexec_probe_on/
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:187:  -gpgpu_mascar_enable_reexec_queue_probe 1
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:188:  -gpgpu_mascar_enable_reexec_queue 0
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:189:  -gpgpu_mascar_reexec_queue_size 32
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:190:  -gpgpu_mascar_reexec_loads_only 1
+docs/papers/mascar_m4a_reexec_queue_skeleton_guidance.md:225:  grep paper_mascar_m4_ stats
+src/gpgpu-sim/shader.h:491:struct mascar_m4_stats {
+src/gpgpu-sim/shader.h:526:  void add(const mascar_m4_stats &rhs) {
+src/gpgpu-sim/shader.h:551:struct mascar_m4_reexec_entry {
+src/gpgpu-sim/shader.h:1653:  void get_mascar_m4_stats(mascar_m4_stats &stats) const;
+src/gpgpu-sim/shader.h:1694:  bool mascar_m4_probe_enabled() const;
+src/gpgpu-sim/shader.h:1695:  bool mascar_m4_active_enabled() const;
+src/gpgpu-sim/shader.h:1696:  bool mascar_m4_inst_is_load_candidate(const warp_inst_t &inst) const;
+src/gpgpu-sim/shader.h:1697:  bool mascar_m4_queue_full() const;
+src/gpgpu-sim/shader.h:1698:  bool mascar_m4_warp_has_entry(unsigned warp_id) const;
+src/gpgpu-sim/shader.h:1699:  void mascar_m4_note_queue_occupancy();
+src/gpgpu-sim/shader.h:1700:  void mascar_m4_note_would_enqueue(mem_fetch *mf, const warp_inst_t &inst,
+src/gpgpu-sim/shader.h:1703:  unsigned mascar_m4_enqueue_reason(bool m3_nack,
+src/gpgpu-sim/shader.h:1705:  bool mascar_m4_try_enqueue(mem_fetch *mf, const warp_inst_t &inst,
+src/gpgpu-sim/shader.h:1707:  void mascar_m4_complete_reexec_hit(mem_fetch *mf);
+src/gpgpu-sim/shader.h:1708:  void mascar_m4_reexec_cycle();
+src/gpgpu-sim/shader.h:1744:  std::deque<mascar_m4_reexec_entry> m_mascar_m4_reexec_q;
+src/gpgpu-sim/shader.h:1745:  std::vector<unsigned char> m_mascar_m4_warp_has_reexec;
+src/gpgpu-sim/shader.h:1746:  mascar_m4_stats m_mascar_m4_stats;
+src/gpgpu-sim/shader.h:2086:  int gpgpu_mascar_enable_reexec_queue_probe;      // M4A: passive re-exec enqueue probe
+src/gpgpu-sim/shader.h:2087:  int gpgpu_mascar_enable_reexec_queue;            // M4B: active load re-exec queue
+src/gpgpu-sim/shader.h:2088:  int gpgpu_mascar_reexec_loads_only;              // M4: only load re-exec is supported
+src/gpgpu-sim/shader.h:2089:  int gpgpu_mascar_reexec_owner_takeover;          // M4: queue head can acquire owner
+src/gpgpu-sim/shader.h:2097:  unsigned gpgpu_mascar_reexec_queue_size;           // M4: max queued mem_fetch entries
+src/gpgpu-sim/shader.h:2098:  unsigned gpgpu_mascar_reexec_issue_per_cycle;      // M4: retry attempts per cycle
+src/gpgpu-sim/shader.h:2099:  unsigned gpgpu_mascar_reexec_nack_rotate_limit;    // M4: repeated NACK guard
+src/gpgpu-sim/shader.h:2723:  bool mascar_m4_try_owner_takeover(unsigned warp_id);
+src/gpgpu-sim/shader.h:2724:  void get_mascar_m4_stats(mascar_m4_stats &stats) const {
+src/gpgpu-sim/shader.h:2725:    m_ldst_unit->get_mascar_m4_stats(stats);
+src/gpgpu-sim/shader.h:3424:  void get_mascar_m4_stats(mascar_m4_stats &stats) const;
+src/gpgpu-sim/shader.cc:2315:void ldst_unit::get_mascar_m4_stats(mascar_m4_stats &stats) const {
+src/gpgpu-sim/shader.cc:2316:  stats.add(m_mascar_m4_stats);
+src/gpgpu-sim/shader.cc:2319:bool ldst_unit::mascar_m4_probe_enabled() const {
+src/gpgpu-sim/shader.cc:2321:         m_config->gpgpu_mascar_enable_reexec_queue_probe;
+src/gpgpu-sim/shader.cc:2324:bool ldst_unit::mascar_m4_active_enabled() const {
+src/gpgpu-sim/shader.cc:2326:         m_config->gpgpu_mascar_enable_reexec_queue;
+src/gpgpu-sim/shader.cc:2329:bool ldst_unit::mascar_m4_inst_is_load_candidate(
+src/gpgpu-sim/shader.cc:2332:  if (!m_config->gpgpu_mascar_reexec_loads_only) return true;
+src/gpgpu-sim/shader.cc:2339:bool ldst_unit::mascar_m4_queue_full() const {
+src/gpgpu-sim/shader.cc:2340:  return m_config->gpgpu_mascar_reexec_queue_size == 0 ||
+src/gpgpu-sim/shader.cc:2341:         m_mascar_m4_reexec_q.size() >=
+src/gpgpu-sim/shader.cc:2342:             m_config->gpgpu_mascar_reexec_queue_size;
+src/gpgpu-sim/shader.cc:2345:bool ldst_unit::mascar_m4_warp_has_entry(unsigned warp_id) const {
+src/gpgpu-sim/shader.cc:2346:  return warp_id < m_mascar_m4_warp_has_reexec.size() &&
+src/gpgpu-sim/shader.cc:2347:         m_mascar_m4_warp_has_reexec[warp_id];
+src/gpgpu-sim/shader.cc:2350:void ldst_unit::mascar_m4_note_queue_occupancy() {
+src/gpgpu-sim/shader.cc:2351:  if (m_mascar_m4_reexec_q.size() >
+src/gpgpu-sim/shader.cc:2352:      m_mascar_m4_stats.active_queue_max_occupancy)
+src/gpgpu-sim/shader.cc:2353:    m_mascar_m4_stats.active_queue_max_occupancy =
+src/gpgpu-sim/shader.cc:2354:        m_mascar_m4_reexec_q.size();
+src/gpgpu-sim/shader.cc:2357:unsigned ldst_unit::mascar_m4_enqueue_reason(
+src/gpgpu-sim/shader.cc:2364:void ldst_unit::mascar_m4_note_would_enqueue(
+src/gpgpu-sim/shader.cc:2368:  if (mascar_m4_enqueue_reason(m3_nack, status) == 0) return;
+src/gpgpu-sim/shader.cc:2369:  if (!mascar_m4_probe_enabled()) {
+src/gpgpu-sim/shader.cc:2370:    m_mascar_m4_stats.enqueue_fail_disabled++;
+src/gpgpu-sim/shader.cc:2374:  m_mascar_m4_stats.would_enqueue_attempt++;
+src/gpgpu-sim/shader.cc:2375:  if (!mf || !mascar_m4_inst_is_load_candidate(inst)) {
+src/gpgpu-sim/shader.cc:2376:    m_mascar_m4_stats.enqueue_fail_nonload++;
+src/gpgpu-sim/shader.cc:2379:  if (mascar_m4_queue_full()) {
+src/gpgpu-sim/shader.cc:2380:    m_mascar_m4_stats.enqueue_fail_full++;
+src/gpgpu-sim/shader.cc:2383:  if (mascar_m4_warp_has_entry(inst.warp_id())) {
+src/gpgpu-sim/shader.cc:2384:    m_mascar_m4_stats.enqueue_fail_warp_in_queue++;
+src/gpgpu-sim/shader.cc:2387:  m_mascar_m4_stats.would_enqueue_success++;
+src/gpgpu-sim/shader.cc:2390:bool ldst_unit::mascar_m4_try_enqueue(mem_fetch *mf, const warp_inst_t &inst,
+src/gpgpu-sim/shader.cc:2392:  m_mascar_m4_stats.enqueue_attempt++;
+src/gpgpu-sim/shader.cc:2393:  if (!mascar_m4_active_enabled() || reason == 0) {
+src/gpgpu-sim/shader.cc:2394:    m_mascar_m4_stats.enqueue_fail_disabled++;
+src/gpgpu-sim/shader.cc:2397:  if (!mf || !mascar_m4_inst_is_load_candidate(inst)) {
+src/gpgpu-sim/shader.cc:2398:    m_mascar_m4_stats.enqueue_fail_nonload++;
+src/gpgpu-sim/shader.cc:2401:  if (mascar_m4_queue_full()) {
+src/gpgpu-sim/shader.cc:2402:    m_mascar_m4_stats.enqueue_fail_full++;
+src/gpgpu-sim/shader.cc:2405:  if (mascar_m4_warp_has_entry(inst.warp_id())) {
+src/gpgpu-sim/shader.cc:2406:    m_mascar_m4_stats.enqueue_fail_warp_in_queue++;
+src/gpgpu-sim/shader.cc:2410:  mascar_m4_reexec_entry entry;
+src/gpgpu-sim/shader.cc:2418:  m_mascar_m4_reexec_q.push_back(entry);
+src/gpgpu-sim/shader.cc:2419:  if (entry.warp_id < m_mascar_m4_warp_has_reexec.size())
+src/gpgpu-sim/shader.cc:2420:    m_mascar_m4_warp_has_reexec[entry.warp_id] = 1;
+src/gpgpu-sim/shader.cc:2421:  m_mascar_m4_stats.enqueue_success++;
+src/gpgpu-sim/shader.cc:2423:    m_mascar_m4_stats.enqueue_reason_m3_nack++;
+src/gpgpu-sim/shader.cc:2425:    m_mascar_m4_stats.enqueue_reason_reservation_fail++;
+src/gpgpu-sim/shader.cc:2426:  mascar_m4_note_queue_occupancy();
+src/gpgpu-sim/shader.cc:2430:void ldst_unit::mascar_m4_complete_reexec_hit(mem_fetch *mf) {
+src/gpgpu-sim/shader.cc:2466:void ldst_unit::mascar_m4_reexec_cycle() {
+src/gpgpu-sim/shader.cc:2467:  if (!mascar_m4_active_enabled() || !m_L1D || m_mascar_m4_reexec_q.empty())
+src/gpgpu-sim/shader.cc:2470:  unsigned issue_limit = m_config->gpgpu_mascar_reexec_issue_per_cycle;
+src/gpgpu-sim/shader.cc:2473:  unsigned guard = m_mascar_m4_reexec_q.size();
+src/gpgpu-sim/shader.cc:2474:  while (issued < issue_limit && guard > 0 && !m_mascar_m4_reexec_q.empty()) {
+src/gpgpu-sim/shader.cc:2476:    mascar_m4_reexec_entry entry = m_mascar_m4_reexec_q.front();
+src/gpgpu-sim/shader.cc:2477:    m_mascar_m4_reexec_q.pop_front();
+src/gpgpu-sim/shader.cc:2481:      if (entry.warp_id < m_mascar_m4_warp_has_reexec.size())
+src/gpgpu-sim/shader.cc:2482:        m_mascar_m4_warp_has_reexec[entry.warp_id] = 0;
+src/gpgpu-sim/shader.cc:2486:    if (m_config->gpgpu_mascar_reexec_owner_takeover &&
+src/gpgpu-sim/shader.cc:2487:        m_core->mascar_m4_try_owner_takeover(entry.warp_id))
+src/gpgpu-sim/shader.cc:2488:      m_mascar_m4_stats.retry_owner_takeover++;
+src/gpgpu-sim/shader.cc:2496:    m_mascar_m4_stats.retry_attempt++;
+src/gpgpu-sim/shader.cc:2501:      mascar_m4_complete_reexec_hit(mf);
+src/gpgpu-sim/shader.cc:2502:      if (entry.warp_id < m_mascar_m4_warp_has_reexec.size())
+src/gpgpu-sim/shader.cc:2503:        m_mascar_m4_warp_has_reexec[entry.warp_id] = 0;
+src/gpgpu-sim/shader.cc:2505:      m_mascar_m4_stats.retry_hit++;
+src/gpgpu-sim/shader.cc:2508:      if (entry.warp_id < m_mascar_m4_warp_has_reexec.size())
+src/gpgpu-sim/shader.cc:2509:        m_mascar_m4_warp_has_reexec[entry.warp_id] = 0;
+src/gpgpu-sim/shader.cc:2510:      m_mascar_m4_stats.retry_miss_sent++;
+src/gpgpu-sim/shader.cc:2518:        m_mascar_m4_stats.retry_reservation_fail++;
+src/gpgpu-sim/shader.cc:2520:        m_mascar_m4_stats.retry_nack++;
+src/gpgpu-sim/shader.cc:2523:      if (m_config->gpgpu_mascar_reexec_nack_rotate_limit > 0 &&
+src/gpgpu-sim/shader.cc:2525:              m_config->gpgpu_mascar_reexec_nack_rotate_limit) {
+src/gpgpu-sim/shader.cc:2526:        m_mascar_m4_stats.retry_deadlock_guard++;
+src/gpgpu-sim/shader.cc:2530:      m_mascar_m4_reexec_q.push_back(entry);
+src/gpgpu-sim/shader.cc:2531:      m_mascar_m4_stats.retry_requeue_tail++;
+src/gpgpu-sim/shader.cc:2532:      mascar_m4_note_queue_occupancy();
+src/gpgpu-sim/shader.cc:2865:bool shader_core_ctx::mascar_m4_try_owner_takeover(unsigned warp_id) {
+src/gpgpu-sim/shader.cc:2867:      !m_config->gpgpu_mascar_reexec_owner_takeover)
+src/gpgpu-sim/shader.cc:3081:  if (mascar_m4_active_enabled() && mascar_m4_inst_is_load_candidate(inst) &&
+src/gpgpu-sim/shader.cc:3082:      (mascar_m4_queue_full() || mascar_m4_warp_has_entry(inst.warp_id()))) {
+src/gpgpu-sim/shader.cc:3083:    m_mascar_m4_stats.queue_full_stall_new_load++;
+src/gpgpu-sim/shader.cc:3137:    mascar_m4_note_would_enqueue(mf, inst, m3_nack, status);
+src/gpgpu-sim/shader.cc:3140:    unsigned m4_reason = mascar_m4_enqueue_reason(m3_nack, status);
+src/gpgpu-sim/shader.cc:3141:    if (m4_reason != 0 && mascar_m4_active_enabled() &&
+src/gpgpu-sim/shader.cc:3142:        mascar_m4_try_enqueue(mf, inst, m4_reason)) {
+src/gpgpu-sim/shader.cc:3163:      mascar_m4_note_would_enqueue(mf_next, mf_next->get_inst(), m3_nack,
+src/gpgpu-sim/shader.cc:3165:      unsigned m4_reason = mascar_m4_enqueue_reason(m3_nack, status);
+src/gpgpu-sim/shader.cc:3167:      if (m4_reason != 0 && mascar_m4_active_enabled() &&
+src/gpgpu-sim/shader.cc:3168:          mascar_m4_try_enqueue(mf_next, mf_next->get_inst(), m4_reason)) {
+src/gpgpu-sim/shader.cc:3715:  m_mascar_m4_reexec_q.clear();
+src/gpgpu-sim/shader.cc:3716:  m_mascar_m4_warp_has_reexec.assign(config->max_warps_per_shader, 0);
+src/gpgpu-sim/shader.cc:3717:  m_mascar_m4_stats.clear();
+src/gpgpu-sim/shader.cc:4000:    mascar_m4_reexec_cycle();
+src/gpgpu-sim/shader.cc:6162:void simt_core_cluster::get_mascar_m4_stats(mascar_m4_stats &stats) const {
+src/gpgpu-sim/shader.cc:6164:    m_core[i]->get_mascar_m4_stats(stats);

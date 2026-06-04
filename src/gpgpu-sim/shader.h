@@ -488,6 +488,75 @@ struct mascar_m3_stats {
   }
 };
 
+struct mascar_m4_stats {
+  unsigned long long would_enqueue_attempt;
+  unsigned long long would_enqueue_success;
+  unsigned long long enqueue_attempt;
+  unsigned long long enqueue_success;
+  unsigned long long enqueue_fail_disabled;
+  unsigned long long enqueue_fail_nonload;
+  unsigned long long enqueue_fail_full;
+  unsigned long long enqueue_fail_warp_in_queue;
+  unsigned long long enqueue_reason_m3_nack;
+  unsigned long long enqueue_reason_reservation_fail;
+  unsigned long long queue_full_stall_new_load;
+  unsigned long long retry_attempt;
+  unsigned long long retry_hit;
+  unsigned long long retry_miss_sent;
+  unsigned long long retry_nack;
+  unsigned long long retry_reservation_fail;
+  unsigned long long retry_requeue_tail;
+  unsigned long long retry_owner_takeover;
+  unsigned long long retry_deadlock_guard;
+  unsigned long long active_queue_max_occupancy;
+
+  void clear() {
+    would_enqueue_attempt = would_enqueue_success = 0;
+    enqueue_attempt = enqueue_success = 0;
+    enqueue_fail_disabled = enqueue_fail_nonload = enqueue_fail_full = 0;
+    enqueue_fail_warp_in_queue = 0;
+    enqueue_reason_m3_nack = enqueue_reason_reservation_fail = 0;
+    queue_full_stall_new_load = 0;
+    retry_attempt = retry_hit = retry_miss_sent = retry_nack = 0;
+    retry_reservation_fail = retry_requeue_tail = 0;
+    retry_owner_takeover = retry_deadlock_guard = 0;
+    active_queue_max_occupancy = 0;
+  }
+
+  void add(const mascar_m4_stats &rhs) {
+    would_enqueue_attempt += rhs.would_enqueue_attempt;
+    would_enqueue_success += rhs.would_enqueue_success;
+    enqueue_attempt += rhs.enqueue_attempt;
+    enqueue_success += rhs.enqueue_success;
+    enqueue_fail_disabled += rhs.enqueue_fail_disabled;
+    enqueue_fail_nonload += rhs.enqueue_fail_nonload;
+    enqueue_fail_full += rhs.enqueue_fail_full;
+    enqueue_fail_warp_in_queue += rhs.enqueue_fail_warp_in_queue;
+    enqueue_reason_m3_nack += rhs.enqueue_reason_m3_nack;
+    enqueue_reason_reservation_fail += rhs.enqueue_reason_reservation_fail;
+    queue_full_stall_new_load += rhs.queue_full_stall_new_load;
+    retry_attempt += rhs.retry_attempt;
+    retry_hit += rhs.retry_hit;
+    retry_miss_sent += rhs.retry_miss_sent;
+    retry_nack += rhs.retry_nack;
+    retry_reservation_fail += rhs.retry_reservation_fail;
+    retry_requeue_tail += rhs.retry_requeue_tail;
+    retry_owner_takeover += rhs.retry_owner_takeover;
+    retry_deadlock_guard += rhs.retry_deadlock_guard;
+    if (rhs.active_queue_max_occupancy > active_queue_max_occupancy)
+      active_queue_max_occupancy = rhs.active_queue_max_occupancy;
+  }
+};
+
+struct mascar_m4_reexec_entry {
+  mem_fetch *mf;
+  unsigned warp_id;
+  unsigned reason;
+  unsigned retry_count;
+  unsigned nack_rotate_count;
+  unsigned long long enqueue_cycle;
+};
+
 enum scheduler_prioritization_type {
   SCHEDULER_PRIORITIZATION_LRR = 0,   // Loose Round Robin
   SCHEDULER_PRIORITIZATION_SRR,       // Strict Round Robin
@@ -1581,6 +1650,7 @@ class ldst_unit : public pipelined_simd_unit {
   void get_mascar_l1_recent_stats(unsigned long long &recent_set,
                                   unsigned long long &recent_clear) const;
   void get_mascar_m3_stats(mascar_m3_stats &stats) const;
+  void get_mascar_m4_stats(mascar_m4_stats &stats) const;
 
  protected:
   ldst_unit(mem_fetch_interface *icnt,
@@ -1621,6 +1691,21 @@ class ldst_unit : public pipelined_simd_unit {
   enum cache_request_status mascar_m3_l1d_access(
       l1_cache *cache, mem_fetch *mf, const warp_inst_t &inst,
       std::list<cache_event> &events, bool &m3_nack);
+  bool mascar_m4_probe_enabled() const;
+  bool mascar_m4_active_enabled() const;
+  bool mascar_m4_inst_is_load_candidate(const warp_inst_t &inst) const;
+  bool mascar_m4_queue_full() const;
+  bool mascar_m4_warp_has_entry(unsigned warp_id) const;
+  void mascar_m4_note_queue_occupancy();
+  void mascar_m4_note_would_enqueue(mem_fetch *mf, const warp_inst_t &inst,
+                                    bool m3_nack,
+                                    enum cache_request_status status);
+  unsigned mascar_m4_enqueue_reason(bool m3_nack,
+                                    enum cache_request_status status) const;
+  bool mascar_m4_try_enqueue(mem_fetch *mf, const warp_inst_t &inst,
+                             unsigned reason);
+  void mascar_m4_complete_reexec_hit(mem_fetch *mf);
+  void mascar_m4_reexec_cycle();
   gpgpu_sim *m_gpu;
 
   const memory_config *m_memory_config;
@@ -1656,6 +1741,9 @@ class ldst_unit : public pipelined_simd_unit {
 
   std::vector<std::deque<mem_fetch *>> l1_latency_queue;
   void L1_latency_queue_cycle();
+  std::deque<mascar_m4_reexec_entry> m_mascar_m4_reexec_q;
+  std::vector<unsigned char> m_mascar_m4_warp_has_reexec;
+  mascar_m4_stats m_mascar_m4_stats;
 
   // CCWS Round V: VTA-like miss-side probe (per-warp circular buffer)
   void ccws_vta_probe_miss(unsigned wid, new_addr_type block_addr);
@@ -1995,6 +2083,10 @@ class shader_core_config : public core_config {
   int gpgpu_mascar_enable_nonowner_hit_only_probe; // M3A: passive non-owner L1 hit-only probe
   int gpgpu_mascar_enable_nonowner_hit_only;       // M3B: active non-owner hit-only/NACK
   int gpgpu_mascar_nonowner_hit_only_loads_only;   // M3: only non-owner loads use hit-only path
+  int gpgpu_mascar_enable_reexec_queue_probe;      // M4A: passive re-exec enqueue probe
+  int gpgpu_mascar_enable_reexec_queue;            // M4B: active load re-exec queue
+  int gpgpu_mascar_reexec_loads_only;              // M4: only load re-exec is supported
+  int gpgpu_mascar_reexec_owner_takeover;          // M4: queue head can acquire owner
   unsigned gpgpu_mascar_stall_threshold;   // consecutive stall cycles to trigger (default 8)
   unsigned gpgpu_mascar_max_skip_streak;   // max consecutive skips before force-allow (default 4)
   unsigned gpgpu_mascar_l1_saturation_margin; // M1: almost-full distance (default 1)
@@ -2002,6 +2094,9 @@ class shader_core_config : public core_config {
   unsigned gpgpu_mascar_owner_max_hold_cycles;       // M2: owner hold guard
   unsigned gpgpu_mascar_owner_no_progress_limit;     // M2: owner progress guard
   unsigned gpgpu_mascar_nonowner_nack_release_threshold; // M3: owner release guard
+  unsigned gpgpu_mascar_reexec_queue_size;           // M4: max queued mem_fetch entries
+  unsigned gpgpu_mascar_reexec_issue_per_cycle;      // M4: retry attempts per cycle
+  unsigned gpgpu_mascar_reexec_nack_rotate_limit;    // M4: repeated NACK guard
   int gpgpu_mascar_debug;
 };
 
@@ -2625,6 +2720,10 @@ class shader_core_ctx : public core_t {
   void mascar_m3_note_hitonly_access_result(unsigned warp_id,
                                             enum cache_request_status status);
   void get_mascar_m3_stats(mascar_m3_stats &stats) const;
+  bool mascar_m4_try_owner_takeover(unsigned warp_id);
+  void get_mascar_m4_stats(mascar_m4_stats &stats) const {
+    m_ldst_unit->get_mascar_m4_stats(stats);
+  }
 
   // Mascar Phase 2: record when a warp's memory instruction can't issue
   // (m_mem_out pipeline register full → memory pressure stall).
@@ -3322,6 +3421,7 @@ class simt_core_cluster {
       unsigned long long &missq_used_sum, unsigned long long &missq_used_max) const;
   void get_mascar_m2_stats(mascar_m2_stats &stats) const;
   void get_mascar_m3_stats(mascar_m3_stats &stats) const;
+  void get_mascar_m4_stats(mascar_m4_stats &stats) const;
 
   void get_icnt_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
   float get_current_occupancy(unsigned long long &active,

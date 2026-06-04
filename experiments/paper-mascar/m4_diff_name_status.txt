@@ -1,0 +1,3 @@
+M	src/gpgpu-sim/gpu-sim.cc
+M	src/gpgpu-sim/shader.cc
+M	src/gpgpu-sim/shader.h

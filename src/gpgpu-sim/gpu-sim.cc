@@ -806,6 +806,22 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          &gpgpu_mascar_nonowner_hit_only_loads_only,
                          "Mascar M3: restrict non-owner hit-only to loads",
                          "1");
+  option_parser_register(opp, "-gpgpu_mascar_enable_reexec_queue_probe",
+                         OPT_INT32,
+                         &gpgpu_mascar_enable_reexec_queue_probe,
+                         "Mascar M4A: enable passive re-exec queue probe",
+                         "0");
+  option_parser_register(opp, "-gpgpu_mascar_enable_reexec_queue", OPT_INT32,
+                         &gpgpu_mascar_enable_reexec_queue,
+                         "Mascar M4B: enable active load re-exec queue",
+                         "0");
+  option_parser_register(opp, "-gpgpu_mascar_reexec_loads_only", OPT_INT32,
+                         &gpgpu_mascar_reexec_loads_only,
+                         "Mascar M4: restrict re-exec queue to loads", "1");
+  option_parser_register(opp, "-gpgpu_mascar_reexec_owner_takeover",
+                         OPT_INT32, &gpgpu_mascar_reexec_owner_takeover,
+                         "Mascar M4: allow queue head to acquire MP owner",
+                         "1");
   option_parser_register(opp, "-gpgpu_mascar_stall_threshold", OPT_UINT32,
                          &gpgpu_mascar_stall_threshold,
                          "Mascar consecutive stall cycles to trigger deprioritize (default 8)", "8");
@@ -834,6 +850,15 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          &gpgpu_mascar_nonowner_nack_release_threshold,
                          "Mascar M3: repeated non-owner NACK owner-release guard",
                          "64");
+  option_parser_register(opp, "-gpgpu_mascar_reexec_queue_size", OPT_UINT32,
+                         &gpgpu_mascar_reexec_queue_size,
+                         "Mascar M4: load re-exec queue capacity", "32");
+  option_parser_register(opp, "-gpgpu_mascar_reexec_issue_per_cycle",
+                         OPT_UINT32, &gpgpu_mascar_reexec_issue_per_cycle,
+                         "Mascar M4: retry attempts per cycle", "1");
+  option_parser_register(opp, "-gpgpu_mascar_reexec_nack_rotate_limit",
+                         OPT_UINT32, &gpgpu_mascar_reexec_nack_rotate_limit,
+                         "Mascar M4: repeated NACK rotation guard", "128");
   option_parser_register(opp, "-gpgpu_mascar_debug", OPT_INT32,
                          &gpgpu_mascar_debug,
                          "Mascar per-cycle debug trace (0=off)", "0");
@@ -2037,6 +2062,63 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
             m3.nack_guard_owner_release);
     fprintf(stdout, "paper_mascar_m3_nack_guard_threshold = %u\n",
             m_shader_config->gpgpu_mascar_nonowner_nack_release_threshold);
+  }
+  fprintf(stdout, "paper_mascar_m4_reexec_queue_probe_enabled = %d\n",
+          m_shader_config->gpgpu_enable_mascar &&
+              m_shader_config->gpgpu_mascar_enable_reexec_queue_probe);
+  fprintf(stdout, "paper_mascar_m4_reexec_queue_enabled = %d\n",
+          m_shader_config->gpgpu_enable_mascar &&
+              m_shader_config->gpgpu_mascar_enable_reexec_queue);
+  {
+    mascar_m4_stats m4;
+    m4.clear();
+    for (unsigned i = 0; i < m_config.num_cluster(); i++)
+      m_cluster[i]->get_mascar_m4_stats(m4);
+    fprintf(stdout, "paper_mascar_m4_would_enqueue_attempt = %llu\n",
+            m4.would_enqueue_attempt);
+    fprintf(stdout, "paper_mascar_m4_would_enqueue_success = %llu\n",
+            m4.would_enqueue_success);
+    fprintf(stdout, "paper_mascar_m4_enqueue_attempt = %llu\n",
+            m4.enqueue_attempt);
+    fprintf(stdout, "paper_mascar_m4_enqueue_success = %llu\n",
+            m4.enqueue_success);
+    fprintf(stdout, "paper_mascar_m4_enqueue_fail_disabled = %llu\n",
+            m4.enqueue_fail_disabled);
+    fprintf(stdout, "paper_mascar_m4_enqueue_fail_nonload = %llu\n",
+            m4.enqueue_fail_nonload);
+    fprintf(stdout, "paper_mascar_m4_enqueue_fail_full = %llu\n",
+            m4.enqueue_fail_full);
+    fprintf(stdout, "paper_mascar_m4_enqueue_fail_warp_in_queue = %llu\n",
+            m4.enqueue_fail_warp_in_queue);
+    fprintf(stdout, "paper_mascar_m4_enqueue_reason_m3_nack = %llu\n",
+            m4.enqueue_reason_m3_nack);
+    fprintf(stdout,
+            "paper_mascar_m4_enqueue_reason_reservation_fail = %llu\n",
+            m4.enqueue_reason_reservation_fail);
+    fprintf(stdout, "paper_mascar_m4_queue_full_stall_new_load = %llu\n",
+            m4.queue_full_stall_new_load);
+    fprintf(stdout, "paper_mascar_m4_retry_attempt = %llu\n",
+            m4.retry_attempt);
+    fprintf(stdout, "paper_mascar_m4_retry_hit = %llu\n", m4.retry_hit);
+    fprintf(stdout, "paper_mascar_m4_retry_miss_sent = %llu\n",
+            m4.retry_miss_sent);
+    fprintf(stdout, "paper_mascar_m4_retry_nack = %llu\n", m4.retry_nack);
+    fprintf(stdout, "paper_mascar_m4_retry_reservation_fail = %llu\n",
+            m4.retry_reservation_fail);
+    fprintf(stdout, "paper_mascar_m4_retry_requeue_tail = %llu\n",
+            m4.retry_requeue_tail);
+    fprintf(stdout, "paper_mascar_m4_retry_owner_takeover = %llu\n",
+            m4.retry_owner_takeover);
+    fprintf(stdout, "paper_mascar_m4_retry_deadlock_guard = %llu\n",
+            m4.retry_deadlock_guard);
+    fprintf(stdout, "paper_mascar_m4_active_queue_max_occupancy = %llu\n",
+            m4.active_queue_max_occupancy);
+    fprintf(stdout, "paper_mascar_m4_reexec_queue_size = %u\n",
+            m_shader_config->gpgpu_mascar_reexec_queue_size);
+    fprintf(stdout, "paper_mascar_m4_reexec_issue_per_cycle = %u\n",
+            m_shader_config->gpgpu_mascar_reexec_issue_per_cycle);
+    fprintf(stdout, "paper_mascar_m4_reexec_nack_rotate_limit = %u\n",
+            m_shader_config->gpgpu_mascar_reexec_nack_rotate_limit);
   }
 
   if (m_config.gpgpu_cflog_interval != 0) {
