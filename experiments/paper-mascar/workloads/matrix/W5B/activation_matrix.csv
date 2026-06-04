@@ -1,0 +1,31 @@
+paper_id,paper_name,paper_type,wrapper_status,availability_status,baseline_classification,m4_classification,activation_tier,l1_probe_nonzero,m2_telemetry_nonzero,m2_mp_owner_active,m3_hitonly_active,m4_reexec_active,mechanism_active,recommended_w6_w7_action,notes
+bp_2,BP-2,M,placeholder_phase_unknown,partial_phase_unknown,phase_unknown,phase_unknown,phase_unknown,0,0,0,0,0,0,resolve_phase_mapping_before_sweep,placeholder_phase_unknown
+bfs,bfs,M,ready,available,completed_no_explicit_pass,completed_no_explicit_pass,telemetry_only,1,1,0,0,0,0,candidate_for_activation_input_search,M4 config produced L1/M2 telemetry but no MP owner/M3/M4 active counters
+histo_1,histo-1,M,placeholder_phase_unknown,partial_phase_unknown,phase_unknown,phase_unknown,phase_unknown,0,0,0,0,0,0,resolve_phase_mapping_before_sweep,placeholder_phase_unknown
+histo_3,histo-3,M,placeholder_phase_unknown,partial_phase_unknown,phase_unknown,phase_unknown,phase_unknown,0,0,0,0,0,0,resolve_phase_mapping_before_sweep,placeholder_phase_unknown
+kmeans_1,kmeans-1,M,placeholder_phase_unknown,partial_phase_unknown,phase_unknown,phase_unknown,phase_unknown,0,0,0,0,0,0,resolve_phase_mapping_before_sweep,placeholder_phase_unknown
+lbm,lbm,M,placeholder_missing_binary,missing_binary,missing_binary,missing_binary,missing_binary,0,0,0,0,0,0,build_or_import_before_sweep,placeholder_missing_binary
+leuko_1,leuko-1,M,placeholder_missing_binary,missing_binary,missing_binary,missing_binary,missing_binary,0,0,0,0,0,0,build_or_import_before_sweep,placeholder_missing_binary
+mrig_1,mrig-1,M,placeholder_missing_binary,missing_binary,missing_binary,missing_binary,missing_binary,0,0,0,0,0,0,build_or_import_before_sweep,placeholder_missing_binary
+mrig_2,mrig-2,M,placeholder_missing_binary,missing_binary,missing_binary,missing_binary,missing_binary,0,0,0,0,0,0,build_or_import_before_sweep,placeholder_missing_binary
+mummer,mummer,M,placeholder_missing_binary,missing_binary,missing_binary,missing_binary,missing_binary,0,0,0,0,0,0,build_or_import_before_sweep,placeholder_missing_binary
+particle,particle,M,placeholder_missing_binary,missing_binary,missing_binary,missing_binary,missing_binary,0,0,0,0,0,0,build_or_import_before_sweep,placeholder_missing_binary
+sad_2,sad-2,M,placeholder_missing_binary,missing_binary,missing_binary,missing_binary,missing_binary,0,0,0,0,0,0,build_or_import_before_sweep,placeholder_missing_binary
+spmv,spmv,M,ready,available,completed_explicit_pass,completed_explicit_pass,telemetry_only,1,1,0,0,0,0,candidate_for_activation_input_search,M4 config produced L1/M2 telemetry but no MP owner/M3/M4 active counters
+srad_1,srad-1,M,placeholder_phase_unknown,partial_phase_unknown,phase_unknown,phase_unknown,phase_unknown,0,0,0,0,0,0,resolve_phase_mapping_before_sweep,placeholder_phase_unknown
+srad_2,srad-2,M,placeholder_phase_unknown,partial_phase_unknown,phase_unknown,phase_unknown,phase_unknown,0,0,0,0,0,0,resolve_phase_mapping_before_sweep,placeholder_phase_unknown
+bp_1,BP-1,C,placeholder_phase_unknown,partial_phase_unknown,phase_unknown,phase_unknown,phase_unknown,0,0,0,0,0,0,resolve_phase_mapping_before_sweep,placeholder_phase_unknown
+cutcp,cutcp,C,placeholder_missing_binary,missing_binary,missing_binary,missing_binary,missing_binary,0,0,0,0,0,0,build_or_import_before_sweep,placeholder_missing_binary
+histo_2,histo-2,C,placeholder_phase_unknown,partial_phase_unknown,phase_unknown,phase_unknown,phase_unknown,0,0,0,0,0,0,resolve_phase_mapping_before_sweep,placeholder_phase_unknown
+histogram,histogram,C,placeholder_missing_source,missing_source,missing_source,missing_source,missing_source,0,0,0,0,0,0,build_or_import_before_sweep,placeholder_missing_source
+kmeans_2,kmeans-2,C,placeholder_phase_unknown,partial_phase_unknown,phase_unknown,phase_unknown,phase_unknown,0,0,0,0,0,0,resolve_phase_mapping_before_sweep,placeholder_phase_unknown
+lavamd,lavaMD,C,placeholder_missing_binary,missing_binary,missing_binary,missing_binary,missing_binary,0,0,0,0,0,0,build_or_import_before_sweep,placeholder_missing_binary
+leuko_2,leuko-2,C,placeholder_missing_binary,missing_binary,missing_binary,missing_binary,missing_binary,0,0,0,0,0,0,build_or_import_before_sweep,placeholder_missing_binary
+leuko_3,leuko-3,C,placeholder_missing_binary,missing_binary,missing_binary,missing_binary,missing_binary,0,0,0,0,0,0,build_or_import_before_sweep,placeholder_missing_binary
+mri_q,mri-q,C,ready,available,completed_no_explicit_pass,completed_no_explicit_pass,telemetry_only,1,1,0,0,0,0,candidate_for_activation_input_search,M4 config produced L1/M2 telemetry but no MP owner/M3/M4 active counters
+mrig_3,mrig-3,C,placeholder_missing_binary,missing_binary,missing_binary,missing_binary,missing_binary,0,0,0,0,0,0,build_or_import_before_sweep,placeholder_missing_binary
+pathfinder,pathfinder,C,ready,available,completed_no_explicit_pass,completed_no_explicit_pass,telemetry_only,1,1,0,0,0,0,candidate_for_activation_input_search,M4 config produced L1/M2 telemetry but no MP owner/M3/M4 active counters
+sad_1,sad-1,C,placeholder_missing_binary,missing_binary,missing_binary,missing_binary,missing_binary,0,0,0,0,0,0,build_or_import_before_sweep,placeholder_missing_binary
+sgemm,sgemm,C,ready,available,completed_no_explicit_pass,completed_no_explicit_pass,telemetry_only,1,1,0,0,0,0,candidate_for_activation_input_search,M4 config produced L1/M2 telemetry but no MP owner/M3/M4 active counters
+stencil,stencil,C,ready,available,completed_no_explicit_pass,completed_no_explicit_pass,telemetry_only,1,1,0,0,0,0,candidate_for_activation_input_search,M4 config produced L1/M2 telemetry but no MP owner/M3/M4 active counters
+tpacf,tpacf,C,placeholder_missing_binary,missing_binary,missing_binary,missing_binary,missing_binary,0,0,0,0,0,0,build_or_import_before_sweep,placeholder_missing_binary
