@@ -1,0 +1,7 @@
+paper_id,wrapper_path,active_config,M2_active_counter_triggered,M3_active_counter_triggered,M4_active_counter_triggered,input_modified,notes
+bfs,experiments/paper-mascar/workloads/matrix/W5C/wrappers/run_bfs_w5c.sh,m4_reexec_load,0,0,0,yes,iter2 completed; input=w5c_iter2_256nodes_d8; l1_samples=67; m2_l1_recent_set=0; no MP/M3/M4 activation observed
+spmv,experiments/paper-mascar/workloads/matrix/W5C/wrappers/run_spmv_w5c.sh,m4_reexec_load,0,0,0,yes,iter2 completed; input=w5c_iter2_256x256_d8; l1_samples=2936; m2_l1_recent_set=0; no MP/M3/M4 activation observed
+mri_q,experiments/paper-mascar/workloads/matrix/W5C/wrappers/run_mri_q_w5c.sh,m4_reexec_load,0,0,0,yes,iter2 completed; input=w5c_iter2_k64_x64; l1_samples=24; m2_l1_recent_set=0; no MP/M3/M4 activation observed
+pathfinder,experiments/paper-mascar/workloads/matrix/W5C/wrappers/run_pathfinder_w5c.sh,m4_reexec_load,0,0,0,yes,iter2 completed; input=w5c_iter2_128x128_p4; l1_samples=120; m2_l1_recent_set=0; no MP/M3/M4 activation observed
+sgemm,experiments/paper-mascar/workloads/matrix/W5C/wrappers/run_sgemm_w5c.sh,m4_reexec_load,0,0,0,yes,iter2 completed; input=w5c_iter2_128x32x64; l1_samples=4352; m2_l1_recent_set=0; no MP/M3/M4 activation observed
+stencil,experiments/paper-mascar/workloads/matrix/W5C/wrappers/run_stencil_w5c.sh,m4_reexec_load,0,0,0,yes,iter2 completed; input=w5c_iter2_12x12x12_i2; l1_samples=568; m2_l1_recent_set=0; no MP/M3/M4 activation observed

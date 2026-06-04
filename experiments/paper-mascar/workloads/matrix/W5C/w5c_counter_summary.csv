@@ -1,0 +1,7 @@
+paper_id,paper_type,classification,gpu_tot_sim_cycle,paper_mascar_l1_sat_sample,paper_mascar_m2_ep_cycles,paper_mascar_m2_l1_recent_set,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,M2_active_counter_triggered,M3_active_counter_triggered,M4_active_counter_triggered,input_modified,notes
+bfs,M,completed_stats_found,7518,67,2517,0,0,0,0,0,0,0,0,0,yes,iter2 completed; input=w5c_iter2_256nodes_d8; l1_samples=67; m2_l1_recent_set=0; no MP/M3/M4 activation observed
+spmv,M,completed_explicit_pass,12190,2936,54708,0,0,0,0,0,0,0,0,0,yes,iter2 completed; input=w5c_iter2_256x256_d8; l1_samples=2936; m2_l1_recent_set=0; no MP/M3/M4 activation observed
+mri_q,C,completed_stats_found,5546,24,545,0,0,0,0,0,0,0,0,0,yes,iter2 completed; input=w5c_iter2_k64_x64; l1_samples=24; m2_l1_recent_set=0; no MP/M3/M4 activation observed
+pathfinder,C,completed_stats_found,7351,120,2350,0,0,0,0,0,0,0,0,0,yes,iter2 completed; input=w5c_iter2_128x128_p4; l1_samples=120; m2_l1_recent_set=0; no MP/M3/M4 activation observed
+sgemm,C,completed_stats_found,32003,4352,107605,0,0,0,0,0,0,0,0,0,yes,iter2 completed; input=w5c_iter2_128x32x64; l1_samples=4352; m2_l1_recent_set=0; no MP/M3/M4 activation observed
+stencil,C,completed_stats_found,9817,568,14433,0,0,0,0,0,0,0,0,0,yes,iter2 completed; input=w5c_iter2_12x12x12_i2; l1_samples=568; m2_l1_recent_set=0; no MP/M3/M4 activation observed

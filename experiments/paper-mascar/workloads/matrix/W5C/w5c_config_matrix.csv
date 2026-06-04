@@ -1,0 +1,2 @@
+config_id,config_path,config_role,enabled,notes
+m4_reexec_load,configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on,m4_active,1,M4 active config used for activation counter sampling

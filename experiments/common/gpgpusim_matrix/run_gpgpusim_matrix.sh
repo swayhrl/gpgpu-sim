@@ -164,6 +164,7 @@ while IFS=',' read -r config_id config_path config_role enabled config_notes; do
       MASCAR_TIMEOUT_SEC="${actual_timeout}" \
       GPGPUSIM_ROOT="${GPGPUSIM_ROOT}" \
       GPGPU_WORKLOAD_ROOT="${GPGPU_WORKLOAD_ROOT}" \
+      COMMAND_MANIFEST="${COMMAND_MANIFEST:-${WORKLOAD_MANIFEST}}" \
       "${cmd[@]}" > "${run_dir}/stdout.log" 2> "${run_dir}/stderr.log"
     else
       MASCAR_RUN_DIR="${run_dir}" \
@@ -171,6 +172,7 @@ while IFS=',' read -r config_id config_path config_role enabled config_notes; do
       MASCAR_TIMEOUT_SEC="${actual_timeout}" \
       GPGPUSIM_ROOT="${GPGPUSIM_ROOT}" \
       GPGPU_WORKLOAD_ROOT="${GPGPU_WORKLOAD_ROOT}" \
+      COMMAND_MANIFEST="${COMMAND_MANIFEST:-${WORKLOAD_MANIFEST}}" \
       timeout "${actual_timeout}" "${cmd[@]}" > "${run_dir}/stdout.log" 2> "${run_dir}/stderr.log"
     fi
     exit_code=$?
