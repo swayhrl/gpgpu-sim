@@ -1,0 +1,2 @@
+config_id,config_path,config_role,enabled,notes
+m4_reexec_load,configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on,m4_active_search,1,M4 active config includes M2 owner scheduling and M3 hit-only/NACK; W7 searches inputs only under the existing active mechanism config

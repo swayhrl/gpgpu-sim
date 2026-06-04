@@ -1,0 +1,7 @@
+paper_id,paper_name,paper_type,m4_reexec_load
+bfs,bfs,M,no_stats_exit0
+spmv,spmv,M,no_stats_exit0
+mri_q,mri-q,C,no_stats_exit0
+pathfinder,pathfinder,C,no_stats_exit0
+sgemm,sgemm,C,no_stats_exit0
+stencil,stencil,C,no_stats_exit0

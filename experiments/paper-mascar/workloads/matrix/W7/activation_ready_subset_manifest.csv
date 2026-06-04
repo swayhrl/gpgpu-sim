@@ -1,0 +1,4 @@
+paper_id,wrapper_path,active_config,M2_active_counter_triggered,M3_active_counter_triggered,M4_active_counter_triggered,input_modified,notes
+spmv,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_spmv_w7.sh,m4_reexec_load,1,0,1,yes,w7_iter1_1024x1024_d16; classification=completed_explicit_pass; l1_sat_samples=25057; l1_sat_saturated=37; activation observed
+mri_q,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_mri_q_w7.sh,m4_reexec_load,1,0,1,yes,w7_iter1_k128_x128; classification=completed_stats_found; l1_sat_samples=52; l1_sat_saturated=4; activation observed
+pathfinder,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_pathfinder_w7.sh,m4_reexec_load,1,0,1,yes,w7_iter1_256x256_p4; classification=completed_stats_found; l1_sat_samples=315; l1_sat_saturated=89; activation observed
