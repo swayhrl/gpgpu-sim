@@ -1,0 +1,2 @@
+workload_id,suite,type,command,working_dir,expected_runtime,status,notes
+rodinia_hotspot,rodinia,stencil_memory_pressure,bash scripts/run_one.sh rodinia_hotspot,/workspace/repos/gpgpu-workloads,under_20m,available,64x64 1-iteration Rodinia hotspot wrapper; completed in M5A smoke under baseline/M2/M3/M4

@@ -1,0 +1,16 @@
+artifact,path,status,description
+baseline config,configs/hrl-repro/SM7_QV100_mascar_baseline_off/,created,M5 focused baseline comparator with gpgpu_enable_mascar=0
+M1 config,configs/hrl-repro/SM7_QV100_mascar_l1sat_probe_on/,present,Passive L1 saturation probe config
+M2 config,configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on/,present,Active MP owner scheduling config
+M3 config,configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on/,present,Active non-owner hit-only/NACK config
+M4 config,configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on/,present,Active load-only re-exec queue config
+M5 env audit,experiments/paper-mascar/m5a_runtime_env_audit.md,created,Runtime runner/workload environment audit
+M5 sanity,experiments/paper-mascar/m5a_runtime_sanity.md,created,Build config and smoke result notes
+M5 config matrix,experiments/paper-mascar/m5_config_matrix.csv,created,Focused config matrix
+M5 workload manifest,experiments/paper-mascar/m5_workload_manifest.csv,created,Focused workload list
+M5 runner,experiments/paper-mascar/run_m5_focused_validation.sh,created,Reusable focused validation runner
+M5 collector,experiments/paper-mascar/collect_m5_results.py,created,Reusable result collector
+M5 results,experiments/paper-mascar/m5_results.csv,created,Collected focused runtime results
+M5 summary,experiments/paper-mascar/m5_results_summary.md,created,Human-readable focused runtime summary
+final report,docs/papers/mascar_final_reproduction_report.md,updated,Final implementation and validation report
+closeout summary,docs/papers/mascar_closeout_summary.md,created,Short closeout note

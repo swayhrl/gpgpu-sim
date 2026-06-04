@@ -1,0 +1,247 @@
+78:-gpgpu_l1_cache_write_ratio                   25 # L1D write ratio
+86:-gpgpu_gmem_skip_L1D                    0 # global memory access skip L1D cache (implements -Xptxas -dlcm=cg, default=no skip)
+103:-gpgpu_unified_l1d_size                  128 # Size of unified data cache(L1D + shared memory) in KB
+176:-gpgpu_ccws_enable_vta_probe                    0 # CCWS Round V: enable VTA-like L1D miss probe (0=off)
+200:-gpgpu_mascar_enable_l1_saturation_probe                    1 # Mascar M1: enable passive L1D saturation probe (0=off)
+442:gpu_tot_sim_cycle = 6931
+444:gpu_tot_ipc =     133.3510
+465:L1D_cache:
+466:	L1D_cache_core[0]: Access = 88, Miss = 88, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 1
+467:	L1D_cache_core[1]: Access = 132, Miss = 132, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 43
+468:	L1D_cache_core[2]: Access = 132, Miss = 132, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 43
+469:	L1D_cache_core[3]: Access = 118, Miss = 118, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 24
+470:	L1D_cache_core[4]: Access = 74, Miss = 74, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 1
+471:	L1D_cache_core[5]: Access = 92, Miss = 92, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 2
+472:	L1D_cache_core[6]: Access = 138, Miss = 138, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 47
+473:	L1D_cache_core[7]: Access = 138, Miss = 138, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 47
+474:	L1D_cache_core[8]: Access = 124, Miss = 124, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 28
+475:	L1D_cache_core[9]: Access = 78, Miss = 78, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 2
+476:	L1D_cache_core[10]: Access = 92, Miss = 92, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 2
+477:	L1D_cache_core[11]: Access = 138, Miss = 138, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 47
+478:	L1D_cache_core[12]: Access = 138, Miss = 138, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 47
+479:	L1D_cache_core[13]: Access = 124, Miss = 124, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 28
+480:	L1D_cache_core[14]: Access = 78, Miss = 78, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 2
+481:	L1D_cache_core[15]: Access = 92, Miss = 92, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 2
+482:	L1D_cache_core[16]: Access = 138, Miss = 138, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 50
+483:	L1D_cache_core[17]: Access = 138, Miss = 138, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 50
+484:	L1D_cache_core[18]: Access = 124, Miss = 124, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 31
+485:	L1D_cache_core[19]: Access = 78, Miss = 78, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 2
+486:	L1D_cache_core[20]: Access = 52, Miss = 52, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 0
+487:	L1D_cache_core[21]: Access = 78, Miss = 78, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 7
+488:	L1D_cache_core[22]: Access = 78, Miss = 78, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 7
+489:	L1D_cache_core[23]: Access = 70, Miss = 70, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 6
+490:	L1D_cache_core[24]: Access = 44, Miss = 44, Miss_rate = 1.000, Pending_hits = 0, Reservation_fails = 0
+491:	L1D_cache_core[25]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+492:	L1D_cache_core[26]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+493:	L1D_cache_core[27]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+494:	L1D_cache_core[28]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+495:	L1D_cache_core[29]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+496:	L1D_cache_core[30]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+497:	L1D_cache_core[31]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+498:	L1D_cache_core[32]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+499:	L1D_cache_core[33]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+500:	L1D_cache_core[34]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+501:	L1D_cache_core[35]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+502:	L1D_cache_core[36]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+503:	L1D_cache_core[37]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+504:	L1D_cache_core[38]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+505:	L1D_cache_core[39]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+506:	L1D_cache_core[40]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+507:	L1D_cache_core[41]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+508:	L1D_cache_core[42]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+509:	L1D_cache_core[43]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+510:	L1D_cache_core[44]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+511:	L1D_cache_core[45]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+512:	L1D_cache_core[46]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+513:	L1D_cache_core[47]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+514:	L1D_cache_core[48]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+515:	L1D_cache_core[49]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+516:	L1D_cache_core[50]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+517:	L1D_cache_core[51]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+518:	L1D_cache_core[52]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+519:	L1D_cache_core[53]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+520:	L1D_cache_core[54]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+521:	L1D_cache_core[55]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+522:	L1D_cache_core[56]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+523:	L1D_cache_core[57]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+524:	L1D_cache_core[58]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+525:	L1D_cache_core[59]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+526:	L1D_cache_core[60]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+527:	L1D_cache_core[61]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+528:	L1D_cache_core[62]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+529:	L1D_cache_core[63]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+530:	L1D_cache_core[64]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+531:	L1D_cache_core[65]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+532:	L1D_cache_core[66]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+533:	L1D_cache_core[67]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+534:	L1D_cache_core[68]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+535:	L1D_cache_core[69]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+536:	L1D_cache_core[70]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+537:	L1D_cache_core[71]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+538:	L1D_cache_core[72]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+539:	L1D_cache_core[73]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+540:	L1D_cache_core[74]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+541:	L1D_cache_core[75]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+542:	L1D_cache_core[76]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+543:	L1D_cache_core[77]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+544:	L1D_cache_core[78]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+545:	L1D_cache_core[79]: Access = 0, Miss = 0, Miss_rate = -nan, Pending_hits = 0, Reservation_fails = 0
+546:	L1D_total_cache_accesses = 2576
+547:	L1D_total_cache_misses = 2576
+548:	L1D_total_cache_miss_rate = 1.0000
+549:	L1D_total_cache_pending_hits = 0
+550:	L1D_total_cache_reservation_fails = 519
+551:	L1D_cache_data_port_util = 0.000
+552:	L1D_cache_fill_port_util = 0.040
+553:cacheinst_L1D_access_total = 2576
+554:cacheinst_L1D_hit = 0
+555:cacheinst_L1D_miss = 2576
+556:cacheinst_L1D_pending_hit = 0
+557:cacheinst_L1D_reservation_fail = 519
+558:cacheinst_L1D_sector_miss = 1328
+559:cacheinst_L1D_miss_rate = 1.0000
+560:cacheinst_L1D_reservation_fail_rate = 0.1677
+561:cacheinst_L1D_global_load_access = 1872
+562:cacheinst_L1D_global_load_hit = 0
+563:cacheinst_L1D_global_load_miss = 1872
+564:cacheinst_L1D_global_load_rfail = 365
+565:cacheinst_L1D_global_store_access = 704
+566:cacheinst_L1D_global_store_hit = 0
+567:cacheinst_L1D_global_store_miss = 704
+568:cacheinst_L1D_global_store_rfail = 154
+569:cacheinst_L1D_local_access = 0
+570:cacheinst_L1D_writeback_access = 0
+571:cacheinst_L1D_write_allocate_access = 0
+3425:paper_mascar_l1_sat_probe_enabled = 1
+3426:paper_mascar_l1_sat_sample = 3095
+3427:paper_mascar_l1_sat_sample_saturated = 683
+3428:paper_mascar_l1_sat_mshr_full = 0
+3429:paper_mascar_l1_sat_mshr_almost_full = 0
+3430:paper_mascar_l1_sat_missq_full = 154
+3431:paper_mascar_l1_sat_missq_almost_full = 683
+3432:paper_mascar_l1_sat_reservation_fail = 519
+3433:paper_mascar_l1_sat_mshr_used_sum = 48889
+3434:paper_mascar_l1_sat_mshr_used_max = 47
+3435:paper_mascar_l1_sat_missq_used_sum = 26257
+3436:paper_mascar_l1_sat_missq_used_max = 16
+3437:paper_mascar_m2_owner_telemetry_enabled = 0
+3438:paper_mascar_m2_owner_scheduling_enabled = 0
+3439:paper_mascar_m2_ep_cycles = 0
+3440:paper_mascar_m2_mp_cycles = 0
+3441:paper_mascar_m2_owner_valid_cycles = 0
+3442:paper_mascar_m2_owner_acquire = 0
+3443:paper_mascar_m2_owner_release = 0
+3444:paper_mascar_m2_owner_release_saturation_clear = 0
+3445:paper_mascar_m2_owner_release_scoreboard = 0
+3446:paper_mascar_m2_owner_release_warp_done = 0
+3447:paper_mascar_m2_owner_release_max_hold = 0
+3448:paper_mascar_m2_owner_release_no_progress = 0
+3449:paper_mascar_m2_compute_ready_in_mp = 0
+3450:paper_mascar_m2_memory_ready_in_mp = 0
+3451:paper_mascar_m2_would_block_nonowner_mem = 0
+3452:paper_mascar_m2_would_owner_mem_issue = 0
+3453:paper_mascar_m2_would_prioritize_compute = 0
+3454:paper_mascar_m2_wst_mem_bit_set = 0
+3455:paper_mascar_m2_wst_stall_bit_set = 0
+3456:paper_mascar_m2_l1_recent_set = 1202
+3457:paper_mascar_m2_l1_recent_clear = 2412
+3458:paper_mascar_m2_nonowner_mem_block = 0
+3459:paper_mascar_m2_owner_mem_issue = 0
+3460:paper_mascar_m2_owner_compute_issue = 0
+3461:paper_mascar_m2_owner_first_acquire = 0
+3462:paper_mascar_m2_compute_priority_reorder = 0
+3463:paper_mascar_m2_compute_priority_candidates = 0
+3464:paper_mascar_m2_memory_priority_candidates = 0
+3465:paper_mascar_m2_deadlock_force_release = 0
+3466:paper_mascar_m2_active_block_guard_allow = 0
+3467:paper_mascar_m3_nonowner_hit_only_probe_enabled = 0
+3468:paper_mascar_m3_nonowner_hit_only_enabled = 0
+3469:paper_mascar_m3_probe_attempt = 0
+3470:paper_mascar_m3_probe_hit = 0
+3471:paper_mascar_m3_probe_nack = 0
+3472:paper_mascar_m3_probe_nack_miss = 0
+3473:paper_mascar_m3_probe_nack_reserved = 0
+3474:paper_mascar_m3_probe_skip_not_mp = 0
+3475:paper_mascar_m3_probe_skip_no_owner = 0
+3476:paper_mascar_m3_probe_skip_owner = 0
+3477:paper_mascar_m3_probe_skip_nonload = 0
+3478:paper_mascar_m3_probe_skip_disabled = 3095
+3479:paper_mascar_m3_nonowner_lsu_probe_allowed = 0
+3480:paper_mascar_m3_nonowner_lsu_probe_block_nonload = 0
+3481:paper_mascar_m3_hitonly_access_attempt = 0
+3482:paper_mascar_m3_hitonly_access_hit = 0
+3483:paper_mascar_m3_hitonly_access_nack = 0
+3484:paper_mascar_m3_hitonly_access_nack_miss = 0
+3485:paper_mascar_m3_hitonly_access_nack_reserved = 0
+3486:paper_mascar_m3_hitonly_access_nack_other = 0
+3487:paper_mascar_m3_hitonly_access_owner_bypass = 0
+3488:paper_mascar_m3_hitonly_access_mp_off_bypass = 0
+3489:paper_mascar_m3_nack_guard_owner_release = 0
+3490:paper_mascar_m3_nack_guard_threshold = 64
+3491:paper_mascar_m4_reexec_queue_probe_enabled = 0
+3492:paper_mascar_m4_reexec_queue_enabled = 0
+3493:paper_mascar_m4_would_enqueue_attempt = 0
+3494:paper_mascar_m4_would_enqueue_success = 0
+3495:paper_mascar_m4_enqueue_attempt = 0
+3496:paper_mascar_m4_enqueue_success = 0
+3497:paper_mascar_m4_enqueue_fail_disabled = 519
+3498:paper_mascar_m4_enqueue_fail_nonload = 0
+3499:paper_mascar_m4_enqueue_fail_full = 0
+3500:paper_mascar_m4_enqueue_fail_warp_in_queue = 0
+3501:paper_mascar_m4_enqueue_reason_m3_nack = 0
+3502:paper_mascar_m4_enqueue_reason_reservation_fail = 0
+3503:paper_mascar_m4_queue_full_stall_new_load = 0
+3504:paper_mascar_m4_retry_attempt = 0
+3505:paper_mascar_m4_retry_hit = 0
+3506:paper_mascar_m4_retry_miss_sent = 0
+3507:paper_mascar_m4_retry_nack = 0
+3508:paper_mascar_m4_retry_reservation_fail = 0
+3509:paper_mascar_m4_retry_requeue_tail = 0
+3510:paper_mascar_m4_retry_owner_takeover = 0
+3511:paper_mascar_m4_retry_deadlock_guard = 0
+3512:paper_mascar_m4_active_queue_max_occupancy = 0
+3513:paper_mascar_m4_reexec_queue_size = 32
+3514:paper_mascar_m4_reexec_issue_per_cycle = 1
+3515:paper_mascar_m4_reexec_nack_rotate_limit = 128
+3558:  gpu_tot_sim_cycle                        = 6931
+3560:  gpu_tot_ipc                              = 133.3510
+3581:  cacheinst_L1D_access_total               = 2576
+3582:  cacheinst_L1D_hit                        = 0
+3583:  cacheinst_L1D_miss                       = 2576
+3584:  cacheinst_L1D_pending_hit                = 0
+3585:  cacheinst_L1D_reservation_fail           = 519
+3586:  cacheinst_L1D_sector_miss                = 1328
+3587:  cacheinst_L1D_miss_rate                  = 1.0000
+3588:  cacheinst_L1D_reservation_fail_rate      = 0.1677
+3589:  cacheinst_L1D_global_load_access         = 1872
+3590:  cacheinst_L1D_global_load_hit            = 0
+3591:  cacheinst_L1D_global_load_miss           = 1872
+3592:  cacheinst_L1D_global_load_rfail          = 365
+3593:  cacheinst_L1D_global_store_access        = 704
+3594:  cacheinst_L1D_global_store_hit           = 0
+3595:  cacheinst_L1D_global_store_miss          = 704
+3596:  cacheinst_L1D_global_store_rfail         = 154
+3597:  cacheinst_L1D_local_access               = 0
+3598:  cacheinst_L1D_writeback_access           = 0
+3599:  cacheinst_L1D_write_allocate_access      = 0
+3647:  gpu_tot_sim_cycle                        = 6931
+3649:  gpu_tot_ipc                              = 133.3510
+3670:  cacheinst_L1D_access_total               = 2576
+3671:  cacheinst_L1D_hit                        = 0
+3672:  cacheinst_L1D_miss                       = 2576
+3673:  cacheinst_L1D_pending_hit                = 0
+3674:  cacheinst_L1D_reservation_fail           = 519
+3675:  cacheinst_L1D_sector_miss                = 1328
+3676:  cacheinst_L1D_miss_rate                  = 1.0000
+3677:  cacheinst_L1D_reservation_fail_rate      = 0.1677
+3678:  cacheinst_L1D_global_load_access         = 1872
+3679:  cacheinst_L1D_global_load_hit            = 0
+3680:  cacheinst_L1D_global_load_miss           = 1872
+3681:  cacheinst_L1D_global_load_rfail          = 365
+3682:  cacheinst_L1D_global_store_access        = 704
+3683:  cacheinst_L1D_global_store_hit           = 0
+3684:  cacheinst_L1D_global_store_miss          = 704
+3685:  cacheinst_L1D_global_store_rfail         = 154
+3686:  cacheinst_L1D_local_access               = 0
+3687:  cacheinst_L1D_writeback_access           = 0
+3688:  cacheinst_L1D_write_allocate_access      = 0

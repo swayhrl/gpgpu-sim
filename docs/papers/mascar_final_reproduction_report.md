@@ -1,200 +1,191 @@
-# Mascar Approximate Reproduction Final Report
+# Mascar Final Reproduction Report
 
-> **Canonical final artifact** for the Mascar approximate reproduction.
-> Branch: hrl/paper/mascar-repro-v0
+Date: 2026-06-04
 
-**Paper**: Speeding Up GPU Warps by Reducing Memory Pitstops (HPCA 2015)  
-**Authors**: Ali Bakhoda, George L. Yuan, Wilson W. L. Fung, Henry Wong, Tor M. Aamodt  
-**Branch**: hrl/paper/mascar-repro-v0  
-**Date**: 2026-05-01  
-**Status**: Approximate Reproduction Complete (NOT a paper-exact reproduction)
+## Executive Summary
 
----
+This branch now contains a paper-like Mascar mechanism stack through M4:
 
-## 1. Paper Summary
+- M1: passive L1 saturation probe.
+- M2: EP/MP owner-warp scheduling.
+- M3: non-owner L1 hit-only / miss-NACK.
+- M4: load-only cache access re-execution queue.
 
-Mascar identifies "memory pitstops" — situations where GPU warps are repeatedly stalled
-waiting for the memory pipeline (MSHRs full, memory bandwidth saturated). The key insight
-is to deprioritize warps that are in pitstops, allowing other warps to drain the memory
-pipeline and proceed. This reduces head-of-line blocking and improves overall throughput.
+M5 collected focused runtime sanity data on one short workload,
+`rodinia_hotspot`, across baseline, M1, M2, M3, and M4 configs. All focused
+runs completed. These results are not a paper-comparable reproduction and do
+not establish the Mascar paper's reported speedups.
 
-**Core mechanism** (paper):
-1. Detect warps whose memory requests saturate MSHR entries
-2. Track consecutive stall cycles per warp (pitstop streak)
-3. When a warp's streak exceeds a threshold, skip it in scheduling
-4. Force-allow after N consecutive skips to prevent deadlock
+## Repository And Branch
 
----
+- Repository: `/workspace/repos/gpgpu-sim_distribution`
+- Branch: `hrl/paper/mascar-repro-v0`
+- HEAD during M5/M6: `2cf8b33`
+- Simulator: GPGPU-Sim 4.x.
 
-## 2. Implementation: Approximate Proxy
+## Paper Target
 
-**This is an approximate reproduction only.** The following capabilities from the paper
-are NOT implemented:
-- **No pipeline replay or re-execution** — the paper's primary speedup source
-- **No true MSHR occupancy tracking** — we use a coarser scheduler-side proxy
-- **No per-static-PC load classification** — all memory ops (loads + stores) are gated
+The Mascar paper targets GPGPU-Sim v3.2.2 with GTX480/Fermi-style evaluation
+and reports performance, LSU stall, EP/MP, L1 hit-rate, and energy results over
+Rodinia/Parboil-style benchmark sets.
 
-### Proxy Strategy
+This reproduction differs materially:
 
-The original Mascar paper monitors MSHR occupancy and memory pipeline utilization.
-Our GPGPU-Sim implementation approximates this using the per-scheduler `m_mem_out`
-register set:
+- It uses the local GPGPU-Sim 4.x tree.
+- The active configs are SM7/QV100-style, not GTX480/Fermi.
+- Runtime validation used one short focused workload, not the paper benchmark
+  suite.
+- Energy saving was not reproduced.
 
-- **Stall detection**: `m_mem_out->has_free()` returning `false` = memory pipeline slot full
-  (this is a coarser signal than true MSHR occupancy)
-- **Streak counter**: Per-warp `m_mascar_stall_streak[]` incremented on each stall
-- **Skip gate**: Post-scoreboard, inside memory instruction block
-- **Deadlock prevention**: Per-warp `m_mascar_skip_streak[]` + `max_skip_streak` force-allow
+## Implementation Summary
 
-### Hook Point
+M1 samples L1-side pressure from MSHR/miss-queue state and prints
+`paper_mascar_l1_sat_*` stats.
 
-`scheduler_unit::cycle()` in `shader.cc`, inside the memory instruction branch:
+M2 adds EP/MP control state in `shader_core_ctx`, shared owner state across SM
+schedulers, approximate WST memory/stall bits, compute-first priority in MP,
+and owner release guards.
 
-```
-ibuffer → pre-scoreboard → scoreboard check →
-[memory inst?] → CCWS check → [Mascar skip gate] → m_mem_out check → issue/stall
-```
+M3 adds passive and active non-owner hit-only checks. Active non-owner L1 misses
+are treated as NACK/retry at the scheduler/cache interface and do not send L2
+requests.
 
-The skip gate fires BEFORE the `m_mem_out->has_free()` check, using the streak
-accumulated from previous cycles.
+M4 adds a load-only LSU re-execution queue. It owns queued `mem_fetch *`
+entries, enforces one queued memory instruction per warp, retries queue work
+before new dispatch memory work, and has stats under `paper_mascar_m4_*`.
 
-### Mechanism Chain
+## Mechanism Checklist
 
-| Phase | Mechanism | Status |
-|-------|-----------|--------|
-| 1 | No-op config + stats (7 knobs, 7 stat counters) | ✓ Complete |
-| 2 | Memory stall telemetry (stall_streak, mem_stall_event) | ✓ Complete |
-| 3 | Would-deprioritize telemetry (passive, no scheduling) | ✓ Complete |
-| 4 | Minimal scheduling skip-gate proxy (post-scoreboard, approximate) | ✓ Complete |
-| 5 | Focused validation (9 workloads, no deadlock) | ✓ Complete |
+| Paper mechanism | Current status | Implementation files | Notes/limitations |
+|---|---|---|---|
+| L1 MSHR/miss-queue saturation detection | implemented approximately | `src/gpgpu-sim/shader.cc`, `src/gpgpu-sim/shader.h` | Uses local L1D pressure sampling; not paper hardware verbatim. |
+| EP/MP scheduling modes | implemented approximately | `src/gpgpu-sim/shader.cc`, `src/gpgpu-sim/shader.h` | Based on recent L1 saturation flag. |
+| owner warp priority/exclusivity | implemented approximately | `src/gpgpu-sim/shader.cc` | Owner state is per SM and shared across schedulers. |
+| WST/WRC-like state | implemented partially | `src/gpgpu-sim/shader.cc`, `src/gpgpu-sim/shader.h` | WST memory/stall bit approximation; no full paper WRC structure. |
+| compute-ready priority in MP | implemented approximately | `src/gpgpu-sim/shader.cc` | Scheduler reorder under M2 active knob. |
+| non-owner L1 hit-only / miss-NACK | implemented approximately | `src/gpgpu-sim/gpu-cache.cc`, `src/gpgpu-sim/gpu-cache.h`, `src/gpgpu-sim/shader.cc` | Active non-owner loads only; stores/atomics remain blocked. |
+| cache access re-execution queue | implemented partially | `src/gpgpu-sim/shader.cc`, `src/gpgpu-sim/shader.h` | Load-only; queue stores `mem_fetch *` rather than compact metadata. |
+| one memory instruction per warp in re-exec queue | implemented | `src/gpgpu-sim/shader.cc`, `src/gpgpu-sim/shader.h` | Per-warp in-queue bit. |
+| 32-entry queue default | implemented | `src/gpgpu-sim/gpu-sim.cc`, configs under `configs/hrl-repro/` | `gpgpu_mascar_reexec_queue_size=32`. |
+| speedup / LSU stall / EP-MP / L1 hit / energy evaluation | partially evaluated | `experiments/paper-mascar/m5_results.csv` | Only focused runtime sanity; no energy, no full suite. |
 
----
+## Config Matrix
 
-## 3. Config Knobs
+M5 config matrix: `experiments/paper-mascar/m5_config_matrix.csv`.
 
-All knob names follow the `gpgpu_mascar_*` prefix convention:
+Included configs:
 
-| Knob | Default | policy_on | Description |
-|------|---------|-----------|-------------|
-| `gpgpu_enable_mascar` | 0 | 1 | Master enable (master guard) |
-| `gpgpu_mascar_enable_telemetry` | 0 | 1 | Enable stall streak tracking |
-| `gpgpu_mascar_enable_would_deprioritize` | 0 | 1 | Enable would-skip telemetry |
-| `gpgpu_mascar_enable_scheduling` | 0 | 1 | Enable real scheduler skip |
-| `gpgpu_mascar_stall_threshold` | 8 | 2 | Streak to trigger skip |
-| `gpgpu_mascar_max_skip_streak` | 4 | 4 | Skips before force-allow (deadlock guard) |
-| `gpgpu_mascar_debug` | 0 | 0 | Debug prints |
+- `baseline_off`
+- `m1_l1sat_probe`
+- `m2_owner_sched`
+- `m3_hitonly_nack`
+- `m4_reexec_load`
+- `m4_reexec_probe_only`
 
-**Note on threshold=2**: The original Mascar paper targets significant memory saturation
-(MSHR utilization > 80%). Our m_mem_out proxy fires more aggressively; threshold=2
-is chosen to produce observable skip events given this coarser proxy.
+The old proxy Mascar scheduling knob remains off in the focused configs.
 
----
+## Validation Method
 
-## 4. Focused Validation Results
+Validation used:
 
-**Configs**: mascar_noop_off (baseline) vs mascar_policy_on (threshold=2, max_skip_streak=4)  
-**Data**: experiments/paper-mascar/focused_validation.csv
-
-| Workload | noop_off | policy_on | Δ cycles | skip_count | allow_count | deadlock |
-|----------|----------|-----------|----------|------------|-------------|----------|
-| vecadd | 5569 | 5560 | -9 (-0.16%) | 44 | 11 | no |
-| rodinia_hotspot | 6931 | 6923 | -8 (-0.12%) | 8300 | 2075 | no |
-| rodinia_srad_v2 | 15926 | 15918 | -8 (-0.05%) | 5516 | 1379 | no |
-| rodinia_bfs | 136110 | 136110 | 0 | 0 | 0 | no |
-| strided_access | 5825 | 5821 | -4 (-0.07%) | 44 | 11 | no |
-| polybench_fdtd2d | 35681 | 35720 | +39 (+0.11%) | 1728 | 432 | no |
-| polybench_2dconv | 6652 | 6651 | -1 (-0.02%) | 2984 | 746 | no |
-| mutual_tiled | 7479 | 7472 | -7 (-0.09%) | 216 | 54 | no |
-| parboil_histo | 35472 | 35519 | +47 (+0.13%) | 13440 | 3360 | no |
-
-**Observations under this proxy**:
-- skip/allow ratio = 4.0 for all workloads (= max_skip_streak) — deadlock prevention works ✓
-- Deadlock prevention verified in all 9 workloads ✓
-- BFS: skip_count=0 consistent with low per-warp memory pressure under this proxy ✓
-- 7/9 workloads improve-or-neutral (6 improved + 1 unchanged); 2/9 show small regression
-
----
-
-## 5. Comparison with Paper Claims
-
-The paper reports speedups of 5–15% on memory-intensive benchmarks (STREAM, Rodinia).
-Cycle changes in our runs range from **-0.16% to +0.13%** across 9 workloads — all
-within noise range for small workloads. **Paper-level speedup (5–15%) is NOT reproduced.**
-
-**Root causes of the gap**:
-
-| Factor | Paper | Our Implementation |
-|--------|-------|-------------------|
-| Saturation proxy | True MSHR occupancy + BW utilization | m_mem_out register set (scheduler slot, single entry) |
-| Threshold | Tuned per GPU (high specificity) | threshold=2 (aggressive, coarse proxy) |
-| Workload size | Full benchmarks (large datasets) | Tiny workloads (64×64 matrices, small graphs) |
-| MSHR pressure | Real MSHR contention visible | m_mem_out is per-scheduler, coarser granularity |
-| Memory bandwidth | HBM bandwidth utilization modeled | Not directly modeled |
-| Replay/re-execution | Core speedup mechanism | NOT implemented |
-
-Small effect sizes under this proxy are consistent with the above limitations,
-not evidence of the paper's claimed performance benefit.
-
----
-
-## 6. Approximation Limitations
-
-| Limitation | Impact | Closer Approximation |
-|------------|--------|-------------|
-| m_mem_out proxy (not true MSHR) | Less precise saturation signal | Monitor MSHR hit-under-miss count |
-| No pipeline replay/re-execution | Primary speedup source absent | Implement per-warp replay queue |
-| No memory bandwidth tracking | Can't distinguish BW-limited vs MSHR-limited | Add per-cycle BW utilization probe |
-| Tiny workloads | Skip-benefit overwhelmed by skip-cost | Use 256×256 or larger datasets |
-| Aggressive threshold (=2) | Many spurious skips | Tune per workload or use adaptive threshold |
-| No load/store distinction | Skips ALL memory ops including stores | Gate only loads, not stores/barriers |
-
----
-
-## 7. Mechanism Chain Verification
-
-```
-feature_off (noop_off) regression:
-  vecadd: 5569 = baseline ✓
-  all paper_mascar_* stats = 0 ✓
-
-telemetry signal (would_change_on):
-  hotspot: mem_stall_event=12150, would_deprioritize=10025 ✓
-  srad_v2: mem_stall_event=3989,  would_deprioritize=3237 ✓
-
-policy_on proxy mechanism:
-  skip_count > 0 for 8/9 workloads ✓
-  allow_count > 0 where skip_count > 0 ✓
-  skip/allow = max_skip_streak for all ✓
-  No deadlock ✓
+```bash
+git diff --check
+source setup_environment release && make -j2
+bash -n experiments/paper-mascar/run_m5_focused_validation.sh
+python3 -m py_compile experiments/paper-mascar/collect_m5_results.py
+bash experiments/paper-mascar/run_m5_focused_validation.sh
+python3 experiments/paper-mascar/collect_m5_results.py <run_dir>
 ```
 
----
+Runtime workload:
 
-## 8. Conclusion
+- `rodinia_hotspot`, short 64x64 1-iteration wrapper from
+  `/workspace/repos/gpgpu-workloads`.
 
-**Approximate mechanism reproduction: COMPLETE**  
-**This is NOT a paper-exact reproduction of the paper.**
+## Results
 
-The Mascar memory-pitstop scheduling mechanism has been implemented as a
-scheduler-side proxy (m_mem_out stall streak) in GPGPU-Sim:
+M5 focused results: `experiments/paper-mascar/m5_results.csv`.
 
-- The approximate proxy mechanism chain is complete and functional
-- Feature flag (`gpgpu_enable_mascar=0`) preserves baseline exactly
-- Deadlock prevention (max_skip_streak force-allow) works correctly
-- Memory-pressure signal direction is consistent with this proxy implementation
-  (BFS: no skips; hotspot: high skip count, consistent with memory-bound workload)
-- Cycle impact is small (<0.2% in either direction) — **not evidence of paper-level speedup**
+| config | workload | exit | cycles | ipc | L1 samples | M2 MP cycles | M3 attempts | M4 enqueue | M4 retry |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| baseline_off | rodinia_hotspot | 0 | 6931 | 133.3510 | 0 | 0 | 0 | 0 | 0 |
+| m1_l1sat_probe | rodinia_hotspot | 0 | 6931 | 133.3510 | 3095 | 0 | 0 | 0 | 0 |
+| m2_owner_sched | rodinia_hotspot | 0 | 6931 | 133.3510 | 3095 | 495 | 0 | 0 | 0 |
+| m3_hitonly_nack | rodinia_hotspot | 0 | 6931 | 133.3510 | 3095 | 495 | 0 | 0 | 0 |
+| m4_reexec_load | rodinia_hotspot | 0 | 6918 | 133.6016 | 3498 | 631 | 0 | 53 | 440 |
+| m4_reexec_probe_only | rodinia_hotspot | 0 | 6931 | 133.3510 | 3095 | 495 | 0 | 0 | 0 |
 
-**What this is NOT**:
-- Not a paper-exact reproduction of the paper
-- No pipeline replay or re-execution (the paper's primary speedup source)
-- Memory pressure detection uses m_mem_out (scheduler slot), not true MSHR occupancy
-- Cycle deltas (<0.2%) are far below the paper's claims — do not cite as confirmation
-- Workloads are tiny; quantitative results are not comparable to the paper
-- Paper-level speedup (5–15%) is NOT reproduced
+Interpretation:
 
-**Next steps toward a more approximate reproduction**:
-1. Use larger workloads (256×256 matrices, larger graphs)
-2. Implement true MSHR tracking via `m_ldst_unit->mshr` occupancy probe
-3. Implement per-warp replay queue (primary speedup mechanism)
-4. Add memory bandwidth utilization tracking
+- Baseline has Mascar active stats at zero.
+- M1 detects L1 pressure on `rodinia_hotspot`.
+- M2 enters MP for this workload.
+- M3 active config completed, but the short workload did not produce non-owner
+  hit-only attempts.
+- M4 active config completed and exercised the load re-execution queue:
+  `enqueue_success=53`, `retry_attempt=440`.
+- The small cycle delta in the M4 row is a focused sanity observation only, not
+  a paper-level performance claim.
+
+## Debug And Fix Notes
+
+No M5 runtime assertion, timeout, config failure, or deadlock was observed.
+No M1-M4 code bug was fixed during M5/M6.
+
+M5 added the explicit baseline comparator config:
+
+- `configs/hrl-repro/SM7_QV100_mascar_baseline_off/`
+
+## Known Limitations
+
+- Current simulator is GPGPU-Sim 4.x, not the paper's GPGPU-Sim v3.2.2.
+- Current active configs are SM7/QV100-style, not GTX480/Fermi.
+- M4 re-execution is load-only.
+- Store, atomic, texture, and constant re-execution are not supported.
+- Energy saving was not reproduced; no AccelWattch energy evaluation was run.
+- No full Rodinia/Parboil sweep was run.
+- The re-exec queue holds `mem_fetch *` entries rather than the paper's compact
+  metadata representation.
+- Owner release uses simulator approximations such as scoreboard-block release
+  rather than exact paper WST/WRC hardware.
+- M3 hit-only/NACK needs additional workloads to show active non-owner attempts.
+
+## Reproduction Instructions
+
+Build:
+
+```bash
+cd /workspace/repos/gpgpu-sim_distribution
+source setup_environment release
+make -j2
+```
+
+Run focused validation:
+
+```bash
+cd /workspace/repos/gpgpu-sim_distribution
+bash experiments/paper-mascar/run_m5_focused_validation.sh
+```
+
+Collect results:
+
+```bash
+python3 experiments/paper-mascar/collect_m5_results.py experiments/paper-mascar/m5_runs/<run_id>
+```
+
+Key configs are under `configs/hrl-repro/`:
+
+- `SM7_QV100_mascar_baseline_off`
+- `SM7_QV100_mascar_l1sat_probe_on`
+- `SM7_QV100_mascar_m2_owner_sched_on`
+- `SM7_QV100_mascar_m3_hitonly_nack_on`
+- `SM7_QV100_mascar_m4_reexec_load_on`
+
+## Recommended Next Work
+
+- Run a broader but still bounded Rodinia/Parboil subset with memory and
+  irregular workloads.
+- Add or adapt a GTX480/Fermi config if paper-comparable evaluation is required.
+- Identify workloads that trigger M3 non-owner hit-only attempts.
+- Extend re-execution beyond loads only only after a careful ownership audit.
+- Run AccelWattch energy studies if energy reproduction is required.

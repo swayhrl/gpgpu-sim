@@ -1,0 +1,5 @@
+config_id,workload,exit_code,log_path,run_dir
+baseline_off,rodinia_hotspot,0,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/m5_runtime_logs/baseline_off_rodinia_hotspot.log,/workspace/repos/gpgpu-workloads/runs/rodinia_hotspot/20260604_185441
+m2_owner_sched,rodinia_hotspot,0,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/m5_runtime_logs/m2_owner_sched_rodinia_hotspot.log,/workspace/repos/gpgpu-workloads/runs/rodinia_hotspot/20260604_185444
+m3_hitonly_nack,rodinia_hotspot,0,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/m5_runtime_logs/m3_hitonly_nack_rodinia_hotspot.log,/workspace/repos/gpgpu-workloads/runs/rodinia_hotspot/20260604_185447
+m4_reexec_load,rodinia_hotspot,0,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/m5_runtime_logs/m4_reexec_load_rodinia_hotspot.log,/workspace/repos/gpgpu-workloads/runs/rodinia_hotspot/20260604_185450

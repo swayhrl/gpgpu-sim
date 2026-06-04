@@ -1,0 +1,7 @@
+config_id,config_path,purpose,gpgpu_enable_mascar,l1sat_probe,m2_owner_sched,m3_hitonly_nack,m4_reexec,old_proxy_sched,expected_behavior
+baseline_off,configs/hrl-repro/SM7_QV100_mascar_baseline_off,local SM7/QV100 baseline comparator,0,0,0,0,0,0,No Mascar behavior or paper_mascar active stats expected
+m1_l1sat_probe,configs/hrl-repro/SM7_QV100_mascar_l1sat_probe_on,M1 passive L1 saturation probe,1,1,0,0,0,0,L1 saturation samples may be nonzero; no scheduling change
+m2_owner_sched,configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on,M2 active EP/MP owner scheduling,1,1,1,0,0,0,MP/EP stats may activate; scheduler behavior gated by M2 owner scheduling
+m3_hitonly_nack,configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on,M3 active non-owner hit-only/NACK,1,1,1,1,0,0,Non-owner hit-only path may activate when MP has non-owner loads
+m4_reexec_load,configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on,M4 active load-only re-execution queue,1,1,1,1,1,0,Load re-exec enqueue/retry stats may activate on L1D reservation fail or M3 NACK
+m4_reexec_probe_only,configs/hrl-repro/SM7_QV100_mascar_m4_reexec_probe_on,M4 passive re-exec would-enqueue probe,1,1,1,1,0,0,Would-enqueue stats may activate but active queue stays off
