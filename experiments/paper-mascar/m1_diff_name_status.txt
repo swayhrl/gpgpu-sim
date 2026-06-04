@@ -1,0 +1,28 @@
+# git status --short
+ M src/gpgpu-sim/gpu-cache.h
+ M src/gpgpu-sim/gpu-sim.cc
+ M src/gpgpu-sim/shader.cc
+ M src/gpgpu-sim/shader.h
+?? configs/hrl-repro/SM7_QV100_mascar_l1sat_probe_on/
+?? docs/papers/mascar_m1_l1_saturation_probe.md
+?? experiments/paper-mascar/m1_diff_name_status.txt
+?? experiments/paper-mascar/m1_postcheck.md
+?? experiments/paper-mascar/m1_symbol_grep.txt
+
+# git diff --name-status
+M	src/gpgpu-sim/gpu-cache.h
+M	src/gpgpu-sim/gpu-sim.cc
+M	src/gpgpu-sim/shader.cc
+M	src/gpgpu-sim/shader.h
+
+# HEAD
+8b8abe3d10f4
+
+# untracked M1 files
+configs/hrl-repro/SM7_QV100_mascar_l1sat_probe_on/config_volta_islip.icnt
+configs/hrl-repro/SM7_QV100_mascar_l1sat_probe_on/gpgpusim.config
+configs/hrl-repro/SM7_QV100_mascar_l1sat_probe_on/README.md
+docs/papers/mascar_m1_l1_saturation_probe.md
+experiments/paper-mascar/m1_symbol_grep.txt
+experiments/paper-mascar/m1_diff_name_status.txt
+experiments/paper-mascar/m1_postcheck.md

@@ -1,0 +1,96 @@
+# New M1 symbols and stats
+experiments/paper-mascar/m1_postcheck.md:59:rg -n -- "-gpgpu_enable_mascar|gpgpu_mascar_enable_l1_saturation_probe|gpgpu_mascar_l1_saturation_margin" src/gpgpu-sim/gpu-sim.cc
+experiments/paper-mascar/m1_postcheck.md:60:rg -n -- "-gpgpu_enable_mascar|-gpgpu_mascar_enable_telemetry|-gpgpu_mascar_enable_would_deprioritize|-gpgpu_mascar_enable_scheduling|-gpgpu_mascar_enable_l1_saturation_probe|-gpgpu_mascar_l1_saturation_margin" configs/hrl-repro/SM7_QV100_mascar_l1sat_probe_on/gpgpusim.config
+docs/papers/mascar_m1_l1_saturation_probe.md:12:  - `mshr_table::entries_used()`
+docs/papers/mascar_m1_l1_saturation_probe.md:13:  - `mshr_table::entries_limit()`
+docs/papers/mascar_m1_l1_saturation_probe.md:14:- Added `baseline_cache::mascar_l1_saturation_snapshot(...)`, which reads:
+docs/papers/mascar_m1_l1_saturation_probe.md:20:  - `gpgpu_mascar_enable_l1_saturation_probe != 0`
+docs/papers/mascar_m1_l1_saturation_probe.md:29:- `-gpgpu_mascar_enable_l1_saturation_probe`
+docs/papers/mascar_m1_l1_saturation_probe.md:32:- `-gpgpu_mascar_l1_saturation_margin`
+docs/papers/mascar_m1_l1_saturation_probe.md:36:The default-off path is baseline-safe: with `gpgpu_enable_mascar=0` or `gpgpu_mascar_enable_l1_saturation_probe=0`, the new sampling helpers return before touching counters.
+docs/papers/mascar_m1_l1_saturation_probe.md:42:- `paper_mascar_l1_sat_probe_enabled`
+docs/papers/mascar_m1_l1_saturation_probe.md:43:- `paper_mascar_l1_sat_sample`
+docs/papers/mascar_m1_l1_saturation_probe.md:44:- `paper_mascar_l1_sat_sample_saturated`
+docs/papers/mascar_m1_l1_saturation_probe.md:45:- `paper_mascar_l1_sat_mshr_full`
+docs/papers/mascar_m1_l1_saturation_probe.md:46:- `paper_mascar_l1_sat_mshr_almost_full`
+docs/papers/mascar_m1_l1_saturation_probe.md:47:- `paper_mascar_l1_sat_missq_full`
+docs/papers/mascar_m1_l1_saturation_probe.md:48:- `paper_mascar_l1_sat_missq_almost_full`
+docs/papers/mascar_m1_l1_saturation_probe.md:49:- `paper_mascar_l1_sat_reservation_fail`
+docs/papers/mascar_m1_l1_saturation_probe.md:53:- `paper_mascar_l1_sat_mshr_used_sum`
+docs/papers/mascar_m1_l1_saturation_probe.md:54:- `paper_mascar_l1_sat_mshr_used_max`
+docs/papers/mascar_m1_l1_saturation_probe.md:55:- `paper_mascar_l1_sat_missq_used_sum`
+docs/papers/mascar_m1_l1_saturation_probe.md:56:- `paper_mascar_l1_sat_missq_used_max`
+docs/papers/mascar_m1_l1_saturation_probe.md:93:  - verified new knobs, accessors, LSU helpers, aggregation, and `paper_mascar_l1_sat_*` stats exist
+configs/hrl-repro/SM7_QV100_mascar_l1sat_probe_on/README.md:6:- `gpgpu_mascar_enable_l1_saturation_probe=1`
+configs/hrl-repro/SM7_QV100_mascar_l1sat_probe_on/README.md:7:- `gpgpu_mascar_l1_saturation_margin=1`
+configs/hrl-repro/SM7_QV100_mascar_l1sat_probe_on/gpgpusim.config:245:-gpgpu_mascar_enable_l1_saturation_probe 1
+configs/hrl-repro/SM7_QV100_mascar_l1sat_probe_on/gpgpusim.config:246:-gpgpu_mascar_l1_saturation_margin 1
+src/gpgpu-sim/shader.h:1435:  void get_mascar_l1_saturation_stats(
+src/gpgpu-sim/shader.h:1475:  void mascar_sample_l1_saturation(l1_cache *cache, new_addr_type addr);
+src/gpgpu-sim/shader.h:1476:  void mascar_note_l1_reservation_fail();
+src/gpgpu-sim/shader.h:1840:  int gpgpu_mascar_enable_l1_saturation_probe; // M1: passive L1-side saturation probe
+src/gpgpu-sim/shader.h:1843:  unsigned gpgpu_mascar_l1_saturation_margin; // M1: almost-full distance (default 1)
+src/gpgpu-sim/shader.h:2403:  void get_mascar_l1_saturation_stats(
+src/gpgpu-sim/shader.h:2410:    m_ldst_unit->get_mascar_l1_saturation_stats(
+src/gpgpu-sim/shader.h:3081:  void get_mascar_l1_saturation_stats(
+src/gpgpu-sim/gpu-sim.cc:779:  option_parser_register(opp, "-gpgpu_mascar_enable_l1_saturation_probe",
+src/gpgpu-sim/gpu-sim.cc:780:                         OPT_INT32, &gpgpu_mascar_enable_l1_saturation_probe,
+src/gpgpu-sim/gpu-sim.cc:789:  option_parser_register(opp, "-gpgpu_mascar_l1_saturation_margin",
+src/gpgpu-sim/gpu-sim.cc:790:                         OPT_UINT32, &gpgpu_mascar_l1_saturation_margin,
+src/gpgpu-sim/gpu-sim.cc:1842:  fprintf(stdout, "paper_mascar_l1_sat_probe_enabled = %d\n",
+src/gpgpu-sim/gpu-sim.cc:1844:              m_shader_config->gpgpu_mascar_enable_l1_saturation_probe);
+src/gpgpu-sim/gpu-sim.cc:1852:      m_cluster[i]->get_mascar_l1_saturation_stats(
+src/gpgpu-sim/gpu-sim.cc:1856:    fprintf(stdout, "paper_mascar_l1_sat_sample = %llu\n", sample);
+src/gpgpu-sim/gpu-sim.cc:1857:    fprintf(stdout, "paper_mascar_l1_sat_sample_saturated = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1859:    fprintf(stdout, "paper_mascar_l1_sat_mshr_full = %llu\n", mshr_full);
+src/gpgpu-sim/gpu-sim.cc:1860:    fprintf(stdout, "paper_mascar_l1_sat_mshr_almost_full = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1862:    fprintf(stdout, "paper_mascar_l1_sat_missq_full = %llu\n", missq_full);
+src/gpgpu-sim/gpu-sim.cc:1863:    fprintf(stdout, "paper_mascar_l1_sat_missq_almost_full = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1865:    fprintf(stdout, "paper_mascar_l1_sat_reservation_fail = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1867:    fprintf(stdout, "paper_mascar_l1_sat_mshr_used_sum = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1869:    fprintf(stdout, "paper_mascar_l1_sat_mshr_used_max = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1871:    fprintf(stdout, "paper_mascar_l1_sat_missq_used_sum = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:1873:    fprintf(stdout, "paper_mascar_l1_sat_missq_used_max = %llu\n",
+src/gpgpu-sim/gpu-cache.h:1053:  unsigned entries_used() const { return m_data.size(); }
+src/gpgpu-sim/gpu-cache.h:1054:  unsigned entries_limit() const { return m_num_entries; }
+src/gpgpu-sim/gpu-cache.h:1386:  void mascar_l1_saturation_snapshot(
+src/gpgpu-sim/gpu-cache.h:1393:    mshr_used = m_mshrs.entries_used();
+src/gpgpu-sim/gpu-cache.h:1394:    mshr_limit = m_mshrs.entries_limit();
+src/gpgpu-sim/shader.cc:2072:void ldst_unit::mascar_sample_l1_saturation(l1_cache *cache, new_addr_type addr) {
+src/gpgpu-sim/shader.cc:2074:      !m_config->gpgpu_mascar_enable_l1_saturation_probe)
+src/gpgpu-sim/shader.cc:2086:  cache->mascar_l1_saturation_snapshot(
+src/gpgpu-sim/shader.cc:2087:      addr, m_config->gpgpu_mascar_l1_saturation_margin, mshr_full_for_addr,
+src/gpgpu-sim/shader.cc:2108:void ldst_unit::mascar_note_l1_reservation_fail() {
+src/gpgpu-sim/shader.cc:2110:      !m_config->gpgpu_mascar_enable_l1_saturation_probe)
+src/gpgpu-sim/shader.cc:2115:void ldst_unit::get_mascar_l1_saturation_stats(
+src/gpgpu-sim/shader.cc:2390:    mascar_sample_l1_saturation(cache, mf->get_addr());
+src/gpgpu-sim/shader.cc:2395:    if (status == RESERVATION_FAIL) mascar_note_l1_reservation_fail();
+src/gpgpu-sim/shader.cc:2406:      mascar_sample_l1_saturation(m_L1D, mf_next->get_addr());
+src/gpgpu-sim/shader.cc:2412:      if (status == RESERVATION_FAIL) mascar_note_l1_reservation_fail();
+src/gpgpu-sim/shader.cc:5366:void simt_core_cluster::get_mascar_l1_saturation_stats(
+src/gpgpu-sim/shader.cc:5374:    m_core[i]->get_mascar_l1_saturation_stats(
+
+# Guard terms: scheduling/owner/reexec
+experiments/paper-mascar/m1_postcheck.md:60:rg -n -- "-gpgpu_enable_mascar|-gpgpu_mascar_enable_telemetry|-gpgpu_mascar_enable_would_deprioritize|-gpgpu_mascar_enable_scheduling|-gpgpu_mascar_enable_l1_saturation_probe|-gpgpu_mascar_l1_saturation_margin" configs/hrl-repro/SM7_QV100_mascar_l1sat_probe_on/gpgpusim.config
+experiments/paper-mascar/m1_postcheck.md:61:rg -n "owner_warp|WST|WRC|reexec|re-exec|miss-NACK|hit-only" src/gpgpu-sim/gpu-cache.h src/gpgpu-sim/gpu-sim.cc src/gpgpu-sim/shader.cc src/gpgpu-sim/shader.h || true
+experiments/paper-mascar/m1_postcheck.md:70:- New passive config has `-gpgpu_mascar_enable_scheduling 0`.
+experiments/paper-mascar/m1_postcheck.md:72:- No new simulator `owner_warp`, WST/WRC, re-exec, miss-NACK, or hit-only symbols were found.
+experiments/paper-mascar/m1_postcheck.md:86:- M1 adds passive telemetry and stats only. It does not implement EP/MP mode, owner warp, WST/WRC, non-owner hit-only / miss-NACK, or re-execution queue.
+docs/papers/mascar_m1_l1_saturation_probe.md:5:M1 adds a passive L1D-side saturation probe for Mascar. The M0 implementation used a scheduler-side `m_mem_out` stall-streak proxy. This round adds read-only visibility into L1D MSHR and miss queue pressure so M2 can use a closer-to-paper saturation flag for EP/MP mode decisions.
+docs/papers/mascar_m1_l1_saturation_probe.md:75:- EP mode
+docs/papers/mascar_m1_l1_saturation_probe.md:76:- MP mode
+docs/papers/mascar_m1_l1_saturation_probe.md:77:- owner warp selection or ownership tracking
+docs/papers/mascar_m1_l1_saturation_probe.md:78:- WST/WRC
+docs/papers/mascar_m1_l1_saturation_probe.md:81:- non-owner L1 hit-only / miss-NACK behavior
+docs/papers/mascar_m1_l1_saturation_probe.md:82:- cache access re-execution queue
+docs/papers/mascar_m1_l1_saturation_probe.md:83:- one-memory-instruction-per-warp re-exec invariant
+docs/papers/mascar_m1_l1_saturation_probe.md:95:  - verified `SM7_QV100_mascar_l1sat_probe_on` has `-gpgpu_mascar_enable_scheduling 0`
+docs/papers/mascar_m1_l1_saturation_probe.md:102:- `mshr_full_for_addr` is address-specific, while aggregate MSHR pressure is table-wide. M2 should define whether MP mode triggers on either condition or only aggregate saturation.
+docs/papers/mascar_m1_l1_saturation_probe.md:105:- Any future non-owner miss-NACK or re-exec work must preserve the M1 read-only cache snapshot path and keep behavior changes behind separate knobs.
+configs/hrl-repro/SM7_QV100_mascar_l1sat_probe_on/README.md:8:- `gpgpu_mascar_enable_scheduling=0`
+configs/hrl-repro/SM7_QV100_mascar_l1sat_probe_on/gpgpusim.config:244:-gpgpu_mascar_enable_scheduling 0
+src/gpgpu-sim/shader.h:1839:  int gpgpu_mascar_enable_scheduling;      // Phase 4: actual scheduler skip
+src/gpgpu-sim/shader.h:2470:        !m_config->gpgpu_mascar_enable_scheduling)
+src/gpgpu-sim/shader.h:2492:        !m_config->gpgpu_mascar_enable_scheduling)
+src/gpgpu-sim/gpu-sim.cc:776:  option_parser_register(opp, "-gpgpu_mascar_enable_scheduling", OPT_INT32,
+src/gpgpu-sim/gpu-sim.cc:777:                         &gpgpu_mascar_enable_scheduling,

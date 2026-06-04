@@ -1050,6 +1050,8 @@ class mshr_table {
   void display(FILE *fp) const;
   // Returns true if there is a pending read after write
   bool is_read_after_write_pending(new_addr_type block_addr);
+  unsigned entries_used() const { return m_data.size(); }
+  unsigned entries_limit() const { return m_num_entries; }
 
   void check_mshr_parameters(unsigned num_entries, unsigned max_merged) {
     assert(m_num_entries == num_entries &&
@@ -1379,6 +1381,24 @@ class baseline_cache : public cache_t {
                         mem_access_sector_mask_t mask) {
     mem_access_byte_mask_t byte_mask;
     m_tag_array->fill(addr, time, mask, byte_mask, true);
+  }
+
+  void mascar_l1_saturation_snapshot(
+      new_addr_type addr, unsigned margin, bool &mshr_full_for_addr,
+      bool &mshr_entries_almost_full, bool &miss_queue_full,
+      bool &miss_queue_almost_full, unsigned &mshr_used, unsigned &mshr_limit,
+      unsigned &missq_used, unsigned &missq_limit) const {
+    new_addr_type mshr_addr = m_config.mshr_addr(addr);
+    mshr_full_for_addr = m_mshrs.full(mshr_addr);
+    mshr_used = m_mshrs.entries_used();
+    mshr_limit = m_mshrs.entries_limit();
+    mshr_entries_almost_full =
+        (mshr_limit > 0) && ((mshr_used + margin) >= mshr_limit);
+    missq_used = (unsigned)m_miss_queue.size();
+    missq_limit = m_config.m_miss_queue_size;
+    miss_queue_full = (missq_limit > 0) && (missq_used >= missq_limit);
+    miss_queue_almost_full =
+        (missq_limit > 0) && ((missq_used + margin) >= missq_limit);
   }
 
  protected:

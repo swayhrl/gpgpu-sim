@@ -1432,6 +1432,13 @@ class ldst_unit : public pipelined_simd_unit {
   bool ccws_lg_gate_load(unsigned wid);  // returns true if load should be blocked
   void get_ccws_lg_stats(unsigned long long &attempt, unsigned long long &block,
                          unsigned long long &allow) const;
+  void get_mascar_l1_saturation_stats(
+      unsigned long long &sample, unsigned long long &sample_saturated,
+      unsigned long long &mshr_full, unsigned long long &mshr_almost_full,
+      unsigned long long &missq_full, unsigned long long &missq_almost_full,
+      unsigned long long &reservation_fail,
+      unsigned long long &mshr_used_sum, unsigned long long &mshr_used_max,
+      unsigned long long &missq_used_sum, unsigned long long &missq_used_max) const;
 
  protected:
   ldst_unit(mem_fetch_interface *icnt,
@@ -1465,6 +1472,8 @@ class ldst_unit : public pipelined_simd_unit {
                                                    warp_inst_t &inst);
   mem_stage_stall_type process_memory_access_queue_l1cache(l1_cache *cache,
                                                            warp_inst_t &inst);
+  void mascar_sample_l1_saturation(l1_cache *cache, new_addr_type addr);
+  void mascar_note_l1_reservation_fail();
   gpgpu_sim *m_gpu;
 
   const memory_config *m_memory_config;
@@ -1528,6 +1537,18 @@ class ldst_unit : public pipelined_simd_unit {
   unsigned long long m_ccws_lg_attempt;
   unsigned long long m_ccws_lg_block;
   unsigned long long m_ccws_lg_allow;
+  // Mascar M1: passive L1D saturation probe counters
+  unsigned long long m_mascar_l1_sat_sample;
+  unsigned long long m_mascar_l1_sat_sample_saturated;
+  unsigned long long m_mascar_l1_sat_mshr_full;
+  unsigned long long m_mascar_l1_sat_mshr_almost_full;
+  unsigned long long m_mascar_l1_sat_missq_full;
+  unsigned long long m_mascar_l1_sat_missq_almost_full;
+  unsigned long long m_mascar_l1_sat_reservation_fail;
+  unsigned long long m_mascar_l1_sat_mshr_used_sum;
+  unsigned long long m_mascar_l1_sat_mshr_used_max;
+  unsigned long long m_mascar_l1_sat_missq_used_sum;
+  unsigned long long m_mascar_l1_sat_missq_used_max;
 };
 
 enum pipeline_stage_name_t {
@@ -1816,8 +1837,10 @@ class shader_core_config : public core_config {
   int gpgpu_mascar_enable_telemetry;       // Phase 2: memory stall probe
   int gpgpu_mascar_enable_would_deprioritize; // Phase 3: would-deprioritize telemetry
   int gpgpu_mascar_enable_scheduling;      // Phase 4: actual scheduler skip
+  int gpgpu_mascar_enable_l1_saturation_probe; // M1: passive L1-side saturation probe
   unsigned gpgpu_mascar_stall_threshold;   // consecutive stall cycles to trigger (default 8)
   unsigned gpgpu_mascar_max_skip_streak;   // max consecutive skips before force-allow (default 4)
+  unsigned gpgpu_mascar_l1_saturation_margin; // M1: almost-full distance (default 1)
   int gpgpu_mascar_debug;
 };
 
@@ -2375,6 +2398,19 @@ class shader_core_ctx : public core_t {
     would_deprioritize += m_mascar_would_deprioritize;
     skip_count         += m_mascar_skip_count;
     allow_count        += m_mascar_allow_count;
+  }
+
+  void get_mascar_l1_saturation_stats(
+      unsigned long long &sample, unsigned long long &sample_saturated,
+      unsigned long long &mshr_full, unsigned long long &mshr_almost_full,
+      unsigned long long &missq_full, unsigned long long &missq_almost_full,
+      unsigned long long &reservation_fail,
+      unsigned long long &mshr_used_sum, unsigned long long &mshr_used_max,
+      unsigned long long &missq_used_sum, unsigned long long &missq_used_max) const {
+    m_ldst_unit->get_mascar_l1_saturation_stats(
+        sample, sample_saturated, mshr_full, mshr_almost_full, missq_full,
+        missq_almost_full, reservation_fail, mshr_used_sum, mshr_used_max,
+        missq_used_sum, missq_used_max);
   }
 
   // Mascar Phase 2: record when a warp's memory instruction can't issue
@@ -3042,6 +3078,13 @@ class simt_core_cluster {
                         unsigned long long &would_deprioritize,
                         unsigned long long &skip_count,
                         unsigned long long &allow_count) const;
+  void get_mascar_l1_saturation_stats(
+      unsigned long long &sample, unsigned long long &sample_saturated,
+      unsigned long long &mshr_full, unsigned long long &mshr_almost_full,
+      unsigned long long &missq_full, unsigned long long &missq_almost_full,
+      unsigned long long &reservation_fail,
+      unsigned long long &mshr_used_sum, unsigned long long &mshr_used_max,
+      unsigned long long &missq_used_sum, unsigned long long &missq_used_max) const;
 
   void get_icnt_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;
   float get_current_occupancy(unsigned long long &active,

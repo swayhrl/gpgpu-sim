@@ -776,12 +776,20 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_mascar_enable_scheduling", OPT_INT32,
                          &gpgpu_mascar_enable_scheduling,
                          "Mascar Phase 4: enable actual scheduler skip (0=off)", "0");
+  option_parser_register(opp, "-gpgpu_mascar_enable_l1_saturation_probe",
+                         OPT_INT32, &gpgpu_mascar_enable_l1_saturation_probe,
+                         "Mascar M1: enable passive L1D saturation probe (0=off)",
+                         "0");
   option_parser_register(opp, "-gpgpu_mascar_stall_threshold", OPT_UINT32,
                          &gpgpu_mascar_stall_threshold,
                          "Mascar consecutive stall cycles to trigger deprioritize (default 8)", "8");
   option_parser_register(opp, "-gpgpu_mascar_max_skip_streak", OPT_UINT32,
                          &gpgpu_mascar_max_skip_streak,
                          "Mascar max consecutive skips before force-allow (default 4)", "4");
+  option_parser_register(opp, "-gpgpu_mascar_l1_saturation_margin",
+                         OPT_UINT32, &gpgpu_mascar_l1_saturation_margin,
+                         "Mascar M1: L1 almost-full margin for passive saturation probe",
+                         "1");
   option_parser_register(opp, "-gpgpu_mascar_debug", OPT_INT32,
                          &gpgpu_mascar_debug,
                          "Mascar per-cycle debug trace (0=off)", "0");
@@ -1830,6 +1838,40 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
     fprintf(stdout, "paper_mascar_would_deprioritize = %llu\n", would_deprioritize);
     fprintf(stdout, "paper_mascar_skip_count = %llu\n", skip_count);
     fprintf(stdout, "paper_mascar_allow_count = %llu\n", allow_count);
+  }
+  fprintf(stdout, "paper_mascar_l1_sat_probe_enabled = %d\n",
+          m_shader_config->gpgpu_enable_mascar &&
+              m_shader_config->gpgpu_mascar_enable_l1_saturation_probe);
+  {
+    unsigned long long sample = 0, sample_saturated = 0, mshr_full = 0,
+                       mshr_almost_full = 0, missq_full = 0,
+                       missq_almost_full = 0, reservation_fail = 0,
+                       mshr_used_sum = 0, mshr_used_max = 0,
+                       missq_used_sum = 0, missq_used_max = 0;
+    for (unsigned i = 0; i < m_config.num_cluster(); i++)
+      m_cluster[i]->get_mascar_l1_saturation_stats(
+          sample, sample_saturated, mshr_full, mshr_almost_full, missq_full,
+          missq_almost_full, reservation_fail, mshr_used_sum, mshr_used_max,
+          missq_used_sum, missq_used_max);
+    fprintf(stdout, "paper_mascar_l1_sat_sample = %llu\n", sample);
+    fprintf(stdout, "paper_mascar_l1_sat_sample_saturated = %llu\n",
+            sample_saturated);
+    fprintf(stdout, "paper_mascar_l1_sat_mshr_full = %llu\n", mshr_full);
+    fprintf(stdout, "paper_mascar_l1_sat_mshr_almost_full = %llu\n",
+            mshr_almost_full);
+    fprintf(stdout, "paper_mascar_l1_sat_missq_full = %llu\n", missq_full);
+    fprintf(stdout, "paper_mascar_l1_sat_missq_almost_full = %llu\n",
+            missq_almost_full);
+    fprintf(stdout, "paper_mascar_l1_sat_reservation_fail = %llu\n",
+            reservation_fail);
+    fprintf(stdout, "paper_mascar_l1_sat_mshr_used_sum = %llu\n",
+            mshr_used_sum);
+    fprintf(stdout, "paper_mascar_l1_sat_mshr_used_max = %llu\n",
+            mshr_used_max);
+    fprintf(stdout, "paper_mascar_l1_sat_missq_used_sum = %llu\n",
+            missq_used_sum);
+    fprintf(stdout, "paper_mascar_l1_sat_missq_used_max = %llu\n",
+            missq_used_max);
   }
 
   if (m_config.gpgpu_cflog_interval != 0) {

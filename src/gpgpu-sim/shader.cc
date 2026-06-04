@@ -2069,6 +2069,71 @@ void ldst_unit::get_ccws_lg_stats(unsigned long long &attempt,
   allow += m_ccws_lg_allow;
 }
 
+void ldst_unit::mascar_sample_l1_saturation(l1_cache *cache, new_addr_type addr) {
+  if (!m_config->gpgpu_enable_mascar ||
+      !m_config->gpgpu_mascar_enable_l1_saturation_probe)
+    return;
+  if (!cache) return;
+
+  bool mshr_full_for_addr = false;
+  bool mshr_entries_almost_full = false;
+  bool miss_queue_full = false;
+  bool miss_queue_almost_full = false;
+  unsigned mshr_used = 0;
+  unsigned mshr_limit = 0;
+  unsigned missq_used = 0;
+  unsigned missq_limit = 0;
+  cache->mascar_l1_saturation_snapshot(
+      addr, m_config->gpgpu_mascar_l1_saturation_margin, mshr_full_for_addr,
+      mshr_entries_almost_full, miss_queue_full, miss_queue_almost_full,
+      mshr_used, mshr_limit, missq_used, missq_limit);
+
+  m_mascar_l1_sat_sample++;
+  m_mascar_l1_sat_mshr_used_sum += mshr_used;
+  if (mshr_used > m_mascar_l1_sat_mshr_used_max)
+    m_mascar_l1_sat_mshr_used_max = mshr_used;
+  m_mascar_l1_sat_missq_used_sum += missq_used;
+  if (missq_used > m_mascar_l1_sat_missq_used_max)
+    m_mascar_l1_sat_missq_used_max = missq_used;
+
+  if (mshr_full_for_addr) m_mascar_l1_sat_mshr_full++;
+  if (mshr_entries_almost_full) m_mascar_l1_sat_mshr_almost_full++;
+  if (miss_queue_full) m_mascar_l1_sat_missq_full++;
+  if (miss_queue_almost_full) m_mascar_l1_sat_missq_almost_full++;
+  if (mshr_full_for_addr || mshr_entries_almost_full || miss_queue_full ||
+      miss_queue_almost_full)
+    m_mascar_l1_sat_sample_saturated++;
+}
+
+void ldst_unit::mascar_note_l1_reservation_fail() {
+  if (!m_config->gpgpu_enable_mascar ||
+      !m_config->gpgpu_mascar_enable_l1_saturation_probe)
+    return;
+  m_mascar_l1_sat_reservation_fail++;
+}
+
+void ldst_unit::get_mascar_l1_saturation_stats(
+    unsigned long long &sample, unsigned long long &sample_saturated,
+    unsigned long long &mshr_full, unsigned long long &mshr_almost_full,
+    unsigned long long &missq_full, unsigned long long &missq_almost_full,
+    unsigned long long &reservation_fail,
+    unsigned long long &mshr_used_sum, unsigned long long &mshr_used_max,
+    unsigned long long &missq_used_sum, unsigned long long &missq_used_max) const {
+  sample += m_mascar_l1_sat_sample;
+  sample_saturated += m_mascar_l1_sat_sample_saturated;
+  mshr_full += m_mascar_l1_sat_mshr_full;
+  mshr_almost_full += m_mascar_l1_sat_mshr_almost_full;
+  missq_full += m_mascar_l1_sat_missq_full;
+  missq_almost_full += m_mascar_l1_sat_missq_almost_full;
+  reservation_fail += m_mascar_l1_sat_reservation_fail;
+  mshr_used_sum += m_mascar_l1_sat_mshr_used_sum;
+  if (m_mascar_l1_sat_mshr_used_max > mshr_used_max)
+    mshr_used_max = m_mascar_l1_sat_mshr_used_max;
+  missq_used_sum += m_mascar_l1_sat_missq_used_sum;
+  if (m_mascar_l1_sat_missq_used_max > missq_used_max)
+    missq_used_max = m_mascar_l1_sat_missq_used_max;
+}
+
 // Add this function to unset depbar
 void shader_core_ctx::unset_depbar(const warp_inst_t &inst) {
   bool done_flag = true;
@@ -2322,10 +2387,12 @@ mem_stage_stall_type ldst_unit::process_memory_access_queue_l1cache(
                               m_core->get_gpu()->gpu_sim_cycle +
                                   m_core->get_gpu()->gpu_tot_sim_cycle);
     std::list<cache_event> events;
+    mascar_sample_l1_saturation(cache, mf->get_addr());
     enum cache_request_status status = cache->access(
         mf->get_addr(), mf,
         m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle,
         events);
+    if (status == RESERVATION_FAIL) mascar_note_l1_reservation_fail();
     return process_cache_access(cache, mf->get_addr(), inst, events, mf,
                                 status);
   }
@@ -2336,11 +2403,13 @@ void ldst_unit::L1_latency_queue_cycle() {
     if ((l1_latency_queue[j][0]) != NULL) {
       mem_fetch *mf_next = l1_latency_queue[j][0];
       std::list<cache_event> events;
+      mascar_sample_l1_saturation(m_L1D, mf_next->get_addr());
       enum cache_request_status status =
           m_L1D->access(mf_next->get_addr(), mf_next,
                         m_core->get_gpu()->gpu_sim_cycle +
                             m_core->get_gpu()->gpu_tot_sim_cycle,
                         events);
+      if (status == RESERVATION_FAIL) mascar_note_l1_reservation_fail();
 
       bool write_sent = was_write_sent(events);
       bool read_sent = was_read_sent(events);
@@ -2863,6 +2932,18 @@ void ldst_unit::init(mem_fetch_interface *icnt,
   }
   // CCWS Round Y: initialize real load-gating counters
   m_ccws_lg_attempt = m_ccws_lg_block = m_ccws_lg_allow = 0;
+  // Mascar M1: initialize passive L1D saturation probe counters
+  m_mascar_l1_sat_sample = 0;
+  m_mascar_l1_sat_sample_saturated = 0;
+  m_mascar_l1_sat_mshr_full = 0;
+  m_mascar_l1_sat_mshr_almost_full = 0;
+  m_mascar_l1_sat_missq_full = 0;
+  m_mascar_l1_sat_missq_almost_full = 0;
+  m_mascar_l1_sat_reservation_fail = 0;
+  m_mascar_l1_sat_mshr_used_sum = 0;
+  m_mascar_l1_sat_mshr_used_max = 0;
+  m_mascar_l1_sat_missq_used_sum = 0;
+  m_mascar_l1_sat_missq_used_max = 0;
 }
 
 ldst_unit::ldst_unit(mem_fetch_interface *icnt,
@@ -5280,6 +5361,20 @@ void simt_core_cluster::get_mascar_stats(
     m_core[i]->get_mascar_stats(mem_stall_event, saturation_event,
                                 pitstop_event, would_deprioritize,
                                 skip_count, allow_count);
+}
+
+void simt_core_cluster::get_mascar_l1_saturation_stats(
+    unsigned long long &sample, unsigned long long &sample_saturated,
+    unsigned long long &mshr_full, unsigned long long &mshr_almost_full,
+    unsigned long long &missq_full, unsigned long long &missq_almost_full,
+    unsigned long long &reservation_fail,
+    unsigned long long &mshr_used_sum, unsigned long long &mshr_used_max,
+    unsigned long long &missq_used_sum, unsigned long long &missq_used_max) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
+    m_core[i]->get_mascar_l1_saturation_stats(
+        sample, sample_saturated, mshr_full, mshr_almost_full, missq_full,
+        missq_almost_full, reservation_fail, mshr_used_sum, mshr_used_max,
+        missq_used_sum, missq_used_max);
 }
 
 void exec_shader_core_ctx::checkExecutionStatusAndUpdate(warp_inst_t &inst,
