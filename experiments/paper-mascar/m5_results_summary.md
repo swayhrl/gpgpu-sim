@@ -1,6 +1,6 @@
 # M5 Results Summary
 
-Run directory: `/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/m5_runs/20260604_185613`
+Run directory: `/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/m5_runs/20260604_195555`
 Rows: 6
 Completed: 6
 Failed or timed out: 0
