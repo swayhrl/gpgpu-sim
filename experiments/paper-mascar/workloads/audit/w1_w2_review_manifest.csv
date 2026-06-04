@@ -1,0 +1,16 @@
+path,type,stage,notes
+experiments/paper-mascar/workloads/mascar_table_iii_workload_manifest.csv,csv,W1,Canonical 30-row Table III inventory
+experiments/paper-mascar/workloads/mascar_table_iii_workload_manifest_audited.csv,csv,W1,Audited availability manifest
+experiments/paper-mascar/workloads/mascar_workload_availability_summary.csv,csv,W1,Machine-readable availability summary
+experiments/paper-mascar/workloads/scripts/audit_table_iii_workloads.py,script,W1,Local availability audit script
+experiments/paper-mascar/workloads/audit/workload_candidate_paths.txt,text,W1,Search candidate path evidence
+experiments/paper-mascar/workloads/audit/workload_availability_summary.md,markdown,W1,Human-readable availability summary
+docs/papers/mascar_w1_workload_inventory_report.md,markdown,W1,W1 report
+experiments/paper-mascar/workloads/mascar_table_iii_command_manifest.csv,csv,W2,Wrapper command manifest
+experiments/paper-mascar/workloads/build_available_workloads.sh,script,W2,Bounded build helper
+experiments/paper-mascar/workloads/run_available_workload_smoke.sh,script,W2,Dry-run and optional actual smoke helper
+experiments/paper-mascar/workloads/wrappers/,scripts,W2,One wrapper per Table III row plus common helper
+experiments/paper-mascar/workloads/extra_smoke_workloads.csv,csv,W2,Hotspot extra smoke exclusion from Table III
+docs/papers/mascar_w2_workload_command_normalization_report.md,markdown,W2,W2 report
+experiments/paper-mascar/workloads/audit/w2_final_dryrun_smoke/smoke_results.csv,csv,W2,Final dry-run smoke results for all 30 wrappers
+experiments/paper-mascar/workloads/audit/w2_actual_smoke/stencil/stencil.log,log,W2,Single bounded actual smoke log for ready stencil wrapper

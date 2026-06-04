@@ -1,0 +1,301 @@
+## bp_2
+/workspace/repos/gpgpu-workloads/suites/rodinia/opencl/backprop
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/backprop
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/backprop
+/workspace/repos/gpgpu-workloads/suites/rodinia-wrapper/backprop
+/workspace/repos/gpgpu-workloads/suites/rodinia-wrapper/hotspot
+/workspace/repos/gpgpu-workloads/micro/strided_access
+/workspace/repos/gpgpu-workloads/micro/page_stride_access
+/workspace/repos/gpgpu-workloads/micro/mutual_tiled
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+/workspace/repos/test_vecadd
+/workspace/repos/gpu-l2-cache-verilog/docs/structure_change/24A_MEGA_logs
+
+## bfs
+/workspace/repos/gpgpu-workloads/suites/rodinia/opencl/bfs
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/bfs
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/bfs
+/workspace/repos/gpgpu-workloads/suites/rodinia-wrapper/bfs
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/bfs
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## histo_1
+/workspace/repos/gpgpu-workloads/suites/parboil-wrapper/spmv/suites/parboil-wrapper/histo
+/workspace/repos/gpgpu-workloads/suites/parboil-wrapper/histo
+/workspace/repos/gpgpu-workloads/suites/rodinia/opencl/hybridsort
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/hybridsort
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/imghisto
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/opencl_nvidia
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/opencl_naive
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/opencl_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/cuda_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/opencl_mxpa
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/cuda
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+/workspace/repos/gpgpu-sim_distribution/src/gpgpu-sim
+/workspace/repos/accel-sim-framework/gpu-simulator/gpgpu-sim/src/gpgpu-sim
+
+## histo_3
+/workspace/repos/gpgpu-workloads/suites/parboil-wrapper/spmv/suites/parboil-wrapper/histo
+/workspace/repos/gpgpu-workloads/suites/parboil-wrapper/histo
+/workspace/repos/gpgpu-workloads/suites/rodinia/opencl/hybridsort
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/hybridsort
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/imghisto
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/opencl_nvidia
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/opencl_naive
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/opencl_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/cuda_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/opencl_mxpa
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/cuda
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+/workspace/repos/gpgpu-sim_distribution/src/gpgpu-sim
+/workspace/repos/accel-sim-framework/gpu-simulator/gpgpu-sim/src/gpgpu-sim
+
+## kmeans_1
+/workspace/repos/gpgpu-workloads/suites/rodinia/opencl/kmeans
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/kmeans
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/kmeans/kmeans_openmp
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/kmeans/kmeans_serial
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/kmeans
+/workspace/repos/gpgpu-workloads/suites/rodinia-wrapper/kmeans
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## lbm
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/lbm
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/lbm/src/opencl_nvidia
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/lbm/src/opencl_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/lbm/src/cuda_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/lbm/src/opencl_mxpa
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/lbm/src/omp_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/lbm/src/cpu_gather
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/lbm/src/cpu
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/lbm/src/cuda
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## leuko_1
+/workspace/repos/gpgpu-workloads/suites/rodinia/opencl/leukocyte
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/leukocyte
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/leukocyte/OpenMP
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/leukocyte
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## mrig_1
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/mri-gridding
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## mrig_2
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/mri-gridding
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## mummer
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/mummergpu
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/mummergpu/experiments/e2e
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/mummergpu/src
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/mummergpu
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/mummergpu/experiments/e2e
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/mummergpu/src
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## particle
+/workspace/repos/gpgpu-workloads/suites/rodinia/opencl/particlefilter
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/particlefilter
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/particlefilter
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## sad_2
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sad
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sad/src/opencl_nvidia
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sad/src/opencl_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sad/src/cuda_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sad/src/base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sad/src/opencl_base_tex
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sad/src/cpu
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sad/src/cuda
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sad/tools
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## spmv
+/workspace/repos/gpgpu-workloads/suites/parboil-wrapper/spmv
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/spmv
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/spmv/src/triolet
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/spmv/src/cuda_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/spmv/src/cuda_tex
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/spmv/src/cuda_base_tex
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/spmv/src/cuda
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## srad_1
+/workspace/repos/gpgpu-workloads/suites/rodinia/opencl/srad
+/workspace/repos/gpgpu-workloads/suites/rodinia/opencl/srad/kernel
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/srad
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/srad/srad_v2
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/srad/srad_v1
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/srad
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/srad/srad_v2
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/srad/srad_v1
+/workspace/repos/gpgpu-workloads/suites/rodinia-wrapper/srad_v2
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## srad_2
+/workspace/repos/gpgpu-workloads/suites/rodinia/opencl/srad
+/workspace/repos/gpgpu-workloads/suites/rodinia/opencl/srad/kernel
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/srad
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/srad/srad_v2
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/srad/srad_v1
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/srad
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/srad/srad_v2
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/srad/srad_v1
+/workspace/repos/gpgpu-workloads/suites/rodinia-wrapper/srad_v2
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## bp_1
+/workspace/repos/gpgpu-workloads/suites/rodinia/opencl/backprop
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/backprop
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/backprop
+/workspace/repos/gpgpu-workloads/suites/rodinia-wrapper/backprop
+/workspace/repos/gpgpu-workloads/suites/rodinia-wrapper/hotspot
+/workspace/repos/gpgpu-workloads/micro/strided_access
+/workspace/repos/gpgpu-workloads/micro/page_stride_access
+/workspace/repos/gpgpu-workloads/micro/mutual_tiled
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+/workspace/repos/test_vecadd
+/workspace/repos/gpu-l2-cache-verilog/docs/structure_change/24A_MEGA_logs
+
+## cutcp
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/cutcp
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/cutcp/src/opencl_nvidia
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/cutcp/src/triolet
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/cutcp/src/opencl_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/cutcp/src/cuda_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/cutcp/src/naive
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/cutcp/src/opencl_mxpa
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/cutcp/src/opencl_semiopti
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/cutcp/src/base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/cutcp/src/omp_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/cutcp/src/mpi
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/cutcp/src/cuda
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## histo_2
+/workspace/repos/gpgpu-workloads/suites/parboil-wrapper/spmv/suites/parboil-wrapper/histo
+/workspace/repos/gpgpu-workloads/suites/parboil-wrapper/histo
+/workspace/repos/gpgpu-workloads/suites/rodinia/opencl/hybridsort
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/hybridsort
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/imghisto
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/opencl_nvidia
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/opencl_naive
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/opencl_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/cuda_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/opencl_mxpa
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/cuda
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+/workspace/repos/gpgpu-sim_distribution/src/gpgpu-sim
+/workspace/repos/accel-sim-framework/gpu-simulator/gpgpu-sim/src/gpgpu-sim
+
+## histogram
+/workspace/repos/gpgpu-workloads/suites/parboil-wrapper/spmv/suites/parboil-wrapper/histo
+/workspace/repos/gpgpu-workloads/suites/parboil-wrapper/histo
+/workspace/repos/gpgpu-workloads/suites/rodinia/opencl/hybridsort
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/hybridsort
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/imghisto
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/opencl_nvidia
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/opencl_naive
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/opencl_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/cuda_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/opencl_mxpa
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/histo/src/cuda
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+/workspace/repos/gpgpu-sim_distribution/src/gpgpu-sim
+/workspace/repos/accel-sim-framework/gpu-simulator/gpgpu-sim/src/gpgpu-sim
+
+## kmeans_2
+/workspace/repos/gpgpu-workloads/suites/rodinia/opencl/kmeans
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/kmeans
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/kmeans/kmeans_openmp
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/kmeans/kmeans_serial
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/kmeans
+/workspace/repos/gpgpu-workloads/suites/rodinia-wrapper/kmeans
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## lavamd
+/workspace/repos/gpgpu-workloads/suites/rodinia/opencl/lavaMD
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/lavaMD
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/lavaMD
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## leuko_2
+/workspace/repos/gpgpu-workloads/suites/rodinia/opencl/leukocyte
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/leukocyte
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/leukocyte/OpenMP
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/leukocyte
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## leuko_3
+/workspace/repos/gpgpu-workloads/suites/rodinia/opencl/leukocyte
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/leukocyte
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/leukocyte/OpenMP
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/leukocyte
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## mri_q
+/workspace/repos/gpgpu-workloads/suites/parboil-wrapper/mri-q
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/mri-q
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## mrig_3
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/mri-gridding
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## pathfinder
+/workspace/repos/gpgpu-workloads/suites/rodinia/opencl/pathfinder
+/workspace/repos/gpgpu-workloads/suites/rodinia/openmp/pathfinder
+/workspace/repos/gpgpu-workloads/suites/rodinia/cuda/pathfinder
+/workspace/repos/gpgpu-workloads/suites/rodinia-wrapper/pathfinder
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## sad_1
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sad
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sad/src/opencl_nvidia
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sad/src/opencl_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sad/src/cuda_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sad/src/base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sad/src/opencl_base_tex
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sad/src/cpu
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sad/src/cuda
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sad/tools
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## sgemm
+/workspace/repos/gpgpu-workloads/suites/parboil-wrapper/sgemm
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sgemm
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sgemm/src/triolet
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sgemm/src/cuda_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sgemm/src/base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sgemm/src/omp
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sgemm/src/omp_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sgemm/src/mpi
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sgemm/src/cpu
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/sgemm/src/cuda
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## stencil
+/workspace/repos/gpgpu-workloads/suites/parboil-wrapper/stencil
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/stencil
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/stencil/src/triolet
+/workspace/repos/gpgpu-workloads/suites/polybench-gpu/polybenchCodesCudaOpenClHMPPOpenAcc/OpenACC/stencils
+/workspace/repos/gpgpu-workloads/suites/polybench-gpu/OpenACC/stencils
+/workspace/repos/gpgpu-workloads/suites/polybench-gpu/OpenMP/stencils
+/workspace/repos/gpgpu-workloads/suites/polybench-gpu/HMPP/stencils
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+
+## tpacf
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/tpacf
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/tpacf/src/cuda_base
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/tpacf/src/opencl_mxpa
+/workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/tpacf/src/cuda
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers
+

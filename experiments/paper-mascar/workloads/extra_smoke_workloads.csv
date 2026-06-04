@@ -1,0 +1,2 @@
+workload_id,suite,table_iii_status,command,working_dir,notes
+rodinia_hotspot,rodinia,extra_not_table_iii,bash scripts/run_one.sh rodinia_hotspot,/workspace/repos/gpgpu-workloads,Used in M5 smoke only and intentionally excluded from Table III manifest
