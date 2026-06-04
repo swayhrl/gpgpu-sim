@@ -1,0 +1,1 @@
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers/run_histo_2.sh 

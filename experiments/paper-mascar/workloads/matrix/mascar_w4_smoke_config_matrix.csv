@@ -1,0 +1,3 @@
+config_id,config_path,config_role,enabled,notes
+baseline_off,configs/hrl-repro/SM7_QV100_mascar_baseline_off,baseline,1,gpgpu_enable_mascar=0 baseline comparator
+m4_reexec_load,configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on,m4_active,1,M4 active load-only re-execution queue

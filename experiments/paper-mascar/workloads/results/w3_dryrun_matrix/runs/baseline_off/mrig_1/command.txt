@@ -1,0 +1,1 @@
+/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/wrappers/run_mrig_1.sh --dry-run 

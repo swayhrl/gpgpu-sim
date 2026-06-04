@@ -1,0 +1,9 @@
+# git diff --name-status
+
+
+# git status --short
+?? docs/papers/mascar_w3_matrix_runner_framework.md
+?? docs/papers/mascar_w4_table_iii_smoke_report.md
+?? experiments/common/
+?? experiments/paper-mascar/workloads/matrix/
+?? experiments/paper-mascar/workloads/results/

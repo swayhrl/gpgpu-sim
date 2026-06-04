@@ -1,0 +1,28 @@
+docs/papers/mascar_w4_table_iii_smoke_report.md:10:- `m4_reexec_load`: `configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on`
+docs/papers/mascar_w4_table_iii_smoke_report.md:23:- `missing_binary`: 28
+docs/papers/mascar_w4_table_iii_smoke_report.md:25:- `phase_unknown`: 18
+docs/papers/mascar_w4_table_iii_smoke_report.md:28:- `completed_no_explicit_pass`: 0
+docs/papers/mascar_w4_table_iii_smoke_report.md:56:- 18 rows were `phase_unknown`.
+docs/papers/mascar_w4_table_iii_smoke_report.md:57:- 28 rows were `missing_binary`.
+docs/papers/mascar_w4_table_iii_smoke_report.md:92:- Keeping `completed_no_explicit_pass` separate from explicit correctness pass.
+docs/papers/mascar_w3_matrix_runner_framework.md:9:`experiments/common/gpgpusim_matrix/run_gpgpusim_matrix.sh` reads:
+docs/papers/mascar_w3_matrix_runner_framework.md:28:`experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py` reads a run output directory and writes:
+docs/papers/mascar_w3_matrix_runner_framework.md:42:- `completed_no_explicit_pass`
+docs/papers/mascar_w3_matrix_runner_framework.md:44:- `phase_unknown`
+docs/papers/mascar_w3_matrix_runner_framework.md:45:- `missing_binary`
+docs/papers/mascar_w3_matrix_runner_framework.md:55:`completed_no_explicit_pass` is not treated as correctness pass.
+docs/papers/mascar_w3_matrix_runner_framework.md:61:- `experiments/paper-mascar/workloads/matrix/run_mascar_table_iii_matrix.sh`
+docs/papers/mascar_w3_matrix_runner_framework.md:62:- `experiments/paper-mascar/workloads/matrix/collect_mascar_table_iii_matrix.py`
+docs/papers/mascar_w3_matrix_runner_framework.md:63:- `experiments/paper-mascar/workloads/matrix/mascar_w4_smoke_config_matrix.csv`
+docs/papers/mascar_w3_matrix_runner_framework.md:68:- `m4_reexec_load`
+experiments/paper-mascar/workloads/matrix/collect_mascar_table_iii_matrix.py:12:COMMON_COLLECTOR = REPO_ROOT / "experiments" / "common" / "gpgpusim_matrix" / "collect_gpgpusim_stats.py"
+experiments/paper-mascar/workloads/matrix/mascar_w4_smoke_config_matrix.csv:3:m4_reexec_load,configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on,m4_active,1,M4 active load-only re-execution queue
+experiments/paper-mascar/workloads/matrix/run_mascar_table_iii_matrix.sh:7:CONFIG_MATRIX="${CONFIG_MATRIX:-${script_dir}/mascar_w4_smoke_config_matrix.csv}"
+experiments/paper-mascar/workloads/matrix/run_mascar_table_iii_matrix.sh:21:bash "${repo_root}/experiments/common/gpgpusim_matrix/run_gpgpusim_matrix.sh"
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:135:        if wrapper_status == "placeholder_phase_unknown":
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:136:            return "phase_unknown", has_stats, explicit_pass
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:137:        if wrapper_status == "placeholder_missing_binary":
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:138:            return "missing_binary", has_stats, explicit_pass
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:147:        return "missing_binary", has_stats, explicit_pass
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:155:        if stats.get("result_status") == "completed_no_explicit_pass":
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:156:            return "completed_no_explicit_pass", has_stats, explicit_pass
