@@ -518,6 +518,9 @@ class gpgpu_sim_config : public power_config,
   unsigned int gpgpu_compute_capability_major;
   unsigned int gpgpu_compute_capability_minor;
   unsigned long long liveness_message_freq;
+  int gpgpu_paperrepro_kernel_trace;
+  unsigned gpgpu_paperrepro_kernel_trace_max;
+  int gpgpu_paperrepro_kernel_trace_stats;
 
   friend class gpgpu_sim;
   friend class sst_gpgpu_sim;
@@ -583,6 +586,8 @@ class gpgpu_sim : public gpgpu_t {
   bool can_start_kernel();
   unsigned finished_kernel();
   void set_kernel_done(kernel_info_t *kernel);
+  void paperrepro_kernel_trace_begin(kernel_info_t *kernel);
+  void paperrepro_kernel_trace_end(kernel_info_t *kernel);
   void stop_all_running_kernels();
 
   void init();
@@ -736,6 +741,9 @@ class gpgpu_sim : public gpgpu_t {
   std::vector<unsigned>
       m_executed_kernel_uids;  //< uids of kernel launches for stat printout
   std::map<unsigned, watchpoint_event> g_watchpoint_hits;
+  unsigned long long m_paperrepro_kernel_trace_lines;
+  unsigned long long m_paperrepro_kernel_launch_count;
+  std::map<unsigned, unsigned long long> m_paperrepro_kernel_launch_index_by_uid;
 
   std::string executed_kernel_info_string();  //< format the kernel information
                                               // into a string for stat printout

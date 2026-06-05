@@ -78,6 +78,7 @@ class gpgpu_sim_wrapper {};
 #include <stdio.h>
 #include <string.h>
 #include <iostream>
+#include <cctype>
 #include <sstream>
 #include <string>
 
@@ -899,6 +900,20 @@ void gpgpu_sim_config::reg_options(option_parser_t opp) {
                          "Minimum number of seconds between simulation "
                          "liveness messages (0 = always print)",
                          "1");
+  option_parser_register(opp, "-gpgpu_paperrepro_kernel_trace", OPT_INT32,
+                         &gpgpu_paperrepro_kernel_trace,
+                         "Mascar W18: emit bounded kernel launch trace "
+                         "(0=off, 1=on)",
+                         "0");
+  option_parser_register(opp, "-gpgpu_paperrepro_kernel_trace_max",
+                         OPT_UINT32, &gpgpu_paperrepro_kernel_trace_max,
+                         "Mascar W18: max paperrepro kernel trace lines",
+                         "128");
+  option_parser_register(opp, "-gpgpu_paperrepro_kernel_trace_stats",
+                         OPT_INT32, &gpgpu_paperrepro_kernel_trace_stats,
+                         "Mascar W18: include begin/end cycle stats in kernel "
+                         "trace (0=off, 1=on)",
+                         "1");
   option_parser_register(opp, "-gpgpu_compute_capability_major", OPT_UINT32,
                          &gpgpu_compute_capability_major,
                          "Major compute capability version number", "7");
@@ -1002,6 +1017,71 @@ void increment_x_then_y_then_z(dim3 &i, const dim3 &bound) {
   }
 }
 
+static std::string paperrepro_sanitize_kernel_name(const std::string &name) {
+  std::string sanitized = name;
+  for (size_t i = 0; i < sanitized.size(); ++i) {
+    if (std::isspace(static_cast<unsigned char>(sanitized[i]))) {
+      sanitized[i] = '_';
+    }
+  }
+  return sanitized;
+}
+
+void gpgpu_sim::paperrepro_kernel_trace_begin(kernel_info_t *kernel) {
+  if (!m_config.gpgpu_paperrepro_kernel_trace || kernel == NULL) return;
+
+  unsigned uid = kernel->get_uid();
+  unsigned long long launch_index = ++m_paperrepro_kernel_launch_count;
+  m_paperrepro_kernel_launch_index_by_uid[uid] = launch_index;
+
+  if (m_paperrepro_kernel_trace_lines >=
+      m_config.gpgpu_paperrepro_kernel_trace_max) {
+    return;
+  }
+
+  dim3 grid = kernel->get_grid_dim();
+  dim3 block = kernel->get_cta_dim();
+  unsigned long long cycle =
+      m_config.gpgpu_paperrepro_kernel_trace_stats
+          ? gpu_tot_sim_cycle + gpu_sim_cycle
+          : 0;
+  printf("paperrepro_kernel_begin launch_index=%llu uid=%u name=%s "
+         "grid=(%u,%u,%u) block=(%u,%u,%u) stream=%llu cycle=%llu\n",
+         launch_index, uid,
+         paperrepro_sanitize_kernel_name(kernel->name()).c_str(), grid.x,
+         grid.y, grid.z, block.x, block.y, block.z, kernel->get_streamID(),
+         cycle);
+  m_paperrepro_kernel_trace_lines++;
+}
+
+void gpgpu_sim::paperrepro_kernel_trace_end(kernel_info_t *kernel) {
+  if (!m_config.gpgpu_paperrepro_kernel_trace || kernel == NULL) return;
+
+  if (m_paperrepro_kernel_trace_lines >=
+      m_config.gpgpu_paperrepro_kernel_trace_max) {
+    return;
+  }
+
+  unsigned uid = kernel->get_uid();
+  unsigned long long launch_index = 0;
+  std::map<unsigned, unsigned long long>::iterator it =
+      m_paperrepro_kernel_launch_index_by_uid.find(uid);
+  if (it != m_paperrepro_kernel_launch_index_by_uid.end()) {
+    launch_index = it->second;
+    m_paperrepro_kernel_launch_index_by_uid.erase(it);
+  }
+  unsigned long long cycle =
+      m_config.gpgpu_paperrepro_kernel_trace_stats
+          ? gpu_tot_sim_cycle + gpu_sim_cycle
+          : 0;
+  printf("paperrepro_kernel_end launch_index=%llu uid=%u name=%s "
+         "stream=%llu cycle=%llu\n",
+         launch_index, uid,
+         paperrepro_sanitize_kernel_name(kernel->name()).c_str(),
+         kernel->get_streamID(), cycle);
+  m_paperrepro_kernel_trace_lines++;
+}
+
 void gpgpu_sim::launch(kernel_info_t *kinfo) {
   unsigned kernelID = kinfo->get_uid();
   unsigned long long streamID = kinfo->get_streamID();
@@ -1034,6 +1114,7 @@ void gpgpu_sim::launch(kernel_info_t *kinfo) {
         "size.\n");
     abort();
   }
+  paperrepro_kernel_trace_begin(kinfo);
   unsigned n = 0;
   for (n = 0; n < m_running_kernels.size(); n++) {
     if ((NULL == m_running_kernels[n]) || m_running_kernels[n]->done()) {
@@ -1134,6 +1215,7 @@ unsigned gpgpu_sim::finished_kernel() {
 }
 
 void gpgpu_sim::set_kernel_done(kernel_info_t *kernel) {
+  paperrepro_kernel_trace_end(kernel);
   unsigned uid = kernel->get_uid();
   last_uid = uid;
   unsigned long long streamID = kernel->get_streamID();
@@ -1208,6 +1290,9 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
   gpu_tot_issued_cta = 0;
   gpu_completed_cta = 0;
   m_total_cta_launched = 0;
+  m_paperrepro_kernel_trace_lines = 0;
+  m_paperrepro_kernel_launch_count = 0;
+  m_paperrepro_kernel_launch_index_by_uid.clear();
   gpu_deadlock = false;
 
   gpu_stall_dramfull = 0;

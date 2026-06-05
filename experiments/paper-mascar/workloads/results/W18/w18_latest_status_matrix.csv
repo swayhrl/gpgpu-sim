@@ -1,0 +1,10 @@
+paper_id,paper_name,paper_type,kernel_trace_baseline_off
+bp_2,BP-2,M,completed_no_explicit_pass
+histo_1,histo-1,M,completed_explicit_pass
+histo_3,histo-3,M,completed_explicit_pass
+kmeans_1,kmeans-1,M,completed_no_explicit_pass
+srad_1,srad-1,M,completed_no_explicit_pass
+srad_2,srad-2,M,completed_no_explicit_pass
+bp_1,BP-1,C,completed_no_explicit_pass
+histo_2,histo-2,C,completed_explicit_pass
+kmeans_2,kmeans-2,C,completed_no_explicit_pass

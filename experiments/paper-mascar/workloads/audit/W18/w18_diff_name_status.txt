@@ -1,0 +1,17 @@
+# git status --short
+ M src/gpgpu-sim/gpu-sim.cc
+ M src/gpgpu-sim/gpu-sim.h
+?? configs/hrl-repro/SM7_QV100_mascar_kernel_trace_baseline_off/
+?? docs/papers/mascar_w18_kernel_trace_phase_mapping_report.md
+?? docs/papers/mascar_w18a_existing_kernel_log_audit.md
+?? docs/papers/mascar_w18b_default_off_kernel_trace.md
+?? docs/papers/mascar_w18c_phase_pending_kernel_trace_runs.md
+?? docs/papers/mascar_w18d_phase_mapping_report.md
+?? experiments/common/gpgpusim_matrix/collect_kernel_trace.py
+?? experiments/paper-mascar/workloads/audit/W18/
+?? experiments/paper-mascar/workloads/matrix/W18/
+?? experiments/paper-mascar/workloads/results/W18/
+
+# git diff --name-status
+M	src/gpgpu-sim/gpu-sim.cc
+M	src/gpgpu-sim/gpu-sim.h

@@ -1,0 +1,2 @@
+config_id,config_dir,notes
+kernel_trace_baseline_off,configs/hrl-repro/SM7_QV100_mascar_kernel_trace_baseline_off,Mascar baseline_off plus W18 default-off trace knobs enabled for diagnostic run

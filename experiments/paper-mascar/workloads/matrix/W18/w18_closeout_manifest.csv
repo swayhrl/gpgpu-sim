@@ -1,0 +1,10 @@
+artifact,status,notes
+docs/papers/mascar_w18a_existing_kernel_log_audit.md,ready,W18A report
+docs/papers/mascar_w18b_default_off_kernel_trace.md,ready,W18B report
+docs/papers/mascar_w18c_phase_pending_kernel_trace_runs.md,ready,W18C report
+docs/papers/mascar_w18d_phase_mapping_report.md,ready,W18D report
+docs/papers/mascar_w18_kernel_trace_phase_mapping_report.md,ready,W18E final report
+experiments/paper-mascar/workloads/results/W18/w18_latest_kernel_trace.csv,ready,60 trace rows
+experiments/paper-mascar/workloads/matrix/W18/table_iii_phase_mapping_proposed_manifest.csv,ready,30 proposed rows
+/workspace/tmp/mascar_w18_kernel_trace_raw_20260605_143305,ready,archived raw trace run dirs
+/workspace/tmp/mascar_w18_kernel_trace_review_pack_20260605_143335.tar.gz,ready,W18 review pack

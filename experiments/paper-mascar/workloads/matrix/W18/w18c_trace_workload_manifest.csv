@@ -1,0 +1,10 @@
+paper_id,paper_name,paper_type,app,wrapper_path,wrapper_status,timeout_sec,phase_mapping_status_before_w18,notes
+bp_2,BP-2,M,backprop,experiments/paper-mascar/workloads/wrappers/run_bp_2.sh,ready,1800,app_level_pending_kernel_trace,phase_pending_trace_target
+histo_1,histo-1,M,histo,experiments/paper-mascar/workloads/wrappers/run_histo_1.sh,ready,1800,app_level_pending_kernel_trace,phase_pending_trace_target
+histo_3,histo-3,M,histo,experiments/paper-mascar/workloads/wrappers/run_histo_3.sh,ready,1800,app_level_pending_kernel_trace,phase_pending_trace_target
+kmeans_1,kmeans-1,M,kmeans,experiments/paper-mascar/workloads/wrappers/run_kmeans_1.sh,ready,1800,app_level_pending_kernel_trace,phase_pending_trace_target
+srad_1,srad-1,M,srad,experiments/paper-mascar/workloads/wrappers/run_srad_1.sh,ready,1800,app_level_pending_kernel_trace,phase_pending_trace_target
+srad_2,srad-2,M,srad,experiments/paper-mascar/workloads/wrappers/run_srad_2.sh,ready,1800,app_level_pending_kernel_trace,phase_pending_trace_target
+bp_1,BP-1,C,backprop,experiments/paper-mascar/workloads/wrappers/run_bp_1.sh,ready,1800,app_level_pending_kernel_trace,phase_pending_trace_target
+histo_2,histo-2,C,histo,experiments/paper-mascar/workloads/wrappers/run_histo_2.sh,ready,1800,app_level_pending_kernel_trace,phase_pending_trace_target
+kmeans_2,kmeans-2,C,kmeans,experiments/paper-mascar/workloads/wrappers/run_kmeans_2.sh,ready,1800,app_level_pending_kernel_trace,phase_pending_trace_target
