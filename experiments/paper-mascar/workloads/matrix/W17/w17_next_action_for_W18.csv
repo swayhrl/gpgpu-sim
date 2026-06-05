@@ -1,0 +1,10 @@
+priority,paper_id,app,phase_question,wrapper_path,expected_kernel_count,trace_needed,notes
+1,bp_2,backprop,Which local kernel launch corresponds to this Table III phase row?,experiments/paper-mascar/workloads/wrappers/run_bp_2.sh,unknown_until_trace,1,Use W17 app-level ready wrapper with kernel launch trace.
+1,histo_1,histo,Which local kernel launch corresponds to this Table III phase row?,experiments/paper-mascar/workloads/wrappers/run_histo_1.sh,unknown_until_trace,1,Use W17 app-level ready wrapper with kernel launch trace.
+1,histo_3,histo,Which local kernel launch corresponds to this Table III phase row?,experiments/paper-mascar/workloads/wrappers/run_histo_3.sh,unknown_until_trace,1,Use W17 app-level ready wrapper with kernel launch trace.
+1,kmeans_1,kmeans,Which local kernel launch corresponds to this Table III phase row?,experiments/paper-mascar/workloads/wrappers/run_kmeans_1.sh,unknown_until_trace,1,Use W17 app-level ready wrapper with kernel launch trace.
+1,srad_1,srad,Which local kernel launch corresponds to this Table III phase row?,experiments/paper-mascar/workloads/wrappers/run_srad_1.sh,unknown_until_trace,1,Use W17 app-level ready wrapper with kernel launch trace.
+1,srad_2,srad,Which local kernel launch corresponds to this Table III phase row?,experiments/paper-mascar/workloads/wrappers/run_srad_2.sh,unknown_until_trace,1,Use W17 app-level ready wrapper with kernel launch trace.
+1,bp_1,backprop,Which local kernel launch corresponds to this Table III phase row?,experiments/paper-mascar/workloads/wrappers/run_bp_1.sh,unknown_until_trace,1,Use W17 app-level ready wrapper with kernel launch trace.
+1,histo_2,histo,Which local kernel launch corresponds to this Table III phase row?,experiments/paper-mascar/workloads/wrappers/run_histo_2.sh,unknown_until_trace,1,Use W17 app-level ready wrapper with kernel launch trace.
+1,kmeans_2,kmeans,Which local kernel launch corresponds to this Table III phase row?,experiments/paper-mascar/workloads/wrappers/run_kmeans_2.sh,unknown_until_trace,1,Use W17 app-level ready wrapper with kernel launch trace.

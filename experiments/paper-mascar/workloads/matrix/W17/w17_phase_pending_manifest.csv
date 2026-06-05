@@ -1,0 +1,10 @@
+paper_id,app,current_wrapper,phase_mapping_status,expected_kernel_trace_need,notes
+bp_2,backprop,experiments/paper-mascar/workloads/wrappers/run_bp_2.sh,app_level_pending_kernel_trace,map paper phase suffix to local kernel launch index/name,App-level smoke passed; exact phase not yet claimed.
+histo_1,histo,experiments/paper-mascar/workloads/wrappers/run_histo_1.sh,app_level_pending_kernel_trace,map paper phase suffix to local kernel launch index/name,App-level smoke passed; exact phase not yet claimed.
+histo_3,histo,experiments/paper-mascar/workloads/wrappers/run_histo_3.sh,app_level_pending_kernel_trace,map paper phase suffix to local kernel launch index/name,App-level smoke passed; exact phase not yet claimed.
+kmeans_1,kmeans,experiments/paper-mascar/workloads/wrappers/run_kmeans_1.sh,app_level_pending_kernel_trace,map paper phase suffix to local kernel launch index/name,App-level smoke passed; exact phase not yet claimed.
+srad_1,srad,experiments/paper-mascar/workloads/wrappers/run_srad_1.sh,app_level_pending_kernel_trace,map paper phase suffix to local kernel launch index/name,App-level smoke passed; exact phase not yet claimed.
+srad_2,srad,experiments/paper-mascar/workloads/wrappers/run_srad_2.sh,app_level_pending_kernel_trace,map paper phase suffix to local kernel launch index/name,App-level smoke passed; exact phase not yet claimed.
+bp_1,backprop,experiments/paper-mascar/workloads/wrappers/run_bp_1.sh,app_level_pending_kernel_trace,map paper phase suffix to local kernel launch index/name,App-level smoke passed; exact phase not yet claimed.
+histo_2,histo,experiments/paper-mascar/workloads/wrappers/run_histo_2.sh,app_level_pending_kernel_trace,map paper phase suffix to local kernel launch index/name,App-level smoke passed; exact phase not yet claimed.
+kmeans_2,kmeans,experiments/paper-mascar/workloads/wrappers/run_kmeans_2.sh,app_level_pending_kernel_trace,map paper phase suffix to local kernel launch index/name,App-level smoke passed; exact phase not yet claimed.

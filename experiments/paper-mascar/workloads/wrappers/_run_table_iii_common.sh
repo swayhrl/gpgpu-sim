@@ -151,6 +151,7 @@ echo "wrapper_log=${log_path}"
         cp -f "${MASCAR_CONFIG_DIR}/${cfg_file}" "${cfg_file}"
       fi
     done
+    export GPGPUSIM_CONFIG_OVERRIDE="${MASCAR_CONFIG_DIR}"
     trap restore_config EXIT
     TIMEOUT_SECONDS="${timeout_sec}" timeout "${timeout_sec}" bash -lc "${run_command}"
     restore_config
