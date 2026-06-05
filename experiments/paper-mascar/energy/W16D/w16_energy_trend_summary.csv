@@ -1,0 +1,7 @@
+paper_id,paper_name,config_id,classification,energy_fields_found,gpu_tot_sim_cycle,runtime_sec_est,power_total_avg_w,power_peak_w,energy_total_direct_j,energy_total_est_j,energy_basis
+spmv,spmv,energy_baseline_off,completed_explicit_pass,1,21813,1.92694346e-05,55.6973,55.8834,,0.00107325548,derived_avg_power_x_cycles
+mri_q,mri-q,energy_baseline_off,completed_no_explicit_pass,1,5547,4.90017668e-06,55.5296,55.8377,,0.000272104851,derived_avg_power_x_cycles
+pathfinder,pathfinder,energy_baseline_off,completed_no_explicit_pass,1,6487,5.73056537e-06,55.5629,55.9413,,0.000318406831,derived_avg_power_x_cycles
+spmv,spmv,energy_m4_reexec_load,completed_explicit_pass,1,21813,1.92694346e-05,55.6973,55.8834,,0.00107325548,derived_avg_power_x_cycles
+mri_q,mri-q,energy_m4_reexec_load,completed_no_explicit_pass,1,5547,4.90017668e-06,55.5296,55.8377,,0.000272104851,derived_avg_power_x_cycles
+pathfinder,pathfinder,energy_m4_reexec_load,completed_no_explicit_pass,1,6487,5.73056537e-06,55.5629,55.9413,,0.000318406831,derived_avg_power_x_cycles

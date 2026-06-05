@@ -1,0 +1,8 @@
+artifact,path,status,notes
+w16a_audit,docs/papers/mascar_w16a_energy_infrastructure_audit.md,complete,power infrastructure audit
+w16b_config_collector,docs/papers/mascar_w16b_energy_config_collector.md,complete,collector and energy config report
+w16c_smoke,docs/papers/mascar_w16c_energy_smoke_matrix.md,complete,final actual smoke completed
+w16d_report,docs/papers/mascar_w16_energy_trend_report.md,complete,current-simulator trend report
+latest_results,experiments/paper-mascar/energy/W16C/w16_energy_latest_results.csv,complete,final actual results
+trend_summary,experiments/paper-mascar/energy/W16D/w16_energy_ratio_by_workload.csv,complete,derived trend ratios
+raw_log_pack,/workspace/tmp/mascar_w16_energy_raw_logs_20260605_132658.tar.gz,complete,raw logs packaged outside git

@@ -1,0 +1,4 @@
+paper_id,paper_name,paper_type,energy_baseline_off,energy_m4_reexec_load
+spmv,spmv,M,simulator_error_no_stats,simulator_error_no_stats
+mri_q,mri-q,C,simulator_error_no_stats,simulator_error_no_stats
+pathfinder,pathfinder,C,simulator_error_no_stats,simulator_error_no_stats

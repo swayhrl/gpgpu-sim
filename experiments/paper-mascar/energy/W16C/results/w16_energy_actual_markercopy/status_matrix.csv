@@ -1,0 +1,4 @@
+paper_id,paper_name,paper_type,energy_baseline_off,energy_m4_reexec_load
+spmv,spmv,M,completed_nonzero_with_stats,completed_nonzero_with_stats
+mri_q,mri-q,C,completed_nonzero_with_stats,completed_nonzero_with_stats
+pathfinder,pathfinder,C,completed_nonzero_with_stats,completed_nonzero_with_stats

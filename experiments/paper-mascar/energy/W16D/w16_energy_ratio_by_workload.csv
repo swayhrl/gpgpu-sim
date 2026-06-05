@@ -1,0 +1,4 @@
+paper_id,paper_name,baseline_classification,m4_classification,baseline_power_total_avg_w,m4_power_total_avg_w,power_avg_ratio_m4_over_baseline,baseline_energy_total_est_j,m4_energy_total_est_j,energy_est_ratio_m4_over_baseline,cycle_ratio_m4_over_baseline,trend_available
+mri_q,mri-q,completed_no_explicit_pass,completed_no_explicit_pass,55.5296,55.5296,1,0.000272104851,0.000272104851,1,1,1
+pathfinder,pathfinder,completed_no_explicit_pass,completed_no_explicit_pass,55.5629,55.5629,1,0.000318406831,0.000318406831,1,1,1
+spmv,spmv,completed_explicit_pass,completed_explicit_pass,55.6973,55.6973,1,0.00107325548,0.00107325548,1,1,1

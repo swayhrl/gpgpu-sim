@@ -10,6 +10,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 
+NUM_RE = r"([-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][-+]?[0-9]+)?)"
+
 STAT_PATTERNS = {
     "gpu_tot_sim_cycle": re.compile(r"\bgpu_tot_sim_cycle\s*=\s*([0-9.]+)"),
     "gpu_tot_ipc": re.compile(r"\bgpu_tot_ipc\s*=\s*([0-9.]+)"),
@@ -71,6 +73,21 @@ STAT_PATTERNS = {
     "cacheinst_L1D_hit": re.compile(r"\bcacheinst_L1D_hit\s*=\s*([0-9.]+)"),
     "cacheinst_L1D_miss": re.compile(r"\bcacheinst_L1D_miss\s*=\s*([0-9.]+)"),
     "cacheinst_L1D_reservation_fail": re.compile(r"\bcacheinst_L1D_reservation_fail\s*=\s*([0-9.]+)"),
+    "kernel_avg_power": re.compile(rf"\bkernel_avg_power\s*=\s*{NUM_RE}"),
+    "kernel_max_power": re.compile(rf"\bkernel_max_power\s*=\s*{NUM_RE}"),
+    "kernel_min_power": re.compile(rf"\bkernel_min_power\s*=\s*{NUM_RE}"),
+    "gpu_tot_avg_power": re.compile(rf"\bgpu_tot_avg_power\s*=\s*{NUM_RE}"),
+    "gpu_tot_max_power": re.compile(rf"\bgpu_tot_max_power\s*=\s*{NUM_RE}"),
+    "gpu_tot_min_power": re.compile(rf"\bgpu_tot_min_power\s*=\s*{NUM_RE}"),
+    "power_total_avg": re.compile(rf"\b(?:gpu_tot_avg_power|kernel_avg_power)\s*=\s*{NUM_RE}"),
+    "power_peak": re.compile(rf"\b(?:gpu_tot_max_power|kernel_max_power)\s*=\s*{NUM_RE}"),
+    "power_total_min": re.compile(rf"\b(?:gpu_tot_min_power|kernel_min_power)\s*=\s*{NUM_RE}"),
+    "energy_total": re.compile(rf"\b(?:gpu_tot_energy|kernel_energy|total_energy)\s*=\s*{NUM_RE}", re.IGNORECASE),
+    "energy_dynamic": re.compile(rf"\b(?:gpu_dynamic_energy|dynamic_energy)\s*=\s*{NUM_RE}", re.IGNORECASE),
+    "energy_leakage": re.compile(rf"\b(?:gpu_leakage_energy|leakage_energy)\s*=\s*{NUM_RE}", re.IGNORECASE),
+    "energy_dram": re.compile(rf"\b(?:gpu_dram_energy|dram_energy)\s*=\s*{NUM_RE}", re.IGNORECASE),
+    "energy_l2": re.compile(rf"\b(?:gpu_l2_energy|l2_energy)\s*=\s*{NUM_RE}", re.IGNORECASE),
+    "energy_fields_found": re.compile(r"\b__collector_synthetic_energy_fields_found_never_matches__\b"),
     "gpgpusim_exit": re.compile(r"\bgpgpusim_exit\s*=\s*([0-9.]+)"),
     "result_status": re.compile(r"\bresult_status\s*=\s*([A-Za-z0-9_./-]+)"),
     "result_pass": re.compile(r"\bresult_pass\s*=\s*([0-9.]+)"),
@@ -153,6 +170,21 @@ RESULT_FIELDS = [
     "cacheinst_L1D_hit",
     "cacheinst_L1D_miss",
     "cacheinst_L1D_reservation_fail",
+    "kernel_avg_power",
+    "kernel_max_power",
+    "kernel_min_power",
+    "gpu_tot_avg_power",
+    "gpu_tot_max_power",
+    "gpu_tot_min_power",
+    "power_total_avg",
+    "power_peak",
+    "power_total_min",
+    "energy_total",
+    "energy_dynamic",
+    "energy_leakage",
+    "energy_dram",
+    "energy_l2",
+    "energy_fields_found",
     "gpgpusim_exit",
     "result_status",
     "result_pass",
@@ -188,6 +220,23 @@ def extract_stats(text: str) -> dict[str, str]:
     for key, pattern in STAT_PATTERNS.items():
         match = pattern.search(text)
         stats[key] = match.group(1) if match else ""
+    energy_keys = [
+        "kernel_avg_power",
+        "kernel_max_power",
+        "kernel_min_power",
+        "gpu_tot_avg_power",
+        "gpu_tot_max_power",
+        "gpu_tot_min_power",
+        "power_total_avg",
+        "power_peak",
+        "power_total_min",
+        "energy_total",
+        "energy_dynamic",
+        "energy_leakage",
+        "energy_dram",
+        "energy_l2",
+    ]
+    stats["energy_fields_found"] = "1" if any(stats.get(key) for key in energy_keys) else "0"
     return stats
 
 
@@ -236,6 +285,7 @@ def classify(row: dict[str, str], text: str, stats: dict[str, str]) -> tuple[str
 
 def summarize(rows: list[dict[str, str]], out: Path) -> None:
     counts = Counter(row["classification"] for row in rows)
+    energy_available = sum(1 for row in rows if row.get("energy_fields_found") == "1")
     config_counts: dict[str, Counter[str]] = defaultdict(Counter)
     for row in rows:
         config_counts[row["config_id"]][row["classification"]] += 1
@@ -246,6 +296,9 @@ def summarize(rows: list[dict[str, str]], out: Path) -> None:
         f.write("## Classification Counts\n\n")
         for key, value in sorted(counts.items()):
             f.write(f"- {key}: {value}\n")
+        f.write("\n## Energy/Power Field Availability\n\n")
+        f.write(f"- rows_with_power_or_energy_fields: {energy_available}\n")
+        f.write(f"- rows_without_power_or_energy_fields: {len(rows) - energy_available}\n")
         f.write("\n## By Config\n\n")
         for config_id in sorted(config_counts):
             f.write(f"### {config_id}\n\n")

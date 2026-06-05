@@ -1,0 +1,12 @@
+normalized_field,raw_field_or_pattern,source,availability,w16_handling,notes
+power_total_avg,"gpu_tot_avg_power|kernel_avg_power",src/accelwattch/gpgpu_sim_wrapper.cc,available_when_power_enabled,collector_parse,Primary current-simulator power trend field.
+power_peak,"gpu_tot_max_power|kernel_max_power",src/accelwattch/gpgpu_sim_wrapper.cc,available_when_power_enabled,collector_parse,Peak power trend field.
+power_total_min,"gpu_tot_min_power|kernel_min_power",src/accelwattch/gpgpu_sim_wrapper.cc,available_when_power_enabled,collector_parse,Minimum power trend field.
+energy_total,"no direct total energy field found",N/A,not_directly_available,derived_in_W16D_if_power_and_cycles_exist,Derived as avg_power * runtime_seconds for current-simulator trend only.
+energy_dynamic,"no direct dynamic energy field found",N/A,not_available,blank,Do not fabricate.
+energy_leakage,"no direct leakage energy field found",N/A,not_available,blank,Do not fabricate.
+energy_dram,"component power labels may exist in gpu_avg_* fields",src/accelwattch/gpgpu_sim_wrapper.cc,candidate_only,optional_collector_power_component_parse,Energy requires runtime derivation if component power exists.
+energy_l2,"component power labels may exist in gpu_avg_* fields",src/accelwattch/gpgpu_sim_wrapper.cc,candidate_only,optional_collector_power_component_parse,Energy requires runtime derivation if component power exists.
+runtime_cycles,gpu_tot_sim_cycle,simulator stats,available_in_existing_stats,collector_existing,Used with core clock for derived runtime.
+gpu_tot_ipc,gpu_tot_ipc,simulator stats,available_in_existing_stats,collector_existing,Performance trend field.
+energy_fields_found,"synthetic availability flag",collector,available_after_W16B,collector_derive,1 when any power/energy field was parsed from logs.

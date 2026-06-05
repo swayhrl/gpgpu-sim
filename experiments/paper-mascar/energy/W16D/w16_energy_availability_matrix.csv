@@ -1,0 +1,7 @@
+paper_id,config_id,classification,has_stats,energy_fields_found,has_power_total_avg,has_direct_energy_total
+spmv,energy_baseline_off,completed_explicit_pass,1,1,1,0
+mri_q,energy_baseline_off,completed_no_explicit_pass,1,1,1,0
+pathfinder,energy_baseline_off,completed_no_explicit_pass,1,1,1,0
+spmv,energy_m4_reexec_load,completed_explicit_pass,1,1,1,0
+mri_q,energy_m4_reexec_load,completed_no_explicit_pass,1,1,1,0
+pathfinder,energy_m4_reexec_load,completed_no_explicit_pass,1,1,1,0

@@ -1,0 +1,857 @@
+configs/deprecated-cfgs/GeForceGTX750Ti/gpuwattch_gtx750Ti.xml:494:			the average power per MC or per channel. This is sufficent for most application. 
+configs/deprecated-cfgs/GeForceGTX750Ti/gpuwattch_gtx750Ti.xml:508:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/deprecated-cfgs/GeForceGTX750Ti/gpuwattch_gtx750Ti.xml:523:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/deprecated-cfgs/GeForceGTX750Ti/gpuwattch_gtx750Ti.xml:534:			the average power per fc or per channel. This is sufficent for most application -->  			
+configs/deprecated-cfgs/SM6_TITANX/gpuwattch_gtx480.xml:493:			the average power per MC or per channel. This is sufficent for most application. 
+configs/deprecated-cfgs/SM6_TITANX/gpuwattch_gtx480.xml:507:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/deprecated-cfgs/SM6_TITANX/gpuwattch_gtx480.xml:522:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/deprecated-cfgs/SM6_TITANX/gpuwattch_gtx480.xml:533:			the average power per fc or per channel. This is sufficent for most application -->  			
+src/stream_manager.cc:195:      m_event->update(gpu->gpu_tot_sim_cycle, wallclock);
+src/stream_manager.cc:301:      //                gpu_sim_cycle + gpu_tot_sim_cycle << "\n";
+configs/deprecated-cfgs/QuadroFX5600/gpuwattch_quadrofx5600.xml:493:			the average power per MC or per channel. This is sufficent for most application. 
+configs/deprecated-cfgs/QuadroFX5600/gpuwattch_quadrofx5600.xml:507:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/deprecated-cfgs/QuadroFX5600/gpuwattch_quadrofx5600.xml:522:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/deprecated-cfgs/QuadroFX5600/gpuwattch_quadrofx5600.xml:533:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/workloads/results/W9/w9_attempt1_actual/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+docs/papers/mascar_m5b_focused_validation_matrix_guidance.md:149:  - gpu_tot_sim_cycle
+docs/papers/mascar_m5b_focused_validation_matrix_guidance.md:150:  - gpu_tot_ipc
+configs/tested-cfgs/SM2_GTX480/gpuwattch_gtx480.xml:493:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM2_GTX480/gpuwattch_gtx480.xml:507:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM2_GTX480/gpuwattch_gtx480.xml:522:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM2_GTX480/gpuwattch_gtx480.xml:533:			the average power per fc or per channel. This is sufficent for most application -->  			
+configs/tested-cfgs/SM7_GV100/accelwattch_sass_sim_alt.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM7_GV100/accelwattch_sass_sim_alt.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_GV100/accelwattch_sass_sim_alt.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_GV100/accelwattch_sass_sim_alt.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/workloads/results/W9/w9_attempt1_dryrun/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+configs/tested-cfgs/SM7_GV100/accelwattch_ptx_sim_alt.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM7_GV100/accelwattch_ptx_sim_alt.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_GV100/accelwattch_ptx_sim_alt.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_GV100/accelwattch_ptx_sim_alt.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+configs/tested-cfgs/SM6_TITANX/accelwattch_sass_sim_alt.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM6_TITANX/accelwattch_sass_sim_alt.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM6_TITANX/accelwattch_sass_sim_alt.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM6_TITANX/accelwattch_sass_sim_alt.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+docs/papers/mascar_w3_common_matrix_runner_guidance.md:207:- gpu_tot_sim_cycle
+docs/papers/mascar_w3_common_matrix_runner_guidance.md:208:- gpu_tot_ipc
+docs/papers/mascar_w3_common_matrix_runner_guidance.md:246:  stats such as gpu_tot_sim_cycle found, even if no explicit PASS.
+docs/papers/mascar_w3_common_matrix_runner_guidance.md:278:- gpu_tot_sim_cycle
+docs/papers/mascar_w3_common_matrix_runner_guidance.md:279:- gpu_tot_ipc
+configs/deprecated-cfgs/SM6_P100/gpuwattch_gtx480.xml:493:			the average power per MC or per channel. This is sufficent for most application. 
+configs/deprecated-cfgs/SM6_P100/gpuwattch_gtx480.xml:507:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/deprecated-cfgs/SM6_P100/gpuwattch_gtx480.xml:522:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/deprecated-cfgs/SM6_P100/gpuwattch_gtx480.xml:533:			the average power per fc or per channel. This is sufficent for most application -->  			
+docs/papers/mascar_w8_activation_trend_report.md:57:Cycle ratios are computed against `baseline_off` for the same workload. For this W8 focused run, `gpu_tot_sim_cycle` is identical across baseline/M2/M3/M4 for all three workloads, so the cycle-speedup geomean is `1.000000` for each active config.
+configs/deprecated-cfgs/GTX480/gpuwattch_gtx480.xml:493:			the average power per MC or per channel. This is sufficent for most application. 
+configs/deprecated-cfgs/GTX480/gpuwattch_gtx480.xml:507:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/deprecated-cfgs/GTX480/gpuwattch_gtx480.xml:522:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/deprecated-cfgs/GTX480/gpuwattch_gtx480.xml:533:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/workloads/results/W9/w9_attempt2_actual/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+configs/tested-cfgs/SM7_GV100/accelwattch_sass_hw.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM7_GV100/accelwattch_sass_hw.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_GV100/accelwattch_sass_hw.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_GV100/accelwattch_sass_hw.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+configs/tested-cfgs/SM6_TITANX/accelwattch_ptx_sim_alt.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM6_TITANX/accelwattch_ptx_sim_alt.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM6_TITANX/accelwattch_ptx_sim_alt.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM6_TITANX/accelwattch_ptx_sim_alt.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+configs/tested-cfgs/SM6_TITANX/accelwattch_ptx_sim.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM6_TITANX/accelwattch_ptx_sim.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM6_TITANX/accelwattch_ptx_sim.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM6_TITANX/accelwattch_ptx_sim.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+docs/papers/mascar_w16b_energy_config_collector_guidance.md:41:- energy_total
+configs/tested-cfgs/SM7_GV100/accelwattch_sass_sim.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM7_GV100/accelwattch_sass_sim.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_GV100/accelwattch_sass_sim.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_GV100/accelwattch_sass_sim.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/workloads/results/W9/w9_attempt3_actual/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+configs/tested-cfgs/SM6_TITANX/accelwattch_sass_sim.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM6_TITANX/accelwattch_sass_sim.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM6_TITANX/accelwattch_sass_sim.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM6_TITANX/accelwattch_sass_sim.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+configs/tested-cfgs/SM7_GV100/accelwattch_sass_hybrid.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM7_GV100/accelwattch_sass_hybrid.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_GV100/accelwattch_sass_hybrid.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_GV100/accelwattch_sass_hybrid.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+configs/tested-cfgs/SM7_TITANV/accelwattch_sass_sim_alt.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM7_TITANV/accelwattch_sass_sim_alt.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_TITANV/accelwattch_sass_sim_alt.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_TITANV/accelwattch_sass_sim_alt.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+configs/tested-cfgs/SM7_TITANV/accelwattch_ptx_sim_alt.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM7_TITANV/accelwattch_ptx_sim_alt.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_TITANV/accelwattch_ptx_sim_alt.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_TITANV/accelwattch_ptx_sim_alt.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+configs/deprecated-cfgs/SM6_GTX1080/gpuwattch_gtx1080Ti.xml:493:			the average power per MC or per channel. This is sufficent for most application. 
+configs/deprecated-cfgs/SM6_GTX1080/gpuwattch_gtx1080Ti.xml:507:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/deprecated-cfgs/SM6_GTX1080/gpuwattch_gtx1080Ti.xml:522:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/deprecated-cfgs/SM6_GTX1080/gpuwattch_gtx1080Ti.xml:533:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/workloads/results/W9/w9_attempt3_dryrun/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+docs/papers/mascar_m5a_runtime_sanity_debug_guidance.md:129:- gpu_tot_sim_cycle
+docs/papers/mascar_m5a_runtime_sanity_debug_guidance.md:130:- gpu_tot_ipc
+configs/tested-cfgs/SM7_TITANV/accelwattch_sass_hw.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM7_TITANV/accelwattch_sass_hw.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_TITANV/accelwattch_sass_hw.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_TITANV/accelwattch_sass_hw.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+configs/tested-cfgs/SM7_GV100/accelwattch_ptx_sim.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM7_GV100/accelwattch_ptx_sim.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_GV100/accelwattch_ptx_sim.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_GV100/accelwattch_ptx_sim.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+docs/papers/mascar_w16_energy_guidance.md:25:   - 可提取 total energy, leakage, DRAM, L1/L2/cache, interconnect
+configs/tested-cfgs/SM7_TITANV/accelwattch_sass_sim.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM7_TITANV/accelwattch_sass_sim.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_TITANV/accelwattch_sass_sim.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_TITANV/accelwattch_sass_sim.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+configs/tested-cfgs/SM7_TITANV/accelwattch_sass_hybrid.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM7_TITANV/accelwattch_sass_hybrid.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_TITANV/accelwattch_sass_hybrid.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_TITANV/accelwattch_sass_hybrid.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+docs/papers/mascar_w16d_energy_report_closeout_guidance.md:45:- baseline energy_total
+docs/papers/mascar_w16d_energy_report_closeout_guidance.md:46:- M4 energy_total
+experiments/paper-mascar/workloads/results/W9/w9_attempt2_dryrun/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+configs/tested-cfgs/SM75_RTX2060_S/accelwattch_sass_sim_alt.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM75_RTX2060_S/accelwattch_sass_sim_alt.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM75_RTX2060_S/accelwattch_sass_sim_alt.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM75_RTX2060_S/accelwattch_sass_sim_alt.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+docs/papers/mascar_w16a_energy_audit_guidance.md:14:W16 is not a paper-exact GPUWattch reproduction. It is a current-simulator energy trend pipeline.
+docs/papers/mascar_w16a_energy_audit_guidance.md:29:The Mascar paper reports energy using GPUWattch on GPGPU-Sim v3.2.2 and GTX480/Fermi. Current repository is GPGPU-Sim 4.x style and may use AccelWattch or different power output. Therefore W16 must not claim paper-equivalent 12% energy saving.
+docs/papers/mascar_w16a_energy_audit_guidance.md:72:- total_energy
+docs/papers/mascar_w16a_energy_audit_guidance.md:73:- total power
+docs/papers/mascar_w16a_energy_audit_guidance.md:74:- average power
+docs/papers/mascar_w16a_energy_audit_guidance.md:112:- energy_total
+docs/papers/mascar_w16a_energy_audit_guidance.md:124:- gpu_tot_ipc
+src/accelwattch/iocontrollers.cc:62:Total dynamic power of FBDIMM, NIC, PCIe = 84*0.132 + 84*0.049*0.132 = 11.14
+src/accelwattch/iocontrollers.cc:64:Total energy of FBDIMM, NIC, PCIe = 11.14 - 2.17*1.5 = 7.89
+configs/tested-cfgs/SM7_TITANV/accelwattch_ptx_sim.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM7_TITANV/accelwattch_ptx_sim.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_TITANV/accelwattch_ptx_sim.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_TITANV/accelwattch_ptx_sim.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+configs/tested-cfgs/SM75_RTX2060_S/accelwattch_ptx_sim_alt.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM75_RTX2060_S/accelwattch_ptx_sim_alt.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM75_RTX2060_S/accelwattch_ptx_sim_alt.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM75_RTX2060_S/accelwattch_ptx_sim_alt.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+src/accelwattch/array.cc:66:  list<uca_org_t>::iterator candidate_iter, min_dynamic_energy_iter;
+src/accelwattch/array.cc:195:    // double min_dynamic_energy, min_dynamic_power, min_leakage_power,
+src/accelwattch/array.cc:197:    double min_dynamic_energy = BIGNUM;
+src/accelwattch/array.cc:204:        if (min_dynamic_energy > (candidate_iter)->power.readOp.dynamic) {
+src/accelwattch/array.cc:205:          min_dynamic_energy = (candidate_iter)->power.readOp.dynamic;
+src/accelwattch/array.cc:206:          min_dynamic_energy_iter = candidate_iter;
+src/accelwattch/array.cc:207:          local_result = *(min_dynamic_energy_iter);
+src/accelwattch/gpgpu_sim_wrapper.cc:99:  gpu_tot_power = init;  // Global powers
+src/accelwattch/gpgpu_sim_wrapper.cc:531:  // Average power
+src/accelwattch/gpgpu_sim_wrapper.cc:565:  gpu_tot_power.avg = (gpu_tot_power.avg + sample_power);
+src/accelwattch/gpgpu_sim_wrapper.cc:566:  gpu_tot_power.max =
+src/accelwattch/gpgpu_sim_wrapper.cc:567:      (sample_power > gpu_tot_power.max) ? sample_power : gpu_tot_power.max;
+src/accelwattch/gpgpu_sim_wrapper.cc:568:  gpu_tot_power.min =
+src/accelwattch/gpgpu_sim_wrapper.cc:569:      ((sample_power < gpu_tot_power.min) || (gpu_tot_power.min == 0))
+src/accelwattch/gpgpu_sim_wrapper.cc:571:          : gpu_tot_power.min;
+src/accelwattch/gpgpu_sim_wrapper.cc:808:  double total_static_power = 0.0;
+src/accelwattch/gpgpu_sim_wrapper.cc:914:  total_static_power =
+src/accelwattch/gpgpu_sim_wrapper.cc:917:  return (total_static_power * per_active_core);
+src/accelwattch/gpgpu_sim_wrapper.cc:1087:    assert("Total Power does not equal the sum of the components\n" && (check));
+src/accelwattch/gpgpu_sim_wrapper.cc:1093:    double gpu_sim_cycle, double gpu_tot_sim_cycle, double init_value,
+src/accelwattch/gpgpu_sim_wrapper.cc:1100:    powerfile << "Kernel Average Power Data:" << std::endl;
+src/accelwattch/gpgpu_sim_wrapper.cc:1148:              << gpu_tot_power.avg / total_sample_count << std::endl;
+src/accelwattch/gpgpu_sim_wrapper.cc:1149:    powerfile << "gpu_tot_max_power = " << gpu_tot_power.max << std::endl;
+src/accelwattch/gpgpu_sim_wrapper.cc:1150:    powerfile << "gpu_tot_min_power = " << gpu_tot_power.min << std::endl;
+configs/tested-cfgs/SM75_RTX2060_S/accelwattch_sass_sim.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM75_RTX2060_S/accelwattch_sass_sim.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM75_RTX2060_S/accelwattch_sass_sim.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM75_RTX2060_S/accelwattch_sass_sim.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+src/abstract_hardware_model.h:603:  unsigned long long gpu_tot_sim_cycle;
+src/accelwattch/README:111:   pipeline registers/control logic are added up in total area/power of each 
+src/accelwattch/README:144:   		and total power is just a sum of them.  
+experiments/paper-mascar/workloads/results/W6/w6_trend_results.csv:1:paper_id,paper_name,paper_type,config_id,classification,completed,explicit_pass,correctness_basis,gpu_tot_sim_cycle,gpu_tot_ipc,baseline_cycles,baseline_ipc,cycle_speedup_vs_baseline,ipc_ratio_vs_baseline,l1_sat_samples,l1_sat_saturated_samples,m2_mp_cycles,m2_owner_acquire,m2_nonowner_mem_block,m3_hitonly_attempt,m3_hitonly_nack,m4_enqueue_success,m4_retry_attempt,m4_retry_nack,m2_active,m3_active,m4_active,any_m2_m3_m4_active,trend_interpretation
+src/trace.h:65:      printf(SIM_PRINT_STR, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, \
+src/trace.h:74:      printf(SIM_PRINT_STR, gpu_sim_cycle + gpu_tot_sim_cycle, \
+src/accelwattch/Niagara1.xml:397:			the average power per MC or per channel. This is sufficent for most application. 
+src/accelwattch/Niagara1.xml:411:			the average power per nic or per channel. This is sufficent for most application. -->  			
+src/accelwattch/Niagara1.xml:426:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+src/accelwattch/Niagara1.xml:437:			the average power per fc or per channel. This is sufficent for most application -->  			
+src/gpgpusim_entrypoint.cc:383:      (unsigned)(the_gpgpusim->g_the_gpu->gpu_tot_sim_cycle / difference);
+configs/tested-cfgs/SM75_RTX2060_S/accelwattch_ptx_sim.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM75_RTX2060_S/accelwattch_ptx_sim.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM75_RTX2060_S/accelwattch_ptx_sim.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM75_RTX2060_S/accelwattch_ptx_sim.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+src/accelwattch/logic.cc:853:    // power.readOp.dynamic = base_energy/clockRate +
+src/accelwattch/logic.cc:887:    // rt_power.readOp.dynamic = base_energy*executionTime +
+src/accelwattch/logic.cc:891:      rt_power.readOp.dynamic = per_access_energy * stats_t.readAc.access +
+src/accelwattch/logic.cc:894:      rt_power.readOp.dynamic = per_access_energy * stats_t.readAc.access;
+src/abstract_hardware_model.cc:210:  gpu_tot_sim_cycle = 0;
+src/abstract_hardware_model.cc:1125:          m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
+src/abstract_hardware_model.cc:1162:            m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
+experiments/paper-mascar/workloads/results/W6/w6_ready_dryrun/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+src/accelwattch/gpgpu_static.xml:447:			the average power per MC or per channel. This is sufficent for most application. 
+src/accelwattch/gpgpu_static.xml:461:			the average power per nic or per channel. This is sufficent for most application. -->  			
+src/accelwattch/gpgpu_static.xml:476:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+src/accelwattch/gpgpu_static.xml:487:			the average power per fc or per channel. This is sufficent for most application -->  			
+src/accelwattch/Xeon.xml:409:			the average power per MC or per channel. This is sufficent for most application. 
+src/accelwattch/Xeon.xml:423:			the average power per nic or per channel. This is sufficent for most application. -->  			
+src/accelwattch/Xeon.xml:438:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+src/accelwattch/Xeon.xml:449:			the average power per fc or per channel. This is sufficent for most application -->  			
+src/gpgpu-sim/l2cache.cc:108:      addr, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, mask);
+src/gpgpu-sim/l2cache.cc:240:      ((m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle) >=
+src/gpgpu-sim/l2cache.cc:258:              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/l2cache.cc:294:      d.ready_cycle = m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
+src/gpgpu-sim/l2cache.cc:298:                     m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/l2cache.cc:321:                              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/l2cache.cc:356:      d.ready_cycle = m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
+src/gpgpu-sim/l2cache.cc:360:                     m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/l2cache.cc:369:      ((m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle) >=
+src/gpgpu-sim/l2cache.cc:475:                       m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/l2cache.cc:484:              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/l2cache.cc:499:                       m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/l2cache.cc:500:        m_L2cache->fill(mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
+src/gpgpu-sim/l2cache.cc:507:                       m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/l2cache.cc:529:                              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
+src/gpgpu-sim/l2cache.cc:547:                             m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/l2cache.cc:567:                             m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/l2cache.cc:582:                     m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/l2cache.cc:595:                   m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/l2cache.cc:735:          m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, mf->get_wid(),
+src/gpgpu-sim/l2cache.cc:758:          m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, mf->get_wid(),
+src/gpgpu-sim/l2cache.cc:774:            mf->is_write(), m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle,
+src/gpgpu-sim/l2cache.cc:801:                        m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/l2cache.cc:808:                        m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+configs/tested-cfgs/SM7_QV100/accelwattch_sass_sim_alt.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM7_QV100/accelwattch_sass_sim_alt.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_QV100/accelwattch_sass_sim_alt.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_QV100/accelwattch_sass_sim_alt.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+src/accelwattch/Niagara1_sharing_ST.xml:399:			the average power per MC or per channel. This is sufficent for most application. 
+src/accelwattch/Niagara1_sharing_ST.xml:413:			the average power per nic or per channel. This is sufficent for most application. -->  			
+src/accelwattch/Niagara1_sharing_ST.xml:428:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+src/accelwattch/Niagara1_sharing_ST.xml:439:			the average power per fc or per channel. This is sufficent for most application -->  			
+src/accelwattch/Niagara1_sharing.xml:395:			the average power per MC or per channel. This is sufficent for most application. 
+src/gpgpu-sim/dram_sched.cc:225:                          m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/dram_sched.cc:238:                              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/dram_sched.cc:242:          mrq_latency = m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle -
+src/gpgpu-sim/dram_sched.cc:247:              m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle;
+configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim_alt.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim_alt.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim_alt.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim_alt.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+src/accelwattch/Niagara2.xml:393:			the average power per MC or per channel. This is sufficent for most application. 
+src/accelwattch/Niagara2.xml:407:			the average power per nic or per channel. This is sufficent for most application. -->  			
+src/accelwattch/Niagara2.xml:422:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+src/accelwattch/Niagara2.xml:433:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/workloads/results/W6/w6_ready_sweep_actual/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+src/gpgpu-sim/l2cache_trace.h:51:          MEMPART_PRINT_STR, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle,  \
+src/gpgpu-sim/l2cache_trace.h:61:             m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle,                  \
+src/accelwattch/gpgpu_sim_wrapper.h:109:  void print_power_kernel_stats(double gpu_sim_cycle, double gpu_tot_sim_cycle,
+src/accelwattch/gpgpu_sim_wrapper.h:175:  double kernel_tot_power;  // Total per-kernel power
+src/accelwattch/gpgpu_sim_wrapper.h:179:      gpu_tot_power;  // Global GPU power avg/max/min values (across kernels)
+configs/tested-cfgs/SM7_QV100/accelwattch_sass_hw.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM7_QV100/accelwattch_sass_hw.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_QV100/accelwattch_sass_hw.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_QV100/accelwattch_sass_hw.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+src/accelwattch/Alpha21364.xml:411:			the average power per MC or per channel. This is sufficent for most application. 
+src/accelwattch/Alpha21364.xml:425:			the average power per nic or per channel. This is sufficent for most application. -->  			
+src/accelwattch/Alpha21364.xml:440:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+src/accelwattch/Alpha21364.xml:451:			the average power per fc or per channel. This is sufficent for most application -->  			
+configs/tested-cfgs/SM7_QV100/accelwattch_sass_sim.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM7_QV100/accelwattch_sass_sim.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_QV100/accelwattch_sass_sim.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_QV100/accelwattch_sass_sim.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/workloads/results/W6/w6_latest_results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+src/gpgpu-sim/gpu-sim.h:592:    return (m_config.gpu_max_cycle_opt && (gpu_tot_sim_cycle + gpu_sim_cycle) >=
+src/gpgpu-sim/gpu-sim.h:774:  unsigned long long gpu_tot_sim_cycle_parition_util;
+configs/tested-cfgs/SM7_QV100/accelwattch_sass_hybrid.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM7_QV100/accelwattch_sass_hybrid.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_QV100/accelwattch_sass_hybrid.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_QV100/accelwattch_sass_hybrid.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+src/gpgpu-sim/gpu-sim.cc:1009:  kernel_time_t kernel_time = {gpu_tot_sim_cycle + gpu_sim_cycle, 0};
+src/gpgpu-sim/gpu-sim.cc:1096:          gpu_sim_cycle + gpu_tot_sim_cycle;
+src/gpgpu-sim/gpu-sim.cc:1110:      m_running_kernels[idx]->start_cycle = gpu_sim_cycle + gpu_tot_sim_cycle;
+src/gpgpu-sim/gpu-sim.cc:1142:      gpu_tot_sim_cycle + gpu_sim_cycle;
+src/gpgpu-sim/gpu-sim.cc:1147:      kernel->end_cycle = gpu_sim_cycle + gpu_tot_sim_cycle;
+src/gpgpu-sim/gpu-sim.cc:1220:  gpu_tot_sim_cycle_parition_util = 0;
+src/gpgpu-sim/gpu-sim.cc:1356:      (gpu_tot_sim_cycle + gpu_sim_cycle) >= m_config.gpu_max_cycle_opt)
+src/gpgpu-sim/gpu-sim.cc:1381:      (gpu_tot_sim_cycle + gpu_sim_cycle) >= m_config.gpu_max_cycle_opt)
+src/gpgpu-sim/gpu-sim.cc:1448:  gpu_tot_sim_cycle += gpu_sim_cycle;
+src/gpgpu-sim/gpu-sim.cc:1454:  gpu_tot_sim_cycle_parition_util += gpu_sim_cycle_parition_util;
+src/gpgpu-sim/gpu-sim.cc:1493:        "%u @ gpu_sim_cycle %u (+ gpu_tot_sim_cycle %u) (%u cycles ago)\n",
+src/gpgpu-sim/gpu-sim.cc:1495:        (unsigned)(gpu_tot_sim_cycle - gpu_sim_cycle),
+src/gpgpu-sim/gpu-sim.cc:1669:  printf("gpu_tot_sim_cycle = %lld\n", gpu_tot_sim_cycle + gpu_sim_cycle);
+src/gpgpu-sim/gpu-sim.cc:1671:  printf("gpu_tot_ipc = %12.4f\n", (float)(gpu_tot_sim_insn + gpu_sim_insn) /
+src/gpgpu-sim/gpu-sim.cc:1672:                                       (gpu_tot_sim_cycle + gpu_sim_cycle));
+src/gpgpu-sim/gpu-sim.cc:1693:             (gpu_tot_sim_cycle + gpu_sim_cycle));
+src/gpgpu-sim/gpu-sim.cc:1699:  // printf("gpu_tot_sim_cycle_parition_util    = %lld\n",
+src/gpgpu-sim/gpu-sim.cc:1700:  // gpu_tot_sim_cycle_parition_util );
+src/gpgpu-sim/gpu-sim.cc:1706:             (gpu_sim_cycle_parition_util + gpu_tot_sim_cycle_parition_util));
+src/gpgpu-sim/gpu-sim.cc:1718:          ((gpu_tot_sim_cycle + gpu_sim_cycle) * m_config.core_period)) /
+src/gpgpu-sim/gpu-sim.cc:1752:                         gpu_tot_sim_cycle, gpu_sim_cycle, gpu_tot_sim_insn,
+src/gpgpu-sim/gpu-sim.cc:1760:        gpu_sim_cycle, gpu_tot_sim_cycle, gpu_tot_sim_insn + gpu_sim_insn,
+src/gpgpu-sim/gpu-sim.cc:2507:                 m_gpu->gpu_tot_sim_cycle, kernel.get_uid(),
+src/gpgpu-sim/gpu-sim.cc:2579:          mf->set_return_timestamp(gpu_sim_cycle + gpu_tot_sim_cycle);
+src/gpgpu-sim/gpu-sim.cc:2580:          mf->set_status(IN_ICNT_TO_SHADER, gpu_sim_cycle + gpu_tot_sim_cycle);
+src/gpgpu-sim/gpu-sim.cc:2629:        m_memory_sub_partition[i]->push(mf, gpu_sim_cycle + gpu_tot_sim_cycle);
+src/gpgpu-sim/gpu-sim.cc:2632:      m_memory_sub_partition[i]->cache_cycle(gpu_sim_cycle + gpu_tot_sim_cycle);
+src/gpgpu-sim/gpu-sim.cc:2679:        ((gpu_sim_cycle + gpu_tot_sim_cycle) >= g_single_step)) {
+src/gpgpu-sim/gpu-sim.cc:2692:                    gpu_tot_sim_cycle, gpu_sim_cycle, gpu_tot_sim_insn,
+src/gpgpu-sim/gpu-sim.cc:2927:  if (g_single_step && ((gpu_sim_cycle + gpu_tot_sim_cycle) >= g_single_step)) {
+src/gpgpu-sim/gpu-sim.cc:2937:                m_power_stats, m_config.gpu_stat_sample_freq, gpu_tot_sim_cycle,
+src/accelwattch/quadro.xml:452:			the average power per MC or per channel. This is sufficent for most application. 
+src/accelwattch/quadro.xml:466:			the average power per nic or per channel. This is sufficent for most application. -->  			
+src/accelwattch/quadro.xml:481:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+src/accelwattch/quadro.xml:492:			the average power per fc or per channel. This is sufficent for most application -->  			
+configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+src/gpgpu-sim/shader_trace.h:49:             m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, \
+src/gpgpu-sim/shader_trace.h:62:                 m_shader->get_gpu()->gpu_tot_sim_cycle,                 \
+experiments/paper-mascar/workloads/results/w3_dryrun_matrix/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+src/accelwattch/Penryn.xml:410:			the average power per MC or per channel. This is sufficent for most application. 
+src/accelwattch/Penryn.xml:424:			the average power per nic or per channel. This is sufficent for most application. -->  			
+src/accelwattch/Penryn.xml:439:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+src/accelwattch/Penryn.xml:450:			the average power per fc or per channel. This is sufficent for most application -->  			
+src/accelwattch/memoryctrl.cc:60: * MC based on Niagara processor designs and curving and low power MC based on
+src/gpgpu-sim/power_interface.cc:71:        power_stats->get_total_int_inst(0), power_stats->get_total_fp_inst(0),
+src/gpgpu-sim/power_interface.cc:304:        power_stats->get_total_int_inst(1), power_stats->get_total_fp_inst(1),
+src/gpgpu-sim/mem_fetch.h:159:      m_timestamp;  // set to gpu_sim_cycle+gpu_tot_sim_cycle at struct creation
+src/gpgpu-sim/mem_fetch.h:160:  unsigned m_timestamp2;  // set to gpu_sim_cycle+gpu_tot_sim_cycle when pushed
+src/gpgpu-sim/mem_latency_stat.cc:192:      (m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle) - mf->get_timestamp();
+src/gpgpu-sim/mem_latency_stat.cc:210:        (m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle) - mf->get_timestamp();
+src/gpgpu-sim/mem_latency_stat.cc:221:    icnt2sh_latency = (m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle) -
+src/gpgpu-sim/mem_latency_stat.cc:260:        (m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle) - mf->get_timestamp();
+src/accelwattch/Niagara1_sharing_DC.xml:397:			the average power per MC or per channel. This is sufficent for most application. 
+src/accelwattch/Niagara1_sharing_DC.xml:411:			the average power per nic or per channel. This is sufficent for most application. -->  			
+src/accelwattch/Niagara1_sharing_DC.xml:426:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+src/accelwattch/Niagara1_sharing_DC.xml:437:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:17:README.md:65:Previous versions of GPGPU-Sim (3.2.0 to 4.1.0) included the [GPUWattch Energy model](http://gpgpu-sim.org/gpuwattch/) which has been replaced by AccelWattch version 1.0 in GPGPU-Sim version 4.2.0. AccelWattch supports modern GPUs and is validated against a NVIDIA Volta QV100 GPU. Detailed documentation on AccelWattch can be found here: [AccelWattch Overview](https://github.com/VijayKandiah/accel-sim-framework#accelwattch-overview) and [AccelWattch MICRO'21 Artifact Manual](https://github.com/VijayKandiah/accel-sim-framework/blob/release/AccelWattch.md).
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:37:CHANGES:166:    - 'Constant dynamic' power not included in average/min/max power values.
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:58:configs/deprecated-cfgs/GeForceGTX750Ti/gpuwattch_gtx750Ti.xml:494:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:59:configs/deprecated-cfgs/GeForceGTX750Ti/gpuwattch_gtx750Ti.xml:508:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:60:configs/deprecated-cfgs/GeForceGTX750Ti/gpuwattch_gtx750Ti.xml:523:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:61:configs/deprecated-cfgs/GeForceGTX750Ti/gpuwattch_gtx750Ti.xml:534:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:84:configs/deprecated-cfgs/SM6_TITANX/gpuwattch_gtx480.xml:493:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:85:configs/deprecated-cfgs/SM6_TITANX/gpuwattch_gtx480.xml:507:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:86:configs/deprecated-cfgs/SM6_TITANX/gpuwattch_gtx480.xml:522:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:87:configs/deprecated-cfgs/SM6_TITANX/gpuwattch_gtx480.xml:533:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:102:docs/papers/mascar_w16d_energy_report_closeout_guidance.md:45:- baseline energy_total
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:103:docs/papers/mascar_w16d_energy_report_closeout_guidance.md:46:- M4 energy_total
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:938:docs/papers/mascar_w16_energy_guidance.md:25:   - 可提取 total energy, leakage, DRAM, L1/L2/cache, interconnect
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1088:src/accelwattch/processor.h:92:  double get_const_dynamic_power() {
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1089:src/accelwattch/processor.h:94:    constpart += (mc->frontend->power.readOp.dynamic * 0.1 *
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1090:src/accelwattch/processor.h:98:        (mc->transecEngine->power.readOp.dynamic * 0.1 *
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1091:src/accelwattch/processor.h:101:    constpart += (mc->PHY->power.readOp.dynamic * 0.1 * mc->PHY->mcp.clockRate *
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1096:src/accelwattch/processor.h:119:    value += mc->frontend->PRT->local_result.power.readOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1097:src/accelwattch/processor.h:120:    value += mc->frontend->threadMasks->local_result.power.readOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1098:src/accelwattch/processor.h:121:    value += mc->frontend->PRC->local_result.power.readOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1101:src/accelwattch/processor.h:131:    value += (mc->frontend->PRT->local_result.power.writeOp.dynamic);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1102:src/accelwattch/processor.h:132:    value += mc->frontend->threadMasks->local_result.power.writeOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1103:src/accelwattch/processor.h:133:    value += mc->frontend->PRC->local_result.power.writeOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1105:src/accelwattch/processor.h:141:    read_coef += nocs[0]->router->buffer.power.readOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1106:src/accelwattch/processor.h:142:    read_coef += nocs[0]->router->buffer.power.writeOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1107:src/accelwattch/processor.h:143:    read_coef += nocs[0]->router->crossbar.power.readOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1108:src/accelwattch/processor.h:144:    read_coef += nocs[0]->router->arbiter.power.readOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1110:src/accelwattch/processor.h:152:          l2array[0]->unicache.caches->local_result.power.readOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1112:src/accelwattch/processor.h:161:              ->unicache.caches->local_result.tag_array2->power.readOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1114:src/accelwattch/processor.h:169:          l2array[0]->unicache.caches->local_result.power.writeOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1117:src/accelwattch/processor.h:180:          l2array[0]->unicache.caches->local_result.power.writeOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1118:src/accelwattch/processor.h:182:          l2array[0]->unicache.missb->local_result.power.searchOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1119:src/accelwattch/processor.h:184:          l2array[0]->unicache.missb->local_result.power.writeOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1120:src/accelwattch/processor.h:186:          l2array[0]->unicache.ifb->local_result.power.searchOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1121:src/accelwattch/processor.h:187:      read_coef += l2array[0]->unicache.ifb->local_result.power.writeOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1122:src/accelwattch/processor.h:189:          l2array[0]->unicache.prefetchb->local_result.power.searchOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1123:src/accelwattch/processor.h:191:          l2array[0]->unicache.prefetchb->local_result.power.writeOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1124:src/accelwattch/processor.h:193:          l2array[0]->unicache.wbb->local_result.power.searchOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1125:src/accelwattch/processor.h:194:      read_coef += l2array[0]->unicache.wbb->local_result.power.writeOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1126:src/accelwattch/processor.h:205:        (mc->frontend->frontendBuffer->local_result.power.searchOp.dynamic);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1127:src/accelwattch/processor.h:210:        (mc->frontend->frontendBuffer->local_result.power.readOp.dynamic);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1128:src/accelwattch/processor.h:214:    //*(mc->frontend->frontendBuffer->local_result.power.readOp.dynamic);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1129:src/accelwattch/processor.h:217:             (mc->frontend->readBuffer->local_result.power.readOp.dynamic);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1130:src/accelwattch/processor.h:220:             (mc->frontend->readBuffer->local_result.power.writeOp.dynamic);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1131:src/accelwattch/processor.h:224:            value+=mc->frontend->PRT->local_result.power.readOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1132:src/accelwattch/processor.h:225:            value+=mc->frontend->threadMasks->local_result.power.readOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1133:src/accelwattch/processor.h:226:            value+=mc->frontend->PRC->local_result.power.readOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1135:src/accelwattch/processor.h:231:              mc->transecEngine->power_t.readOp.dynamic);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1136:src/accelwattch/processor.h:234:    value += (mc->PHY->power_t.readOp.dynamic) * (mc->PHY->mcp.llcBlockSize) *
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1137:src/accelwattch/processor.h:238:    // %f\n",(mc->PHY->power_t.readOp.dynamic)*(mc->PHY->mcp.llcBlockSize)*8/1e9/mc->PHY->mcp.executionTime*(mc->PHY->mcp.executionTime));
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1138:src/accelwattch/processor.h:240:    // %f\n",(mc->transecEngine->mcp.llcBlockSize*8.0/mc->transecEngine->mcp.dataBusWidth*mc->transecEngine->power_t.readOp.dynamic));
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1139:src/accelwattch/processor.h:243:    //		value+= nocs[0]->router->buffer.power.readOp.dynamic*(32/4);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1140:src/accelwattch/processor.h:244:    //		value+= nocs[0]->router->buffer.power.writeOp.dynamic*(32/4);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1141:src/accelwattch/processor.h:245:    //		value+= nocs[0]->router->crossbar.power.readOp.dynamic*(32/4);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1142:src/accelwattch/processor.h:246:    //		value+= nocs[0]->router->arbiter.power.readOp.dynamic*(32/4);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1143:src/accelwattch/processor.h:258:        (mc->frontend->frontendBuffer->local_result.power.searchOp.dynamic);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1144:src/accelwattch/processor.h:263:        (mc->frontend->frontendBuffer->local_result.power.writeOp.dynamic);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1145:src/accelwattch/processor.h:266:    // (mc->frontend->frontendBuffer->local_result.power.writeOp.dynamic);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1146:src/accelwattch/processor.h:270:             (mc->frontend->writeBuffer->local_result.power.readOp.dynamic);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1147:src/accelwattch/processor.h:274:             (mc->frontend->writeBuffer->local_result.power.writeOp.dynamic);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1148:src/accelwattch/processor.h:278:            value+=(mc->frontend->PRT->local_result.power.writeOp.dynamic);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1149:src/accelwattch/processor.h:280:            value+=mc->frontend->threadMasks->local_result.power.writeOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1150:src/accelwattch/processor.h:282:            value+=mc->frontend->PRC->local_result.power.writeOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1152:src/accelwattch/processor.h:289:              mc->transecEngine->power_t.readOp.dynamic);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1153:src/accelwattch/processor.h:292:    value += (mc->PHY->power_t.readOp.dynamic) * (mc->PHY->mcp.llcBlockSize) *
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1154:src/accelwattch/processor.h:297:    //		value+= nocs[0]->router->buffer.power.readOp.dynamic*(32/4);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1155:src/accelwattch/processor.h:299:    //		value+= nocs[0]->router->buffer.power.writeOp.dynamic*(32/4);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1156:src/accelwattch/processor.h:301:    //		value+= nocs[0]->router->crossbar.power.readOp.dynamic*(32/4);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1157:src/accelwattch/processor.h:303:    //		value+= nocs[0]->router->arbiter.power.readOp.dynamic*(32/4);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1163:docs/papers/mascar_w16a_energy_audit_guidance.md:14:W16 is not a paper-exact GPUWattch reproduction. It is a current-simulator energy trend pipeline.
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1169:docs/papers/mascar_w16a_energy_audit_guidance.md:29:The Mascar paper reports energy using GPUWattch on GPGPU-Sim v3.2.2 and GTX480/Fermi. Current repository is GPGPU-Sim 4.x style and may use AccelWattch or different power output. Therefore W16 must not claim paper-equivalent 12% energy saving.
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1183:docs/papers/mascar_w16a_energy_audit_guidance.md:72:- total_energy
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1184:docs/papers/mascar_w16a_energy_audit_guidance.md:73:- total power
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1185:docs/papers/mascar_w16a_energy_audit_guidance.md:74:- average power
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1199:docs/papers/mascar_w16a_energy_audit_guidance.md:112:- energy_total
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1226:configs/deprecated-cfgs/QuadroFX5600/gpuwattch_quadrofx5600.xml:493:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1227:configs/deprecated-cfgs/QuadroFX5600/gpuwattch_quadrofx5600.xml:507:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1228:configs/deprecated-cfgs/QuadroFX5600/gpuwattch_quadrofx5600.xml:522:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1229:configs/deprecated-cfgs/QuadroFX5600/gpuwattch_quadrofx5600.xml:533:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1239:docs/papers/mascar_w16b_energy_config_collector_guidance.md:41:- energy_total
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1284:src/accelwattch/iocontrollers.cc:62:Total dynamic power of FBDIMM, NIC, PCIe = 84*0.132 + 84*0.049*0.132 = 11.14
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1285:src/accelwattch/iocontrollers.cc:64:Total energy of FBDIMM, NIC, PCIe = 11.14 - 2.17*1.5 = 7.89
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1426:src/accelwattch/README:144:   		and total power is just a sum of them.  
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1453:src/accelwattch/Xeon.xml:409:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1454:src/accelwattch/Xeon.xml:423:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1455:src/accelwattch/Xeon.xml:438:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1456:src/accelwattch/Xeon.xml:449:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1458:src/accelwattch/Niagara1_sharing_ST.xml:399:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1459:src/accelwattch/Niagara1_sharing_ST.xml:413:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1460:src/accelwattch/Niagara1_sharing_ST.xml:428:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1461:src/accelwattch/Niagara1_sharing_ST.xml:439:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1463:src/accelwattch/Niagara1_sharing.xml:395:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1469:src/accelwattch/gpgpu_sim_wrapper.h:109:  void print_power_kernel_stats(double gpu_sim_cycle, double gpu_tot_sim_cycle,
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1476:src/accelwattch/quadro.xml:452:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1477:src/accelwattch/quadro.xml:466:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1478:src/accelwattch/quadro.xml:481:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1479:src/accelwattch/quadro.xml:492:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1481:src/accelwattch/fermi.xml:452:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1482:src/accelwattch/fermi.xml:466:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1483:src/accelwattch/fermi.xml:481:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1484:src/accelwattch/fermi.xml:492:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1487:configs/deprecated-cfgs/SM6_GTX1080/gpuwattch_gtx1080Ti.xml:493:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1488:configs/deprecated-cfgs/SM6_GTX1080/gpuwattch_gtx1080Ti.xml:507:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1489:configs/deprecated-cfgs/SM6_GTX1080/gpuwattch_gtx1080Ti.xml:522:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1490:configs/deprecated-cfgs/SM6_GTX1080/gpuwattch_gtx1080Ti.xml:533:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1494:src/accelwattch/array.cc:66:  list<uca_org_t>::iterator candidate_iter, min_dynamic_energy_iter;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1499:src/accelwattch/array.cc:195:    // double min_dynamic_energy, min_dynamic_power, min_leakage_power,
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1500:src/accelwattch/array.cc:197:    double min_dynamic_energy = BIGNUM;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1501:src/accelwattch/array.cc:204:        if (min_dynamic_energy > (candidate_iter)->power.readOp.dynamic) {
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1502:src/accelwattch/array.cc:205:          min_dynamic_energy = (candidate_iter)->power.readOp.dynamic;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1503:src/accelwattch/array.cc:206:          min_dynamic_energy_iter = candidate_iter;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1504:src/accelwattch/array.cc:207:          local_result = *(min_dynamic_energy_iter);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1836:src/accelwattch/processor.cc:752:         << power.readOp.dynamic +
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1837:src/accelwattch/processor.cc:753:                (long_channel ? power.readOp.longer_channel_leakage
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1838:src/accelwattch/processor.cc:754:                              : power.readOp.leakage) +
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1839:src/accelwattch/processor.cc:755:                power.readOp.gate_leakage
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1841:src/accelwattch/processor.cc:758:         << (long_channel ? power.readOp.longer_channel_leakage
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1842:src/accelwattch/processor.cc:759:                          : power.readOp.leakage) +
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1843:src/accelwattch/processor.cc:760:                power.readOp.gate_leakage
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1844:src/accelwattch/processor.cc:762:    cout << indent_str << "Peak Dynamic = " << power.readOp.dynamic << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1846:src/accelwattch/processor.cc:765:         << (long_channel ? power.readOp.longer_channel_leakage
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1847:src/accelwattch/processor.cc:766:                          : power.readOp.leakage)
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1849:src/accelwattch/processor.cc:769:    // power.readOp.longer_channel_leakage <<" W" << endl;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1850:src/accelwattch/processor.cc:770:    cout << indent_str << "Gate Leakage = " << power.readOp.gate_leakage << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1851:src/accelwattch/processor.cc:772:    cout << indent_str << "Runtime Dynamic = " << rt_power.readOp.dynamic
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1854:src/accelwattch/processor.cc:781:      cout << indent_str_next << "Peak Dynamic = " << core.power.readOp.dynamic
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1856:src/accelwattch/processor.cc:784:           << (long_channel ? core.power.readOp.longer_channel_leakage
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1857:src/accelwattch/processor.cc:785:                            : core.power.readOp.leakage)
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1859:src/accelwattch/processor.cc:788:      // core.power.readOp.longer_channel_leakage <<" W" << endl;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1860:src/accelwattch/processor.cc:790:           << "Gate Leakage = " << core.power.readOp.gate_leakage << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1861:src/accelwattch/processor.cc:793:           << "Runtime Dynamic = " << core.rt_power.readOp.dynamic << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1864:src/accelwattch/processor.cc:803:        cout << indent_str_next << "Peak Dynamic = " << l2.power.readOp.dynamic
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1866:src/accelwattch/processor.cc:806:             << (long_channel ? l2.power.readOp.longer_channel_leakage
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1867:src/accelwattch/processor.cc:807:                              : l2.power.readOp.leakage)
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1869:src/accelwattch/processor.cc:810:        // l2.power.readOp.longer_channel_leakage <<" W" << endl;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1870:src/accelwattch/processor.cc:812:             << "Gate Leakage = " << l2.power.readOp.gate_leakage << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1871:src/accelwattch/processor.cc:815:             << "Runtime Dynamic = " << l2.rt_power.readOp.dynamic << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1873:src/accelwattch/processor.cc:825:      cout << indent_str_next << "Peak Dynamic = " << l3.power.readOp.dynamic
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1875:src/accelwattch/processor.cc:828:           << (long_channel ? l3.power.readOp.longer_channel_leakage
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1876:src/accelwattch/processor.cc:829:                            : l3.power.readOp.leakage)
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1878:src/accelwattch/processor.cc:832:      // l3.power.readOp.longer_channel_leakage <<" W" << endl;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1879:src/accelwattch/processor.cc:834:           << "Gate Leakage = " << l3.power.readOp.gate_leakage << " W" << endl;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1880:src/accelwattch/processor.cc:836:           << "Runtime Dynamic = " << l3.rt_power.readOp.dynamic << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1882:src/accelwattch/processor.cc:845:      cout << indent_str_next << "Peak Dynamic = " << l1dir.power.readOp.dynamic
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1884:src/accelwattch/processor.cc:848:           << (long_channel ? l1dir.power.readOp.longer_channel_leakage
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1885:src/accelwattch/processor.cc:849:                            : l1dir.power.readOp.leakage)
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1887:src/accelwattch/processor.cc:852:      // l1dir.power.readOp.longer_channel_leakage <<" W" << endl;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1888:src/accelwattch/processor.cc:854:           << "Gate Leakage = " << l1dir.power.readOp.gate_leakage << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1889:src/accelwattch/processor.cc:857:           << "Runtime Dynamic = " << l1dir.rt_power.readOp.dynamic << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1891:src/accelwattch/processor.cc:866:      cout << indent_str_next << "Peak Dynamic = " << l2dir.power.readOp.dynamic
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1893:src/accelwattch/processor.cc:869:           << (long_channel ? l2dir.power.readOp.longer_channel_leakage
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1894:src/accelwattch/processor.cc:870:                            : l2dir.power.readOp.leakage)
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1896:src/accelwattch/processor.cc:873:      // l2dir.power.readOp.longer_channel_leakage <<" W" << endl;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1897:src/accelwattch/processor.cc:875:           << "Gate Leakage = " << l2dir.power.readOp.gate_leakage << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1898:src/accelwattch/processor.cc:878:           << "Runtime Dynamic = " << l2dir.rt_power.readOp.dynamic << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1900:src/accelwattch/processor.cc:887:      cout << indent_str_next << "Peak Dynamic = " << noc.power.readOp.dynamic
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1902:src/accelwattch/processor.cc:890:           << (long_channel ? noc.power.readOp.longer_channel_leakage
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1903:src/accelwattch/processor.cc:891:                            : noc.power.readOp.leakage)
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1905:src/accelwattch/processor.cc:894:      // noc.power.readOp.longer_channel_leakage  <<" W" << endl;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1906:src/accelwattch/processor.cc:896:           << "Gate Leakage = " << noc.power.readOp.gate_leakage << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1907:src/accelwattch/processor.cc:899:           << "Runtime Dynamic = " << noc.rt_power.readOp.dynamic << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1911:src/accelwattch/processor.cc:909:      cout << indent_str_next << "Peak Dynamic = " << mcs.power.readOp.dynamic
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1913:src/accelwattch/processor.cc:912:           << (long_channel ? mcs.power.readOp.longer_channel_leakage
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1914:src/accelwattch/processor.cc:913:                            : mcs.power.readOp.leakage)
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1915:src/accelwattch/processor.cc:916:           << "Gate Leakage = " << mcs.power.readOp.gate_leakage << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1916:src/accelwattch/processor.cc:919:           << "Runtime Dynamic = " << mcs.rt_power.readOp.dynamic << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1919:src/accelwattch/processor.cc:932:           << "Peak Dynamic = " << flashcontrollers.power.readOp.dynamic << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1921:src/accelwattch/processor.cc:936:                   ? flashcontrollers.power.readOp.longer_channel_leakage
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1922:src/accelwattch/processor.cc:937:                   : flashcontrollers.power.readOp.leakage)
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1923:src/accelwattch/processor.cc:940:           << "Gate Leakage = " << flashcontrollers.power.readOp.gate_leakage
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1924:src/accelwattch/processor.cc:943:           << "Runtime Dynamic = " << flashcontrollers.rt_power.readOp.dynamic
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1927:src/accelwattch/processor.cc:953:      cout << indent_str_next << "Peak Dynamic = " << nius.power.readOp.dynamic
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1929:src/accelwattch/processor.cc:956:           << (long_channel ? nius.power.readOp.longer_channel_leakage
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1930:src/accelwattch/processor.cc:957:                            : nius.power.readOp.leakage)
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1931:src/accelwattch/processor.cc:960:           << "Gate Leakage = " << nius.power.readOp.gate_leakage << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1932:src/accelwattch/processor.cc:963:           << "Runtime Dynamic = " << nius.rt_power.readOp.dynamic << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1935:src/accelwattch/processor.cc:973:      cout << indent_str_next << "Peak Dynamic = " << pcies.power.readOp.dynamic
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1937:src/accelwattch/processor.cc:976:           << (long_channel ? pcies.power.readOp.longer_channel_leakage
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1938:src/accelwattch/processor.cc:977:                            : pcies.power.readOp.leakage)
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1939:src/accelwattch/processor.cc:980:           << "Gate Leakage = " << pcies.power.readOp.gate_leakage << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1940:src/accelwattch/processor.cc:983:           << "Runtime Dynamic = " << pcies.rt_power.readOp.dynamic << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1977:src/accelwattch/processor.cc:1105:  interface_ip.dynamic_power_wt =
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1978:src/accelwattch/processor.cc:1108:  interface_ip.leakage_power_wt = 0;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1979:src/accelwattch/processor.cc:1115:  interface_ip.dynamic_power_dev =
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1980:src/accelwattch/processor.cc:1118:  interface_ip.leakage_power_dev = 10000;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1988:configs/deprecated-cfgs/GTX480/gpuwattch_gtx480.xml:493:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1989:configs/deprecated-cfgs/GTX480/gpuwattch_gtx480.xml:507:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1990:configs/deprecated-cfgs/GTX480/gpuwattch_gtx480.xml:522:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1991:configs/deprecated-cfgs/GTX480/gpuwattch_gtx480.xml:533:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1993:src/accelwattch/Alpha21364.xml:411:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1994:src/accelwattch/Alpha21364.xml:425:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1995:src/accelwattch/Alpha21364.xml:440:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:1996:src/accelwattch/Alpha21364.xml:451:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:2180:src/accelwattch/logic.cc:853:    // power.readOp.dynamic = base_energy/clockRate +
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:2194:src/accelwattch/logic.cc:887:    // rt_power.readOp.dynamic = base_energy*executionTime +
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:2196:src/accelwattch/logic.cc:891:      rt_power.readOp.dynamic = per_access_energy * stats_t.readAc.access +
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:2198:src/accelwattch/logic.cc:894:      rt_power.readOp.dynamic = per_access_energy * stats_t.readAc.access;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:2625:configs/deprecated-cfgs/SM6_P100/gpuwattch_gtx480.xml:493:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:2626:configs/deprecated-cfgs/SM6_P100/gpuwattch_gtx480.xml:507:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:2627:configs/deprecated-cfgs/SM6_P100/gpuwattch_gtx480.xml:522:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:2628:configs/deprecated-cfgs/SM6_P100/gpuwattch_gtx480.xml:533:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:3028:configs/tested-cfgs/SM2_GTX480/gpuwattch_gtx480.xml:493:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:3029:configs/tested-cfgs/SM2_GTX480/gpuwattch_gtx480.xml:507:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:3030:configs/tested-cfgs/SM2_GTX480/gpuwattch_gtx480.xml:522:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:3031:configs/tested-cfgs/SM2_GTX480/gpuwattch_gtx480.xml:533:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:3655:src/accelwattch/Niagara1_sharing_DC.xml:397:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:3656:src/accelwattch/Niagara1_sharing_DC.xml:411:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:3657:src/accelwattch/Niagara1_sharing_DC.xml:426:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:3658:src/accelwattch/Niagara1_sharing_DC.xml:437:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:3828:configs/tested-cfgs/SM3_KEPLER_TITAN/gpgpusim.config:176:# power model configs, disable it untill we create a real energy model for Kepler
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:4054:configs/tested-cfgs/SM6_TITANX/accelwattch_sass_sim_alt.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:4055:configs/tested-cfgs/SM6_TITANX/accelwattch_sass_sim_alt.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:4056:configs/tested-cfgs/SM6_TITANX/accelwattch_sass_sim_alt.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:4057:configs/tested-cfgs/SM6_TITANX/accelwattch_sass_sim_alt.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:4058:configs/tested-cfgs/SM86_RTX3070/gpgpusim.config:173:# power model configs, disable it untill we create a real energy model
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:4221:configs/tested-cfgs/SM6_TITANX/accelwattch_ptx_sim_alt.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:4222:configs/tested-cfgs/SM6_TITANX/accelwattch_ptx_sim_alt.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:4223:configs/tested-cfgs/SM6_TITANX/accelwattch_ptx_sim_alt.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:4224:configs/tested-cfgs/SM6_TITANX/accelwattch_ptx_sim_alt.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5434:src/accelwattch/core.cc:5250:         << "Runtime Dynamic Energy = " << ccache.rt_power.readOp.dynamic
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5550:src/accelwattch/core.cc:5572:    // IRF->local_result.power.readOp.dynamic<<endl; cout<< "IRF write energy:
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5717:src/accelwattch/core.cc:6049:  rt_power.readOp.dynamic += IdleCoreEnergy;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5815:src/accelwattch/core.cc:6356:           << "Peak Dynamic Energy = " << exu->power.readOp.dynamic << " W"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5837:src/accelwattch/core.cc:6417:         << "Runtime Dynamic = " << IdleCoreEnergy / executionTime << " W\n"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5926:configs/tested-cfgs/SM6_TITANX/accelwattch_sass_sim.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5927:configs/tested-cfgs/SM6_TITANX/accelwattch_sass_sim.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5928:configs/tested-cfgs/SM6_TITANX/accelwattch_sass_sim.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5929:configs/tested-cfgs/SM6_TITANX/accelwattch_sass_sim.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5933:configs/tested-cfgs/SM7_GV100/accelwattch_sass_sim_alt.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5934:configs/tested-cfgs/SM7_GV100/accelwattch_sass_sim_alt.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5935:configs/tested-cfgs/SM7_GV100/accelwattch_sass_sim_alt.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5936:configs/tested-cfgs/SM7_GV100/accelwattch_sass_sim_alt.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5957:configs/tested-cfgs/SM7_GV100/accelwattch_ptx_sim_alt.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5958:configs/tested-cfgs/SM7_GV100/accelwattch_ptx_sim_alt.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5959:configs/tested-cfgs/SM7_GV100/accelwattch_ptx_sim_alt.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5960:configs/tested-cfgs/SM7_GV100/accelwattch_ptx_sim_alt.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5965:configs/tested-cfgs/SM6_TITANX/accelwattch_ptx_sim.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5966:configs/tested-cfgs/SM6_TITANX/accelwattch_ptx_sim.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5967:configs/tested-cfgs/SM6_TITANX/accelwattch_ptx_sim.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:5968:configs/tested-cfgs/SM6_TITANX/accelwattch_ptx_sim.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6013:configs/tested-cfgs/SM7_GV100/accelwattch_sass_hw.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6014:configs/tested-cfgs/SM7_GV100/accelwattch_sass_hw.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6015:configs/tested-cfgs/SM7_GV100/accelwattch_sass_hw.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6016:configs/tested-cfgs/SM7_GV100/accelwattch_sass_hw.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6025:configs/tested-cfgs/SM7_TITANV/accelwattch_sass_sim_alt.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6026:configs/tested-cfgs/SM7_TITANV/accelwattch_sass_sim_alt.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6027:configs/tested-cfgs/SM7_TITANV/accelwattch_sass_sim_alt.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6028:configs/tested-cfgs/SM7_TITANV/accelwattch_sass_sim_alt.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6032:configs/tested-cfgs/SM7_GV100/accelwattch_sass_sim.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6033:configs/tested-cfgs/SM7_GV100/accelwattch_sass_sim.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6034:configs/tested-cfgs/SM7_GV100/accelwattch_sass_sim.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6035:configs/tested-cfgs/SM7_GV100/accelwattch_sass_sim.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6052:configs/tested-cfgs/SM7_TITANV/accelwattch_ptx_sim_alt.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6053:configs/tested-cfgs/SM7_TITANV/accelwattch_ptx_sim_alt.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6054:configs/tested-cfgs/SM7_TITANV/accelwattch_ptx_sim_alt.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6055:configs/tested-cfgs/SM7_TITANV/accelwattch_ptx_sim_alt.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6071:configs/tested-cfgs/SM7_GV100/accelwattch_sass_hybrid.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6072:configs/tested-cfgs/SM7_GV100/accelwattch_sass_hybrid.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6073:configs/tested-cfgs/SM7_GV100/accelwattch_sass_hybrid.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6074:configs/tested-cfgs/SM7_GV100/accelwattch_sass_hybrid.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6085:configs/tested-cfgs/SM7_TITANV/accelwattch_sass_hw.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6086:configs/tested-cfgs/SM7_TITANV/accelwattch_sass_hw.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6087:configs/tested-cfgs/SM7_TITANV/accelwattch_sass_hw.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6088:configs/tested-cfgs/SM7_TITANV/accelwattch_sass_hw.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6093:configs/tested-cfgs/SM7_GV100/accelwattch_ptx_sim.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6094:configs/tested-cfgs/SM7_GV100/accelwattch_ptx_sim.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6095:configs/tested-cfgs/SM7_GV100/accelwattch_ptx_sim.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6096:configs/tested-cfgs/SM7_GV100/accelwattch_ptx_sim.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6164:configs/tested-cfgs/SM7_TITANV/accelwattch_sass_sim.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6165:configs/tested-cfgs/SM7_TITANV/accelwattch_sass_sim.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6166:configs/tested-cfgs/SM7_TITANV/accelwattch_sass_sim.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6167:configs/tested-cfgs/SM7_TITANV/accelwattch_sass_sim.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6169:src/accelwattch/Penryn.xml:410:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6170:src/accelwattch/Penryn.xml:424:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6171:src/accelwattch/Penryn.xml:439:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6172:src/accelwattch/Penryn.xml:450:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6179:configs/tested-cfgs/SM75_RTX2060_S/accelwattch_sass_sim_alt.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6180:configs/tested-cfgs/SM75_RTX2060_S/accelwattch_sass_sim_alt.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6181:configs/tested-cfgs/SM75_RTX2060_S/accelwattch_sass_sim_alt.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6182:configs/tested-cfgs/SM75_RTX2060_S/accelwattch_sass_sim_alt.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6226:configs/tested-cfgs/SM7_TITANV/accelwattch_sass_hybrid.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6227:configs/tested-cfgs/SM7_TITANV/accelwattch_sass_hybrid.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6228:configs/tested-cfgs/SM7_TITANV/accelwattch_sass_hybrid.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6229:configs/tested-cfgs/SM7_TITANV/accelwattch_sass_hybrid.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6236:configs/tested-cfgs/SM75_RTX2060_S/accelwattch_ptx_sim_alt.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6237:configs/tested-cfgs/SM75_RTX2060_S/accelwattch_ptx_sim_alt.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6238:configs/tested-cfgs/SM75_RTX2060_S/accelwattch_ptx_sim_alt.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6239:configs/tested-cfgs/SM75_RTX2060_S/accelwattch_ptx_sim_alt.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6241:src/accelwattch/Niagara1.xml:397:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6242:src/accelwattch/Niagara1.xml:411:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6243:src/accelwattch/Niagara1.xml:426:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6244:src/accelwattch/Niagara1.xml:437:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6430:configs/tested-cfgs/SM7_TITANV/accelwattch_ptx_sim.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6431:configs/tested-cfgs/SM7_TITANV/accelwattch_ptx_sim.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6432:configs/tested-cfgs/SM7_TITANV/accelwattch_ptx_sim.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6433:configs/tested-cfgs/SM7_TITANV/accelwattch_ptx_sim.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6437:configs/tested-cfgs/SM75_RTX2060_S/accelwattch_sass_sim.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6438:configs/tested-cfgs/SM75_RTX2060_S/accelwattch_sass_sim.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6439:configs/tested-cfgs/SM75_RTX2060_S/accelwattch_sass_sim.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6440:configs/tested-cfgs/SM75_RTX2060_S/accelwattch_sass_sim.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6442:src/accelwattch/gpgpu_static.xml:447:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6443:src/accelwattch/gpgpu_static.xml:461:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6444:src/accelwattch/gpgpu_static.xml:476:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6445:src/accelwattch/gpgpu_static.xml:487:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6520:src/accelwattch/Niagara2.xml:393:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6521:src/accelwattch/Niagara2.xml:407:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6522:src/accelwattch/Niagara2.xml:422:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6523:src/accelwattch/Niagara2.xml:433:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6528:configs/tested-cfgs/SM75_RTX2060_S/accelwattch_ptx_sim.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6529:configs/tested-cfgs/SM75_RTX2060_S/accelwattch_ptx_sim.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6530:configs/tested-cfgs/SM75_RTX2060_S/accelwattch_ptx_sim.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6531:configs/tested-cfgs/SM75_RTX2060_S/accelwattch_ptx_sim.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6670:src/intersim2/power/power_module.cpp:495:  double totalpower =  channelWirePower+channelClkPower+channelDFFPower+channelLeakPower+ inputReadPower+inputWritePower+inputLeakagePower+ switchPower+switchPowerCtrl+switchPowerLeak+outputPower+outputPowerClk+outputCtrlPower;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6674:src/intersim2/power/power_module.cpp:517:  cout<< "- Total Power:             "<<totalpower <<"\n";
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6675:src/accelwattch/cacti/out_batch_test_result.csv:1:Tech node (nm), Capacity (bytes), Number of banks, Associativity, Output width (bits), Access time (ns), Random cycle time (ns), Multisubbank interleave cycle time (ns), Delay request network (ns), Delay inside mat (ns), Delay reply network (ns), Tag array access time (ns), Refresh period (microsec), DRAM array availability (%), Dynamic read energy (nJ), Dynamic write energy (nJ), Dynamic read power (mW), Standby leakage per bank(mW), Leakage per bank with leak power management (mW), Refresh power as percentage of standby leakage, Area (mm2), Ndwl, Ndbl, Nspd, Ndcm, Ndsam_level_1, Ndsam_level_2, Ntwl, Ntbl, Ntspd, Ntcm, Ntsam_level_1, Ntsam_level_2, Area efficiency, Resistance per unit micron (ohm-micron), Capacitance per unit micron (fF per micron), Unit-length wire delay (ps), FO4 delay (ps), delay route to bank (including crossb delay) (ps), Crossbar delay (ps), Dyn read energy per access from closed page (nJ), Dyn read energy per access from open page (nJ), Leak power of an subbank with page closed (mW), Leak power of a subbank with page  open (mW), Leak power of request and reply networks (mW), Number of subbanks, Page size in bits, Activate power, Read power, Write power, Precharge power, tRCD, CAS latency, Precharge delay, Perc dyn energy bitlines, perc dyn energy wordlines, perc dyn energy outside mat, Area opt (perc), Delay opt (perc), Repeater opt (perc), Aspect ratio
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6689:configs/tested-cfgs/SM7_QV100/accelwattch_sass_sim_alt.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6690:configs/tested-cfgs/SM7_QV100/accelwattch_sass_sim_alt.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6691:configs/tested-cfgs/SM7_QV100/accelwattch_sass_sim_alt.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:6692:configs/tested-cfgs/SM7_QV100/accelwattch_sass_sim_alt.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:7135:configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim_alt.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:7136:configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim_alt.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:7137:configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim_alt.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:7138:configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim_alt.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:7160:src/accelwattch/cacti/uca.cc:252:  // calculate total write energy per access
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:7257:src/accelwattch/cacti/uca.cc:387:    power.readOp.dynamic  = dyn_read_energy_from_closed_page;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:7258:src/accelwattch/cacti/uca.cc:388:    power.writeOp.dynamic = dyn_read_energy_from_closed_page
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:7288:configs/tested-cfgs/SM7_QV100/accelwattch_sass_hw.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:7289:configs/tested-cfgs/SM7_QV100/accelwattch_sass_hw.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:7290:configs/tested-cfgs/SM7_QV100/accelwattch_sass_hw.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:7291:configs/tested-cfgs/SM7_QV100/accelwattch_sass_hw.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:7380:src/accelwattch/cacti/mat.cc:1116:    power_bitline.readOp.dynamic  = dynRdEnergy;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:7381:src/accelwattch/cacti/mat.cc:1117:    power_bitline.writeOp.dynamic = dynWriteEnergy;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:7711:configs/tested-cfgs/SM7_QV100/accelwattch_sass_sim.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:7712:configs/tested-cfgs/SM7_QV100/accelwattch_sass_sim.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:7713:configs/tested-cfgs/SM7_QV100/accelwattch_sass_sim.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:7714:configs/tested-cfgs/SM7_QV100/accelwattch_sass_sim.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8041:src/accelwattch/cacti/highradix.cc:161:  // To calculate contribution of each component to the total power
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8096:configs/tested-cfgs/SM7_QV100/accelwattch_sass_hybrid.xml:568:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8097:configs/tested-cfgs/SM7_QV100/accelwattch_sass_hybrid.xml:582:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8098:configs/tested-cfgs/SM7_QV100/accelwattch_sass_hybrid.xml:597:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8099:configs/tested-cfgs/SM7_QV100/accelwattch_sass_hybrid.xml:608:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8382:src/accelwattch/sharedcache.cc:1223:////  maxPower += clockNetwork.total_power.readOp.dynamic*clockRate;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8383:src/accelwattch/sharedcache.cc:1225://////cout<<"clockNetwork.total_power="<<clockNetwork.total_power.readOp.dynamic*clockRate<<endl;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8462:configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim.xml:578:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8463:configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim.xml:592:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8464:configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim.xml:607:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8465:configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim.xml:618:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8567:src/accelwattch/Niagara1_sharing_SBT.xml:410:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8568:src/accelwattch/Niagara1_sharing_SBT.xml:424:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8569:src/accelwattch/Niagara1_sharing_SBT.xml:439:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8570:src/accelwattch/Niagara1_sharing_SBT.xml:450:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8576:src/accelwattch/gpgpu.xml:432:			the average power per MC or per channel. This is sufficent for most application. 
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8577:src/accelwattch/gpgpu.xml:446:			the average power per nic or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8578:src/accelwattch/gpgpu.xml:461:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8579:src/accelwattch/gpgpu.xml:472:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8580:configs/tested-cfgs/SM75_RTX2060/gpgpusim.config:173:# power model configs, disable it untill we create a real energy model
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8635:src/accelwattch/cacti/io.cc:1485:      file << "Dynamic search energy (nJ), ";
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8636:src/accelwattch/cacti/io.cc:1486:      file << "Dynamic read energy (nJ), ";
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8637:src/accelwattch/cacti/io.cc:1487:      file << "Dynamic write energy (nJ), ";
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8638:src/accelwattch/cacti/io.cc:1488://      file << "Tag Dynamic read energy (nJ), ";
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8639:src/accelwattch/cacti/io.cc:1489://      file << "Data Dynamic read energy (nJ), ";
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8658:src/accelwattch/cacti/io.cc:1593://    file << fin_res.data_array.refresh_power / fin_res.data_array.total_power.readOp.leakage << ", ";
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8672:src/accelwattch/cacti/io.cc:1720:		  cout << "    Total dynamic associative search energy per access (nJ): " <<
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8674:src/accelwattch/cacti/io.cc:1722://		  cout << "    Total dynamic read energy per access (nJ): " <<
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8676:src/accelwattch/cacti/io.cc:1724://		  cout << "    Total dynamic write energy per access (nJ): " <<
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8678:src/accelwattch/cacti/io.cc:1729:		  cout << "    Total dynamic read energy per access (nJ): " <<
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8680:src/accelwattch/cacti/io.cc:1731:		  cout << "    Total dynamic write energy per access (nJ): " <<
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8682:src/accelwattch/cacti/io.cc:1734:	  cout << "    Total leakage power of a bank"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8684:src/accelwattch/cacti/io.cc:1736:	  cout << "    Total gate leakage power of a bank"
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8687:src/accelwattch/cacti/io.cc:1887:    	cout << "  Data array: Total dynamic read energy/access  (nJ): " <<
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8689:src/accelwattch/cacti/io.cc:1889:    	cout << "\tTotal leakage read/write power of a bank (mW): " <<
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8691:src/accelwattch/cacti/io.cc:1892:    	cout << "\tTotal energy in H-tree (that includes both "
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8695:src/accelwattch/cacti/io.cc:1898:    	cout << "\tTotal leakage power in H-tree (that includes both "
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8699:src/accelwattch/cacti/io.cc:1904:    	cout << "\tTotal gate leakage power in H-tree (that includes both "
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8722:src/accelwattch/cacti/io.cc:1943:            	cout << "  Total dynamic associative search energy/access  (nJ): " <<
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8724:src/accelwattch/cacti/io.cc:1945:    	        cout << "\tTotal energy in H-tree (that includes both "
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8736:src/accelwattch/cacti/io.cc:1963:            	cout <<endl<< "  Total dynamic read energy/access  (nJ): " <<
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8738:src/accelwattch/cacti/io.cc:1965:    	        cout << "\tTotal energy in H-tree (that includes both "
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8761:src/accelwattch/cacti/io.cc:1996:            	cout << endl <<"  Total leakage power of a bank (mW): " <<
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8763:src/accelwattch/cacti/io.cc:2002:        	cout << "  Total dynamic associative search energy/access  (nJ): " <<
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8765:src/accelwattch/cacti/io.cc:2004:	        cout << "\tTotal energy in H-tree (that includes both "
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8782:src/accelwattch/cacti/io.cc:2029:        	cout <<endl<< "  Total dynamic read energy/access  (nJ): " <<
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8784:src/accelwattch/cacti/io.cc:2031:	        cout << "\tTotal energy in H-tree (that includes both "
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8807:src/accelwattch/cacti/io.cc:2062:        	cout << endl <<"  Total leakage power of a bank (mW): " <<
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8809:src/accelwattch/cacti/io.cc:2069:      cout << endl << "  Tag array:  Total dynamic read energy/access (nJ): " <<
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8811:src/accelwattch/cacti/io.cc:2071:      cout << "\tTotal leakage read/write power of a bank (mW): " <<
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8813:src/accelwattch/cacti/io.cc:2073:      cout << "\tTotal energy in H-tree (that includes both "
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8817:src/accelwattch/cacti/io.cc:2079:      cout << "\tTotal leakage power in H-tree (that includes both "
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8821:src/accelwattch/cacti/io.cc:2085:  	  cout << "\tTotal gate leakage power in H-tree (that includes both "
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8889:src/accelwattch/gpgpu_sim_wrapper.cc:531:  // Average power
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8914:src/accelwattch/gpgpu_sim_wrapper.cc:1038:      proc->cores[0]->Pipeline_energy / (proc->cores[0]->executionTime);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8915:src/accelwattch/gpgpu_sim_wrapper.cc:1041:      proc->cores[0]->IdleCoreEnergy / (proc->cores[0]->executionTime);
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8922:src/accelwattch/gpgpu_sim_wrapper.cc:1087:    assert("Total Power does not equal the sum of the components\n" && (check));
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8925:src/accelwattch/gpgpu_sim_wrapper.cc:1100:    powerfile << "Kernel Average Power Data:" << std::endl;
+experiments/paper-mascar/energy/W16A/energy_option_grep.txt:8926:src/accelwattch/gpgpu_sim_wrapper.cc:1160:  if (g_power_per_cycle_dump) proc->displayEnergy(2, 5);
+experiments/paper-mascar/workloads/results/W10/w10_rerun_spmv_direct/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+src/gpgpu-sim/shader.cc:495:  m_last_inst_gpu_tot_sim_cycle = 0;
+src/gpgpu-sim/shader.cc:1033:              m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle);
+src/gpgpu-sim/shader.cc:1042:                m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, events);
+src/gpgpu-sim/shader.cc:1087:      active_mask, warp_id, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle,
+src/gpgpu-sim/shader.cc:2209:      m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
+src/gpgpu-sim/shader.cc:2223:      m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
+src/gpgpu-sim/shader.cc:2248:        m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle,
+src/gpgpu-sim/shader.cc:2257:        m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle,
+src/gpgpu-sim/shader.cc:2305:      m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
+src/gpgpu-sim/shader.cc:2422:      m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
+src/gpgpu-sim/shader.cc:2545:  return m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
+src/gpgpu-sim/shader.cc:3082:             inst.get_uid(), m_sid, inst.warp_id(), inst.pc,  m_gpu->gpu_tot_sim_cycle +  m_gpu->gpu_sim_cycle);
+src/gpgpu-sim/shader.cc:3098:  inst.completed(m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle);
+src/gpgpu-sim/shader.cc:3141:    m_last_inst_gpu_tot_sim_cycle = m_gpu->gpu_tot_sim_cycle;
+src/gpgpu-sim/shader.cc:3229:      m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle);
+src/gpgpu-sim/shader.cc:3233:      m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle,
+src/gpgpu-sim/shader.cc:3257:                                    m_core->get_gpu()->gpu_tot_sim_cycle);
+src/gpgpu-sim/shader.cc:3291:                                  m_core->get_gpu()->gpu_tot_sim_cycle);
+src/gpgpu-sim/shader.cc:3517:                                    m_core->get_gpu()->gpu_tot_sim_cycle);
+src/gpgpu-sim/shader.cc:3552:      m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle);
+src/gpgpu-sim/shader.cc:3836:  m_last_inst_gpu_tot_sim_cycle = 0;
+src/gpgpu-sim/shader.cc:3995:      m_last_inst_gpu_tot_sim_cycle = m_core->get_gpu()->gpu_tot_sim_cycle;
+src/gpgpu-sim/shader.cc:4107:                            m_core->get_gpu()->gpu_tot_sim_cycle);
+src/gpgpu-sim/shader.cc:4114:                           m_core->get_gpu()->gpu_tot_sim_cycle);
+src/gpgpu-sim/shader.cc:4116:                            m_core->get_gpu()->gpu_tot_sim_cycle);
+src/gpgpu-sim/shader.cc:4144:                               m_core->get_gpu()->gpu_tot_sim_cycle);
+src/gpgpu-sim/shader.cc:4151:                                m_core->get_gpu()->gpu_tot_sim_cycle);
+src/gpgpu-sim/shader.cc:4293:        cta_num, m_gpu->gpu_sim_cycle, m_gpu->gpu_tot_sim_cycle,
+src/gpgpu-sim/shader.cc:4700:      "Last LD/ST writeback @ %llu + %llu (gpu_sim_cycle+gpu_tot_sim_cycle)\n",
+src/gpgpu-sim/shader.cc:4701:      m_last_inst_gpu_sim_cycle, m_last_inst_gpu_tot_sim_cycle);
+src/gpgpu-sim/shader.cc:4734:          m_gpu->gpu_tot_sim_cycle, m_gpu->gpu_sim_cycle, m_not_completed);
+src/gpgpu-sim/shader.cc:4799:      "Last EX/WB writeback @ %llu + %llu (gpu_sim_cycle+gpu_tot_sim_cycle)\n",
+src/gpgpu-sim/shader.cc:4800:      m_last_inst_gpu_sim_cycle, m_last_inst_gpu_tot_sim_cycle);
+src/gpgpu-sim/shader.cc:5157:        cta_id, m_shader->get_gpu()->gpu_tot_sim_cycle,
+src/gpgpu-sim/shader.cc:5330:                 m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/shader.cc:5331:  m_L1I->fill(mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/shader.cc:5963:                 m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/shader.cc:6034:                 m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/shader.cc:6086:                   m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/shader.cc:6129:                   m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+experiments/paper-mascar/workloads/results/W12/w12_actual/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+src/gpgpu-sim/shader.h:1810:  unsigned long long m_last_inst_gpu_tot_sim_cycle;
+src/gpgpu-sim/shader.h:3253:  unsigned long long m_last_inst_gpu_tot_sim_cycle;
+src/cuda-sim/ptx_sim.cc:203:      return (unsigned)(m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/cuda-sim/ptx_sim.cc:207:      return (m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle) * 4;
+src/cuda-sim/ptx_sim.cc:212:      return (m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle) * 2;
+src/accelwattch/fermi.xml:452:			the average power per MC or per channel. This is sufficent for most application. 
+src/accelwattch/fermi.xml:466:			the average power per nic or per channel. This is sufficent for most application. -->  			
+src/accelwattch/fermi.xml:481:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+src/accelwattch/fermi.xml:492:			the average power per fc or per channel. This is sufficent for most application -->  			
+src/stream_manager.h:54:    m_gpu_tot_sim_cycle = 0;
+src/stream_manager.h:61:    m_gpu_tot_sim_cycle = cycle;
+src/stream_manager.h:79:  double m_gpu_tot_sim_cycle;
+experiments/paper-mascar/workloads/results/W10/w10_dryrun/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+src/cuda-sim/cuda_device_runtime.cc:183:      device_grid->launch_cycle = gpu->gpu_sim_cycle + gpu->gpu_tot_sim_cycle;
+src/gpgpu-sim/gpu-cache.cc:1649:      m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle);
+src/gpgpu-sim/gpu-cache.cc:1670:          true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1,
+src/gpgpu-sim/gpu-cache.cc:1724:            true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1,
+src/gpgpu-sim/gpu-cache.cc:1779:        m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, NULL, mf);
+src/gpgpu-sim/gpu-cache.cc:1801:            true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1,
+src/gpgpu-sim/gpu-cache.cc:1869:          true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1,
+src/gpgpu-sim/gpu-cache.cc:1953:          true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1,
+experiments/paper-mascar/workloads/results/W10/w10_actual/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+src/gpgpu-sim/dram.cc:241:  timestamp = m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle;
+src/gpgpu-sim/dram.cc:256:                   m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/dram.cc:278:        m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/dram.cc:303:                         m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/dram.cc:560:        IN_PARTITION_DRAM, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/gpgpu-sim/dram.cc:640:        IN_PARTITION_DRAM, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+src/accelwattch/cacti/out_batch_test_result.csv:1:Tech node (nm), Capacity (bytes), Number of banks, Associativity, Output width (bits), Access time (ns), Random cycle time (ns), Multisubbank interleave cycle time (ns), Delay request network (ns), Delay inside mat (ns), Delay reply network (ns), Tag array access time (ns), Refresh period (microsec), DRAM array availability (%), Dynamic read energy (nJ), Dynamic write energy (nJ), Dynamic read power (mW), Standby leakage per bank(mW), Leakage per bank with leak power management (mW), Refresh power as percentage of standby leakage, Area (mm2), Ndwl, Ndbl, Nspd, Ndcm, Ndsam_level_1, Ndsam_level_2, Ntwl, Ntbl, Ntspd, Ntcm, Ntsam_level_1, Ntsam_level_2, Area efficiency, Resistance per unit micron (ohm-micron), Capacitance per unit micron (fF per micron), Unit-length wire delay (ps), FO4 delay (ps), delay route to bank (including crossb delay) (ps), Crossbar delay (ps), Dyn read energy per access from closed page (nJ), Dyn read energy per access from open page (nJ), Leak power of an subbank with page closed (mW), Leak power of a subbank with page  open (mW), Leak power of request and reply networks (mW), Number of subbanks, Page size in bits, Activate power, Read power, Write power, Precharge power, tRCD, CAS latency, Precharge delay, Perc dyn energy bitlines, perc dyn energy wordlines, perc dyn energy outside mat, Area opt (perc), Delay opt (perc), Repeater opt (perc), Aspect ratio
+experiments/paper-mascar/workloads/results/W12/w12_dryrun/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+experiments/paper-mascar/workloads/results/W10/w10_rerun_sgemm_direct/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+experiments/paper-mascar/workloads/results/W10/w10_actual_direct/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+src/accelwattch/cacti/highradix.cc:161:  // To calculate contribution of each component to the total power
+src/intersim2/power/power_module.cpp:495:  double totalpower =  channelWirePower+channelClkPower+channelDFFPower+channelLeakPower+ inputReadPower+inputWritePower+inputLeakagePower+ switchPower+switchPowerCtrl+switchPowerLeak+outputPower+outputPowerClk+outputCtrlPower;
+src/intersim2/power/power_module.cpp:517:  cout<< "- Total Power:             "<<totalpower <<"\n";
+src/accelwattch/core.cc:5250:         << "Runtime Dynamic Energy = " << ccache.rt_power.readOp.dynamic
+src/accelwattch/core.cc:5572:    // IRF->local_result.power.readOp.dynamic<<endl; cout<< "IRF write energy:
+src/accelwattch/core.cc:6049:  rt_power.readOp.dynamic += IdleCoreEnergy;
+src/accelwattch/core.cc:6356:           << "Peak Dynamic Energy = " << exu->power.readOp.dynamic << " W"
+src/accelwattch/core.cc:6417:         << "Runtime Dynamic = " << IdleCoreEnergy / executionTime << " W\n"
+src/accelwattch/cacti/mat.cc:1116:    power_bitline.readOp.dynamic  = dynRdEnergy;
+src/accelwattch/cacti/mat.cc:1117:    power_bitline.writeOp.dynamic = dynWriteEnergy;
+experiments/paper-mascar/workloads/results/W10/w10_dryrun_direct/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+src/accelwattch/cacti/cacti_interface.h:274:  powerDef total_power;
+src/accelwattch/cacti/io.cc:1485:      file << "Dynamic search energy (nJ), ";
+src/accelwattch/cacti/io.cc:1486:      file << "Dynamic read energy (nJ), ";
+src/accelwattch/cacti/io.cc:1487:      file << "Dynamic write energy (nJ), ";
+src/accelwattch/cacti/io.cc:1488://      file << "Tag Dynamic read energy (nJ), ";
+src/accelwattch/cacti/io.cc:1489://      file << "Data Dynamic read energy (nJ), ";
+src/accelwattch/cacti/io.cc:1593://    file << fin_res.data_array.refresh_power / fin_res.data_array.total_power.readOp.leakage << ", ";
+src/accelwattch/cacti/io.cc:1720:		  cout << "    Total dynamic associative search energy per access (nJ): " <<
+src/accelwattch/cacti/io.cc:1722://		  cout << "    Total dynamic read energy per access (nJ): " <<
+src/accelwattch/cacti/io.cc:1724://		  cout << "    Total dynamic write energy per access (nJ): " <<
+src/accelwattch/cacti/io.cc:1729:		  cout << "    Total dynamic read energy per access (nJ): " <<
+src/accelwattch/cacti/io.cc:1731:		  cout << "    Total dynamic write energy per access (nJ): " <<
+src/accelwattch/cacti/io.cc:1734:	  cout << "    Total leakage power of a bank"
+src/accelwattch/cacti/io.cc:1736:	  cout << "    Total gate leakage power of a bank"
+src/accelwattch/cacti/io.cc:1887:    	cout << "  Data array: Total dynamic read energy/access  (nJ): " <<
+src/accelwattch/cacti/io.cc:1889:    	cout << "\tTotal leakage read/write power of a bank (mW): " <<
+src/accelwattch/cacti/io.cc:1892:    	cout << "\tTotal energy in H-tree (that includes both "
+src/accelwattch/cacti/io.cc:1898:    	cout << "\tTotal leakage power in H-tree (that includes both "
+src/accelwattch/cacti/io.cc:1904:    	cout << "\tTotal gate leakage power in H-tree (that includes both "
+src/accelwattch/cacti/io.cc:1943:            	cout << "  Total dynamic associative search energy/access  (nJ): " <<
+src/accelwattch/cacti/io.cc:1945:    	        cout << "\tTotal energy in H-tree (that includes both "
+src/accelwattch/cacti/io.cc:1963:            	cout <<endl<< "  Total dynamic read energy/access  (nJ): " <<
+src/accelwattch/cacti/io.cc:1965:    	        cout << "\tTotal energy in H-tree (that includes both "
+src/accelwattch/cacti/io.cc:1996:            	cout << endl <<"  Total leakage power of a bank (mW): " <<
+src/accelwattch/cacti/io.cc:2002:        	cout << "  Total dynamic associative search energy/access  (nJ): " <<
+src/accelwattch/cacti/io.cc:2004:	        cout << "\tTotal energy in H-tree (that includes both "
+src/accelwattch/cacti/io.cc:2029:        	cout <<endl<< "  Total dynamic read energy/access  (nJ): " <<
+src/accelwattch/cacti/io.cc:2031:	        cout << "\tTotal energy in H-tree (that includes both "
+src/accelwattch/cacti/io.cc:2062:        	cout << endl <<"  Total leakage power of a bank (mW): " <<
+src/accelwattch/cacti/io.cc:2069:      cout << endl << "  Tag array:  Total dynamic read energy/access (nJ): " <<
+src/accelwattch/cacti/io.cc:2071:      cout << "\tTotal leakage read/write power of a bank (mW): " <<
+src/accelwattch/cacti/io.cc:2073:      cout << "\tTotal energy in H-tree (that includes both "
+src/accelwattch/cacti/io.cc:2079:      cout << "\tTotal leakage power in H-tree (that includes both "
+src/accelwattch/cacti/io.cc:2085:  	  cout << "\tTotal gate leakage power in H-tree (that includes both "
+experiments/paper-mascar/workloads/results/w4_smoke_latest_results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+experiments/paper-mascar/workloads/results/w4_smoke_actual/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+src/accelwattch/cacti/uca.cc:252:  // calculate total write energy per access
+src/accelwattch/cacti/uca.cc:387:    power.readOp.dynamic  = dyn_read_energy_from_closed_page;
+src/accelwattch/cacti/uca.cc:388:    power.writeOp.dynamic = dyn_read_energy_from_closed_page
+experiments/paper-mascar/workloads/results/W8/w8_latest_results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+src/accelwattch/cacti/Ucache.h:71:  powerDef total_power;
+experiments/paper-mascar/workloads/results/W11/w11_actual/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+experiments/paper-mascar/workloads/results/W8/w8_focused_dryrun_configfix/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+experiments/paper-mascar/workloads/results/W8/w8_focused_actual_configfix/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+src/accelwattch/Niagara1_sharing_SBT.xml:410:			the average power per MC or per channel. This is sufficent for most application. 
+src/accelwattch/Niagara1_sharing_SBT.xml:424:			the average power per nic or per channel. This is sufficent for most application. -->  			
+src/accelwattch/Niagara1_sharing_SBT.xml:439:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+src/accelwattch/Niagara1_sharing_SBT.xml:450:			the average power per fc or per channel. This is sufficent for most application -->  			
+src/accelwattch/sharedcache.cc:1223:////  maxPower += clockNetwork.total_power.readOp.dynamic*clockRate;
+src/accelwattch/sharedcache.cc:1225://////cout<<"clockNetwork.total_power="<<clockNetwork.total_power.readOp.dynamic*clockRate<<endl;
+experiments/paper-mascar/workloads/results/W11/w11_dryrun/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+src/accelwattch/gpgpu.xml:432:			the average power per MC or per channel. This is sufficent for most application. 
+src/accelwattch/gpgpu.xml:446:			the average power per nic or per channel. This is sufficent for most application. -->  			
+src/accelwattch/gpgpu.xml:461:			the average power per pcie controller or per channel. This is sufficent for most application. -->  			
+src/accelwattch/gpgpu.xml:472:			the average power per fc or per channel. This is sufficent for most application -->  			
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m3diag_enabled,paper_mascar_m3diag_mem_inst_seen,paper_mascar_m3diag_load_inst_seen,paper_mascar_m3diag_mp_mode_seen,paper_mascar_m3diag_owner_valid_seen,paper_mascar_m3diag_nonowner_load_candidate,paper_mascar_m3diag_scheduler_allow_nonowner_load,paper_mascar_m3diag_scheduler_block_nonowner_mem,paper_mascar_m3diag_lsu_l1d_access_seen,paper_mascar_m3diag_l1d_nonowner_load_seen,paper_mascar_m3diag_hitonly_probe_called,paper_mascar_m3diag_hitonly_probe_hit,paper_mascar_m3diag_hitonly_probe_nack,paper_mascar_m3diag_active_hitonly_access_called,paper_mascar_m3diag_active_hitonly_access_hit,paper_mascar_m3diag_active_hitonly_access_nack,paper_mascar_m3diag_skip_config_off,paper_mascar_m3diag_skip_not_mp,paper_mascar_m3diag_skip_no_owner,paper_mascar_m3diag_skip_owner_warp,paper_mascar_m3diag_skip_not_load,paper_mascar_m3diag_skip_not_l1d,paper_mascar_m3diag_skip_nonowner_hitonly_disabled,paper_mascar_m3diag_skip_not_ready_or_scoreboard,paper_mascar_m3diag_skip_m2_blocked_before_lsu,paper_mascar_m3diag_trace_lines_emitted,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+experiments/paper-mascar/workloads/results/W15B/w15b_latest_results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m3diag_enabled,paper_mascar_m3diag_mem_inst_seen,paper_mascar_m3diag_load_inst_seen,paper_mascar_m3diag_mp_mode_seen,paper_mascar_m3diag_owner_valid_seen,paper_mascar_m3diag_nonowner_load_candidate,paper_mascar_m3diag_scheduler_allow_nonowner_load,paper_mascar_m3diag_scheduler_block_nonowner_mem,paper_mascar_m3diag_lsu_l1d_access_seen,paper_mascar_m3diag_l1d_nonowner_load_seen,paper_mascar_m3diag_hitonly_probe_called,paper_mascar_m3diag_hitonly_probe_hit,paper_mascar_m3diag_hitonly_probe_nack,paper_mascar_m3diag_active_hitonly_access_called,paper_mascar_m3diag_active_hitonly_access_hit,paper_mascar_m3diag_active_hitonly_access_nack,paper_mascar_m3diag_skip_config_off,paper_mascar_m3diag_skip_not_mp,paper_mascar_m3diag_skip_no_owner,paper_mascar_m3diag_skip_owner_warp,paper_mascar_m3diag_skip_not_load,paper_mascar_m3diag_skip_not_l1d,paper_mascar_m3diag_skip_nonowner_hitonly_disabled,paper_mascar_m3diag_skip_not_ready_or_scoreboard,paper_mascar_m3diag_skip_m2_blocked_before_lsu,paper_mascar_m3diag_trace_lines_emitted,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m3diag_enabled,paper_mascar_m3diag_mem_inst_seen,paper_mascar_m3diag_load_inst_seen,paper_mascar_m3diag_mp_mode_seen,paper_mascar_m3diag_owner_valid_seen,paper_mascar_m3diag_nonowner_load_candidate,paper_mascar_m3diag_scheduler_allow_nonowner_load,paper_mascar_m3diag_scheduler_block_nonowner_mem,paper_mascar_m3diag_lsu_l1d_access_seen,paper_mascar_m3diag_l1d_nonowner_load_seen,paper_mascar_m3diag_hitonly_probe_called,paper_mascar_m3diag_hitonly_probe_hit,paper_mascar_m3diag_hitonly_probe_nack,paper_mascar_m3diag_active_hitonly_access_called,paper_mascar_m3diag_active_hitonly_access_hit,paper_mascar_m3diag_active_hitonly_access_nack,paper_mascar_m3diag_skip_config_off,paper_mascar_m3diag_skip_not_mp,paper_mascar_m3diag_skip_no_owner,paper_mascar_m3diag_skip_owner_warp,paper_mascar_m3diag_skip_not_load,paper_mascar_m3diag_skip_not_l1d,paper_mascar_m3diag_skip_nonowner_hitonly_disabled,paper_mascar_m3diag_skip_not_ready_or_scoreboard,paper_mascar_m3diag_skip_m2_blocked_before_lsu,paper_mascar_m3diag_trace_lines_emitted,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
