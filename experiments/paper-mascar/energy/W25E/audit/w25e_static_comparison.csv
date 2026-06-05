@@ -1,0 +1,24 @@
+category,item,w16_value,w25_value,status,evidence,notes
+config_knob,energy_baseline_off:power_simulation_enabled,1,1,present,configs/hrl-repro/SM7_QV100_mascar_energy_baseline_off/gpgpusim.config,
+config_knob,energy_baseline_off:power_simulation_mode,0,0,present,configs/hrl-repro/SM7_QV100_mascar_energy_baseline_off/gpgpusim.config,
+config_knob,energy_baseline_off:accelwattch_xml_file,/workspace/repos/gpgpu-sim_distribution/configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim.xml,/workspace/repos/gpgpu-sim_distribution/configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim.xml,present,configs/hrl-repro/SM7_QV100_mascar_energy_baseline_off/gpgpusim.config,xml_exists=1;xml_path=/workspace/repos/gpgpu-sim_distribution/configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim.xml
+config_knob,energy_baseline_off:gpuwattch_xml_file,,,missing,configs/hrl-repro/SM7_QV100_mascar_energy_baseline_off/gpgpusim.config,
+config_knob,energy_baseline_off:power_trace_enabled,0,0,present,configs/hrl-repro/SM7_QV100_mascar_energy_baseline_off/gpgpusim.config,
+config_knob,energy_baseline_off:visualizer_enabled,0,0,present,configs/hrl-repro/SM7_QV100_mascar_energy_baseline_off/gpgpusim.config,
+config_knob,energy_m4_reexec_load:power_simulation_enabled,1,1,present,configs/hrl-repro/SM7_QV100_mascar_energy_m4_reexec_load_on/gpgpusim.config,
+config_knob,energy_m4_reexec_load:power_simulation_mode,0,0,present,configs/hrl-repro/SM7_QV100_mascar_energy_m4_reexec_load_on/gpgpusim.config,
+config_knob,energy_m4_reexec_load:accelwattch_xml_file,/workspace/repos/gpgpu-sim_distribution/configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim.xml,/workspace/repos/gpgpu-sim_distribution/configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim.xml,present,configs/hrl-repro/SM7_QV100_mascar_energy_m4_reexec_load_on/gpgpusim.config,xml_exists=1;xml_path=/workspace/repos/gpgpu-sim_distribution/configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim.xml
+config_knob,energy_m4_reexec_load:gpuwattch_xml_file,,,missing,configs/hrl-repro/SM7_QV100_mascar_energy_m4_reexec_load_on/gpgpusim.config,
+config_knob,energy_m4_reexec_load:power_trace_enabled,0,0,present,configs/hrl-repro/SM7_QV100_mascar_energy_m4_reexec_load_on/gpgpusim.config,
+config_knob,energy_m4_reexec_load:visualizer_enabled,0,0,present,configs/hrl-repro/SM7_QV100_mascar_energy_m4_reexec_load_on/gpgpusim.config,
+collector_result_field,kernel_avg_power,6,0,w25_missing,W16 latest results vs W25 actual results,W16 had parsed power fields; W25 actual results did not
+collector_result_field,gpu_tot_avg_power,6,0,w25_missing,W16 latest results vs W25 actual results,W16 had parsed power fields; W25 actual results did not
+collector_result_field,kernel_max_power,6,0,w25_missing,W16 latest results vs W25 actual results,W16 had parsed power fields; W25 actual results did not
+collector_result_field,gpu_tot_max_power,6,0,w25_missing,W16 latest results vs W25 actual results,W16 had parsed power fields; W25 actual results did not
+wrapper_path,stable_workloads,experiments/paper-mascar/energy/W16C/wrappers/run_mri_q_energy.sh|experiments/paper-mascar/energy/W16C/wrappers/run_pathfinder_energy.sh|experiments/paper-mascar/energy/W16C/wrappers/run_spmv_energy.sh,experiments/paper-mascar/workloads/wrappers/run_mri_q.sh|experiments/paper-mascar/workloads/wrappers/run_pathfinder.sh|experiments/paper-mascar/workloads/wrappers/run_spmv.sh,different,run manifests,W16 energy wrappers copy power reports; W25 Table III wrappers do not
+collector_symbol,kernel_avg_power,present,present,preserved,experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py,collector field/pattern availability
+collector_symbol,gpu_tot_avg_power,present,present,preserved,experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py,collector field/pattern availability
+collector_symbol,kernel_max_power,present,present,preserved,experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py,collector field/pattern availability
+collector_symbol,gpu_tot_max_power,present,present,preserved,experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py,collector field/pattern availability
+collector_symbol,paper_mascar_m3diag_enabled,present,present,preserved,experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py,collector field/pattern availability
+collector_symbol,paper_mascar_m3diag_hitonly_probe_called,present,present,preserved,experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py,collector field/pattern availability

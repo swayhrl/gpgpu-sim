@@ -82,6 +82,30 @@ record_row() {
   } >> "${manifest_out}"
 }
 
+copy_power_artifacts() {
+  local marker="$1" run_dir="$2" run_working_dir="$3" run_command="$4"
+  [[ -f "${marker}" ]] || return 0
+  local dest="${run_dir}/power_artifacts"
+  mkdir -p "${dest}"
+  local exec_dir=""
+  exec_dir="$(printf '%s\n' "${run_command}" | sed -n 's/^cd \([^ ]*\).*/\1/p')"
+  local roots=()
+  [[ -n "${run_working_dir}" && -d "${run_working_dir}" ]] && roots+=("${run_working_dir}")
+  [[ -n "${exec_dir}" && -d "${exec_dir}" ]] && roots+=("${exec_dir}")
+  [[ -d "${GPGPU_WORKLOAD_ROOT}" ]] && roots+=("${GPGPU_WORKLOAD_ROOT}")
+  local count=0
+  for root_dir in "${roots[@]}"; do
+    while IFS= read -r -d '' file; do
+      local base safe
+      base="$(basename "${file}")"
+      safe="${root_dir//\//_}.${base}"
+      cp -f "${file}" "${dest}/${safe}" 2>/dev/null || true
+      count=$((count + 1))
+    done < <(find "${root_dir}" -maxdepth 4 -type f -newer "${marker}" \( -iname '*power*' -o -iname '*watt*' -o -iname '*accelwattch*' -o -iname '*gpuwattch*' -o -iname '*.xml' \) -print0 2>/dev/null)
+  done
+  printf 'power_artifact_copy_count=%s\n' "${count}" > "${dest}/status.txt"
+}
+
 run_count=0
 while IFS=',' read -r config_id config_path config_role enabled config_notes; do
   [[ "${config_id}" == "config_id" ]] && continue
@@ -126,6 +150,7 @@ while IFS=',' read -r config_id config_path config_role enabled config_notes; do
     if [[ -d "${config_abs}" ]]; then
       cp -f "${config_abs}/gpgpusim.config" "${run_dir}/" 2>/dev/null || true
       cp -f "${config_abs}/config_volta_islip.icnt" "${run_dir}/" 2>/dev/null || true
+      cp -f "${config_abs}"/*.xml "${run_dir}/" 2>/dev/null || true
     fi
 
     if [[ ! -x "${wrapper_abs}" ]]; then
@@ -154,6 +179,8 @@ while IFS=',' read -r config_id config_path config_role enabled config_notes; do
       printf 'GPGPU_WORKLOAD_ROOT=%s\n' "${GPGPU_WORKLOAD_ROOT}"
       printf 'DRY_RUN_ONLY=%s\n' "${DRY_RUN_ONLY}"
     } > "${run_dir}/env.txt"
+    marker_file="${run_dir}/artifact_start.marker"
+    : > "${marker_file}"
 
     start_iso="$(date -Iseconds)"
     start_sec="$(date +%s)"
@@ -177,6 +204,9 @@ while IFS=',' read -r config_id config_path config_role enabled config_notes; do
     fi
     exit_code=$?
     set -e
+    if [[ "${DRY_RUN_ONLY}" != "1" ]]; then
+      copy_power_artifacts "${marker_file}" "${run_dir}" "${run_working_dir}" "${run_command}" || true
+    fi
     end_iso="$(date -Iseconds)"
     end_sec="$(date +%s)"
     elapsed=$((end_sec - start_sec))

@@ -1,0 +1,2 @@
+paper_id,paper_name,paper_type,availability,wrapper_path,wrapper_status,build_required,build_command,run_working_dir,run_command,input_size,timeout_sec,dry_run_status,notes
+spmv,spmv,M,available,experiments/paper-mascar/workloads/wrappers/run_spmv.sh,ready,no,,/workspace/repos/gpgpu-workloads,bash scripts/run_one.sh parboil_spmv,tiny,1800,pass,W25E minimal rerun primary workload

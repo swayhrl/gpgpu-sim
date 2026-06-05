@@ -1,0 +1,7 @@
+check,command,status,exit_code,elapsed_sec,notes
+git_diff_check,git diff --check,pass,0,0.017,
+py_compile_compare,python3 -m py_compile experiments/paper-mascar/energy/W25E/audit/compare_w16_w25_energy_setup.py,pass,0,0.031,
+py_compile_find,python3 -m py_compile experiments/paper-mascar/energy/W25E/audit/find_energy_outputs.py,pass,0,0.035,
+py_compile_collector,python3 -m py_compile experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py,pass,0,0.034,
+bash_n_w25e_runner,bash -n experiments/paper-mascar/energy/W25E/matrix/run_w25e_energy_debug.sh,pass,0,0.004,
+bash_n_common_runner,bash -n experiments/common/gpgpusim_matrix/run_gpgpusim_matrix.sh,pass,0,0.003,

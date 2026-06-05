@@ -1,0 +1,2 @@
+paper_id,paper_name,paper_type,energy_baseline_off,energy_m4_reexec_load
+spmv,spmv,M,completed_explicit_pass,completed_explicit_pass

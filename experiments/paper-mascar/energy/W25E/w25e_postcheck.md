@@ -1,0 +1,17 @@
+# W25E postcheck
+
+start_ts=1780661207
+end_ts=1780666535
+elapsed_sec=5328
+branch=hrl/paper/mascar-repro-v0
+HEAD=81f1492
+
+## Summary
+
+no_artifact_power_rows=0/2
+artifact_recovery_power_rows=2/2
+common_runner_fix_power_rows=2/2
+root_cause=power_output_in_workload_dir_not_run_dir_plus_collector_scan_scope_too_narrow
+fix_applied=common_runner_power_artifact_copy_plus_collector_recursive_scan
+validation_passed=6/6
+raw_runs_archive=/workspace/tmp/mascar_w25e_energy_recovery_raw_runs_20260605_213533.tar.gz

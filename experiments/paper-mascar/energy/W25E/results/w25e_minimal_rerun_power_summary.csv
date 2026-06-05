@@ -1,0 +1,7 @@
+strategy,run_id,config_id,paper_id,exit_code,classification,energy_fields_found,kernel_avg_power,gpu_tot_avg_power,kernel_max_power,gpu_tot_max_power
+no_artifact,no_artifact__energy_baseline_off__spmv,energy_baseline_off,spmv,0,completed_explicit_pass,0,,,,
+no_artifact,no_artifact__energy_m4_reexec_load__spmv,energy_m4_reexec_load,spmv,0,completed_explicit_pass,0,,,,
+artifact_recovery,artifact_recovery__energy_baseline_off__spmv,energy_baseline_off,spmv,0,completed_explicit_pass,1,55.6973,55.6973,55.8834,55.8834
+artifact_recovery,artifact_recovery__energy_m4_reexec_load__spmv,energy_m4_reexec_load,spmv,0,completed_explicit_pass,1,55.6973,55.6973,55.8834,55.8834
+common_runner_fix,energy_baseline_off__spmv,energy_baseline_off,spmv,0,completed_explicit_pass,1,55.6973,55.6973,55.8834,55.8834
+common_runner_fix,energy_m4_reexec_load__spmv,energy_m4_reexec_load,spmv,0,completed_explicit_pass,1,55.6973,55.6973,55.8834,55.8834

@@ -205,13 +205,31 @@ def write_csv(path: Path, rows: list[dict[str, str]], fields: list[str]) -> None
 
 def collect_log_text(run_dir: Path) -> str:
     parts: list[str] = []
-    for name in ["combined.log", "stdout.log", "stderr.log", "stats.txt"]:
-        p = run_dir / name
-        if p.exists():
-            parts.append(p.read_text(errors="replace"))
-    for p in sorted(run_dir.glob("*.log")):
-        if p.name not in {"combined.log", "stdout.log", "stderr.log"}:
-            parts.append(p.read_text(errors="replace"))
+    seen: set[Path] = set()
+    preferred = ["combined.log", "stdout.log", "stderr.log", "stats.txt"]
+    text_suffixes = {".log", ".txt", ".out", ".err", ".csv"}
+    name_markers = ("power", "watt", "accelwattch", "gpuwattch", "stats")
+
+    def append_text(path: Path) -> None:
+        if path in seen or not path.exists() or not path.is_file():
+            return
+        seen.add(path)
+        try:
+            if path.stat().st_size > 20 * 1024 * 1024:
+                return
+        except OSError:
+            return
+        parts.append(path.read_text(errors="replace"))
+
+    for name in preferred:
+        append_text(run_dir / name)
+
+    for path in sorted(run_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        lower_name = path.name.lower()
+        if path.suffix.lower() in text_suffixes or any(marker in lower_name for marker in name_markers):
+            append_text(path)
     return "\n".join(parts)
 
 
