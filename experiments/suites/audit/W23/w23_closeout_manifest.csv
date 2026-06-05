@@ -1,0 +1,9 @@
+artifact,path,status,notes
+w22_updated_binary_data_wrapper_manifest.csv,experiments/suites/matrix/W22/w22_updated_binary_data_wrapper_manifest.csv,created,W22-W23
+w22_smoke_ready_promotion_record.csv,experiments/suites/matrix/W22/w22_smoke_ready_promotion_record.csv,created,W22-W23
+w22_dryrun_results.csv,experiments/suites/results/W22/w22_dryrun_results.csv,created,W22-W23
+w22_smoke_results.csv,experiments/suites/results/W22/w22_smoke_results.csv,created,W22-W23
+w23_baseline_characterization.csv,experiments/suites/results/W23/w23_baseline_characterization.csv,created,W22-W23
+mascar_w22_smoke_validation_report.md,docs/papers/mascar_w22_smoke_validation_report.md,created,W22-W23
+mascar_w23_baseline_characterization_report.md,docs/papers/mascar_w23_baseline_characterization_report.md,created,W22-W23
+mascar_w22_w23_raw_runs_20260605_170238.tar.gz,/workspace/tmp/mascar_w22_w23_raw_runs_20260605_170238.tar.gz,created,W22-W23

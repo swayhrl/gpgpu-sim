@@ -1,0 +1,42 @@
+# git status --short
+?? docs/papers/mascar_w22_smoke_validation_report.md
+?? docs/papers/mascar_w23_baseline_characterization_report.md
+?? experiments/suites/audit/W22/
+?? experiments/suites/audit/W23/
+?? experiments/suites/common/prepare_w22_w23_manifests.py
+?? experiments/suites/matrix/
+?? experiments/suites/results/W22/
+?? experiments/suites/results/W23/
+
+# git diff --name-status
+
+# W22/W23 untracked
+docs/papers/mascar_w22_smoke_validation_report.md
+docs/papers/mascar_w23_baseline_characterization_report.md
+experiments/suites/audit/W22/w22_postcheck.md
+experiments/suites/audit/W22/w22_w23_diff_name_status.txt
+experiments/suites/audit/W23/w23_postcheck.md
+experiments/suites/common/prepare_w22_w23_manifests.py
+experiments/suites/matrix/W22/w22_binary_data_wrapper_manifest.csv
+experiments/suites/matrix/W22/w22_candidate_command_manifest.csv
+experiments/suites/matrix/W22/w22_final_smoke_ready_command_manifest.csv
+experiments/suites/matrix/W22/w22_smoke_candidate_command_manifest.csv
+experiments/suites/matrix/W22/w22_smoke_ready_promotion_record.csv
+experiments/suites/matrix/W22/w22_updated_binary_data_wrapper_manifest.csv
+experiments/suites/matrix/W23/w23_baseline_command_manifest.csv
+experiments/suites/results/W22/w22_candidate_results.csv
+experiments/suites/results/W22/w22_candidate_run_manifest.csv
+experiments/suites/results/W22/w22_candidate_status_matrix.csv
+experiments/suites/results/W22/w22_candidate_summary.md
+experiments/suites/results/W22/w22_dryrun_results.csv
+experiments/suites/results/W22/w22_dryrun_run_manifest.csv
+experiments/suites/results/W22/w22_dryrun_status_matrix.csv
+experiments/suites/results/W22/w22_dryrun_summary.md
+experiments/suites/results/W22/w22_smoke_results.csv
+experiments/suites/results/W22/w22_smoke_run_manifest.csv
+experiments/suites/results/W22/w22_smoke_status_matrix.csv
+experiments/suites/results/W22/w22_smoke_summary.md
+experiments/suites/results/W23/w23_baseline_characterization.csv
+experiments/suites/results/W23/w23_baseline_run_manifest.csv
+experiments/suites/results/W23/w23_baseline_status_matrix.csv
+experiments/suites/results/W23/w23_baseline_summary.md

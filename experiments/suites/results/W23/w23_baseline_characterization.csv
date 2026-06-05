@@ -1,0 +1,14 @@
+app_id,suite_id,benchmark_name,classification,has_stats,gpu_tot_sim_cycle,gpu_tot_sim_insn,gpu_tot_ipc,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,paper_mascar_m4_enqueue_success,energy_total,metric_status,correctness_note
+rodinia_backprop,rodinia,backprop,completed_stats_found,1,6911,292096,42.2654,1568,736,640,0,,metrics_parsed,stats_only_not_correctness_pass
+rodinia_bfs,rodinia,bfs,completed_stats_found,1,6665,1352,0.2029,26,18,8,0,,metrics_parsed,stats_only_not_correctness_pass
+rodinia_hotspot,rodinia,hotspot,completed_stats_found,1,6931,924256,133.3510,2576,0,2576,0,,metrics_parsed,stats_only_not_correctness_pass
+rodinia_kmeans,rodinia,kmeans,completed_stats_found,1,5592,5440,0.9728,48,16,32,0,,metrics_parsed,stats_only_not_correctness_pass
+rodinia_lud,rodinia,lud,completed_stats_found,1,27483,18280,0.6651,62,30,32,0,,metrics_parsed,stats_only_not_correctness_pass
+rodinia_nw,rodinia,nw,completed_stats_found,1,14026,6563,0.4679,112,15,97,0,,metrics_parsed,stats_only_not_correctness_pass
+rodinia_pathfinder,rodinia,pathfinder,completed_stats_found,1,6487,24384,3.7589,40,2,32,0,,metrics_parsed,stats_only_not_correctness_pass
+rodinia_srad,rodinia,srad,completed_stats_found,1,8236,660998,80.2572,4352,144,3648,0,,metrics_parsed,stats_only_not_correctness_pass
+parboil_histo,parboil,histo,completed_explicit_pass,1,7096,2004480,282.4803,128,64,64,0,,metrics_parsed,explicit_pass
+parboil_mri_q,parboil,mri-q,completed_stats_found,1,5547,5984,1.0788,12,0,12,0,,metrics_parsed,stats_only_not_correctness_pass
+parboil_sgemm,parboil,sgemm,completed_stats_found,1,21460,94976,4.4257,800,256,544,0,,metrics_parsed,stats_only_not_correctness_pass
+parboil_spmv,parboil,spmv,completed_explicit_pass,1,21813,21208,0.9723,,,,0,,metrics_parsed,explicit_pass
+parboil_stencil,parboil,stencil,completed_stats_found,1,8221,64172,7.8059,112,0,112,0,,metrics_parsed,stats_only_not_correctness_pass

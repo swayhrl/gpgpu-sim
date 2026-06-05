@@ -1,0 +1,14 @@
+app_id,suite_id,classification,metric_status,has_stats,correctness_note,next_action
+rodinia_backprop,rodinia,completed_stats_found,metrics_parsed,1,stats_only_not_correctness_pass,use as baseline row
+rodinia_bfs,rodinia,completed_stats_found,metrics_parsed,1,stats_only_not_correctness_pass,use as baseline row
+rodinia_hotspot,rodinia,completed_stats_found,metrics_parsed,1,stats_only_not_correctness_pass,use as baseline row
+rodinia_kmeans,rodinia,completed_stats_found,metrics_parsed,1,stats_only_not_correctness_pass,use as baseline row
+rodinia_lud,rodinia,completed_stats_found,metrics_parsed,1,stats_only_not_correctness_pass,use as baseline row
+rodinia_nw,rodinia,completed_stats_found,metrics_parsed,1,stats_only_not_correctness_pass,use as baseline row
+rodinia_pathfinder,rodinia,completed_stats_found,metrics_parsed,1,stats_only_not_correctness_pass,use as baseline row
+rodinia_srad,rodinia,completed_stats_found,metrics_parsed,1,stats_only_not_correctness_pass,use as baseline row
+parboil_histo,parboil,completed_explicit_pass,metrics_parsed,1,explicit_pass,use as baseline row
+parboil_mri_q,parboil,completed_stats_found,metrics_parsed,1,stats_only_not_correctness_pass,use as baseline row
+parboil_sgemm,parboil,completed_stats_found,metrics_parsed,1,stats_only_not_correctness_pass,use as baseline row
+parboil_spmv,parboil,completed_explicit_pass,metrics_parsed,1,explicit_pass,use as baseline row
+parboil_stencil,parboil,completed_stats_found,metrics_parsed,1,stats_only_not_correctness_pass,use as baseline row
