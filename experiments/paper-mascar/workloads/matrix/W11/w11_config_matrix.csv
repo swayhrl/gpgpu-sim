@@ -1,0 +1,5 @@
+config_id,config_path,config_role,enabled,config_notes
+baseline_off,configs/hrl-repro/SM7_QV100_mascar_baseline_off,baseline,1,Mascar disabled baseline.
+m2_owner_sched,configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on,m2_active,1,M2 owner scheduling active.
+m3_hitonly_nack,configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on,m3_active,1,M3 non-owner hit-only/NACK active.
+m4_reexec_load,configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on,m4_active,1,M4 load re-exec active.

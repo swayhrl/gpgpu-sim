@@ -1,0 +1,16 @@
+paper_id,paper_name,paper_type,config_id,classification,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,baseline_cycles,cycle_speedup_vs_baseline,m2_mp_cycles,m2_owner_acquire,m2_nonowner_mem_block,m3_hitonly_attempt,m3_hitonly_hit,m3_hitonly_nack,m3_probe_attempt,m3_probe_hit,m3_probe_nack,m3_nonowner_lsu_probe_allowed,m4_enqueue_success,m4_retry_attempt,m4_retry_requeue,m2_active,m3_strict_active,m3_probe_observed,m4_active,any_active
+bp_2,BP-2,M,baseline_off,simulator_error_no_stats,0,,,,,,,,,,,,,,,,,,0,0,0,0,0
+bfs,bfs,M,baseline_off,completed_no_explicit_pass,0,6665,0.2029,6665,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+histo_1,histo-1,M,baseline_off,completed_explicit_pass,1,7100,282.3211,7100,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+histo_3,histo-3,M,baseline_off,completed_explicit_pass,1,7100,282.3211,7100,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+kmeans_1,kmeans-1,M,baseline_off,completed_no_explicit_pass,0,5592,0.9728,5592,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+spmv,spmv,M,baseline_off,completed_explicit_pass,1,21813,0.9723,21813,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+srad_1,srad-1,M,baseline_off,completed_no_explicit_pass,0,8236,80.2572,8236,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+srad_2,srad-2,M,baseline_off,completed_no_explicit_pass,0,8236,80.2572,8236,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+bp_1,BP-1,C,baseline_off,simulator_error_no_stats,0,,,,,,,,,,,,,,,,,,0,0,0,0,0
+histo_2,histo-2,C,baseline_off,completed_explicit_pass,1,7100,282.3211,7100,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+kmeans_2,kmeans-2,C,baseline_off,completed_no_explicit_pass,0,5592,0.9728,5592,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+mri_q,mri-q,C,baseline_off,completed_no_explicit_pass,0,5547,1.0788,5547,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+pathfinder,pathfinder,C,baseline_off,completed_no_explicit_pass,0,6487,3.7589,6487,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+sgemm,sgemm,C,baseline_off,completed_no_explicit_pass,0,21460,4.4257,21460,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+stencil,stencil,C,baseline_off,completed_no_explicit_pass,0,8221,7.8059,8221,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0

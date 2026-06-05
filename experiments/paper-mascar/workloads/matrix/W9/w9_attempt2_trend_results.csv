@@ -1,0 +1,7 @@
+paper_id,paper_name,paper_type,config_id,classification,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,baseline_cycles,cycle_speedup_vs_baseline,m2_mp_cycles,m2_owner_acquire,m2_nonowner_mem_block,m3_hitonly_attempt,m3_hitonly_hit,m3_hitonly_nack,m3_probe_attempt,m3_probe_hit,m3_probe_nack,m3_nonowner_lsu_probe_allowed,m4_enqueue_success,m4_retry_attempt,m4_retry_requeue,m2_active,m3_strict_active,m3_probe_observed,m4_active,any_active
+spmv,spmv,M,m3_hitonly_nack,completed_explicit_pass,1,12190,5.2712,,,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+mri_q,mri-q,C,m3_hitonly_nack,completed_stats_found,0,5546,1.1424,,,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+pathfinder,pathfinder,C,m3_hitonly_nack,completed_stats_found,0,7351,5.2760,,,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+spmv,spmv,M,m4_reexec_load,completed_explicit_pass,1,12190,5.2712,,,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+mri_q,mri-q,C,m4_reexec_load,completed_stats_found,0,5546,1.1424,,,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+pathfinder,pathfinder,C,m4_reexec_load,completed_stats_found,0,7351,5.2760,,,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0

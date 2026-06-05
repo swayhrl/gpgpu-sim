@@ -1,0 +1,4 @@
+paper_id,paper_name,paper_type,m3_hitonly_nack,m4_reexec_load
+spmv,spmv,M,completed_explicit_pass,completed_explicit_pass
+mri_q,mri-q,C,completed_stats_found,completed_stats_found
+pathfinder,pathfinder,C,completed_stats_found,completed_stats_found

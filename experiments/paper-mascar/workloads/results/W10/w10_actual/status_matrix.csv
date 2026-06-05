@@ -1,0 +1,16 @@
+paper_id,paper_name,paper_type,baseline_off
+bp_2,BP-2,M,simulator_error_no_stats
+bfs,bfs,M,completed_no_explicit_pass
+histo_1,histo-1,M,completed_explicit_pass
+histo_3,histo-3,M,completed_explicit_pass
+kmeans_1,kmeans-1,M,completed_no_explicit_pass
+spmv,spmv,M,completed_explicit_pass
+srad_1,srad-1,M,completed_no_explicit_pass
+srad_2,srad-2,M,completed_no_explicit_pass
+bp_1,BP-1,C,simulator_error_no_stats
+histo_2,histo-2,C,completed_explicit_pass
+kmeans_2,kmeans-2,C,completed_no_explicit_pass
+mri_q,mri-q,C,completed_no_explicit_pass
+pathfinder,pathfinder,C,completed_no_explicit_pass
+sgemm,sgemm,C,completed_no_explicit_pass
+stencil,stencil,C,completed_no_explicit_pass

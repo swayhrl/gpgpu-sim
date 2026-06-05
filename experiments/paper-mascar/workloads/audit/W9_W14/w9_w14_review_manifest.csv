@@ -1,0 +1,12 @@
+path,review_reason
+docs/papers/mascar_w9_m3_activation_search_report.md,W9-W14 output/framework
+docs/papers/mascar_w10_table_iii_workload_expansion_report.md,W9-W14 output/framework
+docs/papers/mascar_w11_memory_focused_sweep_report.md,W9-W14 output/framework
+docs/papers/mascar_w12_compute_safety_sweep_report.md,W9-W14 output/framework
+docs/papers/mascar_w13_table_iii_coverage_report.md,W9-W14 output/framework
+docs/papers/mascar_w14_general_framework.md,W9-W14 output/framework
+experiments/common/README.md,W9-W14 output/framework
+tools/paper_repro/README.md,W9-W14 output/framework
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py,W9-W14 output/framework
+experiments/paper-mascar/workloads/matrix/W9_W14/prepare_w9_w14_manifests.py,W9-W14 output/framework
+experiments/paper-mascar/workloads/matrix/W9_W14/analyze_mascar_stage.py,W9-W14 output/framework

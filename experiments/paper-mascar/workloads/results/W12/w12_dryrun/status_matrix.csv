@@ -1,0 +1,8 @@
+paper_id,paper_name,paper_type,baseline_off,m2_owner_sched,m3_hitonly_nack,m4_reexec_load
+bp_1,BP-1,C,no_stats_exit0,no_stats_exit0,no_stats_exit0,no_stats_exit0
+histo_2,histo-2,C,no_stats_exit0,no_stats_exit0,no_stats_exit0,no_stats_exit0
+kmeans_2,kmeans-2,C,no_stats_exit0,no_stats_exit0,no_stats_exit0,no_stats_exit0
+mri_q,mri-q,C,no_stats_exit0,no_stats_exit0,no_stats_exit0,no_stats_exit0
+pathfinder,pathfinder,C,no_stats_exit0,no_stats_exit0,no_stats_exit0,no_stats_exit0
+sgemm,sgemm,C,no_stats_exit0,no_stats_exit0,no_stats_exit0,no_stats_exit0
+stencil,stencil,C,no_stats_exit0,no_stats_exit0,no_stats_exit0,no_stats_exit0

@@ -1,0 +1,4 @@
+paper_id,wrapper_path,active_config,M2_active_counter_triggered,M3_active_counter_triggered,M3_probe_observed,M4_active_counter_triggered,attempts,input_modified,notes
+spmv,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_spmv_w7.sh,m4_reexec_load,1,0,0,1,3,yes,"W9 tried W7 large, W5C bounded, and pathfinder 512x512; no strict M3 activation observed"
+mri_q,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_mri_q_w7.sh,m4_reexec_load,1,0,0,1,3,yes,"W9 tried W7 large, W5C bounded, and pathfinder 512x512; no strict M3 activation observed"
+pathfinder,experiments/paper-mascar/workloads/matrix/W7/wrappers/run_pathfinder_w7.sh,m4_reexec_load,1,0,0,1,3,yes,"W9 tried W7 large, W5C bounded, and pathfinder 512x512; no strict M3 activation observed"

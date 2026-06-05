@@ -113,3 +113,13 @@ bash tools/paper_repro/run_queue.sh tools/paper_repro/job_queue.example.yaml
 - **不自动 commit/tag/push**：所有 git 操作需人工确认
 - **不控制 tmux/进程**：checkpoint 只是文本提示
 - **不验证实验结果**：只生成 prompt 和检查 repo 状态
+
+## Mascar W14 Workload Framework
+
+Mascar W9-W14 uses `experiments/common/gpgpusim_matrix/` plus paper-specific manifests under `experiments/paper-mascar/workloads/matrix/`. The framework preserves canonical paper rows, records placeholders for unavailable workloads, and separates config matrices from workload command manifests.
+
+Key W14 outputs:
+
+- `docs/papers/mascar_w14_general_framework.md`
+- `experiments/common/README.md`
+- `experiments/paper-mascar/workloads/matrix/W13/table_iii_coverage_manifest.csv`
