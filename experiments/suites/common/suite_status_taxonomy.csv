@@ -1,0 +1,17 @@
+status,meaning,dry_run_by_default,actual_run_by_default,counts_as_ready,typical_next_action
+ready,Known runnable baseline with explicit smoke pass,1,1,1,Use in smoke and sweeps
+command_verified,Binary and command are verified but current smoke evidence may be external,1,1,1,Run periodic smoke
+command_unverified,Binary/source exists but command has not been validated,1,0,0,Normalize command and run smoke
+binary_available_command_unverified,Executable exists but command/data/smoke are not verified,1,0,0,Create small command and smoke in W21
+source_available_missing_binary,Source exists but no verified executable,1,0,0,Build/recover binary in W21
+missing_binary,Expected binary absent,1,0,0,Build or recover binary
+missing_source,Source absent locally,1,0,0,Locate local source without network fetch unless approved
+missing_data,Input data absent or unverified,1,0,0,Create tiny input or locate local data
+failed_build,Build was attempted and failed,1,0,0,Fix build flags/dependencies in W21
+failed_smoke,Command was attempted and failed before useful simulator stats,1,0,0,Debug wrapper/runtime before promotion
+unsupported_cuda,Legacy CUDA architecture or API unsupported by current toolchain,1,0,0,Port build flags/source in a later build-recovery round
+unsupported_dependency,Required library/tool/data is unavailable,1,0,0,Install/replace dependency or mark unsupported
+unsupported_runtime,Executable requires native driver/runtime path incompatible with simulator setup,1,0,0,Patch wrapper to force GPGPU-Sim path
+phase_pending,App runnable but paper phase mapping is unresolved,1,0,0,Use kernel trace or phase mapping workflow
+placeholder,Placeholder row retained for completeness,1,0,0,Resolve source/binary/data/wrapper
+unknown,Status cannot be determined from local evidence,1,0,0,Audit manually

@@ -1,0 +1,2 @@
+suite,workload,input_id,status,source_path,binary_path,data_path,wrapper_path,command,phase_mapping_status,blocker,next_action,notes
+rodinia,example,default,placeholder,,,,,,not_applicable,missing_source,locate local source,template row

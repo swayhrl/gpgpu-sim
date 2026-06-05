@@ -1,0 +1,2 @@
+run_id,suite,workload,input_id,config_id,status,classification,exit_code,timeout_sec,log_path,stats_found,correctness_status,notes
+example_000,rodinia,example,default,baseline_off,dryrun,not_run,0,0,,0,not_checked,template row
