@@ -1,0 +1,16 @@
+ M docs/reproduction_workload_framework.md
+ M experiments/common/README.md
+ M experiments/suites/README.md
+ M experiments/suites/common/README.md
+ M tools/paper_repro/README.md
+?? docs/papers/mascar_w25_integrated_energy_sweep_report.md
+?? docs/papers/mascar_w25_w26_closeout_summary.md
+?? docs/papers/mascar_w25a_energy_integrated_run_plan.md
+?? docs/papers/mascar_w26_paper_repro_framework_release.md
+?? docs/papers/mascar_w26a_framework_release_audit.md
+?? docs/papers/mascar_w26b_templates_documentation_report.md
+?? docs/papers/mascar_w26c_framework_validation_report.md
+?? docs/reproduction/
+?? experiments/framework_release/
+?? experiments/paper-mascar/energy/W25/
+?? experiments/templates/

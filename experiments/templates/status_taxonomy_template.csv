@@ -1,0 +1,3 @@
+status,meaning,counts_as_ready,counts_as_correctness_pass,notes
+ready,wrapper command and required inputs are available,1,0,execution ready only
+placeholder,row retained but not runnable,0,0,do not actual-run by default

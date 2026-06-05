@@ -1,0 +1,7 @@
+workload_id,paper_id,paper_type,selection_reason,prior_m2_active,prior_m3_active,prior_m4_active,fallback_mode
+bp_2,bp_2,M,W24 M2/M4 active memory row,1,0,1,0
+srad_1,srad_1,M,W24 M2/M4 active memory row; srad_2 duplicate omitted,1,0,1,0
+bp_1,bp_1,C,W24 M2/M4 active compute row,1,0,1,0
+spmv,spmv,M,W16 energy-stable and W24 ready memory row,0,0,0,0
+mri_q,mri_q,C,W16 energy-stable and W24 ready compute row,0,0,0,0
+pathfinder,pathfinder,C,W16 energy-stable and W24 ready compute row,0,0,0,0

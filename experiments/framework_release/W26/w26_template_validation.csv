@@ -1,0 +1,6 @@
+template_path,status,expected_header,actual_header
+experiments/templates/workload_manifest_template.csv,pass,suite|workload|input_id|status|source_path|binary_path|data_path|wrapper_path|command|phase_mapping_status|blocker|next_action|notes,suite|workload|input_id|status|source_path|binary_path|data_path|wrapper_path|command|phase_mapping_status|blocker|next_action|notes
+experiments/templates/config_matrix_template.csv,pass,config_id|config_path|enabled|config_family|mechanism|notes,config_id|config_path|enabled|config_family|mechanism|notes
+experiments/templates/result_manifest_template.csv,pass,run_id|suite|workload|input_id|config_id|status|classification|exit_code|timeout_sec|log_path|stats_found|correctness_status|notes,run_id|suite|workload|input_id|config_id|status|classification|exit_code|timeout_sec|log_path|stats_found|correctness_status|notes
+experiments/templates/review_pack_manifest_template.csv,pass,path|category|required|status|notes,path|category|required|status|notes
+experiments/templates/status_taxonomy_template.csv,pass,status|meaning|counts_as_ready|counts_as_correctness_pass|notes,status|meaning|counts_as_ready|counts_as_correctness_pass|notes

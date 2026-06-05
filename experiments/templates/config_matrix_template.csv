@@ -1,0 +1,2 @@
+config_id,config_path,enabled,config_family,mechanism,notes
+baseline_off,configs/example/baseline,1,baseline,none,template row

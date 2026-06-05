@@ -1,0 +1,7 @@
+workload_id,baseline_status,m4_status,has_power_fields,has_direct_energy,has_derived_energy,availability_status,next_action
+bp_2,completed_no_explicit_pass,completed_no_explicit_pass,0,0,0,energy_unavailable_no_power_fields,inspect energy config power output or restore AccelWattch power fields
+srad_1,completed_no_explicit_pass,completed_no_explicit_pass,0,0,0,energy_unavailable_no_power_fields,inspect energy config power output or restore AccelWattch power fields
+bp_1,completed_no_explicit_pass,completed_no_explicit_pass,0,0,0,energy_unavailable_no_power_fields,inspect energy config power output or restore AccelWattch power fields
+spmv,completed_explicit_pass,completed_explicit_pass,0,0,0,energy_unavailable_no_power_fields,inspect energy config power output or restore AccelWattch power fields
+mri_q,completed_no_explicit_pass,completed_no_explicit_pass,0,0,0,energy_unavailable_no_power_fields,inspect energy config power output or restore AccelWattch power fields
+pathfinder,completed_no_explicit_pass,completed_no_explicit_pass,0,0,0,energy_unavailable_no_power_fields,inspect energy config power output or restore AccelWattch power fields

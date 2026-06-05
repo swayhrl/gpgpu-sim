@@ -1,0 +1,10 @@
+input_name,path,status,rows,notes
+w24_refreshed,experiments/paper-mascar/workloads/results/W24/w24_tableiii_refreshed_results.csv,found,120,priority_input
+w24_coverage,experiments/paper-mascar/workloads/results/W24/w24_tableiii_coverage_manifest.csv,found,30,priority_input
+w24_activation,experiments/paper-mascar/workloads/results/W24/w24_tableiii_activation_matrix.csv,found,30,priority_input
+w24_speedup,experiments/paper-mascar/workloads/results/W24/w24_tableiii_speedup_summary.csv,found,30,priority_input
+w24_report,docs/papers/mascar_w24_tableiii_refreshed_sweep_report.md,found,,priority_input
+w16_trend,experiments/paper-mascar/energy/W16D/w16_energy_trend_summary.csv,found,6,
+w16_ratio,experiments/paper-mascar/energy/W16D/w16_energy_ratio_by_workload.csv,found,3,
+w16_stat_map,experiments/paper-mascar/energy/W16A/e1_energy_stat_map.csv,found,11,
+command_manifest,experiments/paper-mascar/workloads/mascar_table_iii_command_manifest.csv,found,30,

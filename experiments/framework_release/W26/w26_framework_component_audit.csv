@@ -1,0 +1,18 @@
+component_id,path,role,exists,status,notes
+matrix_runner,experiments/common/gpgpusim_matrix/run_gpgpusim_matrix.sh,core runner,1,ready,present for reusable framework
+stats_collector,experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py,GPGPU-Sim/Mascar/power collector,1,ready,present for reusable framework
+kernel_trace_collector,experiments/common/gpgpusim_matrix/collect_kernel_trace.py,kernel trace parser,1,ready,present for reusable framework
+suite_runner,experiments/suites/common/run_full_suite_matrix.sh,full-suite runner,1,ready,present for reusable framework
+suite_collector,experiments/suites/common/collect_full_suite_results.py,full-suite collector,1,ready,present for reusable framework
+suite_manifest,experiments/suites/common/full_suite_manifest.csv,normalized full-suite manifest,1,ready,present for reusable framework
+suite_command_manifest,experiments/suites/common/full_suite_command_manifest.csv,suite command manifest,1,ready,present for reusable framework
+status_taxonomy,experiments/suites/common/suite_status_taxonomy.md,status taxonomy,1,ready,present for reusable framework
+tableiii_manifest,experiments/paper-mascar/workloads/mascar_table_iii_workload_manifest.csv,Mascar Table III manifest,1,ready,present for reusable framework
+tableiii_command_manifest,experiments/paper-mascar/workloads/mascar_table_iii_command_manifest.csv,Mascar Table III command manifest,1,ready,present for reusable framework
+workload_framework_doc,docs/reproduction_workload_framework.md,workload framework doc,1,ready,present for reusable framework
+common_readme,experiments/common/README.md,common experiment tools README,1,ready,present for reusable framework
+suite_readme,experiments/suites/README.md,suite framework README,1,ready,present for reusable framework
+paper_tools_readme,tools/paper_repro/README.md,paper reproduction tools README,1,ready,present for reusable framework
+w25_planner,experiments/paper-mascar/energy/W25/matrix/prepare_w25_energy_run_plan.py,W25 energy planner,1,ready,present for reusable framework
+w25_runner,experiments/paper-mascar/energy/W25/matrix/run_w25_energy_sweep.sh,W25 energy runner,1,ready,present for reusable framework
+w25_analyzer,experiments/paper-mascar/energy/W25/matrix/analyze_w25_energy_results.py,W25 energy analyzer,1,ready,present for reusable framework

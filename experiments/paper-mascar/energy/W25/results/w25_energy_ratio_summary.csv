@@ -1,0 +1,6 @@
+group,workloads,valid_power_rows,avg_power_ratio_gpu_total,valid_energy_rows,geomean_energy_ratio,avg_cycle_ratio,status
+all,6,0,,0,,1.000436,energy_unavailable
+memory,3,0,,0,,1.000679,energy_unavailable
+compute,3,0,,0,,1.000193,energy_unavailable
+m4_active_prior,3,0,,0,,1.000872,energy_unavailable
+m4_inactive_prior,3,0,,0,,1.000000,energy_unavailable
