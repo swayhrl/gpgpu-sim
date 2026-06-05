@@ -1,0 +1,3 @@
+config_id,config_path,config_role,enabled,notes
+energy_baseline_off,configs/hrl-repro/SM7_QV100_mascar_energy_baseline_off,energy_baseline,1,W25F current-simulator energy rerun config
+energy_m4_reexec_load,configs/hrl-repro/SM7_QV100_mascar_energy_m4_reexec_load_on,energy_m4,1,W25F current-simulator energy rerun config

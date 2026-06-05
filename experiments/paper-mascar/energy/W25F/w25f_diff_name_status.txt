@@ -1,0 +1,5 @@
+?? docs/papers/mascar_w25f_energy_rerun_closeout.md
+?? docs/papers/mascar_w25f_energy_rerun_execution.md
+?? docs/papers/mascar_w25f_energy_rerun_plan.md
+?? docs/papers/mascar_w25f_energy_rerun_trend_report.md
+?? experiments/paper-mascar/energy/W25F/

@@ -1,0 +1,27 @@
+# W25F postcheck
+
+start_ts=1780667868
+end_ts=1780669908
+elapsed_sec=2040
+branch=hrl/paper/mascar-repro-v0
+HEAD=195e23d
+
+W25F_A_status=pass
+W25F_B_status=pass
+W25F_C_status=pass
+workloads=bp_2|srad_1|bp_1|spmv|mri_q|pathfinder
+configs=energy_baseline_off|energy_m4_reexec_load
+actual_rows=12
+completed_rows=12
+timeout_rows=0
+crash_rows=0
+rows_with_power_artifacts=12
+rows_with_kernel_avg_power=12
+rows_with_gpu_tot_avg_power=12
+derived_energy_method=gpu_tot_avg_power_times_cycles_over_1132MHz
+all_mean_gpu_total_power_ratio=1
+all_geomean_derived_energy_ratio=1.00044
+raw_logs_archive=/workspace/tmp/mascar_w25f_raw_runs_20260605_223147.tar.gz
+review_pack=/workspace/tmp/mascar_w25f_energy_rerun_review_pack_20260605_223147.tar.gz
+warnings=completed_stats_found_is_not_correctness_pass; current_simulator_not_paper_GPUWattch_GTX480
+validation_passed=5/5

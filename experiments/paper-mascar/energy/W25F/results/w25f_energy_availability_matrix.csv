@@ -1,0 +1,13 @@
+run_id,workload_id,config_id,classification,has_stats,energy_fields_found,has_kernel_avg_power,has_gpu_tot_avg_power,has_power_artifacts,artifact_count
+energy_baseline_off__bp_2,bp_2,energy_baseline_off,completed_no_explicit_pass,1,1,1,1,1,2
+energy_baseline_off__srad_1,srad_1,energy_baseline_off,completed_no_explicit_pass,1,1,1,1,1,2
+energy_baseline_off__bp_1,bp_1,energy_baseline_off,completed_no_explicit_pass,1,1,1,1,1,2
+energy_baseline_off__spmv,spmv,energy_baseline_off,completed_explicit_pass,1,1,1,1,1,2
+energy_baseline_off__mri_q,mri_q,energy_baseline_off,completed_no_explicit_pass,1,1,1,1,1,2
+energy_baseline_off__pathfinder,pathfinder,energy_baseline_off,completed_no_explicit_pass,1,1,1,1,1,2
+energy_m4_reexec_load__bp_2,bp_2,energy_m4_reexec_load,completed_no_explicit_pass,1,1,1,1,1,2
+energy_m4_reexec_load__srad_1,srad_1,energy_m4_reexec_load,completed_no_explicit_pass,1,1,1,1,1,2
+energy_m4_reexec_load__bp_1,bp_1,energy_m4_reexec_load,completed_no_explicit_pass,1,1,1,1,1,2
+energy_m4_reexec_load__spmv,spmv,energy_m4_reexec_load,completed_explicit_pass,1,1,1,1,1,2
+energy_m4_reexec_load__mri_q,mri_q,energy_m4_reexec_load,completed_no_explicit_pass,1,1,1,1,1,2
+energy_m4_reexec_load__pathfinder,pathfinder,energy_m4_reexec_load,completed_no_explicit_pass,1,1,1,1,1,2

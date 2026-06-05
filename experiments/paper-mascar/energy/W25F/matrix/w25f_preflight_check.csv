@@ -1,0 +1,13 @@
+check_id,item,status,evidence,notes
+runner_has_power_artifact_recovery,copy_power_artifacts,pass,experiments/common/gpgpusim_matrix/run_gpgpusim_matrix.sh,
+collector_has_recursive_scan,run_dir.rglob,pass,experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py,
+collector_has_kernel_avg_power_pattern,kernel_avg_power,pass,experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py,
+collector_has_gpu_tot_avg_power_pattern,gpu_tot_avg_power,pass,experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py,
+energy_baseline_off_config_exists,energy_baseline_off,pass,configs/hrl-repro/SM7_QV100_mascar_energy_baseline_off,
+energy_baseline_off_power_enabled,energy_baseline_off,pass,/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_energy_baseline_off/gpgpusim.config,
+accelwattch_xml_exists_energy_baseline_off,energy_baseline_off,pass,/workspace/repos/gpgpu-sim_distribution/configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim.xml,
+energy_m4_reexec_load_config_exists,energy_m4_reexec_load,pass,configs/hrl-repro/SM7_QV100_mascar_energy_m4_reexec_load_on,
+energy_m4_reexec_load_power_enabled,energy_m4_reexec_load,pass,/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_energy_m4_reexec_load_on/gpgpusim.config,
+accelwattch_xml_exists_energy_m4_reexec_load,energy_m4_reexec_load,pass,/workspace/repos/gpgpu-sim_distribution/configs/tested-cfgs/SM7_QV100/accelwattch_ptx_sim.xml,
+workload_manifest_rows,selected workloads,pass,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/energy/W25F/matrix/w25f_energy_workload_manifest.csv,rows=6
+run_plan_rows,6 workloads x 2 configs,pass,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/energy/W25F/matrix/w25f_energy_run_plan.csv,rows=12

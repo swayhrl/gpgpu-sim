@@ -1,0 +1,6 @@
+group,workload_count,power_ratio_count,energy_ratio_count,arithmetic_mean_gpu_total_power_ratio,geomean_derived_energy_ratio,mean_derived_energy_saving
+all,6,6,6,1,1.00044,-0.000436667
+memory_rows,3,3,3,1,1.00068,-0.00068
+compute_rows,3,3,3,1,1.00019,-0.000193333
+explicit_pass,1,1,1,1,1,0
+stats_only,5,5,5,1,1.00052,-0.000524

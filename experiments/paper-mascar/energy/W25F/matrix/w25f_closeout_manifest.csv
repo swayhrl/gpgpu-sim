@@ -1,0 +1,26 @@
+path,category,status,notes
+experiments/paper-mascar/energy/W25F/matrix/prepare_w25f_energy_rerun_plan.py,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/matrix/w25f_energy_config_matrix.csv,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/matrix/w25f_energy_workload_manifest.csv,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/matrix/w25f_energy_command_manifest.csv,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/matrix/w25f_energy_run_plan.csv,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/matrix/w25f_preflight_check.csv,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/matrix/run_w25f_energy_rerun.sh,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/matrix/analyze_w25f_energy_rerun.py,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/results/w25f_energy_latest_results.csv,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/results/w25f_energy_latest_summary.md,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/results/w25f_energy_latest_status_matrix.csv,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/results/w25f_energy_latest_run_manifest.csv,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/results/w25f_energy_dryrun_results.csv,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/results/w25f_energy_actual_results.csv,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/results/w25f_power_artifact_check.csv,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/results/w25f_energy_trend_results.csv,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/results/w25f_energy_ratio_summary.csv,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/results/w25f_energy_availability_matrix.csv,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/results/w25f_energy_trend_summary.md,required,exists,W25F artifact
+docs/papers/mascar_w25f_energy_rerun_plan.md,required,exists,W25F artifact
+docs/papers/mascar_w25f_energy_rerun_execution.md,required,exists,W25F artifact
+docs/papers/mascar_w25f_energy_rerun_trend_report.md,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/audit/w25f_a_postcheck.md,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/audit/w25f_b_postcheck.md,required,exists,W25F artifact
+experiments/paper-mascar/energy/W25F/audit/w25f_c_postcheck.md,required,exists,W25F artifact
