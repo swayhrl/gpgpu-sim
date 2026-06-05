@@ -1,0 +1,27 @@
+test_scope,workload_id,config_id,m3_activated,main_blocker,evidence_counter,diagnosis,next_action
+W15B_tableiii,spmv,m4_reexec_load,0,unknown,,unknown,use W15C microbenchmark
+W15B_tableiii,mri_q,m4_reexec_load,0,unknown,,unknown,use W15C microbenchmark
+W15B_tableiii,pathfinder,m4_reexec_load,0,unknown,,unknown,use W15C microbenchmark
+W15B_tableiii,bp_2,m4_reexec_load,0,unknown,,unknown,use W15C microbenchmark
+W15B_tableiii,srad_1,m4_reexec_load,0,unknown,,unknown,use W15C microbenchmark
+W15B_tableiii,srad_2,m4_reexec_load,0,unknown,,unknown,use W15C microbenchmark
+W15B_tableiii,bp_1,m4_reexec_load,0,unknown,,unknown,use W15C microbenchmark
+W15B_tableiii,spmv,m3diag_on,0,not_mp,m3diag_skip_not_mp=1598,no_mp,use forced-MP/microbenchmark to isolate
+W15B_tableiii,mri_q,m3diag_on,0,not_mp,m3diag_skip_not_mp=534,no_mp,use forced-MP/microbenchmark to isolate
+W15B_tableiii,pathfinder,m3diag_on,0,not_mp,m3diag_skip_not_mp=644,no_mp,use forced-MP/microbenchmark to isolate
+W15B_tableiii,bp_2,m3diag_on,0,not_mp,m3diag_skip_not_mp=5903,no_mp,use forced-MP/microbenchmark to isolate
+W15B_tableiii,srad_1,m3diag_on,0,not_mp,m3diag_skip_not_mp=13855,no_mp,use forced-MP/microbenchmark to isolate
+W15B_tableiii,srad_2,m3diag_on,0,not_mp,m3diag_skip_not_mp=13855,no_mp,use forced-MP/microbenchmark to isolate
+W15B_tableiii,bp_1,m3diag_on,0,not_mp,m3diag_skip_not_mp=5903,no_mp,use forced-MP/microbenchmark to isolate
+W15B_tableiii,spmv,m3diag_forced_mp_on,0,no_owner,m3diag_skip_no_owner=1288,no_owner,use forced-MP/microbenchmark to isolate
+W15B_tableiii,mri_q,m3diag_forced_mp_on,0,not_mp,m3diag_skip_not_mp=517,no_mp,use forced-MP/microbenchmark to isolate
+W15B_tableiii,pathfinder,m3diag_forced_mp_on,0,not_mp,m3diag_skip_not_mp=423,no_mp,use forced-MP/microbenchmark to isolate
+W15B_tableiii,bp_2,m3diag_forced_mp_on,0,not_mp,m3diag_skip_not_mp=3832,no_mp,use forced-MP/microbenchmark to isolate
+W15B_tableiii,srad_1,m3diag_forced_mp_on,1,none_m3_activated,m3diag_active_hitonly_access_called or legacy hitonly attempt > 0,m3_activated_active_hitonly,inspect hit/nack distribution
+W15B_tableiii,srad_2,m3diag_forced_mp_on,1,none_m3_activated,m3diag_active_hitonly_access_called or legacy hitonly attempt > 0,m3_activated_active_hitonly,inspect hit/nack distribution
+W15B_tableiii,bp_1,m3diag_forced_mp_on,0,not_mp,m3diag_skip_not_mp=3832,no_mp,use forced-MP/microbenchmark to isolate
+W15C_micro,strategy_1,m3diag_on,1,none_m3_activated,active_hitonly_access_called=224,m3_activated_active_hitonly,no M3 implementation fix needed
+W15C_micro,strategy_2,m3diag_forced_mp_on,1,none_m3_activated,active_hitonly_access_called=2442,m3_activated_active_hitonly,no M3 implementation fix needed
+W15C_micro,strategy_3,m3diag_forced_mp_on,1,none_m3_activated,active_hitonly_access_called=13620,m3_activated_active_hitonly,no M3 implementation fix needed
+W15C_micro,strategy_4,m3diag_forced_mp_on,1,none_m3_activated,active_hitonly_access_called=7147,m3_activated_active_hitonly,no M3 implementation fix needed
+W15C_micro,strategy_5,m3diag_forced_mp_on,1,none_m3_activated,active_hitonly_access_called=3277,m3_activated_active_hitonly,no M3 implementation fix needed

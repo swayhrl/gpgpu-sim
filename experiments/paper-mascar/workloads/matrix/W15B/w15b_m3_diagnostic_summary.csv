@@ -1,0 +1,22 @@
+paper_id,config_id,result_status,m2_active,m3_active,m4_active,m3diag_nonowner_load_candidate,m3diag_scheduler_allow_nonowner_load,m3diag_skip_not_mp,m3diag_skip_no_owner,m3diag_skip_owner_warp,m3diag_skip_not_load,m3diag_skip_m2_blocked_before_lsu,m3diag_hitonly_probe_called,m3diag_hitonly_probe_hit,m3diag_hitonly_probe_nack,diagnosis,next_action
+spmv,m4_reexec_load,completed_explicit_pass,0,0,0,0,0,0,0,0,0,0,0,0,0,unknown,use W15C microbenchmark
+mri_q,m4_reexec_load,completed_stats_found,0,0,0,0,0,0,0,0,0,0,0,0,0,unknown,use W15C microbenchmark
+pathfinder,m4_reexec_load,completed_stats_found,0,0,0,0,0,0,0,0,0,0,0,0,0,unknown,use W15C microbenchmark
+bp_2,m4_reexec_load,completed_stats_found,1,0,1,0,0,0,0,0,0,0,0,0,0,unknown,use W15C microbenchmark
+srad_1,m4_reexec_load,completed_stats_found,1,0,1,0,0,0,0,0,0,0,0,0,0,unknown,use W15C microbenchmark
+srad_2,m4_reexec_load,completed_stats_found,1,0,1,0,0,0,0,0,0,0,0,0,0,unknown,use W15C microbenchmark
+bp_1,m4_reexec_load,completed_stats_found,1,0,1,0,0,0,0,0,0,0,0,0,0,unknown,use W15C microbenchmark
+spmv,m3diag_on,completed_explicit_pass,0,0,0,0,0,1598,0,0,0,0,0,0,0,no_mp,use forced-MP/microbenchmark to isolate
+mri_q,m3diag_on,completed_stats_found,0,0,0,0,0,534,0,0,0,0,0,0,0,no_mp,use forced-MP/microbenchmark to isolate
+pathfinder,m3diag_on,completed_stats_found,0,0,0,0,0,644,0,0,0,0,0,0,0,no_mp,use forced-MP/microbenchmark to isolate
+bp_2,m3diag_on,completed_stats_found,1,0,1,0,0,5903,1782,149,710,0,0,0,0,no_mp,use forced-MP/microbenchmark to isolate
+srad_1,m3diag_on,completed_stats_found,1,0,1,0,0,13855,514,667,12315,0,0,0,0,no_mp,use forced-MP/microbenchmark to isolate
+srad_2,m3diag_on,completed_stats_found,1,0,1,0,0,13855,514,667,12315,0,0,0,0,no_mp,use forced-MP/microbenchmark to isolate
+bp_1,m3diag_on,completed_stats_found,1,0,1,0,0,5903,1782,149,710,0,0,0,0,no_mp,use forced-MP/microbenchmark to isolate
+spmv,m3diag_forced_mp_on,completed_explicit_pass,1,0,0,0,0,62,1288,248,0,0,0,0,0,no_owner,use forced-MP/microbenchmark to isolate
+mri_q,m3diag_forced_mp_on,completed_stats_found,1,0,0,0,0,517,8,9,0,0,0,0,0,no_mp,use forced-MP/microbenchmark to isolate
+pathfinder,m3diag_forced_mp_on,completed_stats_found,1,0,0,0,0,423,216,5,1503,0,0,0,0,no_mp,use forced-MP/microbenchmark to isolate
+bp_2,m3diag_forced_mp_on,completed_stats_found,1,0,1,0,0,3832,3520,608,104740,0,0,0,0,no_mp,use forced-MP/microbenchmark to isolate
+srad_1,m3diag_forced_mp_on,completed_stats_found,1,1,1,176,124,7530,4086,2610,120032,0,52,0,52,m3_activated_active_hitonly,inspect hit/nack distribution
+srad_2,m3diag_forced_mp_on,completed_stats_found,1,1,1,176,124,7530,4086,2610,120032,0,52,0,52,m3_activated_active_hitonly,inspect hit/nack distribution
+bp_1,m3diag_forced_mp_on,completed_stats_found,1,0,1,0,0,3832,3520,608,104740,0,0,0,0,no_mp,use forced-MP/microbenchmark to isolate

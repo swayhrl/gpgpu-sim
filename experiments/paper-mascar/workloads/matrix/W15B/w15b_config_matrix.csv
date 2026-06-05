@@ -1,0 +1,4 @@
+config_id,config_path,config_role,enabled,config_notes
+m4_reexec_load,configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on,m4_reference,1,W15B reference M4 active config.
+m3diag_on,configs/hrl-repro/SM7_QV100_mascar_m3diag_on,m3_diagnostic,1,W15B normal M3 diagnostic config.
+m3diag_forced_mp_on,configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on,m3_diagnostic_forced_mp,1,W15B forced-MP diagnostic only config.

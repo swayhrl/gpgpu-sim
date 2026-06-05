@@ -488,6 +488,76 @@ struct mascar_m3_stats {
   }
 };
 
+struct mascar_m3diag_stats {
+  unsigned long long mem_inst_seen;
+  unsigned long long load_inst_seen;
+  unsigned long long mp_mode_seen;
+  unsigned long long owner_valid_seen;
+  unsigned long long nonowner_load_candidate;
+  unsigned long long scheduler_allow_nonowner_load;
+  unsigned long long scheduler_block_nonowner_mem;
+  unsigned long long lsu_l1d_access_seen;
+  unsigned long long l1d_nonowner_load_seen;
+  unsigned long long hitonly_probe_called;
+  unsigned long long hitonly_probe_hit;
+  unsigned long long hitonly_probe_nack;
+  unsigned long long active_hitonly_access_called;
+  unsigned long long active_hitonly_access_hit;
+  unsigned long long active_hitonly_access_nack;
+  unsigned long long skip_config_off;
+  unsigned long long skip_not_mp;
+  unsigned long long skip_no_owner;
+  unsigned long long skip_owner_warp;
+  unsigned long long skip_not_load;
+  unsigned long long skip_not_l1d;
+  unsigned long long skip_nonowner_hitonly_disabled;
+  unsigned long long skip_not_ready_or_scoreboard;
+  unsigned long long skip_m2_blocked_before_lsu;
+  unsigned long long trace_lines_emitted;
+
+  void clear() {
+    mem_inst_seen = load_inst_seen = mp_mode_seen = owner_valid_seen = 0;
+    nonowner_load_candidate = scheduler_allow_nonowner_load = 0;
+    scheduler_block_nonowner_mem = lsu_l1d_access_seen = 0;
+    l1d_nonowner_load_seen = hitonly_probe_called = 0;
+    hitonly_probe_hit = hitonly_probe_nack = 0;
+    active_hitonly_access_called = active_hitonly_access_hit = 0;
+    active_hitonly_access_nack = 0;
+    skip_config_off = skip_not_mp = skip_no_owner = skip_owner_warp = 0;
+    skip_not_load = skip_not_l1d = skip_nonowner_hitonly_disabled = 0;
+    skip_not_ready_or_scoreboard = skip_m2_blocked_before_lsu = 0;
+    trace_lines_emitted = 0;
+  }
+
+  void add(const mascar_m3diag_stats &rhs) {
+    mem_inst_seen += rhs.mem_inst_seen;
+    load_inst_seen += rhs.load_inst_seen;
+    mp_mode_seen += rhs.mp_mode_seen;
+    owner_valid_seen += rhs.owner_valid_seen;
+    nonowner_load_candidate += rhs.nonowner_load_candidate;
+    scheduler_allow_nonowner_load += rhs.scheduler_allow_nonowner_load;
+    scheduler_block_nonowner_mem += rhs.scheduler_block_nonowner_mem;
+    lsu_l1d_access_seen += rhs.lsu_l1d_access_seen;
+    l1d_nonowner_load_seen += rhs.l1d_nonowner_load_seen;
+    hitonly_probe_called += rhs.hitonly_probe_called;
+    hitonly_probe_hit += rhs.hitonly_probe_hit;
+    hitonly_probe_nack += rhs.hitonly_probe_nack;
+    active_hitonly_access_called += rhs.active_hitonly_access_called;
+    active_hitonly_access_hit += rhs.active_hitonly_access_hit;
+    active_hitonly_access_nack += rhs.active_hitonly_access_nack;
+    skip_config_off += rhs.skip_config_off;
+    skip_not_mp += rhs.skip_not_mp;
+    skip_no_owner += rhs.skip_no_owner;
+    skip_owner_warp += rhs.skip_owner_warp;
+    skip_not_load += rhs.skip_not_load;
+    skip_not_l1d += rhs.skip_not_l1d;
+    skip_nonowner_hitonly_disabled += rhs.skip_nonowner_hitonly_disabled;
+    skip_not_ready_or_scoreboard += rhs.skip_not_ready_or_scoreboard;
+    skip_m2_blocked_before_lsu += rhs.skip_m2_blocked_before_lsu;
+    trace_lines_emitted += rhs.trace_lines_emitted;
+  }
+};
+
 struct mascar_m4_stats {
   unsigned long long would_enqueue_attempt;
   unsigned long long would_enqueue_success;
@@ -2083,6 +2153,8 @@ class shader_core_config : public core_config {
   int gpgpu_mascar_enable_nonowner_hit_only_probe; // M3A: passive non-owner L1 hit-only probe
   int gpgpu_mascar_enable_nonowner_hit_only;       // M3B: active non-owner hit-only/NACK
   int gpgpu_mascar_nonowner_hit_only_loads_only;   // M3: only non-owner loads use hit-only path
+  int gpgpu_mascar_enable_m3_diagnostic;           // W15A: default-off M3 diagnostic counters
+  int gpgpu_mascar_m3_diag_verbose;                // W15A: bounded trace
   int gpgpu_mascar_enable_reexec_queue_probe;      // M4A: passive re-exec enqueue probe
   int gpgpu_mascar_enable_reexec_queue;            // M4B: active load re-exec queue
   int gpgpu_mascar_reexec_loads_only;              // M4: only load re-exec is supported
@@ -2094,6 +2166,7 @@ class shader_core_config : public core_config {
   unsigned gpgpu_mascar_owner_max_hold_cycles;       // M2: owner hold guard
   unsigned gpgpu_mascar_owner_no_progress_limit;     // M2: owner progress guard
   unsigned gpgpu_mascar_nonowner_nack_release_threshold; // M3: owner release guard
+  unsigned gpgpu_mascar_m3_diag_max_trace;               // W15A: max trace lines
   unsigned gpgpu_mascar_reexec_queue_size;           // M4: max queued mem_fetch entries
   unsigned gpgpu_mascar_reexec_issue_per_cycle;      // M4: retry attempts per cycle
   unsigned gpgpu_mascar_reexec_nack_rotate_limit;    // M4: repeated NACK guard
@@ -2708,7 +2781,20 @@ class shader_core_ctx : public core_t {
            m_config->gpgpu_mascar_enable_mp_owner_scheduling &&
            m_config->gpgpu_mascar_enable_nonowner_hit_only;
   }
+  bool mascar_m3diag_enabled() const {
+    return m_config->gpgpu_enable_mascar &&
+           m_config->gpgpu_mascar_enable_m3_diagnostic;
+  }
   bool mascar_m3_inst_is_load_candidate(const warp_inst_t *pI) const;
+  void mascar_m3diag_trace(unsigned warp_id, const char *stage,
+                           const char *condition,
+                           enum cache_request_status status);
+  void mascar_m3diag_note_l1d_access(unsigned warp_id,
+                                     const warp_inst_t *pI);
+  void mascar_m3diag_note_probe_called(unsigned warp_id,
+                                       enum cache_request_status status);
+  void mascar_m3diag_note_active_hitonly_access(
+      unsigned warp_id, enum cache_request_status status);
   bool mascar_m3_should_probe_nonowner_hit_only(unsigned warp_id,
                                                 const warp_inst_t *pI);
   void mascar_m3_note_probe_result(unsigned warp_id,
@@ -2720,6 +2806,7 @@ class shader_core_ctx : public core_t {
   void mascar_m3_note_hitonly_access_result(unsigned warp_id,
                                             enum cache_request_status status);
   void get_mascar_m3_stats(mascar_m3_stats &stats) const;
+  void get_mascar_m3diag_stats(mascar_m3diag_stats &stats) const;
   bool mascar_m4_try_owner_takeover(unsigned warp_id);
   void get_mascar_m4_stats(mascar_m4_stats &stats) const {
     m_ldst_unit->get_mascar_m4_stats(stats);
@@ -3283,6 +3370,7 @@ class shader_core_ctx : public core_t {
   std::vector<unsigned char> m_mascar_m2_wst_stall_bit;
   mascar_m2_stats m_mascar_m2_stats;
   mascar_m3_stats m_mascar_m3_stats;
+  mascar_m3diag_stats m_mascar_m3diag_stats;
   std::vector<unsigned> m_mascar_m3_nonowner_nack_streak;
 
   enum mascar_m2_release_reason {
@@ -3421,6 +3509,7 @@ class simt_core_cluster {
       unsigned long long &missq_used_sum, unsigned long long &missq_used_max) const;
   void get_mascar_m2_stats(mascar_m2_stats &stats) const;
   void get_mascar_m3_stats(mascar_m3_stats &stats) const;
+  void get_mascar_m3diag_stats(mascar_m3diag_stats &stats) const;
   void get_mascar_m4_stats(mascar_m4_stats &stats) const;
 
   void get_icnt_stats(long &n_simt_to_mem, long &n_mem_to_simt) const;

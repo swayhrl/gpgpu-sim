@@ -1,0 +1,8 @@
+paper_id,paper_name,paper_type,m3diag_forced_mp_on
+spmv,spmv,M,completed_explicit_pass
+mri_q,mri-q,C,completed_stats_found
+pathfinder,pathfinder,C,completed_stats_found
+bp_2,BP-2,M,completed_stats_found
+srad_1,srad-1,M,completed_stats_found
+srad_2,srad-2,M,completed_stats_found
+bp_1,BP-1,C,completed_stats_found

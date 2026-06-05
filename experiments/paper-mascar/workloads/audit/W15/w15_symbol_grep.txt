@@ -1,0 +1,350 @@
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:47:- int gpgpu_mascar_enable_m3_diagnostic
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:52:- gpgpu_mascar_enable_m3_diagnostic = 0
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:57:- diagnostic enabled only when gpgpu_enable_mascar and gpgpu_mascar_enable_m3_diagnostic are both nonzero.
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:63:Print all counters as paper_mascar_m3diag_*.
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:67:- paper_mascar_m3diag_enabled
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:68:- paper_mascar_m3diag_mem_inst_seen
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:69:- paper_mascar_m3diag_load_inst_seen
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:70:- paper_mascar_m3diag_mp_mode_seen
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:71:- paper_mascar_m3diag_owner_valid_seen
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:72:- paper_mascar_m3diag_nonowner_load_candidate
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:73:- paper_mascar_m3diag_scheduler_allow_nonowner_load
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:74:- paper_mascar_m3diag_scheduler_block_nonowner_mem
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:75:- paper_mascar_m3diag_lsu_l1d_access_seen
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:76:- paper_mascar_m3diag_l1d_nonowner_load_seen
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:77:- paper_mascar_m3diag_hitonly_probe_called
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:78:- paper_mascar_m3diag_hitonly_probe_hit
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:79:- paper_mascar_m3diag_hitonly_probe_nack
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:80:- paper_mascar_m3diag_active_hitonly_access_called
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:81:- paper_mascar_m3diag_active_hitonly_access_hit
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:82:- paper_mascar_m3diag_active_hitonly_access_nack
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:86:- paper_mascar_m3diag_skip_config_off
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:87:- paper_mascar_m3diag_skip_not_mp
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:88:- paper_mascar_m3diag_skip_no_owner
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:89:- paper_mascar_m3diag_skip_owner_warp
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:90:- paper_mascar_m3diag_skip_not_load
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:91:- paper_mascar_m3diag_skip_not_l1d
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:92:- paper_mascar_m3diag_skip_nonowner_hitonly_disabled
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:93:- paper_mascar_m3diag_skip_not_ready_or_scoreboard
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:94:- paper_mascar_m3diag_skip_m2_blocked_before_lsu
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:97:- paper_mascar_m3diag_trace_lines_emitted
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:117:- paper_mascar_m3diag_skip_m2_blocked_before_lsu
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:142:paper_mascar_m3diag_trace cycle=... core=... warp=... stage=scheduler condition=nonowner_load_candidate mp=1 owner_valid=1 owner=...
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:143:paper_mascar_m3diag_trace cycle=... core=... warp=... stage=l1d probe=called status=HIT/NACK
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:151:- configs/hrl-repro/SM7_QV100_mascar_m3diag_on/
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:164:- -gpgpu_mascar_enable_m3_diagnostic 1
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:172:- configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on/
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:182:Update common collector to parse paper_mascar_m3diag_* counters.
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:210:- grep gpgpu_mascar_enable_m3_diagnostic
+docs/papers/mascar_w15a_m3_static_diagnostic_guidance.md:211:- grep paper_mascar_m3diag_
+docs/papers/mascar_w15_m3_diagnosis_report.md:17:W15A added `gpgpu_mascar_enable_m3_diagnostic`, `gpgpu_mascar_m3_diag_verbose`, `gpgpu_mascar_m3_diag_max_trace`, `paper_mascar_m3diag_*` counters, scheduler skip reasons, LSU/L1D visibility counters, two diagnostic configs, and collector support.
+docs/papers/mascar_w15d_m3_diagnosis_report_guidance.md:111:- grep paper_mascar_m3diag_
+docs/papers/mascar_w15a_m3_static_diagnostic.md:13:All new counters are printed as `paper_mascar_m3diag_*`. They record scheduler visibility, skip reasons, LSU/L1D visibility, passive hit-only probe calls, active hit-only access calls, and bounded trace-line count.
+docs/papers/mascar_w15a_m3_static_diagnostic.md:27:- `configs/hrl-repro/SM7_QV100_mascar_m3diag_on`
+docs/papers/mascar_w15a_m3_static_diagnostic.md:28:- `configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on`
+docs/papers/mascar_w15a_m3_static_diagnostic.md:46:The new behavior is gated by `gpgpu_enable_mascar && gpgpu_mascar_enable_m3_diagnostic`. Default values keep diagnostics and trace output disabled. Existing M1-M4 counters and active semantics are preserved.
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:38:    "paper_mascar_m3diag_enabled": re.compile(r"\bpaper_mascar_m3diag_enabled\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:39:    "paper_mascar_m3diag_mem_inst_seen": re.compile(r"\bpaper_mascar_m3diag_mem_inst_seen\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:40:    "paper_mascar_m3diag_load_inst_seen": re.compile(r"\bpaper_mascar_m3diag_load_inst_seen\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:41:    "paper_mascar_m3diag_mp_mode_seen": re.compile(r"\bpaper_mascar_m3diag_mp_mode_seen\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:42:    "paper_mascar_m3diag_owner_valid_seen": re.compile(r"\bpaper_mascar_m3diag_owner_valid_seen\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:43:    "paper_mascar_m3diag_nonowner_load_candidate": re.compile(r"\bpaper_mascar_m3diag_nonowner_load_candidate\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:44:    "paper_mascar_m3diag_scheduler_allow_nonowner_load": re.compile(r"\bpaper_mascar_m3diag_scheduler_allow_nonowner_load\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:45:    "paper_mascar_m3diag_scheduler_block_nonowner_mem": re.compile(r"\bpaper_mascar_m3diag_scheduler_block_nonowner_mem\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:46:    "paper_mascar_m3diag_lsu_l1d_access_seen": re.compile(r"\bpaper_mascar_m3diag_lsu_l1d_access_seen\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:47:    "paper_mascar_m3diag_l1d_nonowner_load_seen": re.compile(r"\bpaper_mascar_m3diag_l1d_nonowner_load_seen\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:48:    "paper_mascar_m3diag_hitonly_probe_called": re.compile(r"\bpaper_mascar_m3diag_hitonly_probe_called\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:49:    "paper_mascar_m3diag_hitonly_probe_hit": re.compile(r"\bpaper_mascar_m3diag_hitonly_probe_hit\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:50:    "paper_mascar_m3diag_hitonly_probe_nack": re.compile(r"\bpaper_mascar_m3diag_hitonly_probe_nack\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:51:    "paper_mascar_m3diag_active_hitonly_access_called": re.compile(r"\bpaper_mascar_m3diag_active_hitonly_access_called\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:52:    "paper_mascar_m3diag_active_hitonly_access_hit": re.compile(r"\bpaper_mascar_m3diag_active_hitonly_access_hit\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:53:    "paper_mascar_m3diag_active_hitonly_access_nack": re.compile(r"\bpaper_mascar_m3diag_active_hitonly_access_nack\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:54:    "paper_mascar_m3diag_skip_config_off": re.compile(r"\bpaper_mascar_m3diag_skip_config_off\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:55:    "paper_mascar_m3diag_skip_not_mp": re.compile(r"\bpaper_mascar_m3diag_skip_not_mp\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:56:    "paper_mascar_m3diag_skip_no_owner": re.compile(r"\bpaper_mascar_m3diag_skip_no_owner\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:57:    "paper_mascar_m3diag_skip_owner_warp": re.compile(r"\bpaper_mascar_m3diag_skip_owner_warp\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:58:    "paper_mascar_m3diag_skip_not_load": re.compile(r"\bpaper_mascar_m3diag_skip_not_load\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:59:    "paper_mascar_m3diag_skip_not_l1d": re.compile(r"\bpaper_mascar_m3diag_skip_not_l1d\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:60:    "paper_mascar_m3diag_skip_nonowner_hitonly_disabled": re.compile(r"\bpaper_mascar_m3diag_skip_nonowner_hitonly_disabled\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:61:    "paper_mascar_m3diag_skip_not_ready_or_scoreboard": re.compile(r"\bpaper_mascar_m3diag_skip_not_ready_or_scoreboard\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:62:    "paper_mascar_m3diag_skip_m2_blocked_before_lsu": re.compile(r"\bpaper_mascar_m3diag_skip_m2_blocked_before_lsu\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:63:    "paper_mascar_m3diag_trace_lines_emitted": re.compile(r"\bpaper_mascar_m3diag_trace_lines_emitted\s*=\s*([0-9.]+)"),
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:120:    "paper_mascar_m3diag_enabled",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:121:    "paper_mascar_m3diag_mem_inst_seen",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:122:    "paper_mascar_m3diag_load_inst_seen",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:123:    "paper_mascar_m3diag_mp_mode_seen",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:124:    "paper_mascar_m3diag_owner_valid_seen",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:125:    "paper_mascar_m3diag_nonowner_load_candidate",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:126:    "paper_mascar_m3diag_scheduler_allow_nonowner_load",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:127:    "paper_mascar_m3diag_scheduler_block_nonowner_mem",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:128:    "paper_mascar_m3diag_lsu_l1d_access_seen",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:129:    "paper_mascar_m3diag_l1d_nonowner_load_seen",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:130:    "paper_mascar_m3diag_hitonly_probe_called",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:131:    "paper_mascar_m3diag_hitonly_probe_hit",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:132:    "paper_mascar_m3diag_hitonly_probe_nack",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:133:    "paper_mascar_m3diag_active_hitonly_access_called",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:134:    "paper_mascar_m3diag_active_hitonly_access_hit",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:135:    "paper_mascar_m3diag_active_hitonly_access_nack",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:136:    "paper_mascar_m3diag_skip_config_off",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:137:    "paper_mascar_m3diag_skip_not_mp",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:138:    "paper_mascar_m3diag_skip_no_owner",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:139:    "paper_mascar_m3diag_skip_owner_warp",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:140:    "paper_mascar_m3diag_skip_not_load",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:141:    "paper_mascar_m3diag_skip_not_l1d",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:142:    "paper_mascar_m3diag_skip_nonowner_hitonly_disabled",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:143:    "paper_mascar_m3diag_skip_not_ready_or_scoreboard",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:144:    "paper_mascar_m3diag_skip_m2_blocked_before_lsu",
+experiments/common/gpgpusim_matrix/collect_gpgpusim_stats.py:145:    "paper_mascar_m3diag_trace_lines_emitted",
+configs/hrl-repro/SM7_QV100_mascar_m3diag_on/README.md:1:# SM7_QV100_mascar_m3diag_on
+experiments/paper-mascar/workloads/audit/W15/w15_postcheck.md:10:- configs_created: SM7_QV100_mascar_m3diag_on, SM7_QV100_mascar_m3diag_forced_mp_on
+experiments/paper-mascar/workloads/audit/W15/w15_postcheck.md:16:- mechanism_code_changed: yes, W15A diagnostic-only counters/traces gated by gpgpu_mascar_enable_m3_diagnostic
+experiments/paper-mascar/workloads/audit/W15/w15_postcheck.md:29:?? configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on/
+experiments/paper-mascar/workloads/audit/W15/w15_postcheck.md:30:?? configs/hrl-repro/SM7_QV100_mascar_m3diag_on/
+configs/hrl-repro/SM7_QV100_mascar_m3diag_on/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/audit/W15/w15_diff_name_status.txt:5:??	configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on/README.md
+experiments/paper-mascar/workloads/audit/W15/w15_diff_name_status.txt:6:??	configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on/config_volta_islip.icnt
+experiments/paper-mascar/workloads/audit/W15/w15_diff_name_status.txt:7:??	configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on/gpgpusim.config
+experiments/paper-mascar/workloads/audit/W15/w15_diff_name_status.txt:8:??	configs/hrl-repro/SM7_QV100_mascar_m3diag_on/README.md
+experiments/paper-mascar/workloads/audit/W15/w15_diff_name_status.txt:9:??	configs/hrl-repro/SM7_QV100_mascar_m3diag_on/config_volta_islip.icnt
+experiments/paper-mascar/workloads/audit/W15/w15_diff_name_status.txt:10:??	configs/hrl-repro/SM7_QV100_mascar_m3diag_on/gpgpusim.config
+experiments/paper-mascar/workloads/matrix/W15B/w15b_config_matrix.csv:3:m3diag_on,configs/hrl-repro/SM7_QV100_mascar_m3diag_on,m3_diagnostic,1,W15B normal M3 diagnostic config.
+experiments/paper-mascar/workloads/matrix/W15B/w15b_config_matrix.csv:4:m3diag_forced_mp_on,configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on,m3_diagnostic_forced_mp,1,W15B forced-MP diagnostic only config.
+configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on/README.md:1:# SM7_QV100_mascar_m3diag_forced_mp_on
+configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/matrix/W15C/w15c_micro_config_matrix.csv:2:m3diag_on,configs/hrl-repro/SM7_QV100_mascar_m3diag_on,m3_diagnostic,1,W15C normal diagnostic config
+experiments/paper-mascar/workloads/matrix/W15C/w15c_micro_config_matrix.csv:3:m3diag_forced_mp_on,configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on,m3_diagnostic_forced_mp,1,W15C forced-MP diagnostic config
+experiments/paper-mascar/workloads/matrix/W15C/w15c_m3_micro_summary.csv:1:strategy_id,config_id,result_status,exit_code,timeout,elapsed_sec,gpu_tot_sim_cycle,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3diag_nonowner_load_candidate,paper_mascar_m3diag_scheduler_allow_nonowner_load,paper_mascar_m3diag_skip_not_mp,paper_mascar_m3diag_skip_no_owner,paper_mascar_m3diag_skip_owner_warp,paper_mascar_m3diag_skip_not_load,paper_mascar_m3diag_skip_m2_blocked_before_lsu,paper_mascar_m3diag_hitonly_probe_called,paper_mascar_m3diag_hitonly_probe_hit,paper_mascar_m3diag_hitonly_probe_nack,paper_mascar_m3diag_active_hitonly_access_called,paper_mascar_m3diag_active_hitonly_access_hit,paper_mascar_m3diag_active_hitonly_access_nack,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,diagnosis
+experiments/paper-mascar/workloads/matrix/W15C/run_w15c_micro_strategies.sh:23:run_one 1 m3diag_on configs/hrl-repro/SM7_QV100_mascar_m3diag_on
+experiments/paper-mascar/workloads/matrix/W15C/run_w15c_micro_strategies.sh:24:run_one 2 m3diag_forced_mp_on configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on
+experiments/paper-mascar/workloads/matrix/W15C/run_w15c_micro_strategies.sh:25:run_one 3 m3diag_forced_mp_on configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on
+experiments/paper-mascar/workloads/matrix/W15C/run_w15c_micro_strategies.sh:26:run_one 4 m3diag_forced_mp_on configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on
+experiments/paper-mascar/workloads/matrix/W15C/run_w15c_micro_strategies.sh:27:run_one 5 m3diag_forced_mp_on configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on
+src/gpgpu-sim/shader.cc:541:  m_mascar_m3diag_stats.clear();
+src/gpgpu-sim/shader.cc:2235:  m_core->mascar_m3diag_note_probe_called(warp_id, status);
+src/gpgpu-sim/shader.cc:2259:    m_core->mascar_m3diag_note_active_hitonly_access(inst.warp_id(), status);
+src/gpgpu-sim/shader.cc:2270:  m_core->mascar_m3diag_note_active_hitonly_access(inst.warp_id(),
+src/gpgpu-sim/shader.cc:2499:    m_core->mascar_m3diag_note_l1d_access(inst.warp_id(), &inst);
+src/gpgpu-sim/shader.cc:2560:static const char *mascar_m3diag_status_name(enum cache_request_status status) {
+src/gpgpu-sim/shader.cc:2676:  if (mascar_m3diag_enabled()) {
+src/gpgpu-sim/shader.cc:2677:    if (is_mem) m_mascar_m3diag_stats.mem_inst_seen++;
+src/gpgpu-sim/shader.cc:2679:      m_mascar_m3diag_stats.load_inst_seen++;
+src/gpgpu-sim/shader.cc:2680:    if (m_mascar_m2_mp_mode) m_mascar_m3diag_stats.mp_mode_seen++;
+src/gpgpu-sim/shader.cc:2681:    if (m_mascar_m2_owner_valid) m_mascar_m3diag_stats.owner_valid_seen++;
+src/gpgpu-sim/shader.cc:2683:      m_mascar_m3diag_stats.skip_not_ready_or_scoreboard++;
+src/gpgpu-sim/shader.cc:2684:      mascar_m3diag_trace(warp_id, "scheduler", "scoreboard_blocked",
+src/gpgpu-sim/shader.cc:2758:    if (mascar_m3diag_enabled()) {
+src/gpgpu-sim/shader.cc:2760:        m_mascar_m3diag_stats.skip_config_off++;
+src/gpgpu-sim/shader.cc:2762:        m_mascar_m3diag_stats.skip_not_mp++;
+src/gpgpu-sim/shader.cc:2764:        m_mascar_m3diag_stats.skip_not_load++;
+src/gpgpu-sim/shader.cc:2769:    if (mascar_m3diag_enabled()) m_mascar_m3diag_stats.skip_no_owner++;
+src/gpgpu-sim/shader.cc:2775:    if (mascar_m3diag_enabled()) m_mascar_m3diag_stats.skip_owner_warp++;
+src/gpgpu-sim/shader.cc:2779:    if (mascar_m3diag_enabled())
+src/gpgpu-sim/shader.cc:2780:      m_mascar_m3diag_stats.scheduler_allow_nonowner_load++;
+src/gpgpu-sim/shader.cc:2783:  if (mascar_m3diag_enabled()) {
+src/gpgpu-sim/shader.cc:2784:    m_mascar_m3diag_stats.scheduler_block_nonowner_mem++;
+src/gpgpu-sim/shader.cc:2786:      m_mascar_m3diag_stats.skip_m2_blocked_before_lsu++;
+src/gpgpu-sim/shader.cc:2787:    mascar_m3diag_trace(warp_id, "scheduler", "block_nonowner_mem",
+src/gpgpu-sim/shader.cc:2814:void shader_core_ctx::mascar_m3diag_trace(unsigned warp_id, const char *stage,
+src/gpgpu-sim/shader.cc:2817:  if (!mascar_m3diag_enabled() || !m_config->gpgpu_mascar_m3_diag_verbose)
+src/gpgpu-sim/shader.cc:2819:  if (m_mascar_m3diag_stats.trace_lines_emitted >=
+src/gpgpu-sim/shader.cc:2823:          "paper_mascar_m3diag_trace cycle=%llu core=%u warp=%u stage=%s "
+src/gpgpu-sim/shader.cc:2827:          m_mascar_m2_owner_warp, mascar_m3diag_status_name(status));
+src/gpgpu-sim/shader.cc:2828:  m_mascar_m3diag_stats.trace_lines_emitted++;
+src/gpgpu-sim/shader.cc:2831:void shader_core_ctx::mascar_m3diag_note_l1d_access(
+src/gpgpu-sim/shader.cc:2833:  if (!mascar_m3diag_enabled()) return;
+src/gpgpu-sim/shader.cc:2834:  m_mascar_m3diag_stats.lsu_l1d_access_seen++;
+src/gpgpu-sim/shader.cc:2837:    m_mascar_m3diag_stats.l1d_nonowner_load_seen++;
+src/gpgpu-sim/shader.cc:2838:    mascar_m3diag_trace(warp_id, "l1d", "nonowner_load_seen", HIT);
+src/gpgpu-sim/shader.cc:2842:void shader_core_ctx::mascar_m3diag_note_probe_called(
+src/gpgpu-sim/shader.cc:2844:  if (!mascar_m3diag_enabled()) return;
+src/gpgpu-sim/shader.cc:2845:  m_mascar_m3diag_stats.hitonly_probe_called++;
+src/gpgpu-sim/shader.cc:2847:    m_mascar_m3diag_stats.hitonly_probe_hit++;
+src/gpgpu-sim/shader.cc:2849:    m_mascar_m3diag_stats.hitonly_probe_nack++;
+src/gpgpu-sim/shader.cc:2850:  mascar_m3diag_trace(warp_id, "l1d_probe", "hitonly_probe_called", status);
+src/gpgpu-sim/shader.cc:2853:void shader_core_ctx::mascar_m3diag_note_active_hitonly_access(
+src/gpgpu-sim/shader.cc:2855:  if (!mascar_m3diag_enabled()) return;
+src/gpgpu-sim/shader.cc:2856:  m_mascar_m3diag_stats.active_hitonly_access_called++;
+src/gpgpu-sim/shader.cc:2858:    m_mascar_m3diag_stats.active_hitonly_access_hit++;
+src/gpgpu-sim/shader.cc:2860:    m_mascar_m3diag_stats.active_hitonly_access_nack++;
+src/gpgpu-sim/shader.cc:2861:  mascar_m3diag_trace(warp_id, "l1d_access", "active_hitonly_access", status);
+src/gpgpu-sim/shader.cc:2868:    if (mascar_m3diag_enabled()) {
+src/gpgpu-sim/shader.cc:2869:      m_mascar_m3diag_stats.skip_config_off++;
+src/gpgpu-sim/shader.cc:2870:      m_mascar_m3diag_stats.skip_nonowner_hitonly_disabled++;
+src/gpgpu-sim/shader.cc:2876:    if (mascar_m3diag_enabled()) m_mascar_m3diag_stats.skip_not_mp++;
+src/gpgpu-sim/shader.cc:2881:    if (mascar_m3diag_enabled()) m_mascar_m3diag_stats.skip_no_owner++;
+src/gpgpu-sim/shader.cc:2886:    if (mascar_m3diag_enabled()) m_mascar_m3diag_stats.skip_owner_warp++;
+src/gpgpu-sim/shader.cc:2891:    if (mascar_m3diag_enabled()) m_mascar_m3diag_stats.skip_not_load++;
+src/gpgpu-sim/shader.cc:2894:  if (mascar_m3diag_enabled()) {
+src/gpgpu-sim/shader.cc:2895:    m_mascar_m3diag_stats.nonowner_load_candidate++;
+src/gpgpu-sim/shader.cc:2896:    mascar_m3diag_trace(warp_id, "scheduler", "nonowner_load_candidate", HIT);
+src/gpgpu-sim/shader.cc:2924:    if (mascar_m3diag_enabled()) {
+src/gpgpu-sim/shader.cc:2926:        m_mascar_m3diag_stats.skip_config_off++;
+src/gpgpu-sim/shader.cc:2927:        m_mascar_m3diag_stats.skip_nonowner_hitonly_disabled++;
+src/gpgpu-sim/shader.cc:2929:        m_mascar_m3diag_stats.skip_not_mp++;
+src/gpgpu-sim/shader.cc:2931:        m_mascar_m3diag_stats.skip_no_owner++;
+src/gpgpu-sim/shader.cc:2933:        m_mascar_m3diag_stats.skip_owner_warp++;
+src/gpgpu-sim/shader.cc:2940:    if (mascar_m3diag_enabled())
+src/gpgpu-sim/shader.cc:2941:      m_mascar_m3diag_stats.nonowner_load_candidate++;
+src/gpgpu-sim/shader.cc:2946:  if (mascar_m3diag_enabled()) m_mascar_m3diag_stats.skip_not_load++;
+src/gpgpu-sim/shader.cc:2953:    if (mascar_m3diag_enabled()) {
+src/gpgpu-sim/shader.cc:2954:      m_mascar_m3diag_stats.skip_config_off++;
+src/gpgpu-sim/shader.cc:2955:      m_mascar_m3diag_stats.skip_nonowner_hitonly_disabled++;
+src/gpgpu-sim/shader.cc:2961:    if (mascar_m3diag_enabled()) m_mascar_m3diag_stats.skip_not_mp++;
+src/gpgpu-sim/shader.cc:2966:    if (mascar_m3diag_enabled()) {
+src/gpgpu-sim/shader.cc:2968:        m_mascar_m3diag_stats.skip_no_owner++;
+src/gpgpu-sim/shader.cc:2970:        m_mascar_m3diag_stats.skip_owner_warp++;
+src/gpgpu-sim/shader.cc:2975:    if (mascar_m3diag_enabled()) m_mascar_m3diag_stats.skip_not_load++;
+src/gpgpu-sim/shader.cc:3021:void shader_core_ctx::get_mascar_m3diag_stats(
+src/gpgpu-sim/shader.cc:3022:    mascar_m3diag_stats &stats) const {
+src/gpgpu-sim/shader.cc:3023:  stats.add(m_mascar_m3diag_stats);
+src/gpgpu-sim/shader.cc:3294:    m_core->mascar_m3diag_note_l1d_access(inst.warp_id(), &inst);
+src/gpgpu-sim/shader.cc:3320:      m_core->mascar_m3diag_note_l1d_access(mf_next->get_inst().warp_id(),
+src/gpgpu-sim/shader.cc:6326:void simt_core_cluster::get_mascar_m3diag_stats(
+src/gpgpu-sim/shader.cc:6327:    mascar_m3diag_stats &stats) const {
+src/gpgpu-sim/shader.cc:6329:    m_core[i]->get_mascar_m3diag_stats(stats);
+src/gpgpu-sim/gpu-sim.cc:809:  option_parser_register(opp, "-gpgpu_mascar_enable_m3_diagnostic",
+src/gpgpu-sim/gpu-sim.cc:810:                         OPT_INT32, &gpgpu_mascar_enable_m3_diagnostic,
+src/gpgpu-sim/gpu-sim.cc:2078:  fprintf(stdout, "paper_mascar_m3diag_enabled = %d\n",
+src/gpgpu-sim/gpu-sim.cc:2080:              m_shader_config->gpgpu_mascar_enable_m3_diagnostic);
+src/gpgpu-sim/gpu-sim.cc:2082:    mascar_m3diag_stats d;
+src/gpgpu-sim/gpu-sim.cc:2085:      m_cluster[i]->get_mascar_m3diag_stats(d);
+src/gpgpu-sim/gpu-sim.cc:2086:    fprintf(stdout, "paper_mascar_m3diag_mem_inst_seen = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2088:    fprintf(stdout, "paper_mascar_m3diag_load_inst_seen = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2090:    fprintf(stdout, "paper_mascar_m3diag_mp_mode_seen = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2092:    fprintf(stdout, "paper_mascar_m3diag_owner_valid_seen = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2094:    fprintf(stdout, "paper_mascar_m3diag_nonowner_load_candidate = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2096:    fprintf(stdout, "paper_mascar_m3diag_scheduler_allow_nonowner_load = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2098:    fprintf(stdout, "paper_mascar_m3diag_scheduler_block_nonowner_mem = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2100:    fprintf(stdout, "paper_mascar_m3diag_lsu_l1d_access_seen = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2102:    fprintf(stdout, "paper_mascar_m3diag_l1d_nonowner_load_seen = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2104:    fprintf(stdout, "paper_mascar_m3diag_hitonly_probe_called = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2106:    fprintf(stdout, "paper_mascar_m3diag_hitonly_probe_hit = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2108:    fprintf(stdout, "paper_mascar_m3diag_hitonly_probe_nack = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2110:    fprintf(stdout, "paper_mascar_m3diag_active_hitonly_access_called = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2112:    fprintf(stdout, "paper_mascar_m3diag_active_hitonly_access_hit = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2114:    fprintf(stdout, "paper_mascar_m3diag_active_hitonly_access_nack = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2116:    fprintf(stdout, "paper_mascar_m3diag_skip_config_off = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2118:    fprintf(stdout, "paper_mascar_m3diag_skip_not_mp = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2120:    fprintf(stdout, "paper_mascar_m3diag_skip_no_owner = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2122:    fprintf(stdout, "paper_mascar_m3diag_skip_owner_warp = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2124:    fprintf(stdout, "paper_mascar_m3diag_skip_not_load = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2126:    fprintf(stdout, "paper_mascar_m3diag_skip_not_l1d = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2128:    fprintf(stdout, "paper_mascar_m3diag_skip_nonowner_hitonly_disabled = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2130:    fprintf(stdout, "paper_mascar_m3diag_skip_not_ready_or_scoreboard = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2132:    fprintf(stdout, "paper_mascar_m3diag_skip_m2_blocked_before_lsu = %llu\n",
+src/gpgpu-sim/gpu-sim.cc:2134:    fprintf(stdout, "paper_mascar_m3diag_trace_lines_emitted = %llu\n",
+src/gpgpu-sim/shader.h:491:struct mascar_m3diag_stats {
+src/gpgpu-sim/shader.h:532:  void add(const mascar_m3diag_stats &rhs) {
+src/gpgpu-sim/shader.h:2156:  int gpgpu_mascar_enable_m3_diagnostic;           // W15A: default-off M3 diagnostic counters
+src/gpgpu-sim/shader.h:2784:  bool mascar_m3diag_enabled() const {
+src/gpgpu-sim/shader.h:2786:           m_config->gpgpu_mascar_enable_m3_diagnostic;
+src/gpgpu-sim/shader.h:2789:  void mascar_m3diag_trace(unsigned warp_id, const char *stage,
+src/gpgpu-sim/shader.h:2792:  void mascar_m3diag_note_l1d_access(unsigned warp_id,
+src/gpgpu-sim/shader.h:2794:  void mascar_m3diag_note_probe_called(unsigned warp_id,
+src/gpgpu-sim/shader.h:2796:  void mascar_m3diag_note_active_hitonly_access(
+src/gpgpu-sim/shader.h:2809:  void get_mascar_m3diag_stats(mascar_m3diag_stats &stats) const;
+src/gpgpu-sim/shader.h:3373:  mascar_m3diag_stats m_mascar_m3diag_stats;
+src/gpgpu-sim/shader.h:3512:  void get_mascar_m3diag_stats(mascar_m3diag_stats &stats) const;
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/run_manifest.csv:9:"m3diag_on__spmv","m3diag_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on","spmv","spmv","M","experiments/paper-mascar/workloads/wrappers/run_spmv.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/spmv","900","0","0","completed_exit0","2026-06-05T10:09:14+08:00","2026-06-05T10:09:14+08:00","0","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/run_manifest.csv:10:"m3diag_on__mri_q","m3diag_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on","mri_q","mri-q","C","experiments/paper-mascar/workloads/wrappers/run_mri_q.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/mri_q","900","0","0","completed_exit0","2026-06-05T10:09:14+08:00","2026-06-05T10:09:14+08:00","0","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/run_manifest.csv:11:"m3diag_on__pathfinder","m3diag_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on","pathfinder","pathfinder","C","experiments/paper-mascar/workloads/wrappers/run_pathfinder.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/pathfinder","900","0","0","completed_exit0","2026-06-05T10:09:14+08:00","2026-06-05T10:09:14+08:00","0","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/run_manifest.csv:12:"m3diag_on__bp_2","m3diag_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on","bp_2","BP-2","M","experiments/paper-mascar/workloads/wrappers/run_bp_2.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/bp_2","900","0","0","completed_exit0","2026-06-05T10:09:14+08:00","2026-06-05T10:09:14+08:00","0","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/run_manifest.csv:13:"m3diag_on__srad_1","m3diag_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on","srad_1","srad-1","M","experiments/paper-mascar/workloads/wrappers/run_srad_1.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/srad_1","900","0","0","completed_exit0","2026-06-05T10:09:14+08:00","2026-06-05T10:09:14+08:00","0","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/run_manifest.csv:14:"m3diag_on__srad_2","m3diag_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on","srad_2","srad-2","M","experiments/paper-mascar/workloads/wrappers/run_srad_2.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/srad_2","900","0","0","completed_exit0","2026-06-05T10:09:14+08:00","2026-06-05T10:09:14+08:00","0","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/run_manifest.csv:15:"m3diag_on__bp_1","m3diag_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on","bp_1","BP-1","C","experiments/paper-mascar/workloads/wrappers/run_bp_1.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/bp_1","900","0","0","completed_exit0","2026-06-05T10:09:14+08:00","2026-06-05T10:09:14+08:00","0","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/run_manifest.csv:16:"m3diag_forced_mp_on__spmv","m3diag_forced_mp_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on","spmv","spmv","M","experiments/paper-mascar/workloads/wrappers/run_spmv.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/spmv","900","0","0","completed_exit0","2026-06-05T10:09:14+08:00","2026-06-05T10:09:15+08:00","1","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/run_manifest.csv:17:"m3diag_forced_mp_on__mri_q","m3diag_forced_mp_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on","mri_q","mri-q","C","experiments/paper-mascar/workloads/wrappers/run_mri_q.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/mri_q","900","0","0","completed_exit0","2026-06-05T10:09:15+08:00","2026-06-05T10:09:15+08:00","0","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/run_manifest.csv:18:"m3diag_forced_mp_on__pathfinder","m3diag_forced_mp_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on","pathfinder","pathfinder","C","experiments/paper-mascar/workloads/wrappers/run_pathfinder.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/pathfinder","900","0","0","completed_exit0","2026-06-05T10:09:15+08:00","2026-06-05T10:09:15+08:00","0","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/run_manifest.csv:19:"m3diag_forced_mp_on__bp_2","m3diag_forced_mp_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on","bp_2","BP-2","M","experiments/paper-mascar/workloads/wrappers/run_bp_2.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/bp_2","900","0","0","completed_exit0","2026-06-05T10:09:15+08:00","2026-06-05T10:09:15+08:00","0","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/run_manifest.csv:20:"m3diag_forced_mp_on__srad_1","m3diag_forced_mp_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on","srad_1","srad-1","M","experiments/paper-mascar/workloads/wrappers/run_srad_1.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/srad_1","900","0","0","completed_exit0","2026-06-05T10:09:15+08:00","2026-06-05T10:09:15+08:00","0","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/run_manifest.csv:21:"m3diag_forced_mp_on__srad_2","m3diag_forced_mp_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on","srad_2","srad-2","M","experiments/paper-mascar/workloads/wrappers/run_srad_2.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/srad_2","900","0","0","completed_exit0","2026-06-05T10:09:15+08:00","2026-06-05T10:09:15+08:00","0","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/run_manifest.csv:22:"m3diag_forced_mp_on__bp_1","m3diag_forced_mp_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on","bp_1","BP-1","C","experiments/paper-mascar/workloads/wrappers/run_bp_1.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/bp_1","900","0","0","completed_exit0","2026-06-05T10:09:15+08:00","2026-06-05T10:09:15+08:00","0","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_latest_run_manifest.csv:9:m3diag_on__spmv,m3diag_on,/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on,spmv,spmv,M,experiments/paper-mascar/workloads/wrappers/run_spmv.sh,ready,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/spmv,900,0,0,completed_exit0,2026-06-05T10:13:04+08:00,2026-06-05T10:15:50+08:00,166,W15B required Table III diagnostic workload
+experiments/paper-mascar/workloads/results/W15B/w15b_latest_run_manifest.csv:10:m3diag_on__mri_q,m3diag_on,/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on,mri_q,mri-q,C,experiments/paper-mascar/workloads/wrappers/run_mri_q.sh,ready,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/mri_q,900,0,0,completed_exit0,2026-06-05T10:15:50+08:00,2026-06-05T10:15:54+08:00,4,W15B required Table III diagnostic workload
+experiments/paper-mascar/workloads/results/W15B/w15b_latest_run_manifest.csv:11:m3diag_on__pathfinder,m3diag_on,/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on,pathfinder,pathfinder,C,experiments/paper-mascar/workloads/wrappers/run_pathfinder.sh,ready,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/pathfinder,900,0,0,completed_exit0,2026-06-05T10:15:54+08:00,2026-06-05T10:16:30+08:00,36,W15B required Table III diagnostic workload
+experiments/paper-mascar/workloads/results/W15B/w15b_latest_run_manifest.csv:12:m3diag_on__bp_2,m3diag_on,/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on,bp_2,BP-2,M,experiments/paper-mascar/workloads/wrappers/run_bp_2.sh,ready,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/bp_2,900,0,0,completed_exit0,2026-06-05T10:16:30+08:00,2026-06-05T10:16:34+08:00,4,W15B required Table III diagnostic workload
+experiments/paper-mascar/workloads/results/W15B/w15b_latest_run_manifest.csv:13:m3diag_on__srad_1,m3diag_on,/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on,srad_1,srad-1,M,experiments/paper-mascar/workloads/wrappers/run_srad_1.sh,ready,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/srad_1,900,0,0,completed_exit0,2026-06-05T10:16:34+08:00,2026-06-05T10:16:39+08:00,5,W15B required Table III diagnostic workload
+experiments/paper-mascar/workloads/results/W15B/w15b_latest_run_manifest.csv:14:m3diag_on__srad_2,m3diag_on,/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on,srad_2,srad-2,M,experiments/paper-mascar/workloads/wrappers/run_srad_2.sh,ready,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/srad_2,900,0,0,completed_exit0,2026-06-05T10:16:39+08:00,2026-06-05T10:16:43+08:00,4,W15B required Table III diagnostic workload
+experiments/paper-mascar/workloads/results/W15B/w15b_latest_run_manifest.csv:15:m3diag_on__bp_1,m3diag_on,/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on,bp_1,BP-1,C,experiments/paper-mascar/workloads/wrappers/run_bp_1.sh,ready,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/bp_1,900,0,0,completed_exit0,2026-06-05T10:16:43+08:00,2026-06-05T10:16:47+08:00,4,W15B required Table III diagnostic workload
+experiments/paper-mascar/workloads/results/W15B/w15b_latest_run_manifest.csv:16:m3diag_forced_mp_on__spmv,m3diag_forced_mp_on,/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on,spmv,spmv,M,experiments/paper-mascar/workloads/wrappers/run_spmv.sh,ready,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/spmv,300,0,0,completed_exit0,2026-06-05T10:19:34+08:00,2026-06-05T10:22:20+08:00,166,W15B required Table III diagnostic workload
+experiments/paper-mascar/workloads/results/W15B/w15b_latest_run_manifest.csv:17:m3diag_forced_mp_on__mri_q,m3diag_forced_mp_on,/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on,mri_q,mri-q,C,experiments/paper-mascar/workloads/wrappers/run_mri_q.sh,ready,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/mri_q,300,0,0,completed_exit0,2026-06-05T10:22:20+08:00,2026-06-05T10:22:25+08:00,5,W15B required Table III diagnostic workload
+experiments/paper-mascar/workloads/results/W15B/w15b_latest_run_manifest.csv:18:m3diag_forced_mp_on__pathfinder,m3diag_forced_mp_on,/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on,pathfinder,pathfinder,C,experiments/paper-mascar/workloads/wrappers/run_pathfinder.sh,ready,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/pathfinder,300,0,0,completed_exit0,2026-06-05T10:22:25+08:00,2026-06-05T10:23:04+08:00,39,W15B required Table III diagnostic workload
+experiments/paper-mascar/workloads/results/W15B/w15b_latest_run_manifest.csv:19:m3diag_forced_mp_on__bp_2,m3diag_forced_mp_on,/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on,bp_2,BP-2,M,experiments/paper-mascar/workloads/wrappers/run_bp_2.sh,ready,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/bp_2,300,0,0,completed_exit0,2026-06-05T10:23:04+08:00,2026-06-05T10:23:08+08:00,4,W15B required Table III diagnostic workload
+experiments/paper-mascar/workloads/results/W15B/w15b_latest_run_manifest.csv:20:m3diag_forced_mp_on__srad_1,m3diag_forced_mp_on,/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on,srad_1,srad-1,M,experiments/paper-mascar/workloads/wrappers/run_srad_1.sh,ready,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/srad_1,300,0,0,completed_exit0,2026-06-05T10:23:08+08:00,2026-06-05T10:23:13+08:00,5,W15B required Table III diagnostic workload
+experiments/paper-mascar/workloads/results/W15B/w15b_latest_run_manifest.csv:21:m3diag_forced_mp_on__srad_2,m3diag_forced_mp_on,/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on,srad_2,srad-2,M,experiments/paper-mascar/workloads/wrappers/run_srad_2.sh,ready,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/srad_2,300,0,0,completed_exit0,2026-06-05T10:23:13+08:00,2026-06-05T10:23:19+08:00,6,W15B required Table III diagnostic workload
+experiments/paper-mascar/workloads/results/W15B/w15b_latest_run_manifest.csv:22:m3diag_forced_mp_on__bp_1,m3diag_forced_mp_on,/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on,bp_1,BP-1,C,experiments/paper-mascar/workloads/wrappers/run_bp_1.sh,ready,/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/bp_1,300,0,0,completed_exit0,2026-06-05T10:23:19+08:00,2026-06-05T10:23:23+08:00,4,W15B required Table III diagnostic workload
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/run_manifest.csv:2:"m3diag_forced_mp_on__spmv","m3diag_forced_mp_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on","spmv","spmv","M","experiments/paper-mascar/workloads/wrappers/run_spmv.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/spmv","300","0","0","completed_exit0","2026-06-05T10:19:34+08:00","2026-06-05T10:22:20+08:00","166","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/run_manifest.csv:3:"m3diag_forced_mp_on__mri_q","m3diag_forced_mp_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on","mri_q","mri-q","C","experiments/paper-mascar/workloads/wrappers/run_mri_q.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/mri_q","300","0","0","completed_exit0","2026-06-05T10:22:20+08:00","2026-06-05T10:22:25+08:00","5","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/run_manifest.csv:4:"m3diag_forced_mp_on__pathfinder","m3diag_forced_mp_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on","pathfinder","pathfinder","C","experiments/paper-mascar/workloads/wrappers/run_pathfinder.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/pathfinder","300","0","0","completed_exit0","2026-06-05T10:22:25+08:00","2026-06-05T10:23:04+08:00","39","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/run_manifest.csv:5:"m3diag_forced_mp_on__bp_2","m3diag_forced_mp_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on","bp_2","BP-2","M","experiments/paper-mascar/workloads/wrappers/run_bp_2.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/bp_2","300","0","0","completed_exit0","2026-06-05T10:23:04+08:00","2026-06-05T10:23:08+08:00","4","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/run_manifest.csv:6:"m3diag_forced_mp_on__srad_1","m3diag_forced_mp_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on","srad_1","srad-1","M","experiments/paper-mascar/workloads/wrappers/run_srad_1.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/srad_1","300","0","0","completed_exit0","2026-06-05T10:23:08+08:00","2026-06-05T10:23:13+08:00","5","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/run_manifest.csv:7:"m3diag_forced_mp_on__srad_2","m3diag_forced_mp_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on","srad_2","srad-2","M","experiments/paper-mascar/workloads/wrappers/run_srad_2.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/srad_2","300","0","0","completed_exit0","2026-06-05T10:23:13+08:00","2026-06-05T10:23:19+08:00","6","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/run_manifest.csv:8:"m3diag_forced_mp_on__bp_1","m3diag_forced_mp_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on","bp_1","BP-1","C","experiments/paper-mascar/workloads/wrappers/run_bp_1.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/bp_1","300","0","0","completed_exit0","2026-06-05T10:23:19+08:00","2026-06-05T10:23:23+08:00","4","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_latest_results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m3diag_enabled,paper_mascar_m3diag_mem_inst_seen,paper_mascar_m3diag_load_inst_seen,paper_mascar_m3diag_mp_mode_seen,paper_mascar_m3diag_owner_valid_seen,paper_mascar_m3diag_nonowner_load_candidate,paper_mascar_m3diag_scheduler_allow_nonowner_load,paper_mascar_m3diag_scheduler_block_nonowner_mem,paper_mascar_m3diag_lsu_l1d_access_seen,paper_mascar_m3diag_l1d_nonowner_load_seen,paper_mascar_m3diag_hitonly_probe_called,paper_mascar_m3diag_hitonly_probe_hit,paper_mascar_m3diag_hitonly_probe_nack,paper_mascar_m3diag_active_hitonly_access_called,paper_mascar_m3diag_active_hitonly_access_hit,paper_mascar_m3diag_active_hitonly_access_nack,paper_mascar_m3diag_skip_config_off,paper_mascar_m3diag_skip_not_mp,paper_mascar_m3diag_skip_no_owner,paper_mascar_m3diag_skip_owner_warp,paper_mascar_m3diag_skip_not_load,paper_mascar_m3diag_skip_not_l1d,paper_mascar_m3diag_skip_nonowner_hitonly_disabled,paper_mascar_m3diag_skip_not_ready_or_scoreboard,paper_mascar_m3diag_skip_m2_blocked_before_lsu,paper_mascar_m3diag_trace_lines_emitted,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m3diag_enabled,paper_mascar_m3diag_mem_inst_seen,paper_mascar_m3diag_load_inst_seen,paper_mascar_m3diag_mp_mode_seen,paper_mascar_m3diag_owner_valid_seen,paper_mascar_m3diag_nonowner_load_candidate,paper_mascar_m3diag_scheduler_allow_nonowner_load,paper_mascar_m3diag_scheduler_block_nonowner_mem,paper_mascar_m3diag_lsu_l1d_access_seen,paper_mascar_m3diag_l1d_nonowner_load_seen,paper_mascar_m3diag_hitonly_probe_called,paper_mascar_m3diag_hitonly_probe_hit,paper_mascar_m3diag_hitonly_probe_nack,paper_mascar_m3diag_active_hitonly_access_called,paper_mascar_m3diag_active_hitonly_access_hit,paper_mascar_m3diag_active_hitonly_access_nack,paper_mascar_m3diag_skip_config_off,paper_mascar_m3diag_skip_not_mp,paper_mascar_m3diag_skip_no_owner,paper_mascar_m3diag_skip_owner_warp,paper_mascar_m3diag_skip_not_load,paper_mascar_m3diag_skip_not_l1d,paper_mascar_m3diag_skip_nonowner_hitonly_disabled,paper_mascar_m3diag_skip_not_ready_or_scoreboard,paper_mascar_m3diag_skip_m2_blocked_before_lsu,paper_mascar_m3diag_trace_lines_emitted,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/run_manifest.csv:9:"m3diag_on__spmv","m3diag_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on","spmv","spmv","M","experiments/paper-mascar/workloads/wrappers/run_spmv.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/spmv","900","0","0","completed_exit0","2026-06-05T10:13:04+08:00","2026-06-05T10:15:50+08:00","166","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/run_manifest.csv:10:"m3diag_on__mri_q","m3diag_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on","mri_q","mri-q","C","experiments/paper-mascar/workloads/wrappers/run_mri_q.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/mri_q","900","0","0","completed_exit0","2026-06-05T10:15:50+08:00","2026-06-05T10:15:54+08:00","4","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/run_manifest.csv:11:"m3diag_on__pathfinder","m3diag_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on","pathfinder","pathfinder","C","experiments/paper-mascar/workloads/wrappers/run_pathfinder.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/pathfinder","900","0","0","completed_exit0","2026-06-05T10:15:54+08:00","2026-06-05T10:16:30+08:00","36","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/run_manifest.csv:12:"m3diag_on__bp_2","m3diag_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on","bp_2","BP-2","M","experiments/paper-mascar/workloads/wrappers/run_bp_2.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/bp_2","900","0","0","completed_exit0","2026-06-05T10:16:30+08:00","2026-06-05T10:16:34+08:00","4","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/run_manifest.csv:13:"m3diag_on__srad_1","m3diag_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on","srad_1","srad-1","M","experiments/paper-mascar/workloads/wrappers/run_srad_1.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/srad_1","900","0","0","completed_exit0","2026-06-05T10:16:34+08:00","2026-06-05T10:16:39+08:00","5","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/run_manifest.csv:14:"m3diag_on__srad_2","m3diag_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on","srad_2","srad-2","M","experiments/paper-mascar/workloads/wrappers/run_srad_2.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/srad_2","900","0","0","completed_exit0","2026-06-05T10:16:39+08:00","2026-06-05T10:16:43+08:00","4","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/run_manifest.csv:15:"m3diag_on__bp_1","m3diag_on","/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on","bp_1","BP-1","C","experiments/paper-mascar/workloads/wrappers/run_bp_1.sh","ready","/workspace/repos/gpgpu-sim_distribution/experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/bp_1","900","0","0","completed_exit0","2026-06-05T10:16:43+08:00","2026-06-05T10:16:47+08:00","4","W15B required Table III diagnostic workload"
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/bp_2/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/results.csv:1:run_id,config_id,paper_id,paper_name,paper_type,wrapper_status,run_dir,exit_code,timeout,result_status_prelim,classification,has_stats,explicit_pass,gpu_tot_sim_cycle,gpu_tot_ipc,gpu_tot_sim_insn,paper_mascar_l1_sat_sample,paper_mascar_l1_sat_sample_saturated,paper_mascar_m2_ep_cycles,paper_mascar_m2_mp_cycles,paper_mascar_m2_owner_acquire,paper_mascar_m2_nonowner_mem_block,paper_mascar_m3_hitonly_access_attempt,paper_mascar_m3_hitonly_access_hit,paper_mascar_m3_hitonly_access_nack,paper_mascar_m3_probe_attempt,paper_mascar_m3_probe_hit,paper_mascar_m3_probe_nack,paper_mascar_m3_probe_skip_not_mp,paper_mascar_m3_probe_skip_no_owner,paper_mascar_m3_probe_skip_owner,paper_mascar_m3_probe_skip_nonload,paper_mascar_m3_nonowner_lsu_probe_allowed,paper_mascar_m3_nonowner_lsu_probe_block_nonload,paper_mascar_m3_nack_guard_owner_release,paper_mascar_m3diag_enabled,paper_mascar_m3diag_mem_inst_seen,paper_mascar_m3diag_load_inst_seen,paper_mascar_m3diag_mp_mode_seen,paper_mascar_m3diag_owner_valid_seen,paper_mascar_m3diag_nonowner_load_candidate,paper_mascar_m3diag_scheduler_allow_nonowner_load,paper_mascar_m3diag_scheduler_block_nonowner_mem,paper_mascar_m3diag_lsu_l1d_access_seen,paper_mascar_m3diag_l1d_nonowner_load_seen,paper_mascar_m3diag_hitonly_probe_called,paper_mascar_m3diag_hitonly_probe_hit,paper_mascar_m3diag_hitonly_probe_nack,paper_mascar_m3diag_active_hitonly_access_called,paper_mascar_m3diag_active_hitonly_access_hit,paper_mascar_m3diag_active_hitonly_access_nack,paper_mascar_m3diag_skip_config_off,paper_mascar_m3diag_skip_not_mp,paper_mascar_m3diag_skip_no_owner,paper_mascar_m3diag_skip_owner_warp,paper_mascar_m3diag_skip_not_load,paper_mascar_m3diag_skip_not_l1d,paper_mascar_m3diag_skip_nonowner_hitonly_disabled,paper_mascar_m3diag_skip_not_ready_or_scoreboard,paper_mascar_m3diag_skip_m2_blocked_before_lsu,paper_mascar_m3diag_trace_lines_emitted,paper_mascar_m4_enqueue_success,paper_mascar_m4_retry_attempt,paper_mascar_m4_retry_hit,paper_mascar_m4_retry_nack,paper_mascar_m4_retry_requeue,paper_mascar_m4_queue_occupancy_max,cacheinst_L1D_access_total,cacheinst_L1D_hit,cacheinst_L1D_miss,cacheinst_L1D_reservation_fail,gpgpusim_exit,result_status,result_pass
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/bp_2/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/bp_2/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/bp_2/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/mri_q/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/mri_q/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/srad_2/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/mri_q/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/srad_2/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/spmv/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/mri_q/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_forced_mp_on/spmv/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/spmv/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/bp_1/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/pathfinder/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_forced_mp_on/spmv/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/srad_1/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/bp_1/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/bp_2/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/bp_1/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/srad_1/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/srad_1/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_forced_actual/runs/m3diag_forced_mp_on/pathfinder/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/bp_2/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/bp_1/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/srad_1/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/spmv/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/srad_2/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/srad_2/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/spmv/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/spmv/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/bp_2/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/srad_2/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/bp_2/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/spmv/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/pathfinder/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/pathfinder/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/srad_2/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/srad_1/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/mri_q/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/pathfinder/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_forced_mp_on/pathfinder/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_forced_mp_on
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/srad_1/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/mri_q/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/mri_q/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/mri_q/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/bp_1/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/pathfinder/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/spmv/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/bp_1/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/pathfinder/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/srad_2/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/srad_2/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/bp_1/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/bp_1/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_dryrun/runs/m3diag_on/spmv/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/srad_1/gpgpusim.config:266:-gpgpu_mascar_enable_m3_diagnostic 1
+experiments/paper-mascar/workloads/results/W15B/w15b_actual/runs/m3diag_on/srad_1/env.txt:2:MASCAR_CONFIG_DIR=/workspace/repos/gpgpu-sim_distribution/configs/hrl-repro/SM7_QV100_mascar_m3diag_on

@@ -1,0 +1,2 @@
+paper_id,paper_name,paper_type,availability_status,wrapper_path,wrapper_status,build_required,build_command,run_working_dir,run_command,input_size,timeout_sec,dry_run_status,notes
+mascar_m3_diag,Mascar M3 diagnostic micro,M,available,experiments/paper-mascar/workloads/micro/mascar_m3_diag/run_m3_diag_wrapper.sh,ready,yes,experiments/paper-mascar/workloads/micro/mascar_m3_diag/build.sh,experiments/paper-mascar/workloads/micro/mascar_m3_diag,./mascar_m3_diag,micro,300,pass,W15C diagnostic microbenchmark

@@ -1,0 +1,6 @@
+strategy_id,paper_id,config_id,description,blocks,threads,cold_n,hot_n,outer_iters,hot_reuse,stride
+1,mascar_m3_diag,m3diag_on,normal hot/cold arrays smoke-sized,32,128,262144,512,16,4,97
+2,mascar_m3_diag,m3diag_forced_mp_on,forced-MP config smoke-sized,32,128,262144,512,16,4,97
+3,mascar_m3_diag,m3diag_forced_mp_on,more blocks and outer iterations smoke-sized,64,128,262144,512,24,4,97
+4,mascar_m3_diag,m3diag_forced_mp_on,smaller hot array and more reuse smoke-sized,32,128,262144,128,24,8,97
+5,mascar_m3_diag,m3diag_forced_mp_on,larger cold working set changed stride smoke-sized,32,128,524288,512,24,4,257

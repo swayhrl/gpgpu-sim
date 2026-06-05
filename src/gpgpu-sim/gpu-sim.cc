@@ -806,6 +806,14 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          &gpgpu_mascar_nonowner_hit_only_loads_only,
                          "Mascar M3: restrict non-owner hit-only to loads",
                          "1");
+  option_parser_register(opp, "-gpgpu_mascar_enable_m3_diagnostic",
+                         OPT_INT32, &gpgpu_mascar_enable_m3_diagnostic,
+                         "Mascar W15A: enable default-off M3 diagnostic counters",
+                         "0");
+  option_parser_register(opp, "-gpgpu_mascar_m3_diag_verbose",
+                         OPT_INT32, &gpgpu_mascar_m3_diag_verbose,
+                         "Mascar W15A: enable bounded M3 diagnostic trace",
+                         "0");
   option_parser_register(opp, "-gpgpu_mascar_enable_reexec_queue_probe",
                          OPT_INT32,
                          &gpgpu_mascar_enable_reexec_queue_probe,
@@ -849,6 +857,10 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          OPT_UINT32,
                          &gpgpu_mascar_nonowner_nack_release_threshold,
                          "Mascar M3: repeated non-owner NACK owner-release guard",
+                         "64");
+  option_parser_register(opp, "-gpgpu_mascar_m3_diag_max_trace",
+                         OPT_UINT32, &gpgpu_mascar_m3_diag_max_trace,
+                         "Mascar W15A: max M3 diagnostic trace lines",
                          "64");
   option_parser_register(opp, "-gpgpu_mascar_reexec_queue_size", OPT_UINT32,
                          &gpgpu_mascar_reexec_queue_size,
@@ -2062,6 +2074,65 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
             m3.nack_guard_owner_release);
     fprintf(stdout, "paper_mascar_m3_nack_guard_threshold = %u\n",
             m_shader_config->gpgpu_mascar_nonowner_nack_release_threshold);
+  }
+  fprintf(stdout, "paper_mascar_m3diag_enabled = %d\n",
+          m_shader_config->gpgpu_enable_mascar &&
+              m_shader_config->gpgpu_mascar_enable_m3_diagnostic);
+  {
+    mascar_m3diag_stats d;
+    d.clear();
+    for (unsigned i = 0; i < m_config.num_cluster(); i++)
+      m_cluster[i]->get_mascar_m3diag_stats(d);
+    fprintf(stdout, "paper_mascar_m3diag_mem_inst_seen = %llu\n",
+            d.mem_inst_seen);
+    fprintf(stdout, "paper_mascar_m3diag_load_inst_seen = %llu\n",
+            d.load_inst_seen);
+    fprintf(stdout, "paper_mascar_m3diag_mp_mode_seen = %llu\n",
+            d.mp_mode_seen);
+    fprintf(stdout, "paper_mascar_m3diag_owner_valid_seen = %llu\n",
+            d.owner_valid_seen);
+    fprintf(stdout, "paper_mascar_m3diag_nonowner_load_candidate = %llu\n",
+            d.nonowner_load_candidate);
+    fprintf(stdout, "paper_mascar_m3diag_scheduler_allow_nonowner_load = %llu\n",
+            d.scheduler_allow_nonowner_load);
+    fprintf(stdout, "paper_mascar_m3diag_scheduler_block_nonowner_mem = %llu\n",
+            d.scheduler_block_nonowner_mem);
+    fprintf(stdout, "paper_mascar_m3diag_lsu_l1d_access_seen = %llu\n",
+            d.lsu_l1d_access_seen);
+    fprintf(stdout, "paper_mascar_m3diag_l1d_nonowner_load_seen = %llu\n",
+            d.l1d_nonowner_load_seen);
+    fprintf(stdout, "paper_mascar_m3diag_hitonly_probe_called = %llu\n",
+            d.hitonly_probe_called);
+    fprintf(stdout, "paper_mascar_m3diag_hitonly_probe_hit = %llu\n",
+            d.hitonly_probe_hit);
+    fprintf(stdout, "paper_mascar_m3diag_hitonly_probe_nack = %llu\n",
+            d.hitonly_probe_nack);
+    fprintf(stdout, "paper_mascar_m3diag_active_hitonly_access_called = %llu\n",
+            d.active_hitonly_access_called);
+    fprintf(stdout, "paper_mascar_m3diag_active_hitonly_access_hit = %llu\n",
+            d.active_hitonly_access_hit);
+    fprintf(stdout, "paper_mascar_m3diag_active_hitonly_access_nack = %llu\n",
+            d.active_hitonly_access_nack);
+    fprintf(stdout, "paper_mascar_m3diag_skip_config_off = %llu\n",
+            d.skip_config_off);
+    fprintf(stdout, "paper_mascar_m3diag_skip_not_mp = %llu\n",
+            d.skip_not_mp);
+    fprintf(stdout, "paper_mascar_m3diag_skip_no_owner = %llu\n",
+            d.skip_no_owner);
+    fprintf(stdout, "paper_mascar_m3diag_skip_owner_warp = %llu\n",
+            d.skip_owner_warp);
+    fprintf(stdout, "paper_mascar_m3diag_skip_not_load = %llu\n",
+            d.skip_not_load);
+    fprintf(stdout, "paper_mascar_m3diag_skip_not_l1d = %llu\n",
+            d.skip_not_l1d);
+    fprintf(stdout, "paper_mascar_m3diag_skip_nonowner_hitonly_disabled = %llu\n",
+            d.skip_nonowner_hitonly_disabled);
+    fprintf(stdout, "paper_mascar_m3diag_skip_not_ready_or_scoreboard = %llu\n",
+            d.skip_not_ready_or_scoreboard);
+    fprintf(stdout, "paper_mascar_m3diag_skip_m2_blocked_before_lsu = %llu\n",
+            d.skip_m2_blocked_before_lsu);
+    fprintf(stdout, "paper_mascar_m3diag_trace_lines_emitted = %llu\n",
+            d.trace_lines_emitted);
   }
   fprintf(stdout, "paper_mascar_m4_reexec_queue_probe_enabled = %d\n",
           m_shader_config->gpgpu_enable_mascar &&
