@@ -14,3 +14,7 @@ Extracted reusable paths:
 Local suite manifests, where present, were renamed to `*.local.example.csv` to make their machine/local-data nature explicit.
 
 The stats collector may include optional parser fields for paper-specific counters such as Mascar counters. These are passive parsing fields only; this branch does not implement Mascar mechanisms.
+
+## Local artifact cleanup
+
+Round-specific W19/W21/W22 outputs and one-off recovery scripts were removed from the final base infra tree. Suite inventory/command manifests that are useful as examples were renamed to `*.local.example.csv`.
