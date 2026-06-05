@@ -1,0 +1,10 @@
+group,config_id,valid_rows,geomean_speedup,status
+all,m2_owner_sched,15,0.999671,ok
+all,m3_hitonly_nack,15,0.999671,ok
+all,m4_reexec_load,15,0.999729,ok
+memory,m2_owner_sched,8,0.999510,ok
+memory,m3_hitonly_nack,8,0.999510,ok
+memory,m4_reexec_load,8,0.999564,ok
+compute,m2_owner_sched,7,0.999855,ok
+compute,m3_hitonly_nack,7,0.999855,ok
+compute,m4_reexec_load,7,0.999917,ok

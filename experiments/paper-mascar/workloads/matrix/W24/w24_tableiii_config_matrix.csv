@@ -1,0 +1,6 @@
+config_id,config_path,config_role,enabled,notes
+baseline_off,configs/hrl-repro/SM7_QV100_mascar_baseline_off,baseline,1,baseline Mascar disabled
+m2_owner_sched,configs/hrl-repro/SM7_QV100_mascar_m2_owner_sched_on,scheduling_only,1,M2 owner scheduling
+m3_hitonly_nack,configs/hrl-repro/SM7_QV100_mascar_m3_hitonly_nack_on,scheduling_hitonly,1,M3 hit-only NACK
+m4_reexec_load,configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on,scheduling_hitonly_reexec,1,M4 load re-execution
+m3diag_on,configs/hrl-repro/SM7_QV100_mascar_m3diag_on,diagnostic_disabled,0,disabled diagnostic row

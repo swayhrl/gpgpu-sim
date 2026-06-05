@@ -1,0 +1,16 @@
+duplicate_physical_group,paper_ids,wrapper_path,run_command,row_count,notes
+phys_01,bp_2,experiments/paper-mascar/workloads/wrappers/run_bp_2.sh,bash scripts/run_one.sh rodinia_backprop,1,unique physical command
+phys_02,bfs,experiments/paper-mascar/workloads/wrappers/run_bfs.sh,bash scripts/run_one.sh rodinia_bfs,1,unique physical command
+phys_03,histo_1,experiments/paper-mascar/workloads/wrappers/run_histo_1.sh,bash scripts/run_one.sh parboil_histo,1,unique physical command
+phys_04,histo_3,experiments/paper-mascar/workloads/wrappers/run_histo_3.sh,bash scripts/run_one.sh parboil_histo,1,unique physical command
+phys_05,kmeans_1,experiments/paper-mascar/workloads/wrappers/run_kmeans_1.sh,bash scripts/run_one.sh rodinia_kmeans,1,unique physical command
+phys_06,spmv,experiments/paper-mascar/workloads/wrappers/run_spmv.sh,bash scripts/run_one.sh parboil_spmv,1,unique physical command
+phys_07,srad_1,experiments/paper-mascar/workloads/wrappers/run_srad_1.sh,bash scripts/run_one.sh rodinia_srad_v2,1,unique physical command
+phys_08,srad_2,experiments/paper-mascar/workloads/wrappers/run_srad_2.sh,bash scripts/run_one.sh rodinia_srad_v2,1,unique physical command
+phys_09,bp_1,experiments/paper-mascar/workloads/wrappers/run_bp_1.sh,bash scripts/run_one.sh rodinia_backprop,1,unique physical command
+phys_10,histo_2,experiments/paper-mascar/workloads/wrappers/run_histo_2.sh,bash scripts/run_one.sh parboil_histo,1,unique physical command
+phys_11,kmeans_2,experiments/paper-mascar/workloads/wrappers/run_kmeans_2.sh,bash scripts/run_one.sh rodinia_kmeans,1,unique physical command
+phys_12,mri_q,experiments/paper-mascar/workloads/wrappers/run_mri_q.sh,bash scripts/run_one.sh parboil_mri_q,1,unique physical command
+phys_13,pathfinder,experiments/paper-mascar/workloads/wrappers/run_pathfinder.sh,bash scripts/run_one.sh rodinia_pathfinder,1,unique physical command
+phys_14,sgemm,experiments/paper-mascar/workloads/wrappers/run_sgemm.sh,bash scripts/run_one.sh parboil_sgemm,1,unique physical command
+phys_15,stencil,experiments/paper-mascar/workloads/wrappers/run_stencil.sh,bash scripts/run_one.sh parboil_stencil,1,unique physical command

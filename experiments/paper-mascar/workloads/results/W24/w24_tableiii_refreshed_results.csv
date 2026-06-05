@@ -1,0 +1,121 @@
+paper_id,paper_name,paper_type,config_id,result_status,correctness_status,cycles,ipc,baseline_cycles,speedup_vs_baseline,m1_l1sat_active,m2_active,m3_active,m4_active,m2_mp_cycles,m2_owner_acquire,m3_attempt,m3_hit,m3_nack,m4_enqueue_success,m4_retry_attempt,m4_retry_hit,m4_retry_nack,phase_mapping_confidence_w18,measurement_scope,notes
+bp_2,BP-2,M,baseline_off,completed_no_explicit_pass,stats_only_not_correctness_pass,6911,42.2654,6911,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+bp_2,BP-2,M,m2_owner_sched,completed_no_explicit_pass,stats_only_not_correctness_pass,6918,42.2226,6911,0.998988,1,1,0,0,525,16,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+bp_2,BP-2,M,m3_hitonly_nack,completed_no_explicit_pass,stats_only_not_correctness_pass,6918,42.2226,6911,0.998988,1,1,0,0,525,16,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+bp_2,BP-2,M,m4_reexec_load,completed_no_explicit_pass,stats_only_not_correctness_pass,6915,42.2409,6911,0.999422,1,1,0,1,533,149,0,0,0,51,184,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+bfs,bfs,M,baseline_off,completed_no_explicit_pass,stats_only_not_correctness_pass,6665,0.2029,6665,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+bfs,bfs,M,m2_owner_sched,completed_no_explicit_pass,stats_only_not_correctness_pass,6665,0.2029,6665,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+bfs,bfs,M,m3_hitonly_nack,completed_no_explicit_pass,stats_only_not_correctness_pass,6665,0.2029,6665,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+bfs,bfs,M,m4_reexec_load,completed_no_explicit_pass,stats_only_not_correctness_pass,6665,0.2029,6665,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+histo_1,histo-1,M,baseline_off,completed_explicit_pass,explicit_pass,7096,282.4803,7096,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+histo_1,histo-1,M,m2_owner_sched,completed_explicit_pass,explicit_pass,7096,282.4803,7096,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+histo_1,histo-1,M,m3_hitonly_nack,completed_explicit_pass,explicit_pass,7096,282.4803,7096,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+histo_1,histo-1,M,m4_reexec_load,completed_explicit_pass,explicit_pass,7096,282.4803,7096,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+histo_3,histo-3,M,baseline_off,completed_explicit_pass,explicit_pass,7096,282.4803,7096,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+histo_3,histo-3,M,m2_owner_sched,completed_explicit_pass,explicit_pass,7096,282.4803,7096,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+histo_3,histo-3,M,m3_hitonly_nack,completed_explicit_pass,explicit_pass,7096,282.4803,7096,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+histo_3,histo-3,M,m4_reexec_load,completed_explicit_pass,explicit_pass,7096,282.4803,7096,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+kmeans_1,kmeans-1,M,baseline_off,completed_no_explicit_pass,stats_only_not_correctness_pass,5592,0.9728,5592,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+kmeans_1,kmeans-1,M,m2_owner_sched,completed_no_explicit_pass,stats_only_not_correctness_pass,5592,0.9728,5592,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+kmeans_1,kmeans-1,M,m3_hitonly_nack,completed_no_explicit_pass,stats_only_not_correctness_pass,5592,0.9728,5592,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+kmeans_1,kmeans-1,M,m4_reexec_load,completed_no_explicit_pass,stats_only_not_correctness_pass,5592,0.9728,5592,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+lbm,lbm,M,baseline_off,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+lbm,lbm,M,m2_owner_sched,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+lbm,lbm,M,m3_hitonly_nack,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+lbm,lbm,M,m4_reexec_load,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+leuko_1,leuko-1,M,baseline_off,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+leuko_1,leuko-1,M,m2_owner_sched,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+leuko_1,leuko-1,M,m3_hitonly_nack,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+leuko_1,leuko-1,M,m4_reexec_load,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+mrig_1,mrig-1,M,baseline_off,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+mrig_1,mrig-1,M,m2_owner_sched,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+mrig_1,mrig-1,M,m3_hitonly_nack,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+mrig_1,mrig-1,M,m4_reexec_load,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+mrig_2,mrig-2,M,baseline_off,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+mrig_2,mrig-2,M,m2_owner_sched,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+mrig_2,mrig-2,M,m3_hitonly_nack,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+mrig_2,mrig-2,M,m4_reexec_load,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+mummer,mummer,M,baseline_off,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+mummer,mummer,M,m2_owner_sched,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+mummer,mummer,M,m3_hitonly_nack,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+mummer,mummer,M,m4_reexec_load,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+particle,particle,M,baseline_off,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+particle,particle,M,m2_owner_sched,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+particle,particle,M,m3_hitonly_nack,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+particle,particle,M,m4_reexec_load,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+sad_2,sad-2,M,baseline_off,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+sad_2,sad-2,M,m2_owner_sched,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+sad_2,sad-2,M,m3_hitonly_nack,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+sad_2,sad-2,M,m4_reexec_load,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+spmv,spmv,M,baseline_off,completed_explicit_pass,explicit_pass,21813,0.9723,21813,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+spmv,spmv,M,m2_owner_sched,completed_explicit_pass,explicit_pass,21813,0.9723,21813,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+spmv,spmv,M,m3_hitonly_nack,completed_explicit_pass,explicit_pass,21813,0.9723,21813,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+spmv,spmv,M,m4_reexec_load,completed_explicit_pass,explicit_pass,21813,0.9723,21813,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+srad_1,srad-1,M,baseline_off,completed_no_explicit_pass,stats_only_not_correctness_pass,8236,80.2572,8236,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+srad_1,srad-1,M,m2_owner_sched,completed_no_explicit_pass,stats_only_not_correctness_pass,8248,80.1404,8236,0.998545,1,1,0,0,1786,199,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+srad_1,srad-1,M,m3_hitonly_nack,completed_no_explicit_pass,stats_only_not_correctness_pass,8248,80.1404,8236,0.998545,1,1,0,0,1786,199,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+srad_1,srad-1,M,m4_reexec_load,completed_no_explicit_pass,stats_only_not_correctness_pass,8248,80.1404,8236,0.998545,1,1,0,1,1790,213,0,0,0,6,20,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+srad_2,srad-2,M,baseline_off,completed_no_explicit_pass,stats_only_not_correctness_pass,8236,80.2572,8236,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+srad_2,srad-2,M,m2_owner_sched,completed_no_explicit_pass,stats_only_not_correctness_pass,8248,80.1404,8236,0.998545,1,1,0,0,1786,199,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+srad_2,srad-2,M,m3_hitonly_nack,completed_no_explicit_pass,stats_only_not_correctness_pass,8248,80.1404,8236,0.998545,1,1,0,0,1786,199,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+srad_2,srad-2,M,m4_reexec_load,completed_no_explicit_pass,stats_only_not_correctness_pass,8248,80.1404,8236,0.998545,1,1,0,1,1790,213,0,0,0,6,20,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+bp_1,BP-1,C,baseline_off,completed_no_explicit_pass,stats_only_not_correctness_pass,6911,42.2654,6911,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+bp_1,BP-1,C,m2_owner_sched,completed_no_explicit_pass,stats_only_not_correctness_pass,6918,42.2226,6911,0.998988,1,1,0,0,525,16,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+bp_1,BP-1,C,m3_hitonly_nack,completed_no_explicit_pass,stats_only_not_correctness_pass,6918,42.2226,6911,0.998988,1,1,0,0,525,16,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+bp_1,BP-1,C,m4_reexec_load,completed_no_explicit_pass,stats_only_not_correctness_pass,6915,42.2409,6911,0.999422,1,1,0,1,533,149,0,0,0,51,184,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+cutcp,cutcp,C,baseline_off,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+cutcp,cutcp,C,m2_owner_sched,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+cutcp,cutcp,C,m3_hitonly_nack,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+cutcp,cutcp,C,m4_reexec_load,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+histo_2,histo-2,C,baseline_off,completed_explicit_pass,explicit_pass,7096,282.4803,7096,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+histo_2,histo-2,C,m2_owner_sched,completed_explicit_pass,explicit_pass,7096,282.4803,7096,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+histo_2,histo-2,C,m3_hitonly_nack,completed_explicit_pass,explicit_pass,7096,282.4803,7096,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+histo_2,histo-2,C,m4_reexec_load,completed_explicit_pass,explicit_pass,7096,282.4803,7096,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+histogram,histogram,C,baseline_off,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+histogram,histogram,C,m2_owner_sched,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+histogram,histogram,C,m3_hitonly_nack,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+histogram,histogram,C,m4_reexec_load,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+kmeans_2,kmeans-2,C,baseline_off,completed_no_explicit_pass,stats_only_not_correctness_pass,5592,0.9728,5592,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+kmeans_2,kmeans-2,C,m2_owner_sched,completed_no_explicit_pass,stats_only_not_correctness_pass,5592,0.9728,5592,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+kmeans_2,kmeans-2,C,m3_hitonly_nack,completed_no_explicit_pass,stats_only_not_correctness_pass,5592,0.9728,5592,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+kmeans_2,kmeans-2,C,m4_reexec_load,completed_no_explicit_pass,stats_only_not_correctness_pass,5592,0.9728,5592,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,inferred_order,app_run_inferred_phase,app-run level; not strict paper per-kernel phase
+lavamd,lavaMD,C,baseline_off,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+lavamd,lavaMD,C,m2_owner_sched,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+lavamd,lavaMD,C,m3_hitonly_nack,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+lavamd,lavaMD,C,m4_reexec_load,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+leuko_2,leuko-2,C,baseline_off,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+leuko_2,leuko-2,C,m2_owner_sched,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+leuko_2,leuko-2,C,m3_hitonly_nack,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+leuko_2,leuko-2,C,m4_reexec_load,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+leuko_3,leuko-3,C,baseline_off,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+leuko_3,leuko-3,C,m2_owner_sched,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+leuko_3,leuko-3,C,m3_hitonly_nack,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+leuko_3,leuko-3,C,m4_reexec_load,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+mri_q,mri-q,C,baseline_off,completed_no_explicit_pass,stats_only_not_correctness_pass,5547,1.0788,5547,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+mri_q,mri-q,C,m2_owner_sched,completed_no_explicit_pass,stats_only_not_correctness_pass,5547,1.0788,5547,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+mri_q,mri-q,C,m3_hitonly_nack,completed_no_explicit_pass,stats_only_not_correctness_pass,5547,1.0788,5547,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+mri_q,mri-q,C,m4_reexec_load,completed_no_explicit_pass,stats_only_not_correctness_pass,5547,1.0788,5547,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+mrig_3,mrig-3,C,baseline_off,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+mrig_3,mrig-3,C,m2_owner_sched,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+mrig_3,mrig-3,C,m3_hitonly_nack,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+mrig_3,mrig-3,C,m4_reexec_load,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+pathfinder,pathfinder,C,baseline_off,completed_no_explicit_pass,stats_only_not_correctness_pass,6487,3.7589,6487,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+pathfinder,pathfinder,C,m2_owner_sched,completed_no_explicit_pass,stats_only_not_correctness_pass,6487,3.7589,6487,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+pathfinder,pathfinder,C,m3_hitonly_nack,completed_no_explicit_pass,stats_only_not_correctness_pass,6487,3.7589,6487,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+pathfinder,pathfinder,C,m4_reexec_load,completed_no_explicit_pass,stats_only_not_correctness_pass,6487,3.7589,6487,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+sad_1,sad-1,C,baseline_off,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+sad_1,sad-1,C,m2_owner_sched,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+sad_1,sad-1,C,m3_hitonly_nack,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+sad_1,sad-1,C,m4_reexec_load,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+sgemm,sgemm,C,baseline_off,completed_no_explicit_pass,stats_only_not_correctness_pass,21460,4.4257,21460,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+sgemm,sgemm,C,m2_owner_sched,completed_no_explicit_pass,stats_only_not_correctness_pass,21460,4.4257,21460,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+sgemm,sgemm,C,m3_hitonly_nack,completed_no_explicit_pass,stats_only_not_correctness_pass,21460,4.4257,21460,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+sgemm,sgemm,C,m4_reexec_load,completed_no_explicit_pass,stats_only_not_correctness_pass,21460,4.4257,21460,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+stencil,stencil,C,baseline_off,completed_no_explicit_pass,stats_only_not_correctness_pass,8221,7.8059,8221,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+stencil,stencil,C,m2_owner_sched,completed_no_explicit_pass,stats_only_not_correctness_pass,8221,7.8059,8221,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+stencil,stencil,C,m3_hitonly_nack,completed_no_explicit_pass,stats_only_not_correctness_pass,8221,7.8059,8221,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+stencil,stencil,C,m4_reexec_load,completed_no_explicit_pass,stats_only_not_correctness_pass,8221,7.8059,8221,1.000000,0,0,0,0,0,0,0,0,0,0,0,0,0,not_w18_target,app_run_unmapped,app-run level; not strict paper per-kernel phase
+tpacf,tpacf,C,baseline_off,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+tpacf,tpacf,C,m2_owner_sched,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+tpacf,tpacf,C,m3_hitonly_nack,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,
+tpacf,tpacf,C,m4_reexec_load,not_run,not_run,,,,,0,0,0,0,,,0,0,0,,,,,not_w18_target,unavailable,

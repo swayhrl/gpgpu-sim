@@ -1,0 +1,14 @@
+artifact,path,status,description
+config_matrix,experiments/paper-mascar/workloads/matrix/W24/w24_tableiii_config_matrix.csv,created,baseline/M2/M3/M4 matrix
+all_manifest,experiments/paper-mascar/workloads/matrix/W24/w24_tableiii_manifest_all.csv,created,30-row Table III coverage input
+ready_manifest,experiments/paper-mascar/workloads/matrix/W24/w24_tableiii_manifest_ready.csv,created,selected ready rows
+run_plan,experiments/paper-mascar/workloads/matrix/W24/w24_tableiii_run_plan.csv,created,ready rows x enabled configs
+runner,experiments/paper-mascar/workloads/matrix/W24/run_w24_tableiii_refreshed_sweep.sh,created,W24 sweep runner
+actual_results,experiments/paper-mascar/workloads/results/W24/w24_actual_results.csv,created,actual sweep collector results
+latest_results,experiments/paper-mascar/workloads/results/W24/w24_latest_results.csv,created,latest actual results alias
+coverage_manifest,experiments/paper-mascar/workloads/results/W24/w24_tableiii_coverage_manifest.csv,created,30-row final coverage
+speedup_summary,experiments/paper-mascar/workloads/results/W24/w24_tableiii_speedup_summary.csv,created,speedup vs baseline
+geomean_summary,experiments/paper-mascar/workloads/results/W24/w24_tableiii_geomean_summary.csv,created,current-simulator geomeans
+report,docs/papers/mascar_w24_tableiii_refreshed_sweep_report.md,created,caveated report
+postcheck,experiments/paper-mascar/workloads/audit/W24/w24_postcheck.md,created,final postcheck
+raw_logs,/workspace/tmp/mascar_w24_raw_runs_20260605_180025.tar.gz,archived,raw sweep directories outside repo

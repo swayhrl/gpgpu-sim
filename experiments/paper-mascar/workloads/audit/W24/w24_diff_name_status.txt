@@ -1,0 +1,48 @@
+# git status --short
+?? docs/papers/mascar_w24_tableiii_refreshed_sweep_report.md
+?? docs/papers/mascar_w24a_tableiii_run_plan.md
+?? experiments/paper-mascar/workloads/audit/W24/
+?? experiments/paper-mascar/workloads/matrix/W24/
+?? experiments/paper-mascar/workloads/results/W24/
+
+# git diff --name-status
+
+# W24 untracked
+docs/papers/mascar_w24_tableiii_refreshed_sweep_report.md
+docs/papers/mascar_w24a_tableiii_run_plan.md
+experiments/paper-mascar/workloads/audit/W24/w24_diff_name_status.txt
+experiments/paper-mascar/workloads/audit/W24/w24_postcheck.md
+experiments/paper-mascar/workloads/audit/W24/w24a_postcheck.md
+experiments/paper-mascar/workloads/audit/W24/w24b_postcheck.md
+experiments/paper-mascar/workloads/audit/W24/w24c_postcheck.md
+experiments/paper-mascar/workloads/matrix/W24/analyze_w24_tableiii_results.py
+experiments/paper-mascar/workloads/matrix/W24/prepare_w24_tableiii_run_plan.py
+experiments/paper-mascar/workloads/matrix/W24/run_w24_tableiii_refreshed_sweep.sh
+experiments/paper-mascar/workloads/matrix/W24/w24_closeout_manifest.csv
+experiments/paper-mascar/workloads/matrix/W24/w24_physical_run_groups.csv
+experiments/paper-mascar/workloads/matrix/W24/w24_tableiii_config_matrix.csv
+experiments/paper-mascar/workloads/matrix/W24/w24_tableiii_manifest_all.csv
+experiments/paper-mascar/workloads/matrix/W24/w24_tableiii_manifest_ready.csv
+experiments/paper-mascar/workloads/matrix/W24/w24_tableiii_manifest_unavailable.csv
+experiments/paper-mascar/workloads/matrix/W24/w24_tableiii_phase_mapping_used.csv
+experiments/paper-mascar/workloads/matrix/W24/w24_tableiii_run_plan.csv
+experiments/paper-mascar/workloads/matrix/W24/w24_tableiii_runner_workload_manifest.csv
+experiments/paper-mascar/workloads/results/W24/w24_actual_results.csv
+experiments/paper-mascar/workloads/results/W24/w24_actual_run_manifest.csv
+experiments/paper-mascar/workloads/results/W24/w24_actual_status_matrix.csv
+experiments/paper-mascar/workloads/results/W24/w24_actual_summary.md
+experiments/paper-mascar/workloads/results/W24/w24_dryrun_results.csv
+experiments/paper-mascar/workloads/results/W24/w24_dryrun_run_manifest.csv
+experiments/paper-mascar/workloads/results/W24/w24_dryrun_status_matrix.csv
+experiments/paper-mascar/workloads/results/W24/w24_dryrun_summary.md
+experiments/paper-mascar/workloads/results/W24/w24_latest_results.csv
+experiments/paper-mascar/workloads/results/W24/w24_latest_run_manifest.csv
+experiments/paper-mascar/workloads/results/W24/w24_latest_status_matrix.csv
+experiments/paper-mascar/workloads/results/W24/w24_latest_summary.md
+experiments/paper-mascar/workloads/results/W24/w24_tableiii_activation_matrix.csv
+experiments/paper-mascar/workloads/results/W24/w24_tableiii_coverage_manifest.csv
+experiments/paper-mascar/workloads/results/W24/w24_tableiii_geomean_summary.csv
+experiments/paper-mascar/workloads/results/W24/w24_tableiii_phase_mapping_used.csv
+experiments/paper-mascar/workloads/results/W24/w24_tableiii_refreshed_results.csv
+experiments/paper-mascar/workloads/results/W24/w24_tableiii_speedup_summary.csv
+experiments/paper-mascar/workloads/results/W24/w24_tableiii_trend_summary.md
