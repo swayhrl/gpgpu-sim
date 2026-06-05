@@ -1,0 +1,14 @@
+check_name,status,count,detail,recommended_action
+row_count_total,pass,41,all normalized rows,none
+rodinia_rows,pass,23,Rodinia rows,none
+parboil_rows,pass,18,Parboil rows,none
+ready_rows,pass,13,current smoke-ready rows,use as W20 baseline
+missing_binary_rows,warn,20,rows without verified binary,W21 build recovery
+missing_source_rows,pass,0,missing source rows,audit local source if nonzero
+failed_build_rows,warn,20,build/binary recovery missing rows,W21 build recovery
+command_unverified_rows,warn,8,command unverified rows,normalize command and smoke
+rows_missing_wrapper_path,pass,0,rows without wrapper path,none
+rows_missing_notes,pass,0,rows with unknown notes,fill notes later
+duplicate_app_ids,pass,0,duplicate app_id groups,fix app_id
+duplicate_wrapper_paths,warn,1,generated wrapper path is shared by design,runner generates per-row wrappers
+table_iii_related_rows,pass,16,rows related to Mascar Table III,do not overwrite Table III manifests

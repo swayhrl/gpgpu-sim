@@ -1,10 +1,5 @@
-# Common Experiment Utilities
+# Experiments Common Infrastructure
 
-This directory contains reusable experiment helpers.
+Common experiment infrastructure lives here. The GPGPU-Sim matrix runner and collector are reused by paper-specific and suite-level workflows.
 
-## gpgpusim_matrix
-
-- `run_gpgpusim_matrix.sh` runs a config/workload CSV matrix with per-run timeouts.
-- `collect_gpgpusim_stats.py` collects GPGPU-Sim stats plus Mascar M1-M4 counters.
-
-The matrix runner expects CSV fields without unescaped commas because it is shell-based. For benchmark commands that require comma-separated arguments, wrap the command in a small script or call an existing `run_gpgpusim.sh` from the benchmark directory.
+The W20 suite framework intentionally shells out to the common collector so Mascar M1-M4 counters, W15 `paper_mascar_m3diag_*` counters, and W16 power/energy fields remain available.

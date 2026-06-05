@@ -1,0 +1,65 @@
+# git status --short
+ M experiments/common/README.md
+ M tools/paper_repro/README.md
+?? docs/papers/mascar_w20_full_suite_framework_closeout.md
+?? docs/papers/mascar_w20a_suite_schema_manifest_report.md
+?? docs/papers/mascar_w20b_runner_collector_stabilization_report.md
+?? docs/papers/mascar_w20c_full_suite_dryrun_smoke_report.md
+?? docs/reproduction_workload_framework.md
+?? experiments/suites/README.md
+?? experiments/suites/audit/
+?? experiments/suites/common/README.md
+?? experiments/suites/common/collect_full_suite_results.py
+?? experiments/suites/common/full_suite_blocker_manifest.csv
+?? experiments/suites/common/full_suite_command_manifest.csv
+?? experiments/suites/common/full_suite_manifest.csv
+?? experiments/suites/common/full_suite_manifest_quality_report.csv
+?? experiments/suites/common/full_suite_ready_manifest.csv
+?? experiments/suites/common/full_suite_smoke_config_matrix.csv
+?? experiments/suites/common/normalize_w20_suite_manifests.py
+?? experiments/suites/common/run_full_suite_matrix.sh
+?? experiments/suites/common/suite_manifest_schema.md
+?? experiments/suites/common/suite_status_taxonomy.csv
+?? experiments/suites/common/suite_status_taxonomy.md
+?? experiments/suites/results/
+
+# git diff --name-status
+M	experiments/common/README.md
+M	tools/paper_repro/README.md
+
+# untracked files
+docs/papers/mascar_w20_full_suite_framework_closeout.md
+docs/papers/mascar_w20a_suite_schema_manifest_report.md
+docs/papers/mascar_w20b_runner_collector_stabilization_report.md
+docs/papers/mascar_w20c_full_suite_dryrun_smoke_report.md
+docs/reproduction_workload_framework.md
+experiments/suites/README.md
+experiments/suites/audit/W20/w20_closeout_manifest.csv
+experiments/suites/audit/W20/w20_diff_name_status.txt
+experiments/suites/audit/W20/w20a_postcheck.md
+experiments/suites/audit/W20/w20b_postcheck.md
+experiments/suites/audit/W20/w20c_postcheck.md
+experiments/suites/common/README.md
+experiments/suites/common/collect_full_suite_results.py
+experiments/suites/common/full_suite_blocker_manifest.csv
+experiments/suites/common/full_suite_command_manifest.csv
+experiments/suites/common/full_suite_manifest.csv
+experiments/suites/common/full_suite_manifest_quality_report.csv
+experiments/suites/common/full_suite_ready_manifest.csv
+experiments/suites/common/full_suite_smoke_config_matrix.csv
+experiments/suites/common/normalize_w20_suite_manifests.py
+experiments/suites/common/run_full_suite_matrix.sh
+experiments/suites/common/suite_manifest_schema.md
+experiments/suites/common/suite_status_taxonomy.csv
+experiments/suites/common/suite_status_taxonomy.md
+experiments/suites/results/W20/w20_blocker_summary.csv
+experiments/suites/results/W20/w20_dryrun_results.csv
+experiments/suites/results/W20/w20_dryrun_run_manifest.csv
+experiments/suites/results/W20/w20_dryrun_status_matrix.csv
+experiments/suites/results/W20/w20_dryrun_summary.md
+experiments/suites/results/W20/w20_ready_summary.csv
+experiments/suites/results/W20/w20_smoke_results.csv
+experiments/suites/results/W20/w20_smoke_run_manifest.csv
+experiments/suites/results/W20/w20_smoke_status_matrix.csv
+experiments/suites/results/W20/w20_smoke_summary.md
+experiments/suites/results/W20/w20_suite_summary.csv

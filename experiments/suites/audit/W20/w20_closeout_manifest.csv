@@ -1,0 +1,14 @@
+artifact,path,status,notes
+full_manifest,experiments/suites/common/full_suite_manifest.csv,created,41 rows
+ready_manifest,experiments/suites/common/full_suite_ready_manifest.csv,created,13 rows
+blocker_manifest,experiments/suites/common/full_suite_blocker_manifest.csv,created,28 rows
+runner,experiments/suites/common/run_full_suite_matrix.sh,created,bash -n pass
+collector,experiments/suites/common/collect_full_suite_results.py,created,py_compile pass
+dryrun_results,experiments/suites/results/W20/w20_dryrun_results.csv,created,41 rows
+smoke_results,experiments/suites/results/W20/w20_smoke_results.csv,created,13 rows
+closeout_doc,docs/papers/mascar_w20_full_suite_framework_closeout.md,created,W20D
+framework_doc,docs/reproduction_workload_framework.md,created,W20D
+diff_status,experiments/suites/audit/W20/w20_diff_name_status.txt,created,W20D
+symbol_grep,experiments/suites/audit/W20/w20_symbol_grep.txt,created,W20D
+postcheck,experiments/suites/audit/W20/w20_postcheck.md,created,elapsed_sec=1511
+raw_log_archive,/workspace/tmp/mascar_w20_raw_runs_20260605_160017.tar.gz;/workspace/tmp/mascar_w20_raw_runs_extra_20260605_160359.tar.gz,created,raw run dirs archived outside repo

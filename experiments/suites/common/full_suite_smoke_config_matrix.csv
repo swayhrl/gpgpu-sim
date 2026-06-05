@@ -1,0 +1,4 @@
+config_id,config_path,config_role,enabled,notes
+baseline_off,configs/hrl-repro/SM7_QV100_mascar_baseline_off,baseline,1,W20 default smoke baseline config
+m4_reexec_load,configs/hrl-repro/SM7_QV100_mascar_m4_reexec_load_on,mascar_m4,0,Disabled by default for full-suite smoke
+energy_baseline_off,configs/hrl-repro/SM7_QV100_mascar_energy_baseline_off,energy,0,Disabled by default; use only for W16-style energy smoke

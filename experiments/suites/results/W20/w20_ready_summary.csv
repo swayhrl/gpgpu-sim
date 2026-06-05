@@ -1,0 +1,14 @@
+app_id,suite_id,benchmark_name,smoke_result,correctness_status,gpu_tot_sim_cycle
+rodinia_backprop,rodinia,backprop,completed_stats_found,no_explicit_pass,6911
+rodinia_bfs,rodinia,bfs,completed_stats_found,no_explicit_pass,6665
+rodinia_hotspot,rodinia,hotspot,completed_stats_found,no_explicit_pass,6931
+rodinia_kmeans,rodinia,kmeans,completed_stats_found,no_explicit_pass,5592
+rodinia_lud,rodinia,lud,completed_stats_found,no_explicit_pass,27483
+rodinia_nw,rodinia,nw,completed_stats_found,no_explicit_pass,14026
+rodinia_pathfinder,rodinia,pathfinder,completed_stats_found,no_explicit_pass,6487
+rodinia_srad,rodinia,srad,completed_stats_found,no_explicit_pass,8236
+parboil_histo,parboil,histo,completed_explicit_pass,explicit_pass,7096
+parboil_mri_q,parboil,mri-q,completed_stats_found,no_explicit_pass,5547
+parboil_sgemm,parboil,sgemm,completed_stats_found,no_explicit_pass,21460
+parboil_spmv,parboil,spmv,completed_explicit_pass,explicit_pass,21813
+parboil_stencil,parboil,stencil,completed_stats_found,no_explicit_pass,8221
