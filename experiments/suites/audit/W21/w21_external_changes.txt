@@ -1,0 +1,4 @@
+# W21 external workload-side changes
+/workspace/repos/gpgpu-workloads/suites/parboil/common/Makefile.conf created/updated from Makefile.conf.example-nvidia for local Parboil direct-make compatibility.
+Parboil build outputs were generated under /workspace/repos/gpgpu-workloads/suites/parboil/benchmarks/*/build/*_w21fix2/.
+No Mascar M1-M4 mechanism files were modified.

@@ -1,25 +1,34 @@
 # Rodinia/Parboil Suite Framework
 
-## Inventory
+## Rodinia/Parboil suite inventory
+
 W20 normalized 23 Rodinia rows and 18 Parboil rows.
 
 ## Current ready counts
+
 Current ready baseline: 13; by suite: parboil:5;rodinia:8.
 
-## Dry-run all
+## How to run dry-run all
 
-```bash
-SUITE_MODE=dryrun_all DRY_RUN_ONLY=1 bash experiments/suites/common/run_full_suite_matrix.sh
-```
+\\generated_rows=41
+generated_manifest=/workspace/repos/gpgpu-sim_distribution/experiments/suites/results/W20/run_dryrun_all_20260605_160059/generated_workload_manifest.csv
+GPGPU-Sim version 4.2.0 (build gpgpu-sim_git-commit-c63cc49-modified_1.0) configured with AccelWattch.
+setup_environment succeeded
+outdir=/workspace/repos/gpgpu-sim_distribution/experiments/suites/results/W20/run_dryrun_all_20260605_160059
+run_manifest=/workspace/repos/gpgpu-sim_distribution/experiments/suites/results/W20/run_dryrun_all_20260605_160059/run_manifest.csv
+suite_outdir=/workspace/repos/gpgpu-sim_distribution/experiments/suites/results/W20/run_dryrun_all_20260605_160059\
 
-## Smoke ready
+## How to run smoke ready
 
-```bash
-SUITE_MODE=smoke_ready RUN_PLACEHOLDERS=0 TIMEOUT_SEC=1200 bash experiments/suites/common/run_full_suite_matrix.sh
-```
+\\generated_rows=13
+generated_manifest=/workspace/repos/gpgpu-sim_distribution/experiments/suites/results/W20/run_smoke_ready_20260605_160101/generated_workload_manifest.csv
+GPGPU-Sim version 4.2.0 (build gpgpu-sim_git-commit-c63cc49-modified_1.0) configured with AccelWattch.
+setup_environment succeeded\
 
-## Inspect blockers
-Open `experiments/suites/common/full_suite_blocker_manifest.csv` and `experiments/suites/results/W20/w20_blocker_summary.csv`.
+## How to inspect blockers
 
-## Add or fix wrappers
-Repair source, binary, data, and command evidence first. Then run dry-run and smoke. Promote only rows with explicit pass evidence to `current_ready=1`.
+Open experiments/suites/common/full_suite_blocker_manifest.csv and experiments/suites/results/W20/w20_blocker_summary.csv.
+
+## How to add or fix wrappers
+
+Repair source/binary/data/command first, run dry-run, then smoke. Promote only rows with explicit pass evidence to current_ready.

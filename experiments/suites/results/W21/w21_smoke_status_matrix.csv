@@ -1,0 +1,14 @@
+app_id,suite_id,benchmark_name,availability_status,current_ready,classification,suite_classification,suite_correctness_pass
+rodinia_backprop,rodinia,backprop,ready,1,completed_stats_found,completed_stats_found,0
+rodinia_bfs,rodinia,bfs,ready,1,completed_stats_found,completed_stats_found,0
+rodinia_hotspot,rodinia,hotspot,ready,1,unknown,unknown,0
+rodinia_kmeans,rodinia,kmeans,ready,1,unknown,unknown,0
+rodinia_lud,rodinia,lud,ready,1,unknown,unknown,0
+rodinia_nw,rodinia,nw,ready,1,unknown,unknown,0
+rodinia_pathfinder,rodinia,pathfinder,ready,1,unknown,unknown,0
+rodinia_srad,rodinia,srad,ready,1,unknown,unknown,0
+parboil_histo,parboil,histo,ready,1,unknown,unknown,0
+parboil_mri_q,parboil,mri-q,ready,1,unknown,unknown,0
+parboil_sgemm,parboil,sgemm,ready,1,unknown,unknown,0
+parboil_spmv,parboil,spmv,ready,1,unknown,unknown,0
+parboil_stencil,parboil,stencil,ready,1,unknown,unknown,0

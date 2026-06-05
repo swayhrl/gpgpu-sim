@@ -1,0 +1,55 @@
+# git status --short
+ M experiments/suites/README.md
+?? docs/papers/mascar_w21a_parboil_build_fix_report.md
+?? docs/papers/mascar_w21b_cuda_arch_fix_report.md
+?? docs/papers/mascar_w21c_dependency_fix_report.md
+?? docs/papers/mascar_w21d_data_command_fix_report.md
+?? experiments/suites/audit/W21/
+?? experiments/suites/common/build_results_w21a.csv
+?? experiments/suites/common/build_results_w21b.csv
+?? experiments/suites/common/build_results_w21c.csv
+?? experiments/suites/common/data_availability_results_w21d.csv
+?? experiments/suites/common/run_w21_blocker_fix_attempts.py
+?? experiments/suites/common/w21_attempt_summary.csv
+?? experiments/suites/common/w21_blocker_status_update.csv
+?? experiments/suites/common/w21_counts.env
+?? experiments/suites/common/w21_new_ready_candidates.csv
+?? experiments/suites/common/w21_still_unavailable.csv
+?? experiments/suites/common/wrapper_command_normalization_results.csv
+?? experiments/suites/results/W21/
+
+# git diff --name-status
+M	experiments/suites/README.md
+
+# W21 untracked
+docs/papers/mascar_w21a_parboil_build_fix_report.md
+docs/papers/mascar_w21b_cuda_arch_fix_report.md
+docs/papers/mascar_w21c_dependency_fix_report.md
+docs/papers/mascar_w21d_data_command_fix_report.md
+experiments/suites/audit/W21/w21_closeout_manifest.csv
+experiments/suites/audit/W21/w21_diff_name_status.txt
+experiments/suites/audit/W21/w21_external_changes.txt
+experiments/suites/audit/W21/w21_log_root.txt
+experiments/suites/audit/W21/w21_postcheck.md
+experiments/suites/audit/W21/w21a_postcheck.md
+experiments/suites/audit/W21/w21b_postcheck.md
+experiments/suites/audit/W21/w21c_postcheck.md
+experiments/suites/audit/W21/w21d_postcheck.md
+experiments/suites/common/build_results_w21a.csv
+experiments/suites/common/build_results_w21b.csv
+experiments/suites/common/build_results_w21c.csv
+experiments/suites/common/data_availability_results_w21d.csv
+experiments/suites/common/run_w21_blocker_fix_attempts.py
+experiments/suites/common/w21_attempt_summary.csv
+experiments/suites/common/w21_blocker_status_update.csv
+experiments/suites/common/w21_counts.env
+experiments/suites/common/w21_new_ready_candidates.csv
+experiments/suites/common/w21_still_unavailable.csv
+experiments/suites/results/W21/w21_dryrun_results.csv
+experiments/suites/results/W21/w21_dryrun_run_manifest.csv
+experiments/suites/results/W21/w21_dryrun_status_matrix.csv
+experiments/suites/results/W21/w21_dryrun_summary.md
+experiments/suites/results/W21/w21_smoke_results.csv
+experiments/suites/results/W21/w21_smoke_run_manifest.csv
+experiments/suites/results/W21/w21_smoke_status_matrix.csv
+experiments/suites/results/W21/w21_smoke_summary.md

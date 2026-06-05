@@ -1,0 +1,15 @@
+artifact,path,status,notes
+build_results_w21a.csv,experiments/suites/common/build_results_w21a.csv,created,W21
+build_results_w21b.csv,experiments/suites/common/build_results_w21b.csv,created,W21
+build_results_w21c.csv,experiments/suites/common/build_results_w21c.csv,created,W21
+data_availability_results_w21d.csv,experiments/suites/common/data_availability_results_w21d.csv,created,W21
+wrapper_command_normalization_results.csv,experiments/suites/common/wrapper_command_normalization_results.csv,created,W21
+w21_blocker_status_update.csv,experiments/suites/common/w21_blocker_status_update.csv,created,W21
+w21_new_ready_candidates.csv,experiments/suites/common/w21_new_ready_candidates.csv,created,W21
+w21_still_unavailable.csv,experiments/suites/common/w21_still_unavailable.csv,created,W21
+mascar_w21a_parboil_build_fix_report.md,docs/papers/mascar_w21a_parboil_build_fix_report.md,created,W21
+mascar_w21b_cuda_arch_fix_report.md,docs/papers/mascar_w21b_cuda_arch_fix_report.md,created,W21
+mascar_w21c_dependency_fix_report.md,docs/papers/mascar_w21c_dependency_fix_report.md,created,W21
+mascar_w21d_data_command_fix_report.md,docs/papers/mascar_w21d_data_command_fix_report.md,created,W21
+w21_postcheck.md,experiments/suites/audit/W21/w21_postcheck.md,created,W21
+raw_logs,/workspace/tmp/mascar_w21_raw_logs_20260605_163102.tar.gz,archived,not intended for git
