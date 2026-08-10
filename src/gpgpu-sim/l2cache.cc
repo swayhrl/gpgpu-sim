@@ -40,6 +40,7 @@
 #include "../option_parser.h"
 #include "../statwrapper.h"
 #include "dram.h"
+#include "decoupled-l2-cache.h"
 #include "gpu-cache.h"
 #include "gpu-sim.h"
 #include "histogram.h"
@@ -427,6 +428,8 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
   m_stats = stats;
   m_gpu = gpu;
   m_memcpy_cycle_offset = 0;
+  m_L2cache = NULL;
+  m_decoupled_L2cache = NULL;
 
   assert(m_id < m_config->m_n_mem_sub_partition);
 
@@ -435,10 +438,16 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
   m_L2interface = new L2interface(this);
   m_mf_allocator = new partition_mf_allocator(config);
 
-  if (!m_config->m_L2_config.disabled())
-    m_L2cache = new l2_cache(L2c_name, m_config->m_L2_config, -1, -1,
-                             m_L2interface, m_mf_allocator,
-                             IN_PARTITION_L2_MISS_QUEUE, gpu, L2_GPU_CACHE);
+  if (!m_config->m_L2_config.disabled()) {
+    if (m_config->use_decoupled_l2())
+      m_decoupled_L2cache = new decoupled_l2_cache(
+          L2c_name, m_config->m_L2_config, m_config, m_L2interface,
+          m_mf_allocator);
+    else
+      m_L2cache = new l2_cache(L2c_name, m_config->m_L2_config, -1, -1,
+                               m_L2interface, m_mf_allocator,
+                               IN_PARTITION_L2_MISS_QUEUE, gpu, L2_GPU_CACHE);
+  }
 
   unsigned int icnt_L2;
   unsigned int L2_dram;
@@ -459,14 +468,20 @@ memory_sub_partition::~memory_sub_partition() {
   delete m_dram_L2_queue;
   delete m_L2_icnt_queue;
   delete m_L2cache;
+  delete m_decoupled_L2cache;
   delete m_L2interface;
 }
 
 void memory_sub_partition::cache_cycle(unsigned cycle) {
   // L2 fill responses
   if (!m_config->m_L2_config.disabled()) {
-    if (m_L2cache->access_ready() && !m_L2_icnt_queue->full()) {
-      mem_fetch *mf = m_L2cache->next_access();
+    const bool access_ready = m_decoupled_L2cache
+                                  ? m_decoupled_L2cache->access_ready()
+                                  : m_L2cache->access_ready();
+    if (access_ready && !m_L2_icnt_queue->full()) {
+      mem_fetch *mf = m_decoupled_L2cache
+                          ? m_decoupled_L2cache->next_access()
+                          : m_L2cache->next_access();
       if (mf->get_access_type() !=
           L2_WR_ALLOC_R) {  // Don't pass write allocate read request back to
                             // upper level cache
@@ -493,12 +508,24 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
   // DRAM to L2 (texture) and icnt (not texture)
   if (!m_dram_L2_queue->empty()) {
     mem_fetch *mf = m_dram_L2_queue->top();
-    if (!m_config->m_L2_config.disabled() && m_L2cache->waiting_for_fill(mf)) {
-      if (m_L2cache->fill_port_free()) {
+    const bool waiting_for_fill =
+        !m_config->m_L2_config.disabled() &&
+        (m_decoupled_L2cache ? m_decoupled_L2cache->waiting_for_fill(mf)
+                             : m_L2cache->waiting_for_fill(mf));
+    if (waiting_for_fill) {
+      const bool fill_port_free = m_decoupled_L2cache
+                                      ? m_decoupled_L2cache->fill_port_free()
+                                      : m_L2cache->fill_port_free();
+      if (fill_port_free) {
         mf->set_status(IN_PARTITION_L2_FILL_QUEUE,
                        m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
-        m_L2cache->fill(mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
-                                m_memcpy_cycle_offset);
+        if (m_decoupled_L2cache)
+          m_decoupled_L2cache->fill(
+              mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
+                      m_memcpy_cycle_offset);
+        else
+          m_L2cache->fill(mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
+                                  m_memcpy_cycle_offset);
         m_dram_L2_queue->pop();
       }
     } else if (!m_L2_icnt_queue->full()) {
@@ -511,7 +538,13 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
   }
 
   // prior L2 misses inserted into m_L2_dram_queue here
-  if (!m_config->m_L2_config.disabled()) m_L2cache->cycle();
+  if (!m_config->m_L2_config.disabled()) {
+    if (m_decoupled_L2cache)
+      m_decoupled_L2cache->cycle(m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
+                                 m_memcpy_cycle_offset);
+    else
+      m_L2cache->cycle();
+  }
 
   // new L2 texture accesses and/or non-texture accesses
   if (!m_L2_dram_queue->full() && !m_icnt_L2_queue->empty()) {
@@ -521,14 +554,22 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
          (!m_config->m_L2_texure_only))) {
       // L2 is enabled and access is for L2
       bool output_full = m_L2_icnt_queue->full();
-      bool port_free = m_L2cache->data_port_free();
+      bool port_free = m_decoupled_L2cache
+                           ? m_decoupled_L2cache->data_port_free()
+                           : m_L2cache->data_port_free();
       if (!output_full && port_free) {
         std::list<cache_event> events;
-        enum cache_request_status status =
-            m_L2cache->access(mf->get_addr(), mf,
-                              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
-                                  m_memcpy_cycle_offset,
-                              events);
+        enum cache_request_status status = m_decoupled_L2cache
+            ? m_decoupled_L2cache->access(
+                  mf->get_addr(), mf,
+                  m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
+                      m_memcpy_cycle_offset,
+                  events)
+            : m_L2cache->access(
+                  mf->get_addr(), mf,
+                  m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
+                      m_memcpy_cycle_offset,
+                  events);
         bool write_sent = was_write_sent(events);
         bool read_sent = was_read_sent(events);
         MEM_SUBPART_DPRINTF("Probing L2 cache Address=%llx, status=%u\n",
@@ -553,7 +594,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
             m_icnt_L2_queue->pop();
           }
         } else if (status != RESERVATION_FAIL) {
-          if (mf->is_write() &&
+          if (!m_decoupled_L2cache && mf->is_write() &&
               (m_config->m_L2_config.m_write_alloc_policy == FETCH_ON_WRITE ||
                m_config->m_L2_config.m_write_alloc_policy ==
                    LAZY_FETCH_ON_READ) &&
@@ -602,6 +643,17 @@ bool memory_sub_partition::full(unsigned size) const {
   return m_icnt_L2_queue->is_avilable_size(size);
 }
 
+void memory_sub_partition::force_l2_tag_update(
+    new_addr_type addr, unsigned time, mem_access_sector_mask_t mask) {
+  if (m_config->m_L2_config.disabled()) return;
+  if (m_decoupled_L2cache)
+    m_decoupled_L2cache->force_tag_access(addr, m_memcpy_cycle_offset + time,
+                                           mask);
+  else
+    m_L2cache->force_tag_access(addr, m_memcpy_cycle_offset + time, mask);
+  m_memcpy_cycle_offset += 1;
+}
+
 bool memory_sub_partition::L2_dram_queue_empty() const {
   return m_L2_dram_queue->empty();
 }
@@ -623,7 +675,12 @@ void memory_sub_partition::dram_L2_queue_push(class mem_fetch *mf) {
 void memory_sub_partition::print_cache_stat(unsigned &accesses,
                                             unsigned &misses) const {
   FILE *fp = stdout;
-  if (!m_config->m_L2_config.disabled()) m_L2cache->print(fp, accesses, misses);
+  if (!m_config->m_L2_config.disabled()) {
+    if (m_decoupled_L2cache)
+      m_decoupled_L2cache->print(fp, accesses, misses);
+    else
+      m_L2cache->print(fp, accesses, misses);
+  }
 }
 
 void memory_sub_partition::print(FILE *fp) const {
@@ -638,7 +695,12 @@ void memory_sub_partition::print(FILE *fp) const {
         fprintf(fp, " <NULL mem_fetch?>\n");
     }
   }
-  if (!m_config->m_L2_config.disabled()) m_L2cache->display_state(fp);
+  if (!m_config->m_L2_config.disabled()) {
+    if (m_decoupled_L2cache)
+      m_decoupled_L2cache->display_state(fp);
+    else
+      m_L2cache->display_state(fp);
+  }
 }
 
 void memory_stats_t::visualizer_print(gzFile visualizer_file) {
@@ -700,14 +762,20 @@ void gpgpu_sim::print_dram_stats(FILE *fout) const {
 
 unsigned memory_sub_partition::flushL2() {
   if (!m_config->m_L2_config.disabled()) {
-    m_L2cache->flush();
+    if (m_decoupled_L2cache)
+      m_decoupled_L2cache->flush();
+    else
+      m_L2cache->flush();
   }
   return 0;  // TODO: write the flushed data to the main memory
 }
 
 unsigned memory_sub_partition::invalidateL2() {
   if (!m_config->m_L2_config.disabled()) {
-    m_L2cache->invalidate();
+    if (m_decoupled_L2cache)
+      m_decoupled_L2cache->invalidate();
+    else
+      m_L2cache->invalidate();
   }
   return 0;
 }
@@ -836,32 +904,33 @@ mem_fetch *memory_sub_partition::top() {
 }
 
 void memory_sub_partition::set_done(mem_fetch *mf) {
+  if (m_decoupled_L2cache) m_decoupled_L2cache->writeback_done(mf);
   m_request_tracker.erase(mf);
 }
 
 void memory_sub_partition::accumulate_L2cache_stats(
     class cache_stats &l2_stats) const {
-  if (!m_config->m_L2_config.disabled()) {
+  if (!m_config->m_L2_config.disabled() && !m_decoupled_L2cache) {
     l2_stats += m_L2cache->get_stats();
   }
 }
 
 void memory_sub_partition::get_L2cache_sub_stats(
     struct cache_sub_stats &css) const {
-  if (!m_config->m_L2_config.disabled()) {
+  if (!m_config->m_L2_config.disabled() && !m_decoupled_L2cache) {
     m_L2cache->get_sub_stats(css);
   }
 }
 
 void memory_sub_partition::get_L2cache_sub_stats_pw(
     struct cache_sub_stats_pw &css) const {
-  if (!m_config->m_L2_config.disabled()) {
+  if (!m_config->m_L2_config.disabled() && !m_decoupled_L2cache) {
     m_L2cache->get_sub_stats_pw(css);
   }
 }
 
 void memory_sub_partition::clear_L2cache_stats_pw() {
-  if (!m_config->m_L2_config.disabled()) {
+  if (!m_config->m_L2_config.disabled() && !m_decoupled_L2cache) {
     m_L2cache->clear_pw();
   }
 }

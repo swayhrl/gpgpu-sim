@@ -327,6 +327,22 @@ class memory_config {
   mutable l2_cache_config m_L2_config;
   bool m_L2_texure_only;
 
+  // Selects the L2 timing backend.  "baseline" preserves the historical
+  // l2_cache; "fixed" and "decoupled" use the experimental V3-inspired
+  // model while retaining the normal mem_fetch/DRAM interface.
+  char *gpgpu_l2_backend;
+  unsigned decoupled_l2_fixed_latency;
+  unsigned decoupled_l2_tag_latency;
+  unsigned decoupled_l2_hit_latency;
+  unsigned decoupled_l2_fill_latency;
+  unsigned decoupled_l2_req_entries;
+  unsigned decoupled_l2_aad_entries;
+  unsigned decoupled_l2_wbq_entries;
+  unsigned decoupled_l2_banks;
+
+  bool use_decoupled_l2() const;
+  bool use_fixed_l2() const;
+
   char *gpgpu_dram_timing_opt;
   char *gpgpu_L2_queue_config;
   bool l2_ideal;

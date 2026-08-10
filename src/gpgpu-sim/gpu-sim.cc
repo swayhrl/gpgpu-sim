@@ -256,6 +256,36 @@ void memory_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_cache:dl2_texture_only", OPT_BOOL,
                          &m_L2_texure_only, "L2 cache used for texture only",
                          "1");
+  option_parser_register(opp, "-gpgpu_l2_backend", OPT_CSTR,
+                         &gpgpu_l2_backend,
+                         "L2 backend: baseline, fixed, or decoupled",
+                         "baseline");
+  option_parser_register(opp, "-gpgpu_decoupled_l2_fixed_latency", OPT_UINT32,
+                         &decoupled_l2_fixed_latency,
+                         "fixed backend response latency in L2 cycles", "20");
+  option_parser_register(opp, "-gpgpu_decoupled_l2_tag_latency", OPT_UINT32,
+                         &decoupled_l2_tag_latency,
+                         "decoupled backend tag latency in L2 cycles", "1");
+  option_parser_register(opp, "-gpgpu_decoupled_l2_hit_latency", OPT_UINT32,
+                         &decoupled_l2_hit_latency,
+                         "decoupled backend hit response latency in L2 cycles",
+                         "1");
+  option_parser_register(opp, "-gpgpu_decoupled_l2_fill_latency", OPT_UINT32,
+                         &decoupled_l2_fill_latency,
+                         "decoupled backend fill-to-response latency in L2 cycles",
+                         "1");
+  option_parser_register(opp, "-gpgpu_decoupled_l2_req_entries", OPT_UINT32,
+                         &decoupled_l2_req_entries,
+                         "decoupled backend request-token entries", "512");
+  option_parser_register(opp, "-gpgpu_decoupled_l2_aad_entries", OPT_UINT32,
+                         &decoupled_l2_aad_entries,
+                         "decoupled backend active-address entries", "256");
+  option_parser_register(opp, "-gpgpu_decoupled_l2_wbq_entries", OPT_UINT32,
+                         &decoupled_l2_wbq_entries,
+                         "decoupled backend writeback queue entries", "4");
+  option_parser_register(opp, "-gpgpu_decoupled_l2_banks", OPT_UINT32,
+                         &decoupled_l2_banks,
+                         "decoupled backend abstract data banks", "4");
   option_parser_register(
       opp, "-gpgpu_n_mem", OPT_UINT32, &m_n_mem,
       "number of memory modules (e.g. memory controllers) in gpu", "8");
@@ -323,6 +353,16 @@ void memory_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-SST_mode", OPT_BOOL, &SST_mode, "SST mode",
                          "0");
   m_address_mapping.addrdec_setoption(opp);
+}
+
+bool memory_config::use_decoupled_l2() const {
+  return gpgpu_l2_backend &&
+         (!strcmp(gpgpu_l2_backend, "fixed") ||
+          !strcmp(gpgpu_l2_backend, "decoupled"));
+}
+
+bool memory_config::use_fixed_l2() const {
+  return gpgpu_l2_backend && !strcmp(gpgpu_l2_backend, "fixed");
 }
 
 void shader_core_config::reg_options(class OptionParser *opp) {
