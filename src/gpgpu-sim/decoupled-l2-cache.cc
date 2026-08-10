@@ -324,7 +324,9 @@ void decoupled_l2_cache::writeback_done(mem_fetch *mf) {
 
 void decoupled_l2_cache::force_tag_access(new_addr_type addr, unsigned,
                                           mem_access_sector_mask_t) {
-  line_state &line = m_lines[m_cache_config.block_addr(addr)];
+  const new_addr_type block = m_cache_config.block_addr(addr);
+  install_line(block, 0);
+  line_state &line = m_lines[block];
   line.dirty = false;
 }
 
