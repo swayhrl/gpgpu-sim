@@ -306,6 +306,12 @@ class memory_config {
 
     m_address_mapping.init(m_n_mem, m_n_sub_partition_per_memory_channel);
     m_L2_config.init(&m_address_mapping);
+    assert(gpgpu_l2_backend &&
+           (!strcmp(gpgpu_l2_backend, "baseline") ||
+            !strcmp(gpgpu_l2_backend, "fixed") ||
+            !strcmp(gpgpu_l2_backend, "decoupled")));
+    assert(decoupled_l2_banks > 0 && decoupled_l2_req_entries > 0 &&
+           decoupled_l2_aad_entries > 0 && decoupled_l2_wbq_entries > 0);
 
     m_valid = true;
 

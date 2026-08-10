@@ -28,7 +28,8 @@ decoupled_l2_cache::decoupled_l2_cache(
       m_atomic_requests(0),
       m_token_stalls(0),
       m_aad_stalls(0),
-      m_bank_stalls(0) {
+      m_bank_stalls(0),
+      m_bank_ops(memory_config->decoupled_l2_banks, 0) {
   assert(m_memory_config->decoupled_l2_req_entries > 0);
   assert(m_memory_config->decoupled_l2_aad_entries > 0);
   assert(m_memory_config->decoupled_l2_wbq_entries > 0);
@@ -130,10 +131,16 @@ void decoupled_l2_cache::process_tag(unsigned token, unsigned long long time) {
     return;
   }
 
-  ++m_misses;
   // Writes allocate and become dirty without a data read: data content is not
   // represented by this timing model.  Reads/atomics create one line OTF.
   if (req.write) {
+    if (victim_requires_wbq() &&
+        m_wbq.size() >= m_memory_config->decoupled_l2_wbq_entries) {
+      ++m_aad_stalls;
+      m_tag_queue.push_front(token);
+      return;
+    }
+    ++m_misses;
     install_line(req.line, time);
     m_lines[req.line].dirty = true;
     schedule_response(token, time + m_memory_config->decoupled_l2_hit_latency);
@@ -145,6 +152,7 @@ void decoupled_l2_cache::process_tag(unsigned token, unsigned long long time) {
     m_tag_queue.push_front(token);
     return;
   }
+  ++m_misses;
   aad_entry entry;
   entry.tokens.push_back(token);
   entry.lower_mf = req.mf;
@@ -196,12 +204,19 @@ void decoupled_l2_cache::install_line(new_addr_type line,
 
 void decoupled_l2_cache::issue_lower_reads(unsigned long long time) {
   const unsigned attempts = m_lower_read_queue.size();
+  std::set<unsigned> used_banks;
   for (unsigned i = 0; i < attempts; ++i) {
     new_addr_type line = m_lower_read_queue.front();
     m_lower_read_queue.pop_front();
     std::map<new_addr_type, aad_entry>::iterator active = m_aad.find(line);
     assert(active != m_aad.end());
     if (active->second.lower_issued) continue;
+    const unsigned bank = bank_for(line);
+    if (used_banks.count(bank) || m_bank_ready[bank] > time) {
+      ++m_bank_stalls;
+      m_lower_read_queue.push_back(line);
+      continue;
+    }
     if (m_memport->full(m_cache_config.get_line_sz(), false)) {
       m_lower_read_queue.push_front(line);
       return;
@@ -211,7 +226,9 @@ void decoupled_l2_cache::issue_lower_reads(unsigned long long time) {
     m_memport->push(active->second.lower_mf);
     // The front-end has one lower-read issue slot per bank.  Different banks
     // can proceed in one L2 cycle; same-bank requests remain queued.
-    m_bank_ready[bank_for(line)] = time + 1;
+    used_banks.insert(bank);
+    m_bank_ready[bank] = time + 1;
+    ++m_bank_ops[bank];
   }
 }
 
@@ -222,7 +239,9 @@ void decoupled_l2_cache::issue_writebacks(unsigned long long time) {
     if (m_memport->full(m_cache_config.get_line_sz(), true)) return;
     it->issued = true;
     m_memport->push(it->mf);
-    m_bank_ready[bank_for(it->line)] = time + 1;
+    const unsigned bank = bank_for(it->line);
+    m_bank_ready[bank] = time + 1;
+    ++m_bank_ops[bank];
     return;
   }
 }
@@ -244,6 +263,7 @@ void decoupled_l2_cache::cycle(unsigned long long time) {
       }
       used_banks.insert(bank);
       m_bank_ready[bank] = time + m_memory_config->decoupled_l2_tag_latency;
+      ++m_bank_ops[bank];
       process_tag(token, time + m_memory_config->decoupled_l2_tag_latency);
     }
     issue_lower_reads(time);
@@ -274,7 +294,9 @@ void decoupled_l2_cache::fill(mem_fetch *mf, unsigned long long time) {
   }
   m_fill_waiters.erase(fill);
   m_aad.erase(active);
-  m_bank_ready[bank_for(line)] = time + 1;
+  const unsigned bank = bank_for(line);
+  m_bank_ready[bank] = time + 1;
+  ++m_bank_ops[bank];
 }
 
 mem_fetch *decoupled_l2_cache::next_access() {
@@ -329,11 +351,18 @@ void decoupled_l2_cache::print(FILE *fp, unsigned &accesses,
 
 void decoupled_l2_cache::display_state(FILE *fp) const {
   fprintf(fp,
-          "decoupled_l2[%s]: req=%zu tag=%zu aad=%zu fill=%zu response=%zu "
-          "wbq=%zu lines=%zu\n",
-          m_name.c_str(), m_requests.size(), m_tag_queue.size(), m_aad.size(),
-          m_fill_waiters.size(), m_response_ready.size(), m_wbq.size(),
-          m_lines.size());
+          "decoupled_l2[%s]: access=%llu hit=%llu miss=%llu aad_merge=%llu "
+          "otf=%llu write=%llu wb=%llu atomic=%llu token_stall=%llu "
+          "aad_stall=%llu bank_stall=%llu req=%zu tag=%zu aad=%zu fill=%zu "
+          "response=%zu wbq=%zu lines=%zu banks=",
+          m_name.c_str(), m_accesses, m_hits, m_misses, m_aad_merges,
+          m_otf_reads, m_writes, m_writebacks, m_atomic_requests,
+          m_token_stalls, m_aad_stalls, m_bank_stalls, m_requests.size(),
+          m_tag_queue.size(), m_aad.size(), m_fill_waiters.size(),
+          m_response_ready.size(), m_wbq.size(), m_lines.size());
+  for (unsigned bank = 0; bank < m_bank_ops.size(); ++bank)
+    fprintf(fp, "%s%llu", bank ? "," : "", m_bank_ops[bank]);
+  fprintf(fp, "\n");
 }
 
 void decoupled_l2_cache::assert_unique_state() const {
@@ -343,11 +372,22 @@ void decoupled_l2_cache::assert_unique_state() const {
     std::map<unsigned, request>::const_iterator req = m_requests.find(it->second);
     assert(req != m_requests.end() && req->second.mf == it->first);
   }
+  std::set<unsigned> aad_tokens;
   for (std::map<new_addr_type, aad_entry>::const_iterator it = m_aad.begin();
        it != m_aad.end(); ++it) {
     assert(!it->second.tokens.empty());
+    std::set<unsigned> seen_tokens;
     for (std::vector<unsigned>::const_iterator token = it->second.tokens.begin();
-         token != it->second.tokens.end(); ++token)
+         token != it->second.tokens.end(); ++token) {
+      assert(seen_tokens.insert(*token).second);
+      assert(aad_tokens.insert(*token).second);
       assert(m_requests.find(*token) != m_requests.end());
+    }
+    if (it->second.lower_issued) {
+      assert(it->second.lower_mf);
+      std::map<mem_fetch *, new_addr_type>::const_iterator fill =
+          m_fill_waiters.find(it->second.lower_mf);
+      assert(fill != m_fill_waiters.end() && fill->second == it->first);
+    }
   }
 }
