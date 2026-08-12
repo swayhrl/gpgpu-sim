@@ -65,6 +65,8 @@ cycles and is intentionally independent of baseline-cache timing knobs.
 - Every OTF record has exactly one lower read in flight until its fill arrives.
 - A dirty victim enters WBQ exactly once and is not reusable before its write
   acknowledgement.
+- Every decoupled L2 writeback acknowledgement retires its matching WBQ entry
+  before the normal L2-to-interconnect queue discards that acknowledgement.
 - Lower reads in flight are credit-limited per sub-partition.  Independently,
   the decoupled L2 leaves one L2-to-DRAM FIFO entry available for a WBQ
   writeback.  Thus a full WBQ cannot block fills while its own writeback is
