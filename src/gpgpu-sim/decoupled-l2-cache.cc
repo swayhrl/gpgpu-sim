@@ -376,6 +376,8 @@ void decoupled_l2_cache::display_state(FILE *fp) const {
 
 void decoupled_l2_cache::assert_unique_state() const {
   assert(m_requests.size() == m_token_for_mf.size());
+  assert(m_fill_waiters.size() <=
+         m_memory_config->decoupled_l2_lower_read_entries);
   for (std::map<mem_fetch *, unsigned>::const_iterator it = m_token_for_mf.begin();
        it != m_token_for_mf.end(); ++it) {
     std::map<unsigned, request>::const_iterator req = m_requests.find(it->second);
