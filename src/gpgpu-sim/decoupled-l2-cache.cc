@@ -28,6 +28,7 @@ decoupled_l2_cache::decoupled_l2_cache(
       m_atomic_requests(0),
       m_token_stalls(0),
       m_aad_stalls(0),
+      m_lower_read_credit_stalls(0),
       m_bank_stalls(0),
       m_bank_ops(memory_config->decoupled_l2_banks, 0) {
   assert(m_memory_config->decoupled_l2_req_entries > 0);
@@ -211,8 +212,10 @@ void decoupled_l2_cache::issue_lower_reads(unsigned long long time) {
     // returns in DRAM so an eviction writeback always retains a path to its
     // acknowledgement and can release that WBQ entry.
     if (m_fill_waiters.size() >=
-        m_memory_config->decoupled_l2_lower_read_entries)
+        m_memory_config->decoupled_l2_lower_read_entries) {
+      ++m_lower_read_credit_stalls;
       return;
+    }
     new_addr_type line = m_lower_read_queue.front();
     m_lower_read_queue.pop_front();
     std::map<new_addr_type, aad_entry>::iterator active = m_aad.find(line);
@@ -352,21 +355,24 @@ void decoupled_l2_cache::print(FILE *fp, unsigned &accesses,
   fprintf(fp,
           "decoupled_l2[%s]: access=%llu hit=%llu miss=%llu aad_merge=%llu "
           "otf=%llu write=%llu wb=%llu atomic=%llu token_stall=%llu "
-          "aad_stall=%llu bank_stall=%llu\n",
+          "aad_stall=%llu read_credit_stall=%llu bank_stall=%llu\n",
           m_name.c_str(), m_accesses, m_hits, m_misses, m_aad_merges,
           m_otf_reads, m_writes, m_writebacks, m_atomic_requests,
-          m_token_stalls, m_aad_stalls, m_bank_stalls);
+          m_token_stalls, m_aad_stalls, m_lower_read_credit_stalls,
+          m_bank_stalls);
 }
 
 void decoupled_l2_cache::display_state(FILE *fp) const {
   fprintf(fp,
           "decoupled_l2[%s]: access=%llu hit=%llu miss=%llu aad_merge=%llu "
           "otf=%llu write=%llu wb=%llu atomic=%llu token_stall=%llu "
-          "aad_stall=%llu bank_stall=%llu req=%zu tag=%zu aad=%zu fill=%zu "
+          "aad_stall=%llu read_credit_stall=%llu bank_stall=%llu "
+          "req=%zu tag=%zu aad=%zu fill=%zu "
           "response=%zu wbq=%zu lines=%zu banks=",
           m_name.c_str(), m_accesses, m_hits, m_misses, m_aad_merges,
           m_otf_reads, m_writes, m_writebacks, m_atomic_requests,
-          m_token_stalls, m_aad_stalls, m_bank_stalls, m_requests.size(),
+          m_token_stalls, m_aad_stalls, m_lower_read_credit_stalls,
+          m_bank_stalls, m_requests.size(),
           m_tag_queue.size(), m_aad.size(), m_fill_waiters.size(),
           m_response_ready.size(), m_wbq.size(), m_lines.size());
   for (unsigned bank = 0; bank < m_bank_ops.size(); ++bank)

@@ -124,6 +124,7 @@ class decoupled_l2_cache {
   unsigned long long m_atomic_requests;
   unsigned long long m_token_stalls;
   unsigned long long m_aad_stalls;
+  unsigned long long m_lower_read_credit_stalls;
   unsigned long long m_bank_stalls;
   std::vector<unsigned long long> m_bank_ops;
 };
