@@ -435,7 +435,7 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
 
   char L2c_name[32];
   snprintf(L2c_name, 32, "L2_bank_%03d", m_id);
-  m_L2interface = new L2interface(this);
+  m_L2interface = new L2interface(this, m_config->use_decoupled_l2());
   m_mf_allocator = new partition_mf_allocator(config);
 
   if (!m_config->m_L2_config.disabled()) {

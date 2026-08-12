@@ -250,10 +250,16 @@ class memory_sub_partition {
 
 class L2interface : public mem_fetch_interface {
  public:
-  L2interface(memory_sub_partition *unit) { m_unit = unit; }
+  L2interface(memory_sub_partition *unit, bool reserve_writeback_slot)
+      : m_unit(unit), m_reserve_writeback_slot(reserve_writeback_slot) {}
   virtual ~L2interface() {}
   virtual bool full(unsigned size, bool write) const {
-    // assume read and write packets all same size
+    // A decoupled lower-read must leave one L2-to-DRAM FIFO entry for a dirty
+    // victim writeback.  Once WBQ is full, fills wait for that writeback; if
+    // reads could occupy every FIFO entry the writeback could never enter DRAM.
+    // The baseline cache does not use this model-specific reservation.
+    if (m_reserve_writeback_slot && !write)
+      return m_unit->m_L2_dram_queue->is_avilable_size(2);
     return m_unit->m_L2_dram_queue->full();
   }
   virtual void push(mem_fetch *mf) {
@@ -263,6 +269,7 @@ class L2interface : public mem_fetch_interface {
 
  private:
   memory_sub_partition *m_unit;
+  bool m_reserve_writeback_slot;
 };
 
 #endif
