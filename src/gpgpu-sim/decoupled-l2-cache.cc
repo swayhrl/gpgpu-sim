@@ -185,7 +185,6 @@ void decoupled_l2_cache::enqueue_writeback(new_addr_type line,
   entry.mf = m_mf_allocator->alloc(line, L2_WRBK_ACC,
                                    m_cache_config.get_line_sz(), true, time, 0);
   m_wbq.push_back(entry);
-  m_writeback_mfs.insert(entry.mf);
   ++m_writebacks;
 }
 
@@ -209,8 +208,8 @@ void decoupled_l2_cache::issue_lower_reads(unsigned long long time) {
   std::set<unsigned> used_banks;
   for (unsigned i = 0; i < attempts; ++i) {
     // A fill can be held behind a full WBQ.  Keep a bounded number of read
-    // returns in DRAM so an eviction writeback always retains a path to its
-    // acknowledgement and can release that WBQ entry.
+    // returns in DRAM so an eviction writeback retains a path into the lower
+    // FIFO, where it can leave WBQ.
     if (m_fill_waiters.size() >=
         m_memory_config->decoupled_l2_lower_read_entries) {
       ++m_lower_read_credit_stalls;
@@ -245,11 +244,15 @@ void decoupled_l2_cache::issue_lower_reads(unsigned long long time) {
 void decoupled_l2_cache::issue_writebacks(unsigned long long time) {
   for (std::deque<wbq_entry>::iterator it = m_wbq.begin(); it != m_wbq.end();
        ++it) {
-    if (it->issued) continue;
     if (m_memport->full(m_cache_config.get_line_sz(), true)) return;
-    it->issued = true;
     m_memport->push(it->mf);
-    const unsigned bank = bank_for(it->line);
+    // The lower FIFO now owns this mem_fetch.  WBQ models only the cache-side
+    // staging before that handoff; holding it until a DRAM acknowledgement
+    // creates a dependency on a response path that this timing model does not
+    // otherwise consume.
+    const new_addr_type line = it->line;
+    m_wbq.erase(it);
+    const unsigned bank = bank_for(line);
     m_bank_ready[bank] = time + 1;
     ++m_bank_ops[bank];
     return;
@@ -318,18 +321,6 @@ mem_fetch *decoupled_l2_cache::next_access() {
   m_requests.erase(token->second);
   m_token_for_mf.erase(token);
   return mf;
-}
-
-void decoupled_l2_cache::writeback_done(mem_fetch *mf) {
-  if (m_writeback_mfs.erase(mf) == 0) return;
-  for (std::deque<wbq_entry>::iterator it = m_wbq.begin(); it != m_wbq.end();
-       ++it) {
-    if (it->mf == mf) {
-      m_wbq.erase(it);
-      return;
-    }
-  }
-  assert(0 && "writeback acknowledgement was not in WBQ");
 }
 
 void decoupled_l2_cache::force_tag_access(new_addr_type addr, unsigned,

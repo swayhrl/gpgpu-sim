@@ -885,11 +885,6 @@ mem_fetch *memory_sub_partition::pop() {
   if (mf && mf->isatomic()) mf->do_atomic();
   if (mf && (mf->get_access_type() == L2_WRBK_ACC ||
              mf->get_access_type() == L1_WRBK_ACC)) {
-    // A normal DRAM return routes an L2 writeback through this queue before it
-    // is discarded.  The decoupled WBQ owns that mem_fetch until this point;
-    // release its entry before deleting the acknowledgement.
-    if (m_decoupled_L2cache && mf->get_access_type() == L2_WRBK_ACC)
-      m_decoupled_L2cache->writeback_done(mf);
     delete mf;
     mf = NULL;
   }
@@ -902,8 +897,6 @@ mem_fetch *memory_sub_partition::top() {
              mf->get_access_type() == L1_WRBK_ACC)) {
     m_L2_icnt_queue->pop();
     m_request_tracker.erase(mf);
-    if (m_decoupled_L2cache && mf->get_access_type() == L2_WRBK_ACC)
-      m_decoupled_L2cache->writeback_done(mf);
     delete mf;
     mf = NULL;
   }
@@ -911,7 +904,6 @@ mem_fetch *memory_sub_partition::top() {
 }
 
 void memory_sub_partition::set_done(mem_fetch *mf) {
-  if (m_decoupled_L2cache) m_decoupled_L2cache->writeback_done(mf);
   m_request_tracker.erase(mf);
 }
 

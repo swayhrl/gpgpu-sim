@@ -34,7 +34,6 @@ class decoupled_l2_cache {
   mem_fetch *next_access();
   bool data_port_free() const;
 
-  void writeback_done(mem_fetch *mf);
   void force_tag_access(new_addr_type addr, unsigned time,
                         mem_access_sector_mask_t mask);
   void flush();
@@ -74,10 +73,9 @@ class decoupled_l2_cache {
   };
 
   struct wbq_entry {
-    wbq_entry() : line(0), mf(NULL), issued(false) {}
+    wbq_entry() : line(0), mf(NULL) {}
     new_addr_type line;
     mem_fetch *mf;
-    bool issued;
   };
 
   bool fixed_mode() const;
@@ -111,7 +109,6 @@ class decoupled_l2_cache {
   std::deque<scheduled_response> m_scheduled_responses;
   std::deque<mem_fetch *> m_response_ready;
   std::deque<wbq_entry> m_wbq;
-  std::set<mem_fetch *> m_writeback_mfs;
   std::vector<unsigned long long> m_bank_ready;
 
   unsigned long long m_accesses;

@@ -34,7 +34,7 @@ until exactly one of these happens:
 
 1. it returns the original `mem_fetch` through the L2-to-interconnect queue;
 2. it emits a lower-memory request and later accepts the matching fill; or
-3. it consumes an internal writeback acknowledgement.
+3. it hands a dirty eviction to the lower-memory FIFO.
 
 An accepted request is never re-presented to the front-end queue.  A lower
 read owns one line OTF record; later requests to that line attach to the same
@@ -49,7 +49,7 @@ All phases advance in `memory_sub_partition::cache_cycle()` clock units:
 ```
 front-end admission -> tag phase -> {hit response | OTF lower read}
 lower read fill    -> bank/data phase -> response phase
-write/eviction     -> WBQ lower write -> acknowledgement
+write/eviction     -> WBQ lower-write handoff
 ```
 
 The initial selectable `fixed` mode uses only the response phase and is a
@@ -63,10 +63,9 @@ cycles and is intentionally independent of baseline-cache timing knobs.
 - A request token is either free or appears in exactly one live phase/chain.
 - At most one AAD head and one OTF record exist for a line in a sub-partition.
 - Every OTF record has exactly one lower read in flight until its fill arrives.
-- A dirty victim enters WBQ exactly once and is not reusable before its write
-  acknowledgement.
-- Every decoupled L2 writeback acknowledgement retires its matching WBQ entry
-  before the normal L2-to-interconnect queue discards that acknowledgement.
+- A dirty victim enters WBQ exactly once and remains there until the
+  L2-to-DRAM FIFO accepts its writeback.  That FIFO then owns the `mem_fetch`;
+  WBQ does not model the later DRAM acknowledgement path.
 - Lower reads in flight are credit-limited per sub-partition.  Independently,
   the decoupled L2 leaves one L2-to-DRAM FIFO entry available for a WBQ
   writeback.  Thus a full WBQ cannot block fills while its own writeback is
