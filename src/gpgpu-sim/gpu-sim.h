@@ -311,7 +311,9 @@ class memory_config {
             !strcmp(gpgpu_l2_backend, "fixed") ||
             !strcmp(gpgpu_l2_backend, "decoupled")));
     assert(decoupled_l2_banks > 0 && decoupled_l2_req_entries > 0 &&
-           decoupled_l2_aad_entries > 0 && decoupled_l2_wbq_entries > 0);
+           decoupled_l2_aad_entries > 0 &&
+           decoupled_l2_lower_read_entries > 0 &&
+           decoupled_l2_wbq_entries > 0);
 
     m_valid = true;
 
@@ -343,6 +345,7 @@ class memory_config {
   unsigned decoupled_l2_fill_latency;
   unsigned decoupled_l2_req_entries;
   unsigned decoupled_l2_aad_entries;
+  unsigned decoupled_l2_lower_read_entries;
   unsigned decoupled_l2_wbq_entries;
   unsigned decoupled_l2_banks;
 

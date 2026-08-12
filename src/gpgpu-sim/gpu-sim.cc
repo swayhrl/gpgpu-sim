@@ -280,6 +280,12 @@ void memory_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_decoupled_l2_aad_entries", OPT_UINT32,
                          &decoupled_l2_aad_entries,
                          "decoupled backend active-address entries", "256");
+  option_parser_register(
+      opp, "-gpgpu_decoupled_l2_lower_read_entries", OPT_UINT32,
+      &decoupled_l2_lower_read_entries,
+      "decoupled backend lower reads in flight per subpartition; reserves "
+      "DRAM credit for writeback progress",
+      "32");
   option_parser_register(opp, "-gpgpu_decoupled_l2_wbq_entries", OPT_UINT32,
                          &decoupled_l2_wbq_entries,
                          "decoupled backend writeback queue entries", "4");

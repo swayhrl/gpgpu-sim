@@ -32,6 +32,7 @@ decoupled_l2_cache::decoupled_l2_cache(
       m_bank_ops(memory_config->decoupled_l2_banks, 0) {
   assert(m_memory_config->decoupled_l2_req_entries > 0);
   assert(m_memory_config->decoupled_l2_aad_entries > 0);
+  assert(m_memory_config->decoupled_l2_lower_read_entries > 0);
   assert(m_memory_config->decoupled_l2_wbq_entries > 0);
   assert(!m_bank_ready.empty());
 }
@@ -206,6 +207,12 @@ void decoupled_l2_cache::issue_lower_reads(unsigned long long time) {
   const unsigned attempts = m_lower_read_queue.size();
   std::set<unsigned> used_banks;
   for (unsigned i = 0; i < attempts; ++i) {
+    // A fill can be held behind a full WBQ.  Keep a bounded number of read
+    // returns in DRAM so an eviction writeback always retains a path to its
+    // acknowledgement and can release that WBQ entry.
+    if (m_fill_waiters.size() >=
+        m_memory_config->decoupled_l2_lower_read_entries)
+      return;
     new_addr_type line = m_lower_read_queue.front();
     m_lower_read_queue.pop_front();
     std::map<new_addr_type, aad_entry>::iterator active = m_aad.find(line);
@@ -266,8 +273,8 @@ void decoupled_l2_cache::cycle(unsigned long long time) {
       ++m_bank_ops[bank];
       process_tag(token, time + m_memory_config->decoupled_l2_tag_latency);
     }
-    issue_lower_reads(time);
     issue_writebacks(time);
+    issue_lower_reads(time);
   }
   retire_ready_responses(time);
   assert_unique_state();
