@@ -65,9 +65,10 @@ cycles and is intentionally independent of baseline-cache timing knobs.
 - Every OTF record has exactly one lower read in flight until its fill arrives.
 - A dirty victim enters WBQ exactly once and is not reusable before its write
   acknowledgement.
-- Lower reads in flight are credit-limited per sub-partition.  This reserves
-  DRAM arbitration/return capacity for a WBQ entry, so a full WBQ cannot block
-  fills while its own writeback is unable to make progress.
+- Lower reads in flight are credit-limited per sub-partition.  Independently,
+  the decoupled L2 leaves one L2-to-DRAM FIFO entry available for a WBQ
+  writeback.  Thus a full WBQ cannot block fills while its own writeback is
+  unable to enter DRAM behind lower reads.
 - A bank accepts at most one operation per modelled bank cycle.
 - No completion is dropped when the L2-to-interconnect queue is full.
 
@@ -86,7 +87,6 @@ unrelated nested checkout.
 Every reported run records the GPGPU-Sim commit, Accel-Sim commit, backend
 mode, and all `-gpgpu_decoupled_l2_*` parameters.
 
-`-gpgpu_decoupled_l2_lower_read_entries` defaults to 32.  It is deliberately
-smaller than the V100 DRAM queue/credit capacity: it is a progress reserve, not
-an AAD-capacity setting.  Workloads with a deliberately smaller DRAM queue must
-lower this value accordingly.
+`-gpgpu_decoupled_l2_lower_read_entries` defaults to 32.  It bounds returned
+lower reads per subpartition; the independent L2-to-DRAM FIFO reservation keeps
+one writeback injection slot regardless of that setting.
