@@ -1312,6 +1312,7 @@ void baseline_cache::display_state(FILE *fp) const {
           m_miss_queue.size(), m_config.m_miss_queue_size,
           m_extra_mf_fields.size());
   m_tag_array->display_state(fp);
+  m_stats.print_fail_stats(fp, (unsigned long long)-1, m_name.c_str());
   m_mshrs.display(fp);
   fprintf(fp, "\n");
 }
