@@ -1353,10 +1353,23 @@ void gpgpu_sim::deadlock_check() {
       }
     }
     printf("\n");
+    // The compact core count above is enough to identify a stalled SM, but
+    // not whether it is waiting on an atomic, a store, or a scoreboard
+    // dependency.  Emit that core's pipeline state together with the exact
+    // decoupled-L2/subpartition state before aborting a reproducible run.
+    for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++) {
+      if (!m_cluster[i]->get_not_completed()) continue;
+      for (unsigned c = 0; c < m_shader_config->n_simt_cores_per_cluster;
+           c++) {
+        const unsigned sid = m_shader_config->cid_to_sid(c, i);
+        m_cluster[i]->display_pipeline(sid, stdout, 1, 0x7);
+      }
+    }
     for (unsigned i = 0; i < m_memory_config->m_n_mem; i++) {
       bool busy = m_memory_partition_unit[i]->busy();
       if (busy)
         printf("GPGPU-Sim uArch DEADLOCK:  memory partition %u busy\n", i);
+      m_memory_partition_unit[i]->print(stdout);
     }
     if (icnt_busy()) {
       printf("GPGPU-Sim uArch DEADLOCK:  iterconnect contains traffic\n");
