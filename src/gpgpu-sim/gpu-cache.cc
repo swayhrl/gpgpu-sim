@@ -254,6 +254,8 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
   unsigned invalid_line = (unsigned)-1;
   unsigned valid_line = (unsigned)-1;
   unsigned long long valid_timestamp = (unsigned)-1;
+  unsigned dirty_line = (unsigned)-1;
+  unsigned long long dirty_timestamp = (unsigned)-1;
 
   bool all_reserved = true;
   // check for hit or pending hit
@@ -284,6 +286,7 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
       }
     }
     if (!line->is_reserved_line()) {
+      all_reserved = false;
       // percentage of dirty lines in the cache
       // number of dirty lines / total lines in the cache
       float dirty_line_percentage =
@@ -295,7 +298,6 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
       // reach the limit.
       if (!line->is_modified_line() ||
           dirty_line_percentage >= m_config.m_wr_percent) {
-        all_reserved = false;
         if (line->is_invalid_line()) {
           invalid_line = index;
         } else {
@@ -312,6 +314,17 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
             }
           }
         }
+      } else if ((m_config.m_replacement_policy == LRU &&
+                  line->get_last_access_time() < dirty_timestamp) ||
+                 (m_config.m_replacement_policy == FIFO &&
+                  line->get_alloc_time() < dirty_timestamp)) {
+        // The dirty-ratio policy is a preference, not a reason to make a set
+        // permanently unavailable.  If this set has no clean candidate, use
+        // its oldest dirty line below as a per-set escape.
+        dirty_timestamp = (m_config.m_replacement_policy == LRU)
+                              ? line->get_last_access_time()
+                              : line->get_alloc_time();
+        dirty_line = index;
       }
     }
   }
@@ -325,6 +338,8 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
     idx = invalid_line;
   } else if (valid_line != (unsigned)-1) {
     idx = valid_line;
+  } else if (dirty_line != (unsigned)-1) {
+    idx = dirty_line;
   } else
     abort();  // if an unreserved block exists, it is either invalid or
               // replaceable
