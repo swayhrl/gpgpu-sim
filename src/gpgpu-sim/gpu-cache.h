@@ -983,6 +983,7 @@ class tag_array {
 
   void print(FILE *stream, unsigned &total_access,
              unsigned &total_misses) const;
+  void display_state(FILE *stream) const;
   float windowed_miss_rate() const;
   void get_stats(unsigned &total_access, unsigned &total_misses,
                  unsigned &total_hit_res, unsigned &total_res_fail) const;

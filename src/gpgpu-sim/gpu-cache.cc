@@ -522,6 +522,25 @@ void tag_array::print(FILE *stream, unsigned &total_access,
   total_access += m_access;
 }
 
+void tag_array::display_state(FILE *stream) const {
+  unsigned invalid = 0;
+  unsigned reserved = 0;
+  unsigned valid = 0;
+  unsigned modified = 0;
+  for (unsigned i = 0; i < m_config.get_num_lines(); ++i) {
+    cache_block_t *line = m_lines[i];
+    if (line->is_invalid_line()) ++invalid;
+    if (line->is_reserved_line()) ++reserved;
+    if (line->is_valid_line()) ++valid;
+    if (line->is_modified_line()) ++modified;
+  }
+  fprintf(stream,
+          "tag lines: total=%u invalid=%u reserved=%u valid=%u modified=%u "
+          "pending=%zu\n",
+          m_config.get_num_lines(), invalid, reserved, valid, modified,
+          pending_lines.size());
+}
+
 void tag_array::get_stats(unsigned &total_access, unsigned &total_misses,
                           unsigned &total_hit_res,
                           unsigned &total_res_fail) const {
@@ -1319,6 +1338,7 @@ void baseline_cache::display_state(FILE *fp) const {
   fprintf(fp, "miss queue entries = %zu / %u, fill mappings = %zu\n",
           m_miss_queue.size(), m_config.m_miss_queue_size,
           m_extra_mf_fields.size());
+  m_tag_array->display_state(fp);
   m_mshrs.display(fp);
   fprintf(fp, "\n");
 }
