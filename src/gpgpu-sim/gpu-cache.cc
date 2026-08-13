@@ -1316,6 +1316,9 @@ void baseline_cache::print(FILE *fp, unsigned &accesses,
 
 void baseline_cache::display_state(FILE *fp) const {
   fprintf(fp, "Cache %s:\n", m_name.c_str());
+  fprintf(fp, "miss queue entries = %zu / %u, fill mappings = %zu\n",
+          m_miss_queue.size(), m_config.m_miss_queue_size,
+          m_extra_mf_fields.size());
   m_mshrs.display(fp);
   fprintf(fp, "\n");
 }
