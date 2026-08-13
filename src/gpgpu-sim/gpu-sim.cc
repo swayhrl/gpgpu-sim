@@ -998,6 +998,8 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
 
   gpu_sim_insn = 0;
   gpu_tot_sim_insn = 0;
+  gpu_sim_insn_last_update = 0;
+  gpu_sim_insn_last_update_sid = 0;
   gpu_tot_issued_cta = 0;
   gpu_completed_cta = 0;
   m_total_cta_launched = 0;
@@ -1193,7 +1195,8 @@ void gpgpu_sim::init() {
   // run a CUDA grid on the GPU microarchitecture simulator
   gpu_sim_cycle = 0;
   gpu_sim_insn = 0;
-  last_gpu_sim_insn = 0;
+  gpu_sim_insn_last_update = 0;
+  gpu_sim_insn_last_update_sid = 0;
   m_total_cta_launched = 0;
   gpu_completed_cta = 0;
   partiton_reqs_in_parallel = 0;
@@ -2216,11 +2219,13 @@ void gpgpu_sim::cycle() {
     }
 
     if (!(gpu_sim_cycle % 50000)) {
-      // deadlock detection
-      if (m_config.gpu_deadlock_detect && gpu_sim_insn == last_gpu_sim_insn) {
+      // A core can keep committing instructions with an inactive execution
+      // mask, which does not change gpu_sim_insn.  Test the writeback
+      // timestamp directly so that such real pipeline progress is not
+      // reported as a deadlock.
+      if (m_config.gpu_deadlock_detect &&
+          gpu_sim_cycle - gpu_sim_insn_last_update >= 50000) {
         gpu_deadlock = true;
-      } else {
-        last_gpu_sim_insn = gpu_sim_insn;
       }
     }
     try_snap_shot(gpu_sim_cycle);
@@ -2409,11 +2414,11 @@ void sst_gpgpu_sim::SST_cycle() {
   }
 
   if (!(gpu_sim_cycle % 20000)) {
-    // deadlock detection
-    if (m_config.gpu_deadlock_detect && gpu_sim_insn == last_gpu_sim_insn) {
+    // See the non-SST path above: writeback time, rather than active-lane
+    // count, is the architectural forward-progress signal.
+    if (m_config.gpu_deadlock_detect &&
+        gpu_sim_cycle - gpu_sim_insn_last_update >= 20000) {
       gpu_deadlock = true;
-    } else {
-      last_gpu_sim_insn = gpu_sim_insn;
     }
   }
   try_snap_shot(gpu_sim_cycle);

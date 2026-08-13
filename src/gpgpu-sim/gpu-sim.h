@@ -732,8 +732,6 @@ class gpgpu_sim : public gpgpu_t {
   class power_stat_t *m_power_stats;
   class gpgpu_sim_wrapper *m_gpgpusim_wrapper;
   c2p_cache *m_c2p_cache;
-  unsigned long long last_gpu_sim_insn;
-
   unsigned long long last_liveness_message_time;
 
   std::map<std::string, FuncCache> m_special_cache_config;
