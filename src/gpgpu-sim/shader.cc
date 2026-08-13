@@ -3419,7 +3419,18 @@ void ldst_unit::print(FILE *fout) const {
   }
   m_L1C->display_state(fout);
   m_L1T->display_state(fout);
-  if (!m_config->m_L1D_config.disabled()) m_L1D->display_state(fout);
+  if (!m_config->m_L1D_config.disabled()) {
+    m_L1D->display_state(fout);
+    fprintf(fout, "L1D latency queues:\n");
+    for (unsigned bank = 0; bank < l1_latency_queue.size(); ++bank) {
+      const std::deque<mem_fetch *> &queue = l1_latency_queue[bank];
+      for (unsigned stage = 0; stage < queue.size(); ++stage) {
+        if (queue[stage] == NULL) continue;
+        fprintf(fout, "  bank %u stage %u: ", bank, stage);
+        queue[stage]->print(fout);
+      }
+    }
+  }
   fprintf(fout, "LD/ST response FIFO (occupancy = %zu):\n",
           m_response_fifo.size());
   for (std::list<mem_fetch *>::const_iterator i = m_response_fifo.begin();
