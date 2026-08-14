@@ -261,6 +261,13 @@ void decoupled_l2_cache::issue_writebacks(unsigned long long time) {
 
 void decoupled_l2_cache::cycle(unsigned long long time) {
   if (!fixed_mode()) {
+    // A lower read releases an active line and thus the AAD capacity needed by
+    // stalled tag requests.  Give lower traffic first use of each bank: doing
+    // tag arbitration first lets a full AAD continually reissue stalled tags,
+    // occupy every bank, and starve every lower read indefinitely.
+    issue_writebacks(time);
+    issue_lower_reads(time);
+
     const unsigned queued = m_tag_queue.size();
     std::set<unsigned> used_banks;
     for (unsigned i = 0; i < queued; ++i) {
@@ -279,8 +286,6 @@ void decoupled_l2_cache::cycle(unsigned long long time) {
       ++m_bank_ops[bank];
       process_tag(token, time + m_memory_config->decoupled_l2_tag_latency);
     }
-    issue_writebacks(time);
-    issue_lower_reads(time);
   }
   retire_ready_responses(time);
   assert_unique_state();
