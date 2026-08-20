@@ -136,9 +136,9 @@ struct cache_block_t {
   }
 
   virtual void allocate(new_addr_type tag, new_addr_type block_addr,
-                        unsigned long long time,
+                        unsigned time,
                         mem_access_sector_mask_t sector_mask) = 0;
-  virtual void fill(unsigned long long time, mem_access_sector_mask_t sector_mask,
+  virtual void fill(unsigned time, mem_access_sector_mask_t sector_mask,
                     mem_access_byte_mask_t byte_mask) = 0;
 
   virtual bool is_invalid_line() = 0;
@@ -187,7 +187,7 @@ struct line_cache_block : public cache_block_t {
     m_set_readable_on_fill = false;
     m_readable = true;
   }
-  void allocate(new_addr_type tag, new_addr_type block_addr, unsigned long long time,
+  void allocate(new_addr_type tag, new_addr_type block_addr, unsigned time,
                 mem_access_sector_mask_t sector_mask) {
     m_tag = tag;
     m_block_addr = block_addr;
@@ -200,7 +200,7 @@ struct line_cache_block : public cache_block_t {
     m_set_readable_on_fill = false;
     m_set_byte_mask_on_fill = false;
   }
-  virtual void fill(unsigned long long time, mem_access_sector_mask_t sector_mask,
+  virtual void fill(unsigned time, mem_access_sector_mask_t sector_mask,
                     mem_access_byte_mask_t byte_mask) {
     // if(!m_ignore_on_fill_status)
     //	assert( m_status == RESERVED );
@@ -310,11 +310,11 @@ struct sector_cache_block : public cache_block_t {
   }
 
   virtual void allocate(new_addr_type tag, new_addr_type block_addr,
-                        unsigned long long time, mem_access_sector_mask_t sector_mask) {
+                        unsigned time, mem_access_sector_mask_t sector_mask) {
     allocate_line(tag, block_addr, time, sector_mask);
   }
 
-  void allocate_line(new_addr_type tag, new_addr_type block_addr, unsigned long long time,
+  void allocate_line(new_addr_type tag, new_addr_type block_addr, unsigned time,
                      mem_access_sector_mask_t sector_mask) {
     // allocate a new line
     // assert(m_block_addr != 0 && m_block_addr != block_addr);
@@ -340,7 +340,7 @@ struct sector_cache_block : public cache_block_t {
     m_line_fill_time = 0;
   }
 
-  void allocate_sector(unsigned long long time, mem_access_sector_mask_t sector_mask) {
+  void allocate_sector(unsigned time, mem_access_sector_mask_t sector_mask) {
     // allocate invalid sector of this allocated valid line
     assert(is_valid_line());
     unsigned sidx = get_sector_index(sector_mask);
@@ -367,7 +367,7 @@ struct sector_cache_block : public cache_block_t {
     m_line_fill_time = 0;
   }
 
-  virtual void fill(unsigned long long time, mem_access_sector_mask_t sector_mask,
+  virtual void fill(unsigned time, mem_access_sector_mask_t sector_mask,
                     mem_access_byte_mask_t byte_mask) {
     unsigned sidx = get_sector_index(sector_mask);
 
@@ -963,15 +963,15 @@ class tag_array {
                                   mem_access_sector_mask_t mask, bool is_write,
                                   bool probe_mode = false,
                                   mem_fetch *mf = NULL) const;
-  enum cache_request_status access(new_addr_type addr, unsigned long long time,
+  enum cache_request_status access(new_addr_type addr, unsigned time,
                                    unsigned &idx, mem_fetch *mf);
-  enum cache_request_status access(new_addr_type addr, unsigned long long time,
+  enum cache_request_status access(new_addr_type addr, unsigned time,
                                    unsigned &idx, bool &wb,
                                    evicted_block_info &evicted, mem_fetch *mf);
 
-  void fill(new_addr_type addr, unsigned long long time, mem_fetch *mf, bool is_write);
-  void fill(unsigned idx, unsigned long long time, mem_fetch *mf);
-  void fill(new_addr_type addr, unsigned long long time, mem_access_sector_mask_t mask,
+  void fill(new_addr_type addr, unsigned time, mem_fetch *mf, bool is_write);
+  void fill(unsigned idx, unsigned time, mem_fetch *mf);
+  void fill(new_addr_type addr, unsigned time, mem_access_sector_mask_t mask,
             mem_access_byte_mask_t byte_mask, bool is_write);
 
   unsigned size() const { return m_config.get_num_lines(); }
@@ -1269,7 +1269,7 @@ class cache_t {
  public:
   virtual ~cache_t() {}
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
-                                           unsigned long long time,
+                                           unsigned time,
                                            std::list<cache_event> &events) = 0;
 
   // accessors for cache bandwidth availability
@@ -1317,13 +1317,13 @@ class baseline_cache : public cache_t {
   }
 
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
-                                           unsigned long long time,
+                                           unsigned time,
                                            std::list<cache_event> &events) = 0;
   /// Sends next request to lower level of memory
   virtual void cycle();
   /// Interface for response from lower memory level (model bandwidth
   /// restictions in caller)
-  virtual void fill(mem_fetch *mf, unsigned long long time);
+  virtual void fill(mem_fetch *mf, unsigned time);
   /// Checks if mf is waiting to be filled by lower memory level
   bool waiting_for_fill(mem_fetch *mf);
   /// Are any (accepted) accesses that had to wait for memory now ready? (does
@@ -1377,7 +1377,7 @@ class baseline_cache : public cache_t {
   // filling the cache on cudamemcopies. We don't care about anything other than
   // L2 state after the memcopy - so just force the tag array to act as though
   // something is read or written without doing anything else.
-  void force_tag_access(new_addr_type addr, unsigned long long time,
+  void force_tag_access(new_addr_type addr, unsigned time,
                         mem_access_sector_mask_t mask) {
     mem_access_byte_mask_t byte_mask;
     m_tag_array->fill(addr, time, mask, byte_mask, true);
@@ -1444,12 +1444,12 @@ class baseline_cache : public cache_t {
   }
   /// Read miss handler without writeback
   void send_read_request(new_addr_type addr, new_addr_type block_addr,
-                         unsigned cache_index, mem_fetch *mf, unsigned long long time,
+                         unsigned cache_index, mem_fetch *mf, unsigned time,
                          bool &do_miss, std::list<cache_event> &events,
                          bool read_only, bool wa);
   /// Read miss handler. Check MSHR hit or MSHR available
   void send_read_request(new_addr_type addr, new_addr_type block_addr,
-                         unsigned cache_index, mem_fetch *mf, unsigned long long time,
+                         unsigned cache_index, mem_fetch *mf, unsigned time,
                          bool &do_miss, bool &wb, evicted_block_info &evicted,
                          std::list<cache_event> &events, bool read_only,
                          bool wa);
@@ -1503,7 +1503,7 @@ class read_only_cache : public baseline_cache {
   /// Access cache for read_only_cache: returns RESERVATION_FAIL if request
   /// could not be accepted (for any reason)
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
-                                           unsigned long long time,
+                                           unsigned time,
                                            std::list<cache_event> &events);
 
   virtual ~read_only_cache() {}
@@ -1587,7 +1587,7 @@ class data_cache : public baseline_cache {
   }
 
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
-                                           unsigned long long time,
+                                           unsigned time,
                                            std::list<cache_event> &events);
 
  protected:
@@ -1617,7 +1617,7 @@ class data_cache : public baseline_cache {
                                               enum cache_request_status status,
                                               new_addr_type addr,
                                               unsigned cache_index,
-                                              mem_fetch *mf, unsigned long long time,
+                                              mem_fetch *mf, unsigned time,
                                               std::list<cache_event> &events);
 
  protected:
@@ -1625,83 +1625,83 @@ class data_cache : public baseline_cache {
 
   // Functions for data cache access
   /// Sends write request to lower level memory (write or writeback)
-  void send_write_request(mem_fetch *mf, cache_event request, unsigned long long time,
+  void send_write_request(mem_fetch *mf, cache_event request, unsigned time,
                           std::list<cache_event> &events);
   void update_m_readable(mem_fetch *mf, unsigned cache_index);
   // Member Function pointers - Set by configuration options
   // to the functions below each grouping
   /******* Write-hit configs *******/
   enum cache_request_status (data_cache::*m_wr_hit)(
-      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned long long time,
+      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
       std::list<cache_event> &events, enum cache_request_status status);
   /// Marks block as MODIFIED and updates block LRU
   enum cache_request_status wr_hit_wb(
-      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned long long time,
+      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
       std::list<cache_event> &events,
       enum cache_request_status status);  // write-back
   enum cache_request_status wr_hit_wt(
-      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned long long time,
+      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
       std::list<cache_event> &events,
       enum cache_request_status status);  // write-through
 
   /// Marks block as INVALID and sends write request to lower level memory
   enum cache_request_status wr_hit_we(
-      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned long long time,
+      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
       std::list<cache_event> &events,
       enum cache_request_status status);  // write-evict
   enum cache_request_status wr_hit_global_we_local_wb(
-      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned long long time,
+      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
       std::list<cache_event> &events, enum cache_request_status status);
   // global write-evict, local write-back
 
   /******* Write-miss configs *******/
   enum cache_request_status (data_cache::*m_wr_miss)(
-      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned long long time,
+      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
       std::list<cache_event> &events, enum cache_request_status status);
   /// Sends read request, and possible write-back request,
   //  to lower level memory for a write miss with write-allocate
   enum cache_request_status wr_miss_wa_naive(
-      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned long long time,
+      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
       std::list<cache_event> &events,
       enum cache_request_status
           status);  // write-allocate-send-write-and-read-request
   enum cache_request_status wr_miss_wa_fetch_on_write(
-      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned long long time,
+      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
       std::list<cache_event> &events,
       enum cache_request_status
           status);  // write-allocate with fetch-on-every-write
   enum cache_request_status wr_miss_wa_lazy_fetch_on_read(
-      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned long long time,
+      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
       std::list<cache_event> &events,
       enum cache_request_status status);  // write-allocate with read-fetch-only
   enum cache_request_status wr_miss_wa_write_validate(
-      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned long long time,
+      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
       std::list<cache_event> &events,
       enum cache_request_status
           status);  // write-allocate that writes with no read fetch
   enum cache_request_status wr_miss_no_wa(
-      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned long long time,
+      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
       std::list<cache_event> &events,
       enum cache_request_status status);  // no write-allocate
 
   // Currently no separate functions for reads
   /******* Read-hit configs *******/
   enum cache_request_status (data_cache::*m_rd_hit)(
-      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned long long time,
+      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
       std::list<cache_event> &events, enum cache_request_status status);
   enum cache_request_status rd_hit_base(new_addr_type addr,
                                         unsigned cache_index, mem_fetch *mf,
-                                        unsigned long long time,
+                                        unsigned time,
                                         std::list<cache_event> &events,
                                         enum cache_request_status status);
 
   /******* Read-miss configs *******/
   enum cache_request_status (data_cache::*m_rd_miss)(
-      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned long long time,
+      new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
       std::list<cache_event> &events, enum cache_request_status status);
   enum cache_request_status rd_miss_base(new_addr_type addr,
                                          unsigned cache_index, mem_fetch *mf,
-                                         unsigned long long time,
+                                         unsigned time,
                                          std::list<cache_event> &events,
                                          enum cache_request_status status);
 };
@@ -1720,10 +1720,10 @@ class l1_cache : public data_cache {
   virtual ~l1_cache() {}
 
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
-                                           unsigned long long time,
+                                           unsigned time,
                                            std::list<cache_event> &events);
   virtual void cycle();
-  virtual void fill(mem_fetch *mf, unsigned long long time);
+  virtual void fill(mem_fetch *mf, unsigned time);
   virtual void flush();
   virtual void invalidate();
 
@@ -1770,7 +1770,7 @@ class l2_cache : public data_cache {
   virtual ~l2_cache() {}
 
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
-                                           unsigned long long time,
+                                           unsigned time,
                                            std::list<cache_event> &events);
 };
 
@@ -1809,11 +1809,11 @@ class tex_cache : public cache_t {
   /// since unlike a normal CPU cache, a "HIT" in texture cache does not
   /// mean the data is ready (still need to get through fragment fifo)
   enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
-                                   unsigned long long time,
+                                   unsigned time,
                                    std::list<cache_event> &events);
   void cycle();
   /// Place returning cache block into reorder buffer
-  void fill(mem_fetch *mf, unsigned long long time);
+  void fill(mem_fetch *mf, unsigned time);
   /// Are any (accepted) accesses that had to wait for memory now ready? (does
   /// not include accesses that "HIT")
   bool access_ready() const { return !m_result_fifo.empty(); }
