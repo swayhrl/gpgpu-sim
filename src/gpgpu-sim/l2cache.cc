@@ -198,7 +198,7 @@ bool memory_partition_unit::busy() const {
   return busy;
 }
 
-void memory_partition_unit::cache_cycle(unsigned cycle) {
+void memory_partition_unit::cache_cycle(unsigned long long cycle) {
   for (unsigned p = 0; p < m_config->m_n_sub_partition_per_memory_channel;
        p++) {
     m_sub_partition[p]->cache_cycle(cycle);
@@ -462,7 +462,7 @@ memory_sub_partition::~memory_sub_partition() {
   delete m_L2interface;
 }
 
-void memory_sub_partition::cache_cycle(unsigned cycle) {
+void memory_sub_partition::cache_cycle(unsigned long long cycle) {
   // L2 fill responses
   if (!m_config->m_L2_config.disabled()) {
     if (m_L2cache->access_ready() && !m_L2_icnt_queue->full()) {
