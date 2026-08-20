@@ -156,7 +156,6 @@ c2p_cache::transaction::transaction(l1_cache *requester_, mem_fetch *mf_,
       state(WAIT_ENCODE),
       candidate_next(0),
       probe_sid((unsigned)-1),
-      oracle_peer_hit(false),
       sharing_attempt(false),
       ring_started(false),
       probe_latency(0),
@@ -314,7 +313,6 @@ bool c2p_cache::accept_miss(l1_cache *requester, mem_fetch *mf,
 
   transaction txn(requester, mf, requester->c2p_sid(),
                   requester->c2p_line_tag(mf->get_addr()), now);
-  txn.oracle_peer_hit = oracle;
   txn.probe_latency = m_config.remote_tag_latency;
   txn.return_latency = m_config.remote_return_latency;
   if (m_config.scheme == c2p_cache_config::C2P_SCHEME) {
@@ -529,11 +527,17 @@ void c2p_cache::complete_matches(unsigned long long now) {
     if (m_config.scheme == c2p_cache_config::C2P_SCHEME) {
       it->candidates = ordered_candidates(*it);
       if (!m_config.ideal_peer_lookup) {
-        if (!it->candidates.empty() && it->oracle_peer_hit)
+        // Snapshot-Matrix accuracy is a query-time property.  The separate
+        // oracle_peer_hit bit is deliberately sampled at miss acceptance to
+        // quantify redundant-L2 opportunity, but a peer may fill or evict
+        // before this query completes.  Comparing these two instants would
+        // turn normal temporal movement into a metadata FP/FN.
+        const bool query_peer_hit = has_exact_peer(it->requester, it->mf);
+        if (!it->candidates.empty() && query_peer_hit)
           ++m_stats.snapshot_true_positive;
         else if (!it->candidates.empty())
           ++m_stats.snapshot_false_positive;
-        else if (it->oracle_peer_hit)
+        else if (query_peer_hit)
           ++m_stats.snapshot_false_negative;
         else
           ++m_stats.snapshot_true_negative;

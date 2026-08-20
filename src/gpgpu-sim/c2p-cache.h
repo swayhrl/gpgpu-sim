@@ -129,7 +129,6 @@ class c2p_cache {
     std::vector<unsigned> candidates;
     unsigned candidate_next;
     unsigned probe_sid;
-    bool oracle_peer_hit;
     bool sharing_attempt;
     bool ring_started;
     unsigned probe_latency;

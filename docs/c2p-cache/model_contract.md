@@ -60,7 +60,9 @@ the ordinary L2 path.
 Oracle availability is sampled when the L1 miss enters C2P.  A real remote
 probe happens later and can observe a line filled by another SM in the
 intervening cycles; therefore realized remote hits are not required to be a
-strict subset of the accept-time oracle counter.
+strict subset of the accept-time oracle counter.  Snapshot TP/TN/FP/FN is
+instead classified against an exact peer-L1 probe at the later Snapshot-query
+instant, so it measures metadata accuracy rather than peer residency churn.
 
 Distance uses stable SM/cluster order.  It is deliberately a lightweight
 stand-in for the paper's unspecified far-L1 topology, suitable for comparing
@@ -78,8 +80,9 @@ Every core result reports at least:
 The result bundle must retain configuration, trace provenance, simulator and
 model commits, C2P counters, and the oracle/ideal/C2P/baseline comparison.
 The primary outcomes are redundant L2 reduction, remote-hit rate, candidates
-per query, the miss-time Snapshot TP/TN/FP/FN classification, R1S1 speedup,
-and R0S1 overhead.
+per query, the query-time Snapshot TP/TN/FP/FN classification, R1S1 speedup,
+and R0S1 overhead.  The accept-time oracle counter is reported separately as
+the potential redundant-L2 opportunity.
 
 ## Prior-mechanism comparison models
 
