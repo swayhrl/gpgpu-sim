@@ -78,6 +78,10 @@ struct c2p_cache_stats {
   unsigned long long snapshot_false_negative;
   unsigned long long snapshot_true_positive;
   unsigned long long snapshot_true_negative;
+  unsigned long long snapshot_query_false_positive;
+  unsigned long long snapshot_query_false_negative;
+  unsigned long long snapshot_query_true_positive;
+  unsigned long long snapshot_query_true_negative;
   unsigned long long snapshot_updates;
   unsigned long long snapshot_rebuilds;
   unsigned long long snapshot_rebuild_transport_tags;
@@ -129,6 +133,7 @@ class c2p_cache {
     std::vector<unsigned> candidates;
     unsigned candidate_next;
     unsigned probe_sid;
+    bool oracle_peer_hit;
     bool sharing_attempt;
     bool ring_started;
     unsigned probe_latency;
