@@ -240,6 +240,25 @@ void c2p_cache::on_l1_fill(l1_cache *cache, mem_fetch *mf) {
       update_entry(cache->c2p_sid(), cache->c2p_line_tag(mf->get_addr())));
 }
 
+void c2p_cache::on_l1_flush(l1_cache *cache) {
+  if (!m_config.enabled) return;
+  const unsigned sid = cache->c2p_sid();
+  clear_snapshot_column(sid);
+  // Fills queued before the flush no longer describe resident cache lines.
+  for (std::deque<update_entry>::iterator it = m_update_queue.begin();
+       it != m_update_queue.end();) {
+    if (it->first == sid)
+      it = m_update_queue.erase(it);
+    else
+      ++it;
+  }
+  if (m_rebuild_active && m_rebuild_target_sid == sid) {
+    m_rebuild_tags.clear();
+    m_rebuild_next_tag = 0;
+    m_rebuild_active = false;
+  }
+}
+
 void c2p_cache::begin_next_rebuild() {
   if (m_l1s.empty()) return;
   for (unsigned tries = 0; tries < m_l1s.size(); ++tries) {

@@ -1332,8 +1332,8 @@ class baseline_cache : public cache_t {
   /// Pop next ready access (does not include accesses that "HIT")
   mem_fetch *next_access() { return m_mshrs.next_access(); }
   // flash invalidate all entries in cache
-  void flush() { m_tag_array->flush(); }
-  void invalidate() { m_tag_array->invalidate(); }
+  virtual void flush() { m_tag_array->flush(); }
+  virtual void invalidate() { m_tag_array->invalidate(); }
   void print(FILE *fp, unsigned &accesses, unsigned &misses) const;
   void display_state(FILE *fp) const;
 
@@ -1724,6 +1724,8 @@ class l1_cache : public data_cache {
                                            std::list<cache_event> &events);
   virtual void cycle();
   virtual void fill(mem_fetch *mf, unsigned time);
+  virtual void flush();
+  virtual void invalidate();
 
   // C2P uses these narrow hooks instead of reaching into the normal L1
   // miss/fill machinery.  The original MSHR and fill bookkeeping remain the

@@ -2050,6 +2050,16 @@ void l1_cache::fill(mem_fetch *mf, unsigned time) {
   m_gpu->get_c2p_cache()->on_l1_fill(this, mf);
 }
 
+void l1_cache::flush() {
+  baseline_cache::flush();
+  m_gpu->get_c2p_cache()->on_l1_flush(this);
+}
+
+void l1_cache::invalidate() {
+  baseline_cache::invalidate();
+  m_gpu->get_c2p_cache()->on_l1_flush(this);
+}
+
 bool l1_cache::c2p_probe(mem_fetch *mf) const {
   unsigned index = (unsigned)-1;
   const enum cache_request_status status = m_tag_array->probe(

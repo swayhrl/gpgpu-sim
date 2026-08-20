@@ -75,6 +75,7 @@ class c2p_cache {
   bool accept_miss(l1_cache *requester, mem_fetch *mf,
                    unsigned long long now);
   void on_l1_fill(l1_cache *cache, mem_fetch *mf);
+  void on_l1_flush(l1_cache *cache);
   void cycle(unsigned long long now);
   void print_stats(FILE *fout) const;
   const c2p_cache_stats &stats() const { return m_stats; }
