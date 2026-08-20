@@ -1284,10 +1284,10 @@ void gpgpu_sim::deadlock_check() {
     fflush(stdout);
     printf(
         "\n\nGPGPU-Sim uArch: ERROR ** deadlock detected: last writeback core "
-        "%u @ gpu_sim_cycle %u (+ gpu_tot_sim_cycle %u) (%u cycles ago)\n",
+        "%u @ gpu_sim_cycle %u (+ gpu_tot_sim_cycle %llu) (%llu cycles ago)\n",
         gpu_sim_insn_last_update_sid, (unsigned)gpu_sim_insn_last_update,
-        (unsigned)(gpu_tot_sim_cycle - gpu_sim_cycle),
-        (unsigned)(gpu_sim_cycle - gpu_sim_insn_last_update));
+        gpu_tot_sim_cycle,
+        gpu_sim_cycle - gpu_sim_insn_last_update);
     unsigned num_cores = 0;
     for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++) {
       unsigned not_completed = m_cluster[i]->get_not_completed();

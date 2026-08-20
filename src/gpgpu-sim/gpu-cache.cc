@@ -254,6 +254,8 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
   unsigned invalid_line = (unsigned)-1;
   unsigned valid_line = (unsigned)-1;
   unsigned long long valid_timestamp = (unsigned)-1;
+  unsigned dirty_line = (unsigned)-1;
+  unsigned long long dirty_timestamp = (unsigned)-1;
 
   bool all_reserved = true;
   // check for hit or pending hit
@@ -284,6 +286,19 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
       }
     }
     if (!line->is_reserved_line()) {
+      if (line->is_modified_line()) {
+        if (m_config.m_replacement_policy == LRU) {
+          if (line->get_last_access_time() < dirty_timestamp) {
+            dirty_timestamp = line->get_last_access_time();
+            dirty_line = index;
+          }
+        } else if (m_config.m_replacement_policy == FIFO) {
+          if (line->get_alloc_time() < dirty_timestamp) {
+            dirty_timestamp = line->get_alloc_time();
+            dirty_line = index;
+          }
+        }
+      }
       // percentage of dirty lines in the cache
       // number of dirty lines / total lines in the cache
       float dirty_line_percentage =
@@ -315,7 +330,7 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
       }
     }
   }
-  if (all_reserved) {
+  if (all_reserved && dirty_line == (unsigned)-1) {
     assert(m_config.m_alloc_policy == ON_MISS);
     return RESERVATION_FAIL;  // miss and not enough space in cache to allocate
                               // on miss
@@ -325,6 +340,11 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
     idx = invalid_line;
   } else if (valid_line != (unsigned)-1) {
     idx = valid_line;
+  } else if (dirty_line != (unsigned)-1) {
+    // The write-ratio threshold prefers clean victims, but it must not turn a
+    // fully dirty set into a permanent allocation failure.  No clean victim
+    // exists in this set, so evict its LRU/FIFO dirty line and make progress.
+    idx = dirty_line;
   } else
     abort();  // if an unreserved block exists, it is either invalid or
               // replaceable
