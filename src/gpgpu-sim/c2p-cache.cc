@@ -701,6 +701,10 @@ void c2p_cache::advance_probes(unsigned long long now) {
 }
 
 void c2p_cache::record_peer_accesses(bool hit, unsigned accesses) {
+  // Figure 14 counts candidate L1 caches actually consulted.  A request
+  // pruned with no candidate has zero such accesses and belongs to the
+  // no-candidate/fallback counters, not the hit/miss probe distribution.
+  if (!accesses) return;
   std::vector<unsigned long long> &hist =
       hit ? m_peer_access_hit_hist : m_peer_access_miss_hist;
   assert(accesses < hist.size());
