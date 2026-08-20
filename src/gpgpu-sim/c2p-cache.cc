@@ -380,9 +380,9 @@ void c2p_cache::advance_probes(unsigned long long now) {
     if (it->state == WAIT_PROBE && now >= it->ready_cycle) {
       assert(it->probe_sid < m_l1s.size() && m_l1s[it->probe_sid] != NULL);
       if (m_l1s[it->probe_sid]->c2p_probe(it->mf)) {
-        // Exact remote matches are a subset of the exact oracle whenever it
-        // is collected.  This catches duplicate/incorrect requester routing.
-        assert(!m_config.collect_oracle || it->oracle_peer_hit);
+        // The probe is later than accept_miss(): another L1 may have filled
+        // this line in between, so a real peer hit need not have appeared in
+        // the accept-time oracle snapshot.
         ++m_stats.peer_probe_hits;
         ++m_stats.remote_hits;
         it->state = WAIT_RETURN;

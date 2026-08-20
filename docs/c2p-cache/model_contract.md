@@ -53,6 +53,11 @@ requester's fill port.  If no candidate exists, candidates all miss, or a
 target stays busy through the timeout, the original transaction proceeds to
 the ordinary L2 path.
 
+Oracle availability is sampled when the L1 miss enters C2P.  A real remote
+probe happens later and can observe a line filled by another SM in the
+intervening cycles; therefore realized remote hits are not required to be a
+strict subset of the accept-time oracle counter.
+
 Distance uses stable SM/cluster order.  It is deliberately a lightweight
 stand-in for the paper's unspecified far-L1 topology, suitable for comparing
 same model variants only.
