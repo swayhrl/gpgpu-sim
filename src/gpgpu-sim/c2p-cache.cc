@@ -12,6 +12,28 @@ namespace {
 const unsigned kSnapshotRows = 5120;
 const unsigned kSnapshotBanks = 64;
 
+unsigned histogram_percentile(const std::vector<unsigned long long> &hist,
+                              unsigned percentile) {
+  unsigned long long samples = 0;
+  for (unsigned i = 0; i < hist.size(); ++i) samples += hist[i];
+  if (!samples) return 0;
+  const unsigned long long rank =
+      (samples * percentile + 99) / 100;  // nearest-rank percentile
+  unsigned long long cumulative = 0;
+  for (unsigned i = 0; i < hist.size(); ++i) {
+    cumulative += hist[i];
+    if (cumulative >= rank) return i;
+  }
+  assert(0);
+  return 0;
+}
+
+unsigned histogram_max(const std::vector<unsigned long long> &hist) {
+  for (unsigned i = hist.size(); i != 0; --i)
+    if (hist[i - 1]) return i - 1;
+  return 0;
+}
+
 uint32_t fold_hash(uint64_t value, uint32_t salt) {
   uint64_t x = value ^ (uint64_t)salt * 0x9e3779b97f4a7c15ULL;
   x ^= x >> 30;
@@ -160,6 +182,7 @@ c2p_cache::transaction::transaction(l1_cache *requester_, mem_fetch *mf_,
       state(WAIT_ENCODE),
       candidate_next(0),
       probe_sid((unsigned)-1),
+      peer_accesses(0),
       oracle_peer_hit(false),
       sharing_attempt(false),
       ring_started(false),
@@ -185,7 +208,9 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
       m_ccd_counters(std::max(1U, gpu->get_config().num_cluster()), 2),
       m_ata_issue_cycle(0),
       m_ata_issues(std::max(1U, gpu->get_config().num_cluster()), 0),
-      m_ring_next_issue_cycle(0) {
+      m_ring_next_issue_cycle(0),
+      m_peer_access_hit_hist(m_num_sms + 1, 0),
+      m_peer_access_miss_hist(m_num_sms + 1, 0) {
   assert(m_config.scheme <= c2p_cache_config::RING_SCHEME);
 }
 
@@ -205,6 +230,8 @@ void c2p_cache::reset() {
   m_ata_issue_cycle = 0;
   std::fill(m_ata_issues.begin(), m_ata_issues.end(), 0);
   m_ring_next_issue_cycle = 0;
+  std::fill(m_peer_access_hit_hist.begin(), m_peer_access_hit_hist.end(), 0);
+  std::fill(m_peer_access_miss_hist.begin(), m_peer_access_miss_hist.end(), 0);
   m_stats.clear();
 }
 
@@ -628,6 +655,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
     if (it->state == WAIT_RETURN && now >= it->ready_cycle &&
         it->requester->fill_port_free()) {
       it->requester->c2p_fill(it->mf, now);
+      record_peer_accesses(true, it->peer_accesses);
       erase = true;
     }
 
@@ -645,6 +673,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
           target->c2p_reserve_probe_port(it->probe_latency);
           it->probe_sid = sid;
           ++it->candidate_next;
+          ++it->peer_accesses;
           ++m_stats.peer_probes;
           if (m_config.scheme == c2p_cache_config::C2P_SCHEME ||
               m_config.scheme == c2p_cache_config::RING_SCHEME)
@@ -661,6 +690,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
     if (it->state == WAIT_FALLBACK && it->requester->c2p_lower_ready(it->mf)) {
       it->requester->c2p_send_lower(it->mf);
       ++m_stats.fallback_queue;
+      record_peer_accesses(false, it->peer_accesses);
       erase = true;
     }
     if (erase)
@@ -668,6 +698,13 @@ void c2p_cache::advance_probes(unsigned long long now) {
     else
       ++it;
   }
+}
+
+void c2p_cache::record_peer_accesses(bool hit, unsigned accesses) {
+  std::vector<unsigned long long> &hist =
+      hit ? m_peer_access_hit_hist : m_peer_access_miss_hist;
+  assert(accesses < hist.size());
+  ++hist[accesses];
 }
 
 void c2p_cache::cycle(unsigned long long now) {
@@ -721,4 +758,28 @@ void c2p_cache::print_stats(FILE *fout) const {
   fprintf(fout, "c2p_snapshot_rebuilds = %llu\n", m_stats.snapshot_rebuilds);
   fprintf(fout, "c2p_snapshot_rebuild_transport_tags = %llu\n",
           m_stats.snapshot_rebuild_transport_tags);
+  unsigned long long hit_samples = 0;
+  unsigned long long miss_samples = 0;
+  for (unsigned i = 0; i < m_peer_access_hit_hist.size(); ++i) {
+    hit_samples += m_peer_access_hit_hist[i];
+    miss_samples += m_peer_access_miss_hist[i];
+  }
+  fprintf(fout, "c2p_peer_access_hit_samples = %llu\n", hit_samples);
+  fprintf(fout, "c2p_peer_access_hit_p90 = %u\n",
+          histogram_percentile(m_peer_access_hit_hist, 90));
+  fprintf(fout, "c2p_peer_access_hit_p95 = %u\n",
+          histogram_percentile(m_peer_access_hit_hist, 95));
+  fprintf(fout, "c2p_peer_access_hit_p99 = %u\n",
+          histogram_percentile(m_peer_access_hit_hist, 99));
+  fprintf(fout, "c2p_peer_access_hit_max = %u\n",
+          histogram_max(m_peer_access_hit_hist));
+  fprintf(fout, "c2p_peer_access_miss_samples = %llu\n", miss_samples);
+  fprintf(fout, "c2p_peer_access_miss_p90 = %u\n",
+          histogram_percentile(m_peer_access_miss_hist, 90));
+  fprintf(fout, "c2p_peer_access_miss_p95 = %u\n",
+          histogram_percentile(m_peer_access_miss_hist, 95));
+  fprintf(fout, "c2p_peer_access_miss_p99 = %u\n",
+          histogram_percentile(m_peer_access_miss_hist, 99));
+  fprintf(fout, "c2p_peer_access_miss_max = %u\n",
+          histogram_max(m_peer_access_miss_hist));
 }

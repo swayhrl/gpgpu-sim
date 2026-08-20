@@ -133,6 +133,7 @@ class c2p_cache {
     std::vector<unsigned> candidates;
     unsigned candidate_next;
     unsigned probe_sid;
+    unsigned peer_accesses;
     bool oracle_peer_hit;
     bool sharing_attempt;
     bool ring_started;
@@ -158,6 +159,7 @@ class c2p_cache {
   void schedule_rows(unsigned long long now);
   void complete_matches(unsigned long long now);
   void advance_probes(unsigned long long now);
+  void record_peer_accesses(bool hit, unsigned accesses);
   bool has_exact_peer(l1_cache *requester, mem_fetch *mf) const;
   std::vector<unsigned> exact_candidates(const transaction &txn,
                                          bool cluster_only) const;
@@ -190,6 +192,8 @@ class c2p_cache {
   unsigned long long m_ata_issue_cycle;
   std::vector<unsigned> m_ata_issues;
   unsigned long long m_ring_next_issue_cycle;
+  std::vector<unsigned long long> m_peer_access_hit_hist;
+  std::vector<unsigned long long> m_peer_access_miss_hist;
   c2p_cache_stats m_stats;
 };
 
