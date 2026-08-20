@@ -455,6 +455,10 @@ void c2p_cache::print_stats(FILE *fout) const {
   fprintf(fout, "c2p_peer_probe_hits = %llu\n", m_stats.peer_probe_hits);
   fprintf(fout, "c2p_peer_probe_misses = %llu\n", m_stats.peer_probe_misses);
   fprintf(fout, "c2p_remote_hits = %llu\n", m_stats.remote_hits);
+  // Each completed remote hit consumes the original L1 MSHR/fill path but
+  // never sends that miss to the lower level, so this is the directly
+  // attributable redundant-L2 reduction metric.
+  fprintf(fout, "c2p_l2_requests_avoided = %llu\n", m_stats.remote_hits);
   fprintf(fout, "c2p_fallback_no_candidate = %llu\n", m_stats.fallback_no_candidate);
   fprintf(fout, "c2p_fallback_probe_timeout = %llu\n", m_stats.fallback_probe_timeout);
   fprintf(fout, "c2p_fallback_queue = %llu\n", m_stats.fallback_queue);
