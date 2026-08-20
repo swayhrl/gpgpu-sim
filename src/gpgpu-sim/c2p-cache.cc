@@ -36,7 +36,7 @@ c2p_cache_config::c2p_cache_config()
       query_queue_size(256),
       update_queue_size(1024),
       update_transport_bytes_per_cycle(128),
-      snapshot_rebuild_interval(100000),
+      snapshot_rebuild_interval(0),
       probe_timeout(32),
       snapshot_copies(4),
       scheme(C2P_SCHEME),
@@ -84,8 +84,8 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
                          "C2P background update transport bandwidth", "128");
   option_parser_register(opp, "-c2p_cache_snapshot_rebuild_interval",
                          OPT_UINT32, &snapshot_rebuild_interval,
-                         "cycles between background C2P L1 snapshot rebuilds",
-                         "100000");
+                         "idle cycles between C2P L1 snapshot rebuilds (0=continuous)",
+                         "0");
   option_parser_register(opp, "-c2p_cache_probe_timeout", OPT_UINT32,
                          &probe_timeout,
                          "C2P target-L1 busy timeout before L2 fallback", "32");

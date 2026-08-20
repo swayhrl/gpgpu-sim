@@ -32,12 +32,16 @@ The manuscript does not specify the concrete `h1`/`h2` functions.  This model
 uses two deterministic 64-bit folded hashes with fixed salts.  Hash identity
 is therefore a sensitivity parameter, not a claimed reproduction detail.
 
-Snapshot bits are updated on every normal L1 fill and are periodically rebuilt
-from each L1 tag array. A rebuild clears one selected column, transports its
+Snapshot bits are updated on every normal L1 fill and are rebuilt from each L1
+tag array. A rebuild clears one selected column, transports its
 valid compact tags through the shared Update Queue at 128 B/cycle, then uses
 the idle share of the BF engines to OR the encoded positions back into that
-column. Miss-side queries always take engine priority. This intentionally
-permits incomplete or stale bits during rebuilds and after evictions; all
+column. Miss-side queries always take engine priority. The default starts the
+next column as soon as the prior rebuild completes
+(`snapshot_rebuild_interval=0`), so all 64 columns are refreshed continuously
+rather than allowing insertion-only stale bits to accumulate for an arbitrary
+long gap. This intentionally permits incomplete or stale bits during rebuilds
+and after evictions; all
 candidates receive an exact remote L1 tag probe, and a failed probe falls back
 to L2, so metadata cannot return incorrect data.
 
@@ -47,9 +51,11 @@ Defaults directly taken from the paper where stated are 128 BF/tag-mask
 engines, two-cycle BF/tag-mask latency, two-cycle Snapshot latency,
 seven-cycle remote tag latency, two-cycle remote return latency, 64 banks,
 four Snapshot copies, and 128 B/cycle update transport. Query and update
-queue capacities, background rebuild interval, probe timeout, and topology
-distance are explicit simulator assumptions because the manuscript does not
-state them. They are config options and must be reported with every result.
+queue capacities, the optional idle gap between column rebuilds, probe timeout,
+and topology distance are explicit simulator assumptions because the
+manuscript does not state them. They are config options and must be reported
+with every result. The primary configuration uses no idle gap, matching the
+paper's continuous background-refresh description.
 
 Candidate probes are serialized nearest-first.  A remote probe reserves the
 target L1 data port for its tag latency; a remote return waits for the
