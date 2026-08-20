@@ -33,19 +33,23 @@ uses two deterministic 64-bit folded hashes with fixed salts.  Hash identity
 is therefore a sensitivity parameter, not a claimed reproduction detail.
 
 Snapshot bits are updated on every normal L1 fill and are periodically rebuilt
-from each L1 tag array.  This intentionally permits stale bits between
-rebuilds; all candidates receive an exact remote L1 tag probe, and a failed
-probe falls back to L2, so stale metadata cannot return incorrect data.
+from each L1 tag array. A rebuild clears one selected column, transports its
+valid compact tags through the shared Update Queue at 128 B/cycle, then uses
+the idle share of the BF engines to OR the encoded positions back into that
+column. Miss-side queries always take engine priority. This intentionally
+permits incomplete or stale bits during rebuilds and after evictions; all
+candidates receive an exact remote L1 tag probe, and a failed probe falls back
+to L2, so metadata cannot return incorrect data.
 
 ## Timing and contention model
 
 Defaults directly taken from the paper where stated are 128 BF/tag-mask
 engines, two-cycle BF/tag-mask latency, two-cycle Snapshot latency,
-seven-cycle remote tag latency, two-cycle remote return latency, 64 banks, and
-four Snapshot copies.  Query and update queues, background rebuild interval,
-probe timeout, and topology distance are explicit simulator assumptions because
-the manuscript does not state them.  They are config options and must be
-reported with every result.
+seven-cycle remote tag latency, two-cycle remote return latency, 64 banks,
+four Snapshot copies, and 128 B/cycle update transport. Query and update
+queue capacities, background rebuild interval, probe timeout, and topology
+distance are explicit simulator assumptions because the manuscript does not
+state them. They are config options and must be reported with every result.
 
 Candidate probes are serialized nearest-first.  A remote probe reserves the
 target L1 data port for its tag latency; a remote return waits for the
@@ -74,5 +78,6 @@ Every core result reports at least:
 The result bundle must retain configuration, trace provenance, simulator and
 model commits, C2P counters, and the oracle/ideal/C2P/baseline comparison.
 The primary outcomes are redundant L2 reduction, remote-hit rate, candidates
-per query, R1S1 speedup, and R0S1 overhead.  ATA, CCD, RING, Pannotia/ISPASS,
-and PPA are intentionally outside this phase.
+per query, the miss-time Snapshot TP/TN/FP/FN classification, R1S1 speedup,
+and R0S1 overhead. ATA, CCD, RING, Pannotia/ISPASS, and PPA are intentionally
+outside this phase.

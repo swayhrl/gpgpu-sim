@@ -35,6 +35,7 @@ c2p_cache_config::c2p_cache_config()
       remote_return_latency(2),
       query_queue_size(256),
       update_queue_size(1024),
+      update_transport_bytes_per_cycle(128),
       snapshot_rebuild_interval(100000),
       probe_timeout(32),
       snapshot_copies(4) {}
@@ -71,6 +72,9 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
   option_parser_register(opp, "-c2p_cache_update_queue_size", OPT_UINT32,
                          &update_queue_size, "C2P snapshot update queue limit",
                          "1024");
+  option_parser_register(opp, "-c2p_cache_update_transport_bytes_per_cycle",
+                         OPT_UINT32, &update_transport_bytes_per_cycle,
+                         "C2P background update transport bandwidth", "128");
   option_parser_register(opp, "-c2p_cache_snapshot_rebuild_interval",
                          OPT_UINT32, &snapshot_rebuild_interval,
                          "cycles between background C2P L1 snapshot rebuilds",
@@ -89,6 +93,7 @@ void c2p_cache_stats::clear() {
   oracle_peer_hits = 0;
   queries_accepted = 0;
   queries_queue_bypass = 0;
+  updates_queue_bypass = 0;
   candidate_total = 0;
   candidate_queries = 0;
   peer_probes = 0;
@@ -96,12 +101,16 @@ void c2p_cache_stats::clear() {
   peer_probe_misses = 0;
   remote_hits = 0;
   fallback_no_candidate = 0;
+  fallback_candidates_exhausted = 0;
   fallback_probe_timeout = 0;
   fallback_queue = 0;
   snapshot_false_positive = 0;
   snapshot_false_negative = 0;
+  snapshot_true_positive = 0;
+  snapshot_true_negative = 0;
   snapshot_updates = 0;
   snapshot_rebuilds = 0;
+  snapshot_rebuild_transport_tags = 0;
 }
 
 c2p_cache::transaction::transaction(l1_cache *requester_, mem_fetch *mf_,
@@ -130,7 +139,8 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
       m_rebuild_target_sid((unsigned)-1),
       m_rebuild_active(false),
       m_next_rebuild_cycle(0),
-      m_rebuild_next_tag(0),
+      m_rebuild_enqueue_next_tag(0),
+      m_rebuild_pending_tags(0),
       m_bank_copy_used(kSnapshotBanks,
                        std::vector<bool>(std::max(1U, config.snapshot_copies),
                                          false)) {}
@@ -145,7 +155,8 @@ void c2p_cache::reset() {
   m_rebuild_active = false;
   m_next_rebuild_cycle = 0;
   m_rebuild_tags.clear();
-  m_rebuild_next_tag = 0;
+  m_rebuild_enqueue_next_tag = 0;
+  m_rebuild_pending_tags = 0;
   m_stats.clear();
 }
 
@@ -235,9 +246,15 @@ bool c2p_cache::accept_miss(l1_cache *requester, mem_fetch *mf,
 
 void c2p_cache::on_l1_fill(l1_cache *cache, mem_fetch *mf) {
   if (!m_config.enabled || mf->get_is_write()) return;
-  if (m_update_queue.size() >= m_config.update_queue_size) return;
-  m_update_queue.push_back(
-      update_entry(cache->c2p_sid(), cache->c2p_line_tag(mf->get_addr())));
+  if (m_update_queue.size() >= m_config.update_queue_size) {
+    // This is safe for correctness: the exact peer probe remains authoritative
+    // and the next rebuild repairs the missing metadata.  Keep it explicit so
+    // an experiment cannot mistake update backpressure for Bloom-filter loss.
+    ++m_stats.updates_queue_bypass;
+    return;
+  }
+  m_update_queue.push_back(update_entry(
+      cache->c2p_sid(), cache->c2p_line_tag(mf->get_addr()), false));
 }
 
 void c2p_cache::on_l1_flush(l1_cache *cache) {
@@ -247,14 +264,15 @@ void c2p_cache::on_l1_flush(l1_cache *cache) {
   // Fills queued before the flush no longer describe resident cache lines.
   for (std::deque<update_entry>::iterator it = m_update_queue.begin();
        it != m_update_queue.end();) {
-    if (it->first == sid)
+    if (it->sid == sid)
       it = m_update_queue.erase(it);
     else
       ++it;
   }
   if (m_rebuild_active && m_rebuild_target_sid == sid) {
     m_rebuild_tags.clear();
-    m_rebuild_next_tag = 0;
+    m_rebuild_enqueue_next_tag = 0;
+    m_rebuild_pending_tags = 0;
     m_rebuild_active = false;
   }
 }
@@ -268,7 +286,8 @@ void c2p_cache::begin_next_rebuild() {
     m_rebuild_sid = (sid + 1) % m_l1s.size();
     clear_snapshot_column(sid);
     m_l1s[sid]->c2p_valid_line_tags(m_rebuild_tags);
-    m_rebuild_next_tag = 0;
+    m_rebuild_enqueue_next_tag = 0;
+    m_rebuild_pending_tags = 0;
     m_rebuild_active = true;
     ++m_stats.snapshot_rebuilds;
     return;
@@ -279,21 +298,38 @@ void c2p_cache::issue_update(unsigned long long now, unsigned &engines_left) {
   if (!m_rebuild_active && now >= m_next_rebuild_cycle) {
     begin_next_rebuild();
   }
+  // A periodic rebuild first transports tags from the selected L1 into the
+  // shared update queue.  At the paper's 128 B/cycle bandwidth this is 16
+  // compact 64-bit tags/cycle.  Unlike normal fills, rebuild traffic waits
+  // for queue space rather than being dropped, because it defines a complete
+  // replacement Snapshot column.
+  unsigned transport_tags =
+      std::max(1U, m_config.update_transport_bytes_per_cycle /
+                        (unsigned)sizeof(uint64_t));
+  while (m_rebuild_active && transport_tags &&
+         m_rebuild_enqueue_next_tag < m_rebuild_tags.size() &&
+         m_update_queue.size() < m_config.update_queue_size) {
+    m_update_queue.push_back(update_entry(
+        m_rebuild_target_sid, m_rebuild_tags[m_rebuild_enqueue_next_tag++],
+        true));
+    ++m_rebuild_pending_tags;
+    ++m_stats.snapshot_rebuild_transport_tags;
+    --transport_tags;
+  }
   while (engines_left && !m_update_queue.empty()) {
     const update_entry entry = m_update_queue.front();
     m_update_queue.pop_front();
-    set_snapshot_bits(entry.first, entry.second);
+    set_snapshot_bits(entry.sid, entry.line_tag);
     ++m_stats.snapshot_updates;
+    if (entry.rebuild) {
+      assert(m_rebuild_pending_tags > 0);
+      --m_rebuild_pending_tags;
+    }
     --engines_left;
   }
-  while (engines_left && m_rebuild_next_tag < m_rebuild_tags.size()) {
-    assert(m_rebuild_target_sid < m_l1s.size());
-    set_snapshot_bits(m_rebuild_target_sid,
-                      m_rebuild_tags[m_rebuild_next_tag++]);
-    ++m_stats.snapshot_updates;
-    --engines_left;
-  }
-  if (m_rebuild_active && m_rebuild_next_tag >= m_rebuild_tags.size()) {
+  if (m_rebuild_active &&
+      m_rebuild_enqueue_next_tag >= m_rebuild_tags.size() &&
+      m_rebuild_pending_tags == 0) {
     m_rebuild_active = false;
     m_next_rebuild_cycle = now + m_config.snapshot_rebuild_interval;
   }
@@ -381,12 +417,16 @@ void c2p_cache::complete_matches(unsigned long long now) {
     it->candidates = ordered_candidates(*it);
     m_stats.candidate_total += it->candidates.size();
     ++m_stats.candidate_queries;
-    if (!m_config.ideal_peer_lookup && !it->candidates.empty() &&
-        !it->oracle_peer_hit)
-      ++m_stats.snapshot_false_positive;
-    if (!m_config.ideal_peer_lookup && it->candidates.empty() &&
-        it->oracle_peer_hit)
-      ++m_stats.snapshot_false_negative;
+    if (!m_config.ideal_peer_lookup) {
+      if (!it->candidates.empty() && it->oracle_peer_hit)
+        ++m_stats.snapshot_true_positive;
+      else if (!it->candidates.empty())
+        ++m_stats.snapshot_false_positive;
+      else if (it->oracle_peer_hit)
+        ++m_stats.snapshot_false_negative;
+      else
+        ++m_stats.snapshot_true_negative;
+    }
     it->state = READY_TO_PROBE;
     it->probe_wait_start = now;
   }
@@ -421,7 +461,10 @@ void c2p_cache::advance_probes(unsigned long long now) {
 
     if (it->state == READY_TO_PROBE) {
       if (it->candidate_next >= it->candidates.size()) {
-        ++m_stats.fallback_no_candidate;
+        if (it->candidates.empty())
+          ++m_stats.fallback_no_candidate;
+        else
+          ++m_stats.fallback_candidates_exhausted;
         it->state = WAIT_FALLBACK;
       } else {
         const unsigned sid = it->candidates[it->candidate_next];
@@ -468,6 +511,7 @@ void c2p_cache::print_stats(FILE *fout) const {
   fprintf(fout, "c2p_oracle_peer_hits = %llu\n", m_stats.oracle_peer_hits);
   fprintf(fout, "c2p_queries_accepted = %llu\n", m_stats.queries_accepted);
   fprintf(fout, "c2p_queries_queue_bypass = %llu\n", m_stats.queries_queue_bypass);
+  fprintf(fout, "c2p_updates_queue_bypass = %llu\n", m_stats.updates_queue_bypass);
   fprintf(fout, "c2p_candidate_total = %llu\n", m_stats.candidate_total);
   fprintf(fout, "c2p_candidate_queries = %llu\n", m_stats.candidate_queries);
   fprintf(fout, "c2p_peer_probes = %llu\n", m_stats.peer_probes);
@@ -479,10 +523,16 @@ void c2p_cache::print_stats(FILE *fout) const {
   // attributable redundant-L2 reduction metric.
   fprintf(fout, "c2p_l2_requests_avoided = %llu\n", m_stats.remote_hits);
   fprintf(fout, "c2p_fallback_no_candidate = %llu\n", m_stats.fallback_no_candidate);
+  fprintf(fout, "c2p_fallback_candidates_exhausted = %llu\n",
+          m_stats.fallback_candidates_exhausted);
   fprintf(fout, "c2p_fallback_probe_timeout = %llu\n", m_stats.fallback_probe_timeout);
   fprintf(fout, "c2p_fallback_queue = %llu\n", m_stats.fallback_queue);
   fprintf(fout, "c2p_snapshot_false_positive = %llu\n", m_stats.snapshot_false_positive);
   fprintf(fout, "c2p_snapshot_false_negative = %llu\n", m_stats.snapshot_false_negative);
+  fprintf(fout, "c2p_snapshot_true_positive = %llu\n", m_stats.snapshot_true_positive);
+  fprintf(fout, "c2p_snapshot_true_negative = %llu\n", m_stats.snapshot_true_negative);
   fprintf(fout, "c2p_snapshot_updates = %llu\n", m_stats.snapshot_updates);
   fprintf(fout, "c2p_snapshot_rebuilds = %llu\n", m_stats.snapshot_rebuilds);
+  fprintf(fout, "c2p_snapshot_rebuild_transport_tags = %llu\n",
+          m_stats.snapshot_rebuild_transport_tags);
 }

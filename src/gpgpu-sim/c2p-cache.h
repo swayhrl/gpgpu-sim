@@ -37,6 +37,7 @@ class c2p_cache_config {
   unsigned remote_return_latency;
   unsigned query_queue_size;
   unsigned update_queue_size;
+  unsigned update_transport_bytes_per_cycle;
   unsigned snapshot_rebuild_interval;
   unsigned probe_timeout;
   unsigned snapshot_copies;
@@ -47,6 +48,7 @@ struct c2p_cache_stats {
   unsigned long long oracle_peer_hits;
   unsigned long long queries_accepted;
   unsigned long long queries_queue_bypass;
+  unsigned long long updates_queue_bypass;
   unsigned long long candidate_total;
   unsigned long long candidate_queries;
   unsigned long long peer_probes;
@@ -54,12 +56,16 @@ struct c2p_cache_stats {
   unsigned long long peer_probe_misses;
   unsigned long long remote_hits;
   unsigned long long fallback_no_candidate;
+  unsigned long long fallback_candidates_exhausted;
   unsigned long long fallback_probe_timeout;
   unsigned long long fallback_queue;
   unsigned long long snapshot_false_positive;
   unsigned long long snapshot_false_negative;
+  unsigned long long snapshot_true_positive;
+  unsigned long long snapshot_true_negative;
   unsigned long long snapshot_updates;
   unsigned long long snapshot_rebuilds;
+  unsigned long long snapshot_rebuild_transport_tags;
 
   c2p_cache_stats();
   void clear();
@@ -111,7 +117,13 @@ class c2p_cache {
     bool oracle_peer_hit;
   };
 
-  typedef std::pair<unsigned, uint64_t> update_entry;
+  struct update_entry {
+    update_entry(unsigned sid_, uint64_t line_tag_, bool rebuild_)
+        : sid(sid_), line_tag(line_tag_), rebuild(rebuild_) {}
+    unsigned sid;
+    uint64_t line_tag;
+    bool rebuild;
+  };
 
   std::vector<unsigned> query_rows(uint64_t line_tag) const;
   void set_snapshot_bits(unsigned sid, uint64_t line_tag);
@@ -143,7 +155,8 @@ class c2p_cache {
   bool m_rebuild_active;
   unsigned long long m_next_rebuild_cycle;
   std::vector<uint64_t> m_rebuild_tags;
-  unsigned m_rebuild_next_tag;
+  unsigned m_rebuild_enqueue_next_tag;
+  unsigned m_rebuild_pending_tags;
   std::vector<std::vector<bool> > m_bank_copy_used;
   c2p_cache_stats m_stats;
 };
