@@ -219,6 +219,9 @@ bool c2p_cache::accept_miss(l1_cache *requester, mem_fetch *mf,
     ++m_stats.queries_queue_bypass;
     return false;
   }
+  for (std::list<transaction>::const_iterator it = m_transactions.begin();
+       it != m_transactions.end(); ++it)
+    assert(it->mf != mf);
 
   transaction txn(requester, mf, requester->c2p_sid(),
                   requester->c2p_line_tag(mf->get_addr()), now);
@@ -377,6 +380,9 @@ void c2p_cache::advance_probes(unsigned long long now) {
     if (it->state == WAIT_PROBE && now >= it->ready_cycle) {
       assert(it->probe_sid < m_l1s.size() && m_l1s[it->probe_sid] != NULL);
       if (m_l1s[it->probe_sid]->c2p_probe(it->mf)) {
+        // Exact remote matches are a subset of the exact oracle whenever it
+        // is collected.  This catches duplicate/incorrect requester routing.
+        assert(!m_config.collect_oracle || it->oracle_peer_hit);
         ++m_stats.peer_probe_hits;
         ++m_stats.remote_hits;
         it->state = WAIT_RETURN;
