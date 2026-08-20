@@ -23,6 +23,13 @@ class mem_fetch;
 
 class c2p_cache_config {
  public:
+  enum sharing_scheme {
+    C2P_SCHEME = 0,
+    ATA_SCHEME = 1,
+    CCD_SCHEME = 2,
+    RING_SCHEME = 3
+  };
+
   c2p_cache_config();
   void reg_options(OptionParser *opp);
 
@@ -41,6 +48,13 @@ class c2p_cache_config {
   unsigned snapshot_rebuild_interval;
   unsigned probe_timeout;
   unsigned snapshot_copies;
+  unsigned scheme;
+  unsigned ata_cluster_issue_width;
+  unsigned ata_tag_latency;
+  unsigned ccd_predictor_latency;
+  unsigned ccd_broadcast_latency;
+  unsigned ring_hop_latency;
+  unsigned peer_line_latency;
 };
 
 struct c2p_cache_stats {
@@ -54,6 +68,7 @@ struct c2p_cache_stats {
   unsigned long long peer_probes;
   unsigned long long peer_probe_hits;
   unsigned long long peer_probe_misses;
+  unsigned long long peer_l1_accesses;
   unsigned long long remote_hits;
   unsigned long long fallback_no_candidate;
   unsigned long long fallback_candidates_exhausted;
@@ -115,6 +130,10 @@ class c2p_cache {
     unsigned candidate_next;
     unsigned probe_sid;
     bool oracle_peer_hit;
+    bool sharing_attempt;
+    bool ring_started;
+    unsigned probe_latency;
+    unsigned return_latency;
   };
 
   struct update_entry {
@@ -136,8 +155,13 @@ class c2p_cache {
   void complete_matches(unsigned long long now);
   void advance_probes(unsigned long long now);
   bool has_exact_peer(l1_cache *requester, mem_fetch *mf) const;
+  std::vector<unsigned> exact_candidates(const transaction &txn,
+                                         bool cluster_only) const;
   std::vector<unsigned> ordered_candidates(const transaction &txn) const;
   unsigned cluster_distance(unsigned from_sid, unsigned to_sid) const;
+  unsigned cluster_size() const;
+  unsigned cluster_id(unsigned sid) const;
+  unsigned ring_distance(unsigned from_sid, unsigned to_sid) const;
 
   const c2p_cache_config &m_config;
   gpgpu_sim *m_gpu;
@@ -158,6 +182,10 @@ class c2p_cache {
   unsigned m_rebuild_enqueue_next_tag;
   unsigned m_rebuild_pending_tags;
   std::vector<std::vector<bool> > m_bank_copy_used;
+  std::vector<unsigned> m_ccd_counters;
+  unsigned long long m_ata_issue_cycle;
+  std::vector<unsigned> m_ata_issues;
+  unsigned long long m_ring_next_issue_cycle;
   c2p_cache_stats m_stats;
 };
 

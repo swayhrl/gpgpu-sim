@@ -79,5 +79,33 @@ The result bundle must retain configuration, trace provenance, simulator and
 model commits, C2P counters, and the oracle/ideal/C2P/baseline comparison.
 The primary outcomes are redundant L2 reduction, remote-hit rate, candidates
 per query, the miss-time Snapshot TP/TN/FP/FN classification, R1S1 speedup,
-and R0S1 overhead. ATA, CCD, RING, Pannotia/ISPASS, and PPA are intentionally
-outside this phase.
+and R0S1 overhead.
+
+## Prior-mechanism comparison models
+
+`-c2p_cache_scheme` selects the miss-side sharing model when C2P is enabled:
+`0` is C2P, `1` ATA-like, `2` CCD-like, and `3` RING-like.  These are
+cycle-level mechanism comparisons based on the paper's stated scope,
+throughput, and latency assumptions; they are not a claim to reproduce the
+unpublished RTL of the cited prior designs.
+
+- **ATA-like** uses exact aggregated tags within an eight-SM cluster, a
+  four-request-per-cluster-per-cycle aggregate-tag limit, seven-cycle tag
+  lookup, and fourteen-cycle peer line access.  Aggregate tags are sampled
+  when the request is issued; the selected L1 is checked again only when the
+  later data-array access occurs.
+- **CCD-like** uses one weak-taken two-bit saturating predictor per cluster.
+  A taken prediction broadcasts to the eight-SM cluster (one-cycle predictor,
+  three-cycle broadcast, seven-cycle tag lookup), then exact tags choose the
+  peer.  The counter increments on a broadcast hit and decrements on a miss.
+- **RING-like** has chip-wide visibility through exact copied tags, serial
+  forward ring traversal at two cycles per hop, a seven-cycle tag lookup, and
+  fourteen-cycle data access.  Its injection path is serialized, so misses
+  pay traversal latency but do not touch peer L1 data arrays.  Like ATA,
+  copied tags are sampled at request issue, while data validity is checked at
+  the modeled access time.
+
+`c2p_peer_l1_accesses` distinguishes broad ATA/CCD cluster lookups from C2P
+candidate probes and RING's hit-only data-array access.  The four C2P core
+variants remain required for every main result; ATA/CCD/RING are added for
+the same completed workload only after that core bundle passes.
