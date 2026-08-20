@@ -1,5 +1,6 @@
 # Exclude power_interface.cc if no power model
 list(APPEND gpgpusim_SRC addrdec.cc
+    c2p-cache.cc
     dram.cc
     dram_sched.cc
     gpu-cache.cc
@@ -33,4 +34,3 @@ if(GPGPUSIM_USE_POWER_MODEL)
 target_compile_definitions(gpgpusim PRIVATE GPGPUSIM_POWER_MODEL)
 target_include_directories(gpgpusim PRIVATE ${GPGPUSIM_POWER_MODEL})
 endif()
-

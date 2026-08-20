@@ -1223,6 +1223,10 @@ void baseline_cache::cycle() {
       m_memport->push(mf);
     }
   }
+  cycle_port_accounting();
+}
+
+void baseline_cache::cycle_port_accounting() {
   bool data_port_busy = !m_bandwidth_management.data_port_free();
   bool fill_port_busy = !m_bandwidth_management.fill_port_free();
   m_stats.sample_cache_port_utility(data_port_busy, fill_port_busy);
@@ -2013,10 +2017,57 @@ enum cache_request_status data_cache::access(new_addr_type addr, mem_fetch *mf,
 /// It is write-evict (global) or write-back (local) at the
 /// granularity of individual blocks (Set by GPGPU-Sim configuration file)
 /// (the policy used in fermi according to the CUDA manual)
+ l1_cache::l1_cache(const char *name, cache_config &config, int core_id,
+                    int type_id, mem_fetch_interface *memport,
+                    mem_fetch_allocator *mfcreator, enum mem_fetch_status status,
+                    gpgpu_sim *gpu, enum cache_gpu_level level)
+    : data_cache(name, config, core_id, type_id, memport, mfcreator, status,
+                 L1_WR_ALLOC_R, L1_WRBK_ACC, gpu, level),
+      m_c2p_sid(core_id) {
+  gpu->get_c2p_cache()->register_l1(this);
+}
+
 enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events) {
   return data_cache::access(addr, mf, time, events);
+}
+
+void l1_cache::cycle() {
+  if (!m_miss_queue.empty() &&
+      m_gpu->get_c2p_cache()->accept_miss(
+          this, m_miss_queue.front(),
+          m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle)) {
+    m_miss_queue.pop_front();
+    cycle_port_accounting();
+    return;
+  }
+  baseline_cache::cycle();
+}
+
+void l1_cache::fill(mem_fetch *mf, unsigned time) {
+  baseline_cache::fill(mf, time);
+  m_gpu->get_c2p_cache()->on_l1_fill(this, mf);
+}
+
+bool l1_cache::c2p_probe(mem_fetch *mf) const {
+  unsigned index = (unsigned)-1;
+  const enum cache_request_status status = m_tag_array->probe(
+      m_config.block_addr(mf->get_addr()), index, mf, false, true);
+  return status == HIT;
+}
+
+void l1_cache::c2p_valid_line_tags(std::vector<uint64_t> &tags) const {
+  tags.clear();
+  for (unsigned index = 0; index < m_tag_array->size(); ++index) {
+    cache_block_t *block = m_tag_array->get_block(index);
+    if (!block->is_invalid_line() && !block->is_reserved_line())
+      tags.push_back(c2p_line_tag(block->m_block_addr));
+  }
+}
+
+void l1_cache::c2p_fill(mem_fetch *mf, unsigned long long time) {
+  fill(mf, (unsigned)time);
 }
 
 // The l2 cache access function calls the base data_cache access

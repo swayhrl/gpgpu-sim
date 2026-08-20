@@ -1320,10 +1320,10 @@ class baseline_cache : public cache_t {
                                            unsigned time,
                                            std::list<cache_event> &events) = 0;
   /// Sends next request to lower level of memory
-  void cycle();
+  virtual void cycle();
   /// Interface for response from lower memory level (model bandwidth
   /// restictions in caller)
-  void fill(mem_fetch *mf, unsigned time);
+  virtual void fill(mem_fetch *mf, unsigned time);
   /// Checks if mf is waiting to be filled by lower memory level
   bool waiting_for_fill(mem_fetch *mf);
   /// Are any (accepted) accesses that had to wait for memory now ready? (does
@@ -1384,6 +1384,7 @@ class baseline_cache : public cache_t {
   }
 
  protected:
+  void cycle_port_accounting();
   // Constructor that can be used by derived classes with custom tag arrays
   baseline_cache(const char *name, cache_config &config, int core_id,
                  int type_id, mem_fetch_interface *memport,
@@ -1473,6 +1474,9 @@ class baseline_cache : public cache_t {
     bool data_port_free() const;
     /// query for fill port availability
     bool fill_port_free() const;
+    void reserve_data_port(unsigned cycles) {
+      m_data_port_occupied_cycles += cycles;
+    }
 
    protected:
     const cache_config &m_config;
@@ -1711,15 +1715,33 @@ class l1_cache : public data_cache {
   l1_cache(const char *name, cache_config &config, int core_id, int type_id,
            mem_fetch_interface *memport, mem_fetch_allocator *mfcreator,
            enum mem_fetch_status status, class gpgpu_sim *gpu,
-           enum cache_gpu_level level)
-      : data_cache(name, config, core_id, type_id, memport, mfcreator, status,
-                   L1_WR_ALLOC_R, L1_WRBK_ACC, gpu, level) {}
+           enum cache_gpu_level level);
 
   virtual ~l1_cache() {}
 
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events);
+  virtual void cycle();
+  virtual void fill(mem_fetch *mf, unsigned time);
+
+  // C2P uses these narrow hooks instead of reaching into the normal L1
+  // miss/fill machinery.  The original MSHR and fill bookkeeping remain the
+  // single source of truth for both peer hits and lower-memory fallback.
+  unsigned c2p_sid() const { return m_c2p_sid; }
+  uint64_t c2p_line_tag(new_addr_type addr) const {
+    return m_config.block_addr(addr) / m_config.get_line_sz();
+  }
+  bool c2p_probe(mem_fetch *mf) const;
+  void c2p_valid_line_tags(std::vector<uint64_t> &tags) const;
+  void c2p_fill(mem_fetch *mf, unsigned long long time);
+  bool c2p_lower_ready(mem_fetch *mf) const {
+    return !m_memport->full(mf->size(), mf->get_is_write());
+  }
+  void c2p_send_lower(mem_fetch *mf) { m_memport->push(mf); }
+  void c2p_reserve_probe_port(unsigned cycles) {
+    m_bandwidth_management.reserve_data_port(cycles);
+  }
 
  protected:
   l1_cache(const char *name, cache_config &config, int core_id, int type_id,
@@ -1728,6 +1750,8 @@ class l1_cache : public data_cache {
            class gpgpu_sim *gpu)
       : data_cache(name, config, core_id, type_id, memport, mfcreator, status,
                    new_tag_array, L1_WR_ALLOC_R, L1_WRBK_ACC, gpu) {}
+
+  unsigned m_c2p_sid;
 };
 
 /// Models second level shared cache with global write-back

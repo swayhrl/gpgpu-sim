@@ -672,6 +672,7 @@ void gpgpu_sim_config::reg_options(option_parser_t opp) {
   m_shader_config.reg_options(opp);
   m_memory_config.reg_options(opp);
   power_config::reg_options(opp);
+  m_c2p_cache_config.reg_options(opp);
   option_parser_register(opp, "-gpgpu_max_cycle", OPT_INT64, &gpu_max_cycle_opt,
                          "terminates gpu simulation early (0 = no limit)", "0");
   option_parser_register(opp, "-gpgpu_max_insn", OPT_INT64, &gpu_max_insn_opt,
@@ -993,6 +994,7 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
   m_power_stats =
       new power_stat_t(m_shader_config, average_pipeline_duty_cycle, active_sms,
                        m_shader_stats, m_memory_config, m_memory_stats);
+  m_c2p_cache = new c2p_cache(m_config.get_c2p_cache_config(), this);
 
   gpu_sim_insn = 0;
   gpu_tot_sim_insn = 0;
@@ -1211,6 +1213,7 @@ void gpgpu_sim::init() {
   gpgpu_ctx->func_sim->set_param_gpgpu_num_shaders(m_config.num_shader());
   for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++)
     m_cluster[i]->reinit();
+  m_c2p_cache->reset();
   m_shader_stats->new_grid();
   // initialize the control-flow, memory access, memory latency logger
   if (m_config.g_visualizer_enabled) {
@@ -1531,6 +1534,7 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
   core_cache_stats.print_fail_stats(stdout, streamID,
                                     "Total_core_cache_fail_stats_breakdown");
   shader_print_scheduler_stat(stdout, false);
+  m_c2p_cache->print_stats(statfout);
 
   m_shader_stats->print(stdout);
 #ifdef GPGPUSIM_POWER_MODEL
@@ -2080,6 +2084,7 @@ void gpgpu_sim::cycle() {
           gpu_occupancy.aggregate_warp_slot_filled,
           gpu_occupancy.aggregate_theoretical_warp_slots);
     }
+    m_c2p_cache->cycle(gpu_sim_cycle + gpu_tot_sim_cycle);
     float temp = 0;
     for (unsigned i = 0; i < m_shader_config->num_shader(); i++) {
       temp += m_shader_stats->m_pipeline_duty_cycle[i];

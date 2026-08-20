@@ -41,6 +41,7 @@
 #include "../option_parser.h"
 #include "../trace.h"
 #include "addrdec.h"
+#include "c2p-cache.h"
 #include "gpu-cache.h"
 #include "shader.h"
 
@@ -466,6 +467,9 @@ class gpgpu_sim_config : public power_config,
   }
 
   bool flush_l1() const { return gpgpu_flush_l1_cache; }
+  const c2p_cache_config &get_c2p_cache_config() const {
+    return m_c2p_cache_config;
+  }
 
  private:
   void init_clock_domains(void);
@@ -475,6 +479,7 @@ class gpgpu_sim_config : public power_config,
   bool m_valid;
   shader_core_config m_shader_config;
   memory_config m_memory_config;
+  c2p_cache_config m_c2p_cache_config;
   // clock domains - frequency
   double core_freq;
   double icnt_freq;
@@ -627,6 +632,7 @@ class gpgpu_sim : public gpgpu_t {
   void decrement_kernel_latency();
 
   const gpgpu_sim_config &get_config() const { return m_config; }
+  c2p_cache *get_c2p_cache() const { return m_c2p_cache; }
   void gpu_print_stat(unsigned long long streamID);
   void dump_pipeline(int mask, int s, int m) const;
 
@@ -725,6 +731,7 @@ class gpgpu_sim : public gpgpu_t {
   class memory_stats_t *m_memory_stats;
   class power_stat_t *m_power_stats;
   class gpgpu_sim_wrapper *m_gpgpusim_wrapper;
+  c2p_cache *m_c2p_cache;
   unsigned long long last_gpu_sim_insn;
 
   unsigned long long last_liveness_message_time;
