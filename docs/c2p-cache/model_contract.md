@@ -143,7 +143,10 @@ unpublished RTL of the cited prior designs.
 - **CCD-like** uses one weak-taken two-bit saturating predictor per cluster.
   A taken prediction broadcasts to the eight-SM cluster (one-cycle predictor,
   three-cycle broadcast, seven-cycle tag lookup), then exact tags choose the
-  peer.  The counter increments on a broadcast hit and decrements on a miss.
+  peer.  The model trains the counter from the exact tag-time in-cluster
+  outcome for both taken and not-taken predictions, as a branch predictor
+  trains from every resolved outcome.  Training only after a taken broadcast
+  would make a first miss permanently suppress later sharing opportunities.
 - **RING-like** has chip-wide visibility through exact copied tags, serial
   forward ring traversal at two cycles per hop, a seven-cycle tag lookup, and
   fourteen-cycle data access.  Its injection path is serialized, so misses

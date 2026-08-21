@@ -684,15 +684,22 @@ void c2p_cache::complete_matches(unsigned long long now) {
       m_stats.peer_l1_accesses += cluster_size();
     } else if (m_config.scheme == c2p_cache_config::CCD_SCHEME) {
       const unsigned cluster = cluster_id(it->requester_sid);
+      // A two-bit predictor must learn both taken and not-taken outcomes.
+      // `candidates` is the exact tag-time in-cluster outcome retained for
+      // CCD's TP/FN/FP/TN accounting.  Updating only after a taken broadcast
+      // makes a counter that first sees a miss fall permanently below the
+      // taken threshold, so later false negatives can never retrain it.
+      // Update from this observed tag-time outcome before clearing a
+      // not-taken transaction's probe list.
+      if (it->candidates.empty()) {
+        if (m_ccd_counters[cluster]) --m_ccd_counters[cluster];
+      } else if (m_ccd_counters[cluster] < 3) {
+        ++m_ccd_counters[cluster];
+      }
       if (it->sharing_attempt) {
         // CCD broadcasts to all cluster peers when its two-bit predictor is
         // taken; exact tags then select the peer that returns the line.
         m_stats.peer_l1_accesses += cluster_size();
-        if (it->candidates.empty()) {
-          if (m_ccd_counters[cluster]) --m_ccd_counters[cluster];
-        } else if (m_ccd_counters[cluster] < 3) {
-          ++m_ccd_counters[cluster];
-        }
       } else {
         it->candidates.clear();
       }
