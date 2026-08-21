@@ -126,6 +126,9 @@ class c2p_cache {
   void on_l1_flush(l1_cache *cache);
   void cycle(unsigned long long now);
   void print_stats(FILE *fout) const;
+  // Diagnostic only: called after the global simulator has already declared
+  // deadlock, so it cannot perturb normal C2P timing or accounting.
+  void display_state(FILE *fout) const;
   const c2p_cache_stats &stats() const { return m_stats; }
 
  private:

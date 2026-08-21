@@ -906,6 +906,35 @@ void c2p_cache::cycle(unsigned long long now) {
   advance_probes(now);
 }
 
+void c2p_cache::display_state(FILE *fout) const {
+  static const char *const state_names[] = {
+      "encode", "rows", "match", "ready", "target", "probe", "return",
+      "fallback"};
+  unsigned counts[sizeof(state_names) / sizeof(state_names[0])] = {0};
+  for (std::list<transaction>::const_iterator it = m_transactions.begin();
+       it != m_transactions.end(); ++it) {
+    assert(it->state < sizeof(counts) / sizeof(counts[0]));
+    ++counts[it->state];
+  }
+  unsigned queued = 0;
+  unsigned nonempty_targets = 0;
+  unsigned max_depth = 0;
+  for (unsigned sid = 0; sid < m_target_probe_queues.size(); ++sid) {
+    const unsigned depth = m_target_probe_queues[sid].size();
+    queued += depth;
+    if (depth) ++nonempty_targets;
+    max_depth = std::max(max_depth, depth);
+  }
+  fprintf(fout, "C2P deadlock state: scheme=%u transactions=%zu ",
+          m_config.scheme, m_transactions.size());
+  for (unsigned state = 0; state < sizeof(counts) / sizeof(counts[0]); ++state)
+    fprintf(fout, "%s=%u%s", state_names[state], counts[state],
+            state + 1 == sizeof(counts) / sizeof(counts[0]) ? "" : " ");
+  fprintf(fout,
+          "\ntarget probe queues: entries=%u nonempty=%u max_depth=%u / %u\n",
+          queued, nonempty_targets, max_depth, m_config.target_probe_queue_size);
+}
+
 void c2p_cache::print_stats(FILE *fout) const {
   fprintf(fout, "\nC2P_cache_stats:\n");
   fprintf(fout, "c2p_l1_misses = %llu\n", m_stats.l1_misses);

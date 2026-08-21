@@ -1307,6 +1307,7 @@ void gpgpu_sim::deadlock_check() {
       }
     }
     printf("\n");
+    m_c2p_cache->display_state(stdout);
     for (unsigned i = 0; i < m_memory_config->m_n_mem; i++) {
       bool busy = m_memory_partition_unit[i]->busy();
       if (busy)
