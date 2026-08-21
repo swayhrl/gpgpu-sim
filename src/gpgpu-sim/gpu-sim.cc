@@ -260,6 +260,25 @@ void memory_config::reg_options(class OptionParser *opp) {
                          &l2_latebind_stats,
                          "Enable observation-only LateBind L2 statistics",
                          "0");
+  option_parser_register(opp, "-gpgpu_l2_frc_enable", OPT_BOOL,
+                         &l2_frc_enable,
+                         "Enable one set-associative FRC per L2 subpartition",
+                         "0");
+  option_parser_register(opp, "-gpgpu_l2_frc_entries", OPT_UINT32,
+                         &l2_frc_entries,
+                         "FRC line entries per L2 subpartition", "0");
+  option_parser_register(opp, "-gpgpu_l2_frc_assoc", OPT_UINT32,
+                         &l2_frc_assoc, "FRC associativity", "0");
+  option_parser_register(opp, "-gpgpu_l2_frc_lookup_latency", OPT_UINT32,
+                         &l2_frc_lookup_latency,
+                         "Additional FRC lookup latency in conservative mode",
+                         "0");
+  option_parser_register(opp, "-gpgpu_l2_frc_swap_latency", OPT_UINT32,
+                         &l2_frc_swap_latency,
+                         "FRC-to-L2 swap latency in conservative mode", "0");
+  option_parser_register(opp, "-gpgpu_l2_frc_conservative_timing", OPT_BOOL,
+                         &l2_frc_conservative_timing,
+                         "Model explicit FRC lookup and swap timing", "0");
   option_parser_register(
       opp, "-gpgpu_n_mem", OPT_UINT32, &m_n_mem,
       "number of memory modules (e.g. memory controllers) in gpu", "8");

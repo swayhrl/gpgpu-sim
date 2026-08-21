@@ -37,6 +37,7 @@
 #include "../abstract_hardware_model.h"
 #include "../tr1_hash_map.h"
 #include "gpu-misc.h"
+#include "frc-cache.h"
 #include "l2_latebind_stats.h"
 #include "mem_fetch.h"
 
@@ -1747,16 +1748,30 @@ class l2_cache : public data_cache {
            mem_fetch_interface *memport, mem_fetch_allocator *mfcreator,
            enum mem_fetch_status status, class gpgpu_sim *gpu,
            enum cache_gpu_level level, bool latebind_stats = false,
-           unsigned subpartition_id = 0)
+           unsigned subpartition_id = 0, bool frc_enable = false,
+           unsigned frc_entries = 0, unsigned frc_assoc = 0,
+           unsigned frc_lookup_latency = 0, unsigned frc_swap_latency = 0,
+           bool frc_conservative_timing = false)
       : data_cache(name, config, core_id, type_id, memport, mfcreator, status,
                    L2_WR_ALLOC_R, L2_WRBK_ACC, gpu, level) {
     if (latebind_stats) {
       m_latebind_stats = new l2_latebind_stats(name, subpartition_id);
       m_tag_array->set_latebind_stats(m_latebind_stats);
     }
+    if (frc_enable) {
+      assert(frc_entries != 0);
+      assert(frc_assoc != 0);
+      m_frc = new frc_cache(frc_entries, frc_assoc, config.get_line_sz());
+      m_frc_lookup_latency = frc_lookup_latency;
+      m_frc_swap_latency = frc_swap_latency;
+      m_frc_conservative_timing = frc_conservative_timing;
+    }
   }
 
-  virtual ~l2_cache() { delete m_latebind_stats; }
+  virtual ~l2_cache() {
+    delete m_frc;
+    delete m_latebind_stats;
+  }
 
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
@@ -1764,6 +1779,12 @@ class l2_cache : public data_cache {
   void note_reply(mem_fetch *mf, unsigned long long time);
   void note_consumed(mem_fetch *mf, unsigned long long time);
   static void print_latebind_global_stats(FILE *fp);
+
+ private:
+  frc_cache *m_frc = NULL;
+  unsigned m_frc_lookup_latency = 0;
+  unsigned m_frc_swap_latency = 0;
+  bool m_frc_conservative_timing = false;
 };
 
 /*****************************************************************************/

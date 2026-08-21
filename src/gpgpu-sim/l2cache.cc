@@ -439,7 +439,13 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
     m_L2cache = new l2_cache(L2c_name, m_config->m_L2_config, -1, -1,
                              m_L2interface, m_mf_allocator,
                              IN_PARTITION_L2_MISS_QUEUE, gpu, L2_GPU_CACHE,
-                             m_config->l2_latebind_stats, m_id);
+                             m_config->l2_latebind_stats, m_id,
+                             m_config->l2_frc_enable,
+                             m_config->l2_frc_entries,
+                             m_config->l2_frc_assoc,
+                             m_config->l2_frc_lookup_latency,
+                             m_config->l2_frc_swap_latency,
+                             m_config->l2_frc_conservative_timing);
 
   unsigned int icnt_L2;
   unsigned int L2_dram;

@@ -2,6 +2,7 @@
 list(APPEND gpgpusim_SRC addrdec.cc
     dram.cc
     dram_sched.cc
+    frc-cache.cc
     gpu-cache.cc
     gpu-misc.cc
     gpu-sim.cc

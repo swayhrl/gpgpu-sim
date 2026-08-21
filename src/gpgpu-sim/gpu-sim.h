@@ -327,6 +327,12 @@ class memory_config {
   mutable l2_cache_config m_L2_config;
   bool m_L2_texure_only;
   bool l2_latebind_stats;
+  bool l2_frc_enable;
+  unsigned l2_frc_entries;
+  unsigned l2_frc_assoc;
+  unsigned l2_frc_lookup_latency;
+  unsigned l2_frc_swap_latency;
+  bool l2_frc_conservative_timing;
 
   char *gpgpu_dram_timing_opt;
   char *gpgpu_L2_queue_config;
