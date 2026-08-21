@@ -28,6 +28,13 @@ logical Snapshot Matrix, four query rows per line (one reverse low-10-bit tag
 mask and three double-hash Bloom positions), 64 banks, and configurable
 physical copies (four by default).  Snapshot columns are one bit per SM.
 
+The default is represented explicitly as 64 Bloom-filter rows plus 16
+tag-mask rows in each bank (`snapshot_bf_rows_per_bank=64`), with three BF
+hashes in addition to the tag mask (`bf_hashes=3`).  This is exactly the
+former fixed 5,120-row / four-encoding mapping.  Figure-13 sweeps may vary
+only these two controls; every sweep point reports its *measured* miss-time
+FP ratio, so a change in BF shape is not conflated with a synthetic FP rate.
+
 The manuscript does not specify the concrete `h1`/`h2` functions.  This model
 uses two deterministic 64-bit folded hashes with fixed salts.  Hash identity
 is therefore a sensitivity parameter, not a claimed reproduction detail.
@@ -77,6 +84,12 @@ generation definition and use this accept-time truth.  Separate
 query completes; they diagnose temporal churn without changing the
 paper-comparable classification.
 
+The CCD-like predictor has a separate `c2p_ccd_{TP,TN,FP,FN}` table.  Its
+truth is the exact in-cluster tag snapshot taken when the predictor is read;
+later peer eviction or fill is intentionally not counted as predictor/filter
+error.  This puts CCD and C2P Figure-12 counters at the same tag-time
+comparison boundary.
+
 Distance uses stable logical SM-cluster order.  In the paper-table overlay
 this is eight groups of eight SMs even though the trace-driven simulator
 exposes 64 one-SM endpoints for forward progress.  It is deliberately a
@@ -85,7 +98,7 @@ for comparing same model variants only.
 
 ## Required reported variants
 
-Every core result reports at least:
+Every generic core result reports at least:
 
 1. **baseline**: C2P disabled;
 2. **oracle**: `oracle_only`, for redundant-L2 potential;
@@ -94,6 +107,9 @@ Every core result reports at least:
 
 The result bundle must retain configuration, trace provenance, simulator and
 model commits, C2P counters, and the oracle/ideal/C2P/baseline comparison.
+The canonical paper16 reproduction additionally requires ATA-like, CCD-like,
+and RING-like modes for every local workload; a case does not enter a
+cross-mechanism aggregate until all seven summaries exist.
 
 ## Build coupling
 
@@ -104,6 +120,7 @@ trace.  Replacing only `libcudart.so` after such a header change is an ABI
 mismatch and can corrupt configuration parsing before simulation starts.  The
 replay provenance must therefore identify both the backend commit and the
 front-end binary hash.
+
 The primary outcomes are redundant L2 reduction, remote-hit rate, candidates
 per query, the miss-time Snapshot TP/TN/FP/FN classification, R1S1 speedup,
 and R0S1 overhead.  The accept-time oracle counter is reported separately as
