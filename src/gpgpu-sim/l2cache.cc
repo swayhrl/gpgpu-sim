@@ -650,6 +650,10 @@ void memory_sub_partition::print_cache_stat(unsigned &accesses,
   }
 }
 
+void memory_sub_partition::print_latebind_stats(FILE *fp) const {
+  if (!m_config->m_L2_config.disabled()) m_L2cache->print_latebind_stats(fp);
+}
+
 void memory_sub_partition::print(FILE *fp) const {
   if (!m_request_tracker.empty()) {
     fprintf(fp, "Memory Sub Parition %u: pending memory requests:\n", m_id);

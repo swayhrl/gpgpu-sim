@@ -192,6 +192,7 @@ class memory_sub_partition {
 
   void visualizer_print(gzFile visualizer_file);
   void print_cache_stat(unsigned &accesses, unsigned &misses) const;
+  void print_latebind_stats(FILE *fp) const;
   void print(FILE *fp) const;
 
   void accumulate_L2cache_stats(class cache_stats &l2_stats) const;

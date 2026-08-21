@@ -1588,6 +1588,11 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
 
       total_l2_css += l2_css;
     }
+    if (m_memory_config->l2_latebind_stats) {
+      for (unsigned i = 0; i < m_memory_config->m_n_mem_sub_partition; i++)
+        m_memory_sub_partition[i]->print_latebind_stats(stdout);
+      l2_cache::print_latebind_global_stats(stdout);
+    }
     if (!m_memory_config->m_L2_config.disabled() &&
         m_memory_config->m_L2_config.get_num_lines()) {
       // L2c_print_cache_stat();
