@@ -19,8 +19,11 @@ class l2_latebind_stats {
   ~l2_latebind_stats();
 
   void record_probe(unsigned status);
-  void record_accept(mem_fetch *mf, unsigned long long time,
-                     unsigned probe_status, unsigned access_status);
+  // Record every L2 offer, including offers rejected for a transient
+  // reservation shortage.  This retains the first-offer timestamp until the
+  // request is eventually accepted.
+  void record_offer(mem_fetch *mf, unsigned long long time,
+                    unsigned probe_status, unsigned access_status);
   void record_reply(mem_fetch *mf, unsigned long long time);
   void record_consumed(mem_fetch *mf, unsigned long long time);
   void record_mshr(bool hit, bool available);
@@ -45,9 +48,11 @@ class l2_latebind_stats {
 
  private:
   struct request_record {
+    unsigned long long offer_time;
     unsigned long long accept_time;
     unsigned probe_status;
     unsigned access_status;
+    bool accepted;
     bool lower_issued;
     bool lower_returned;
     unsigned long long lower_issue_time;
@@ -98,6 +103,7 @@ class l2_latebind_stats {
   unsigned long long m_writeback_queue_cycles;
   unsigned long long m_writeback_queue_max;
   unsigned long long m_lower_read_delay_count;
+  unsigned long long m_lower_read_pre_offer_cycles;
   unsigned long long m_lower_read_pre_mem_cycles;
   unsigned long long m_lower_read_mem_cycles;
   unsigned long long m_lower_read_post_mem_cycles;

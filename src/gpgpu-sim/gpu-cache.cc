@@ -2076,7 +2076,7 @@ void data_cache::record_access_from_probe(
         m_latebind_stats->record_reservation_ready(
             cache_index, mf->get_access_sector_mask().to_ulong(), time);
     }
-    m_latebind_stats->record_accept(mf, time, probe_status, access_status);
+    m_latebind_stats->record_offer(mf, time, probe_status, access_status);
   }
   m_stats.inc_stats(mf->get_access_type(),
                     m_stats.select_stats_status(probe_status, access_status),
