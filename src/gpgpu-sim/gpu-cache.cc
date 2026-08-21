@@ -2277,6 +2277,8 @@ void l2_cache::frc_complete_fill(mem_fetch *mf, unsigned time) {
 void l2_cache::frc_swap_line(unsigned frc_index, unsigned time) {
   frc_cache::entry &entry = m_frc->at(frc_index);
   assert(entry.state == FRC_FETCHING);
+  assert(entry.pending_mask == 0);
+  assert(entry.valid_mask == ((1u << SECTOR_CHUNCK_SIZE) - 1));
   std::map<unsigned, mem_fetch *>::iterator primary =
       m_frc_primary.find(frc_index);
   assert(primary != m_frc_primary.end());
@@ -2361,6 +2363,7 @@ void l2_cache::frc_release_writeback(mem_fetch *mf) {
   std::map<mem_fetch *, unsigned>::iterator owner = m_frc_wb_owner.find(mf);
   assert(owner != m_frc_wb_owner.end());
   assert(m_frc->at(owner->second).state == FRC_EVICTING);
+  assert(m_frc->at(owner->second).victim_mask != 0);
   m_frc_wb_lower_accepted++;
   m_frc->release(owner->second);
   m_frc_wb_owner.erase(owner);
