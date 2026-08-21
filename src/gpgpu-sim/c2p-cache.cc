@@ -9,8 +9,12 @@
 #include "gpu-sim.h"
 
 namespace {
-const unsigned kSnapshotRows = 5120;
 const unsigned kSnapshotBanks = 64;
+const unsigned kTagMaskRowsPerBank = 16;
+
+bool is_power_of_two(unsigned value) {
+  return value && !(value & (value - 1));
+}
 
 unsigned histogram_percentile(const std::vector<unsigned long long> &hist,
                               unsigned percentile) {
@@ -52,6 +56,8 @@ c2p_cache_config::c2p_cache_config()
       collect_oracle(true),
       bf_engines(128),
       bf_latency(2),
+      snapshot_bf_rows_per_bank(64),
+      bf_hashes(3),
       snapshot_latency(2),
       remote_tag_latency(7),
       remote_return_latency(2),
@@ -88,6 +94,11 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
                          &bf_engines, "C2P BF/tag-mask engines", "128");
   option_parser_register(opp, "-c2p_cache_bf_latency", OPT_UINT32,
                          &bf_latency, "C2P BF/tag-mask latency", "2");
+  option_parser_register(opp, "-c2p_cache_snapshot_bf_rows_per_bank",
+                         OPT_UINT32, &snapshot_bf_rows_per_bank,
+                         "C2P Bloom-filter rows per Snapshot Matrix bank", "64");
+  option_parser_register(opp, "-c2p_cache_bf_hashes", OPT_UINT32, &bf_hashes,
+                         "C2P Bloom-filter hashes in addition to tag mask", "3");
   option_parser_register(opp, "-c2p_cache_snapshot_latency", OPT_UINT32,
                          &snapshot_latency, "C2P Snapshot Matrix latency",
                          "2");
@@ -209,7 +220,9 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
       m_num_sms(gpu->get_config().num_shader()),
       m_words((m_num_sms + 63) / 64),
       m_l1s(m_num_sms, (l1_cache *)NULL),
-      m_snapshot(kSnapshotRows, std::vector<uint64_t>(m_words, 0)),
+      m_snapshot(kSnapshotBanks *
+                     (kTagMaskRowsPerBank + config.snapshot_bf_rows_per_bank),
+                 std::vector<uint64_t>(m_words, 0)),
       m_rebuild_sid(0),
       m_rebuild_target_sid((unsigned)-1),
       m_rebuild_active(false),
@@ -233,6 +246,8 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
       m_peer_access_hit_hist(m_num_sms + 1, 0),
       m_peer_access_miss_hist(m_num_sms + 1, 0) {
   assert(m_config.scheme <= c2p_cache_config::RING_SCHEME);
+  assert(is_power_of_two(m_config.snapshot_bf_rows_per_bank));
+  assert(m_config.bf_hashes > 0);
   assert(m_config.comparator_cluster_size > 0);
   assert(m_config.target_probe_queue_size > 0);
 }
@@ -270,21 +285,24 @@ void c2p_cache::register_l1(l1_cache *cache) {
 
 std::vector<unsigned> c2p_cache::query_rows(uint64_t line_tag) const {
   std::vector<unsigned> rows;
+  const unsigned bf_rows_per_bank = m_config.snapshot_bf_rows_per_bank;
+  const unsigned rows_per_bank = kTagMaskRowsPerBank + bf_rows_per_bank;
+  const unsigned bf_rows = kSnapshotBanks * bf_rows_per_bank;
   const unsigned lower10 = (unsigned)(line_tag & 0x3ffU);
   unsigned reversed = 0;
   for (unsigned i = 0; i < 10; ++i)
     reversed |= ((lower10 >> i) & 1U) << (9 - i);
   const unsigned tag_bank = reversed >> 4;
-  const unsigned tag_offset = 64 + (reversed & 0xfU);
-  rows.push_back(tag_bank * 80 + tag_offset);
+  const unsigned tag_offset = bf_rows_per_bank + (reversed & 0xfU);
+  rows.push_back(tag_bank * rows_per_bank + tag_offset);
 
-  const unsigned h1 = fold_hash(line_tag, 0x243f6a88U) & 0xfffU;
-  const unsigned h2 = fold_hash(line_tag, 0x85a308d3U) & 0xfffU;
-  for (unsigned multiple = 1; multiple <= 3; ++multiple) {
-    const unsigned index = (multiple * h1 + h2) & 0xfffU;
-    const unsigned bank = index >> 6;
-    const unsigned offset = index & 0x3fU;
-    rows.push_back(bank * 80 + offset);
+  const unsigned h1 = fold_hash(line_tag, 0x243f6a88U) & (bf_rows - 1);
+  const unsigned h2 = fold_hash(line_tag, 0x85a308d3U) & (bf_rows - 1);
+  for (unsigned multiple = 1; multiple <= m_config.bf_hashes; ++multiple) {
+    const unsigned index = (multiple * h1 + h2) & (bf_rows - 1);
+    const unsigned bank = index / bf_rows_per_bank;
+    const unsigned offset = index % bf_rows_per_bank;
+    rows.push_back(bank * rows_per_bank + offset);
   }
   return rows;
 }

@@ -39,6 +39,11 @@ class c2p_cache_config {
   bool collect_oracle;
   unsigned bf_engines;
   unsigned bf_latency;
+  // The default 64 BF rows plus 16 tag-mask rows in each of 64 banks is the
+  // paper's 5,120-row logical Snapshot Matrix.  These knobs support the
+  // Figure-13 m/k sweep while preserving that exact default encoding.
+  unsigned snapshot_bf_rows_per_bank;
+  unsigned bf_hashes;
   unsigned snapshot_latency;
   unsigned remote_tag_latency;
   unsigned remote_return_latency;
