@@ -84,6 +84,12 @@ struct c2p_cache_stats {
   unsigned long long snapshot_query_false_negative;
   unsigned long long snapshot_query_true_positive;
   unsigned long long snapshot_query_true_negative;
+  // CCD's two-bit predictor is classified against its exact in-cluster
+  // tag-time candidate snapshot; these counters feed the Fig. 12 comparison.
+  unsigned long long ccd_false_positive;
+  unsigned long long ccd_false_negative;
+  unsigned long long ccd_true_positive;
+  unsigned long long ccd_true_negative;
   unsigned long long snapshot_updates;
   unsigned long long snapshot_rebuilds;
   unsigned long long snapshot_rebuild_transport_tags;

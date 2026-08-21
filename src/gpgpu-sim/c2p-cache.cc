@@ -174,6 +174,10 @@ void c2p_cache_stats::clear() {
   snapshot_query_false_negative = 0;
   snapshot_query_true_positive = 0;
   snapshot_query_true_negative = 0;
+  ccd_false_positive = 0;
+  ccd_false_negative = 0;
+  ccd_true_positive = 0;
+  ccd_true_negative = 0;
   snapshot_updates = 0;
   snapshot_rebuilds = 0;
   snapshot_rebuild_transport_tags = 0;
@@ -387,6 +391,15 @@ bool c2p_cache::accept_miss(l1_cache *requester, mem_fetch *mf,
     } else if (m_config.scheme == c2p_cache_config::CCD_SCHEME) {
       const unsigned cluster = cluster_id(txn.requester_sid);
       txn.sharing_attempt = m_ccd_counters[cluster] >= 2;
+      const bool cluster_peer_hit = !txn.candidates.empty();
+      if (txn.sharing_attempt && cluster_peer_hit)
+        ++m_stats.ccd_true_positive;
+      else if (txn.sharing_attempt)
+        ++m_stats.ccd_false_positive;
+      else if (cluster_peer_hit)
+        ++m_stats.ccd_false_negative;
+      else
+        ++m_stats.ccd_true_negative;
       txn.ready_cycle = now + m_config.ccd_predictor_latency +
                         (txn.sharing_attempt
                              ? m_config.ccd_broadcast_latency +
@@ -854,6 +867,10 @@ void c2p_cache::print_stats(FILE *fout) const {
           m_stats.snapshot_query_true_positive);
   fprintf(fout, "c2p_snapshot_query_true_negative = %llu\n",
           m_stats.snapshot_query_true_negative);
+  fprintf(fout, "c2p_ccd_false_positive = %llu\n", m_stats.ccd_false_positive);
+  fprintf(fout, "c2p_ccd_false_negative = %llu\n", m_stats.ccd_false_negative);
+  fprintf(fout, "c2p_ccd_true_positive = %llu\n", m_stats.ccd_true_positive);
+  fprintf(fout, "c2p_ccd_true_negative = %llu\n", m_stats.ccd_true_negative);
   fprintf(fout, "c2p_snapshot_updates = %llu\n", m_stats.snapshot_updates);
   fprintf(fout, "c2p_snapshot_rebuilds = %llu\n", m_stats.snapshot_rebuilds);
   fprintf(fout, "c2p_snapshot_rebuild_transport_tags = %llu\n",
