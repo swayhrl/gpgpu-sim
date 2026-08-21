@@ -1772,7 +1772,11 @@ class l2_cache : public data_cache {
     if (frc_enable) {
       assert(frc_entries != 0);
       assert(frc_assoc != 0);
-      m_frc = new frc_cache(frc_entries, frc_assoc, config.get_line_sz());
+      // QV100 routes each 32-byte sector to one memory subpartition.  An FRC
+      // attached to this L2 slice must therefore own that partition-local
+      // allocation unit, not a 128-byte line whose remaining sectors can
+      // belong to other memory channels.
+      m_frc = new frc_cache(frc_entries, frc_assoc, config.get_atom_sz());
       m_frc_lookup_latency = frc_lookup_latency;
       m_frc_swap_latency = frc_swap_latency;
       m_frc_conservative_timing = frc_conservative_timing;
@@ -1830,7 +1834,6 @@ class l2_cache : public data_cache {
   unsigned long long m_frc_lower_reads = 0;
   unsigned long long m_frc_management_cycles = 0;
   unsigned long long m_frc_merges = 0;
-  unsigned long long m_frc_sector_attaches = 0;
   unsigned long long m_frc_write_fallbacks = 0;
   unsigned long long m_frc_atomic_fallbacks = 0;
   unsigned long long m_frc_write_conflict_stalls = 0;

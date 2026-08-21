@@ -1,8 +1,9 @@
 // Fetch and Replacement Cache (FRC) metadata model.
 //
 // GPGPU-Sim does not store cache payload bytes.  An frc_cache entry therefore
-// represents one full cache-line payload capacity while tracking only the
-// ownership and sector state needed by l2_cache.
+// represents one partition-local allocation payload while tracking only the
+// ownership state needed by l2_cache.  On the QV100 sector-L2 configuration
+// that allocation unit is one 32-byte sector.
 
 #ifndef FRC_CACHE_H
 #define FRC_CACHE_H
