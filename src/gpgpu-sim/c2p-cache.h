@@ -49,6 +49,7 @@ class c2p_cache_config {
   unsigned probe_timeout;
   unsigned snapshot_copies;
   unsigned scheme;
+  unsigned comparator_cluster_size;
   unsigned ata_cluster_issue_width;
   unsigned ata_tag_latency;
   unsigned ccd_predictor_latency;

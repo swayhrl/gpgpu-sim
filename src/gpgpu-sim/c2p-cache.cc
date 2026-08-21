@@ -62,6 +62,7 @@ c2p_cache_config::c2p_cache_config()
       probe_timeout(32),
       snapshot_copies(4),
       scheme(C2P_SCHEME),
+      comparator_cluster_size(8),
       ata_cluster_issue_width(4),
       ata_tag_latency(7),
       ccd_predictor_latency(1),
@@ -116,6 +117,11 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
   option_parser_register(
       opp, "-c2p_cache_scheme", OPT_UINT32, &scheme,
       "sharing scheme: 0=C2P, 1=ATA-like, 2=CCD-like, 3=RING-like", "0");
+  option_parser_register(
+      opp, "-c2p_cache_comparator_cluster_size", OPT_UINT32,
+      &comparator_cluster_size,
+      "ATA/CCD logical peer group size, independent of simulator endpoints",
+      "8");
   option_parser_register(opp, "-c2p_cache_ata_cluster_issue_width", OPT_UINT32,
                          &ata_cluster_issue_width,
                          "ATA-like aggregate-tag requests accepted per cluster/cycle",
@@ -205,13 +211,20 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
       m_bank_copy_used(kSnapshotBanks,
                        std::vector<bool>(std::max(1U, config.snapshot_copies),
                                          false)),
-      m_ccd_counters(std::max(1U, gpu->get_config().num_cluster()), 2),
+      m_ccd_counters(
+          std::max(1U, (m_num_sms + std::max(1U, config.comparator_cluster_size) - 1) /
+                           std::max(1U, config.comparator_cluster_size)),
+          2),
       m_ata_issue_cycle(0),
-      m_ata_issues(std::max(1U, gpu->get_config().num_cluster()), 0),
+      m_ata_issues(
+          std::max(1U, (m_num_sms + std::max(1U, config.comparator_cluster_size) - 1) /
+                           std::max(1U, config.comparator_cluster_size)),
+          0),
       m_ring_next_issue_cycle(0),
       m_peer_access_hit_hist(m_num_sms + 1, 0),
       m_peer_access_miss_hist(m_num_sms + 1, 0) {
   assert(m_config.scheme <= c2p_cache_config::RING_SCHEME);
+  assert(m_config.comparator_cluster_size > 0);
 }
 
 void c2p_cache::reset() {
@@ -291,8 +304,7 @@ bool c2p_cache::has_exact_peer(l1_cache *requester, mem_fetch *mf) const {
 }
 
 unsigned c2p_cache::cluster_size() const {
-  const unsigned clusters = std::max(1U, m_gpu->get_config().num_cluster());
-  return std::max(1U, m_num_sms / clusters);
+  return std::min(m_num_sms, m_config.comparator_cluster_size);
 }
 
 unsigned c2p_cache::cluster_id(unsigned sid) const { return sid / cluster_size(); }
