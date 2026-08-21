@@ -2106,11 +2106,24 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
   // FRC owns only read-miss scheduling.  Keeping writes and atomics on the
   // baseline path preserves its sector byte-mask and atomic ordering rules;
   // count the explicit handoff so directed tests cannot silently lose it.
-  if (mf->isatomic()) {
-    m_frc_atomic_fallbacks++;
-    return data_cache::access(addr, mf, time, events);
-  }
-  if (mf->get_is_write()) {
+  // A same-line operation waits while FRC exclusively owns a fetching line.
+  // Otherwise baseline allocation could create a second owner before swap.
+  if (mf->isatomic() || mf->get_is_write()) {
+    int frc_index = m_frc->lookup(addr);
+    bool frc_fetching =
+        frc_index >= 0 && m_frc->at(frc_index).state == FRC_FETCHING;
+    if (mf->isatomic()) {
+      if (frc_fetching) {
+        m_frc_atomic_conflict_stalls++;
+        return RESERVATION_FAIL;
+      }
+      m_frc_atomic_fallbacks++;
+      return data_cache::access(addr, mf, time, events);
+    }
+    if (frc_fetching) {
+      m_frc_write_conflict_stalls++;
+      return RESERVATION_FAIL;
+    }
     m_frc_write_fallbacks++;
     return data_cache::access(addr, mf, time, events);
   }
@@ -2418,6 +2431,7 @@ void l2_cache::print_frc_stats(FILE *fp) const {
           "lookups=%llu allocations=%llu lower_reads=%llu "
           "management_cycles=%llu merges=%llu sector_attaches=%llu "
           "write_fallbacks=%llu atomic_fallbacks=%llu "
+          "write_conflict_stalls=%llu atomic_conflict_stalls=%llu "
           "set_full_fallbacks=%llu credit_fallbacks=%llu swaps=%llu "
           "clean_swaps=%llu dirty_swaps=%llu wb_lower_accepted=%llu "
           "wb_wait_cycles=%llu flush_calls=%llu "
@@ -2427,6 +2441,7 @@ void l2_cache::print_frc_stats(FILE *fp) const {
           m_frc_lookups, m_frc_allocations, m_frc_lower_reads,
           m_frc_management_cycles, m_frc_merges, m_frc_sector_attaches,
           m_frc_write_fallbacks, m_frc_atomic_fallbacks,
+          m_frc_write_conflict_stalls, m_frc_atomic_conflict_stalls,
           m_frc_set_full_fallbacks, m_frc_credit_fallbacks, m_frc_swaps,
           m_frc_clean_swaps, m_frc_dirty_swaps, m_frc_wb_lower_accepted,
           m_frc_wb_wait_cycles, m_frc_flush_calls,

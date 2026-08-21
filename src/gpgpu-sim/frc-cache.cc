@@ -49,6 +49,7 @@ int frc_cache::find_free(new_addr_type addr) const {
 }
 
 int frc_cache::allocate(new_addr_type addr, unsigned long long time) {
+  assert(lookup(addr) < 0);
   int index = find_free(addr);
   assert(index >= 0);
   entry &e = m_entries[index];

@@ -1833,6 +1833,8 @@ class l2_cache : public data_cache {
   unsigned long long m_frc_sector_attaches = 0;
   unsigned long long m_frc_write_fallbacks = 0;
   unsigned long long m_frc_atomic_fallbacks = 0;
+  unsigned long long m_frc_write_conflict_stalls = 0;
+  unsigned long long m_frc_atomic_conflict_stalls = 0;
   unsigned long long m_frc_set_full_fallbacks = 0;
   unsigned long long m_frc_credit_fallbacks = 0;
   unsigned long long m_frc_swaps = 0;
