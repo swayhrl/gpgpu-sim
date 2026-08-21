@@ -1828,6 +1828,7 @@ class l2_cache : public data_cache {
   unsigned long long m_frc_lookups = 0;
   unsigned long long m_frc_allocations = 0;
   unsigned long long m_frc_lower_reads = 0;
+  unsigned long long m_frc_management_cycles = 0;
   unsigned long long m_frc_merges = 0;
   unsigned long long m_frc_set_full_fallbacks = 0;
   unsigned long long m_frc_credit_fallbacks = 0;

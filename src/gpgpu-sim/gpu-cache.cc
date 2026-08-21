@@ -2344,6 +2344,7 @@ void l2_cache::frc_charge_management(mem_fetch *mf, unsigned cycles) {
   // The normal fill-port model consumes one cycle for a 32B atom on QV100.
   // Repeating that charge serializes FRC metadata/data movement without
   // adding a pipeline register or altering the paper-timing mode.
+  m_frc_management_cycles += cycles;
   for (unsigned i = 0; i < cycles; ++i)
     m_bandwidth_management.use_fill_port(mf);
 }
@@ -2390,13 +2391,15 @@ void l2_cache::print_frc_stats(FILE *fp) const {
   }
   fprintf(fp,
           "frc_l2 cache=%s entries=%u assoc=%u timing=%s "
-          "lookups=%llu allocations=%llu lower_reads=%llu merges=%llu "
+          "lookups=%llu allocations=%llu lower_reads=%llu "
+          "management_cycles=%llu merges=%llu "
           "set_full_fallbacks=%llu credit_fallbacks=%llu swaps=%llu "
           "clean_swaps=%llu dirty_swaps=%llu wb_lower_accepted=%llu "
           "fetching=%u fetched=%u evicting=%u\n",
           m_name.c_str(), m_frc->entries(), m_frc->assoc(),
           m_frc_conservative_timing ? "conservative" : "paper",
-          m_frc_lookups, m_frc_allocations, m_frc_lower_reads, m_frc_merges,
+          m_frc_lookups, m_frc_allocations, m_frc_lower_reads,
+          m_frc_management_cycles, m_frc_merges,
           m_frc_set_full_fallbacks, m_frc_credit_fallbacks, m_frc_swaps,
           m_frc_clean_swaps, m_frc_dirty_swaps, m_frc_wb_lower_accepted,
           fetching, fetched, evicting);
