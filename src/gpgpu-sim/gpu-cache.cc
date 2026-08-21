@@ -2101,10 +2101,19 @@ enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
 enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events) {
-  // Writes and atomics retain the baseline sector rules until FRC owns their
-  // byte-mask and atomic ordering semantics end-to-end.
-  if (!m_frc || mf->get_is_write() || mf->isatomic())
+  if (!m_frc) return data_cache::access(addr, mf, time, events);
+
+  // FRC owns only read-miss scheduling.  Keeping writes and atomics on the
+  // baseline path preserves its sector byte-mask and atomic ordering rules;
+  // count the explicit handoff so directed tests cannot silently lose it.
+  if (mf->isatomic()) {
+    m_frc_atomic_fallbacks++;
     return data_cache::access(addr, mf, time, events);
+  }
+  if (mf->get_is_write()) {
+    m_frc_write_fallbacks++;
+    return data_cache::access(addr, mf, time, events);
+  }
 
   new_addr_type block_addr = m_config.block_addr(addr);
   unsigned cache_index = (unsigned)-1;
@@ -2147,6 +2156,7 @@ bool l2_cache::frc_handles_read(enum cache_request_status l2_status,
         m_stats.inc_stats(mf->get_access_type(), MSHR_HIT,
                           mf->get_streamID());
         m_frc_merges++;
+        m_frc_sector_attaches++;
         access_status = MISS;
         return true;
       }
@@ -2155,6 +2165,7 @@ bool l2_cache::frc_handles_read(enum cache_request_status l2_status,
       // its response is released by the line-level swap below.
       if ((entry.pending_mask & sector_mask) && !m_mshrs.full(mshr_addr)) {
         m_mshrs.add(mshr_addr, mf);
+        m_frc_sector_attaches++;
         access_status = MISS;
         return true;
       }
@@ -2333,6 +2344,8 @@ void l2_cache::frc_swap_line(unsigned frc_index, unsigned time) {
     m_frc_dirty_swaps++;
     entry.victim_addr = evicted.m_block_addr;
     entry.victim_mask = evicted.m_sector_mask.to_ulong();
+    entry.wb_enqueue_time =
+        m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle;
     m_frc_wb_owner[wb_mf] = frc_index;
   } else {
     m_frc_clean_swaps++;
@@ -2364,6 +2377,10 @@ void l2_cache::frc_release_writeback(mem_fetch *mf) {
   assert(owner != m_frc_wb_owner.end());
   assert(m_frc->at(owner->second).state == FRC_EVICTING);
   assert(m_frc->at(owner->second).victim_mask != 0);
+  unsigned long long now = m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle;
+  assert(now >= m_frc->at(owner->second).wb_enqueue_time);
+  m_frc_wb_wait_cycles +=
+      now - m_frc->at(owner->second).wb_enqueue_time;
   m_frc_wb_lower_accepted++;
   m_frc->release(owner->second);
   m_frc_wb_owner.erase(owner);
@@ -2372,15 +2389,19 @@ void l2_cache::frc_release_writeback(mem_fetch *mf) {
 void l2_cache::flush() {
   assert(m_frc_fill_owner.empty());
   assert(m_frc_wb_owner.empty());
-  if (m_frc)
+  if (m_frc) {
+    m_frc_flush_calls++;
     for (unsigned i = 0; i < m_frc->entries(); ++i) m_frc->release(i);
+  }
   baseline_cache::flush();
 }
 
 void l2_cache::invalidate() { flush(); }
 
 void l2_cache::print_frc_stats(FILE *fp) const {
-  if (!m_frc || !m_frc_lookups) return;
+  if (!m_frc ||
+      (!m_frc_lookups && !m_frc_write_fallbacks && !m_frc_atomic_fallbacks))
+    return;
   unsigned fetching = 0;
   unsigned fetched = 0;
   unsigned evicting = 0;
@@ -2395,16 +2416,20 @@ void l2_cache::print_frc_stats(FILE *fp) const {
   fprintf(fp,
           "frc_l2 cache=%s entries=%u assoc=%u timing=%s "
           "lookups=%llu allocations=%llu lower_reads=%llu "
-          "management_cycles=%llu merges=%llu "
+          "management_cycles=%llu merges=%llu sector_attaches=%llu "
+          "write_fallbacks=%llu atomic_fallbacks=%llu "
           "set_full_fallbacks=%llu credit_fallbacks=%llu swaps=%llu "
           "clean_swaps=%llu dirty_swaps=%llu wb_lower_accepted=%llu "
+          "wb_wait_cycles=%llu flush_calls=%llu "
           "fetching=%u fetched=%u evicting=%u\n",
           m_name.c_str(), m_frc->entries(), m_frc->assoc(),
           m_frc_conservative_timing ? "conservative" : "paper",
           m_frc_lookups, m_frc_allocations, m_frc_lower_reads,
-          m_frc_management_cycles, m_frc_merges,
+          m_frc_management_cycles, m_frc_merges, m_frc_sector_attaches,
+          m_frc_write_fallbacks, m_frc_atomic_fallbacks,
           m_frc_set_full_fallbacks, m_frc_credit_fallbacks, m_frc_swaps,
           m_frc_clean_swaps, m_frc_dirty_swaps, m_frc_wb_lower_accepted,
+          m_frc_wb_wait_cycles, m_frc_flush_calls,
           fetching, fetched, evicting);
 }
 

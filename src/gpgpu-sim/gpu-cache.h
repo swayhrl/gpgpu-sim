@@ -1830,12 +1830,17 @@ class l2_cache : public data_cache {
   unsigned long long m_frc_lower_reads = 0;
   unsigned long long m_frc_management_cycles = 0;
   unsigned long long m_frc_merges = 0;
+  unsigned long long m_frc_sector_attaches = 0;
+  unsigned long long m_frc_write_fallbacks = 0;
+  unsigned long long m_frc_atomic_fallbacks = 0;
   unsigned long long m_frc_set_full_fallbacks = 0;
   unsigned long long m_frc_credit_fallbacks = 0;
   unsigned long long m_frc_swaps = 0;
   unsigned long long m_frc_clean_swaps = 0;
   unsigned long long m_frc_dirty_swaps = 0;
   unsigned long long m_frc_wb_lower_accepted = 0;
+  unsigned long long m_frc_wb_wait_cycles = 0;
+  unsigned long long m_frc_flush_calls = 0;
 };
 
 /*****************************************************************************/

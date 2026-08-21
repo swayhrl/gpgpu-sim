@@ -26,21 +26,21 @@ class frc_cache {
           block_addr(0),
           valid_mask(0),
           pending_mask(0),
-          dirty_mask(0),
           victim_addr(0),
           victim_mask(0),
           alloc_time(0),
-          fetched_time(0) {}
+          fetched_time(0),
+          wb_enqueue_time(0) {}
 
     frc_entry_state state;
     new_addr_type block_addr;
     unsigned valid_mask;
     unsigned pending_mask;
-    unsigned dirty_mask;
     new_addr_type victim_addr;
     unsigned victim_mask;
     unsigned long long alloc_time;
     unsigned long long fetched_time;
+    unsigned long long wb_enqueue_time;
   };
 
   frc_cache(unsigned entries, unsigned assoc, unsigned line_size);
