@@ -73,9 +73,11 @@ generation definition and use this accept-time truth.  Separate
 query completes; they diagnose temporal churn without changing the
 paper-comparable classification.
 
-Distance uses stable SM/cluster order.  It is deliberately a lightweight
-stand-in for the paper's unspecified far-L1 topology, suitable for comparing
-same model variants only.
+Distance uses stable logical SM-cluster order.  In the paper-table overlay
+this is eight groups of eight SMs even though the trace-driven simulator
+exposes 64 one-SM endpoints for forward progress.  It is deliberately a
+lightweight stand-in for the paper's unspecified far-L1 topology, suitable
+for comparing same model variants only.
 
 ## Required reported variants
 
