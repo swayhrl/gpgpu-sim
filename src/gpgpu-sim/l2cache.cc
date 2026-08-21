@@ -438,7 +438,8 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
   if (!m_config->m_L2_config.disabled())
     m_L2cache = new l2_cache(L2c_name, m_config->m_L2_config, -1, -1,
                              m_L2interface, m_mf_allocator,
-                             IN_PARTITION_L2_MISS_QUEUE, gpu, L2_GPU_CACHE);
+                             IN_PARTITION_L2_MISS_QUEUE, gpu, L2_GPU_CACHE,
+                             m_config->l2_latebind_stats, m_id);
 
   unsigned int icnt_L2;
   unsigned int L2_dram;
@@ -471,6 +472,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
           L2_WR_ALLOC_R) {  // Don't pass write allocate read request back to
                             // upper level cache
         mf->set_reply();
+        m_L2cache->note_reply(
+            mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
         mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE,
                        m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
         m_L2_icnt_queue->push(mf);
@@ -479,12 +482,17 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
           mem_fetch *original_wr_mf = mf->get_original_wr_mf();
           assert(original_wr_mf);
           original_wr_mf->set_reply();
+          m_L2cache->note_reply(
+              original_wr_mf,
+              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
           original_wr_mf->set_status(
               IN_PARTITION_L2_TO_ICNT_QUEUE,
               m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
           m_L2_icnt_queue->push(original_wr_mf);
         }
         m_request_tracker.erase(mf);
+        m_L2cache->note_consumed(
+            mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
         delete mf;
       }
     }
@@ -540,9 +548,13 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
             assert(!read_sent);
             if (mf->get_access_type() == L1_WRBK_ACC) {
               m_request_tracker.erase(mf);
+              m_L2cache->note_consumed(
+                  mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
               delete mf;
             } else {
               mf->set_reply();
+              m_L2cache->note_reply(
+                  mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
               mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE,
                              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
               m_L2_icnt_queue->push(mf);
@@ -550,6 +562,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
             m_icnt_L2_queue->pop();
           } else {
             assert(write_sent);
+            m_L2cache->note_consumed(
+                mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
             m_icnt_L2_queue->pop();
           }
         } else if (status != RESERVATION_FAIL) {
@@ -560,9 +574,13 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
               !was_writeallocate_sent(events)) {
             if (mf->get_access_type() == L1_WRBK_ACC) {
               m_request_tracker.erase(mf);
+              m_L2cache->note_consumed(
+                  mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
               delete mf;
             } else if (m_config->m_L2_config.get_write_policy() == WRITE_BACK) {
               mf->set_reply();
+              m_L2cache->note_reply(
+                  mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
               mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE,
                              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
               m_L2_icnt_queue->push(mf);
@@ -623,7 +641,13 @@ void memory_sub_partition::dram_L2_queue_push(class mem_fetch *mf) {
 void memory_sub_partition::print_cache_stat(unsigned &accesses,
                                             unsigned &misses) const {
   FILE *fp = stdout;
-  if (!m_config->m_L2_config.disabled()) m_L2cache->print(fp, accesses, misses);
+  if (!m_config->m_L2_config.disabled()) {
+    m_L2cache->print(fp, accesses, misses);
+    m_L2cache->print_latebind_stats(fp);
+    if (m_config->l2_latebind_stats &&
+        m_id + 1 == m_config->m_n_mem_sub_partition)
+      l2_cache::print_latebind_global_stats(fp);
+  }
 }
 
 void memory_sub_partition::print(FILE *fp) const {

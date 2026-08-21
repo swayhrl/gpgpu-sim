@@ -216,6 +216,7 @@ void tag_array::init(int core_id, int type_id) {
   m_type_id = type_id;
   is_used = false;
   m_dirty = 0;
+  m_latebind_stats = NULL;
 }
 
 void tag_array::add_pending_line(mem_fetch *mf) {
@@ -370,6 +371,9 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
         }
         m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr),
                                time, mf->get_access_sector_mask());
+        if (m_latebind_stats)
+          m_latebind_stats->record_reservation(
+              idx, mf->get_access_sector_mask().to_ulong(), time);
       }
       break;
     case SECTOR_MISS:
@@ -380,6 +384,9 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
         bool before = m_lines[idx]->is_modified_line();
         ((sector_cache_block *)m_lines[idx])
             ->allocate_sector(time, mf->get_access_sector_mask());
+        if (m_latebind_stats)
+          m_latebind_stats->record_reservation(
+              idx, mf->get_access_sector_mask().to_ulong(), time);
         if (before && !m_lines[idx]->is_modified_line()) {
           m_dirty--;
         }
@@ -441,6 +448,10 @@ void tag_array::fill(unsigned index, unsigned time, mem_fetch *mf) {
   bool before = m_lines[index]->is_modified_line();
   m_lines[index]->fill(time, mf->get_access_sector_mask(),
                        mf->get_access_byte_mask());
+  if (m_latebind_stats)
+    m_latebind_stats->record_fill(index,
+                                  mf->get_access_sector_mask().to_ulong(),
+                                  time);
   if (m_lines[index]->is_modified_line() && !before) {
     m_dirty++;
   }
@@ -1221,11 +1232,34 @@ void baseline_cache::cycle() {
     if (!m_memport->full(mf->size(), mf->get_is_write())) {
       m_miss_queue.pop_front();
       m_memport->push(mf);
+      if (m_latebind_stats)
+        m_latebind_stats->record_lower_request(
+            mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
     }
   }
   bool data_port_busy = !m_bandwidth_management.data_port_free();
   bool fill_port_busy = !m_bandwidth_management.fill_port_free();
   m_stats.sample_cache_port_utility(data_port_busy, fill_port_busy);
+  if (m_latebind_stats) {
+    unsigned resident_sectors = 0;
+    unsigned reserved_sectors = 0;
+    unsigned dirty_sectors = 0;
+    for (unsigned i = 0; i < m_config.get_num_lines(); ++i) {
+      cache_block_t *block = m_tag_array->get_block(i);
+      for (unsigned sector = 0; sector < SECTOR_CHUNCK_SIZE; ++sector) {
+        mem_access_sector_mask_t sector_mask;
+        sector_mask.set(sector);
+        cache_block_state state = block->get_status(sector_mask);
+        if (state == RESERVED)
+          reserved_sectors++;
+        else if (state == VALID || state == MODIFIED)
+          resident_sectors++;
+        if (state == MODIFIED) dirty_sectors++;
+      }
+    }
+    m_latebind_stats->sample(resident_sectors, reserved_sectors,
+                             dirty_sectors, data_port_busy, fill_port_busy);
+  }
   m_bandwidth_management.replenish_port_bandwidth();
 }
 
@@ -1296,6 +1330,10 @@ void baseline_cache::display_state(FILE *fp) const {
   fprintf(fp, "\n");
 }
 
+void baseline_cache::print_latebind_stats(FILE *fp) const {
+  if (m_latebind_stats) m_latebind_stats->print(fp);
+}
+
 void baseline_cache::inc_aggregated_stats(cache_request_status status,
                                           cache_request_status cache_status,
                                           mem_fetch *mf,
@@ -1364,6 +1402,7 @@ void baseline_cache::send_read_request(new_addr_type addr,
   new_addr_type mshr_addr = m_config.mshr_addr(mf->get_addr());
   bool mshr_hit = m_mshrs.probe(mshr_addr);
   bool mshr_avail = !m_mshrs.full(mshr_addr);
+  if (m_latebind_stats) m_latebind_stats->record_mshr(mshr_hit, mshr_avail);
   if (mshr_hit && mshr_avail) {
     if (read_only)
       m_tag_array->access(block_addr, time, cache_index, mf);
@@ -1408,6 +1447,11 @@ void data_cache::send_write_request(mem_fetch *mf, cache_event request,
   events.push_back(request);
   m_miss_queue.push_back(mf);
   mf->set_status(m_miss_queue_status, time);
+  if (m_latebind_stats &&
+      request.m_cache_event_type == WRITE_BACK_REQUEST_SENT) {
+    m_latebind_stats->record_writeback_enqueue(
+        mf, time, mf->get_data_size(), mf->get_access_sector_mask().count());
+  }
 }
 
 void data_cache::update_m_readable(mem_fetch *mf, unsigned cache_index) {
@@ -2000,6 +2044,19 @@ enum cache_request_status data_cache::access(new_addr_type addr, mem_fetch *mf,
       m_tag_array->probe(block_addr, cache_index, mf, mf->is_write(), true);
   enum cache_request_status access_status =
       process_tag_probe(wr, probe_status, addr, cache_index, mf, time, events);
+  if (m_latebind_stats) {
+    m_latebind_stats->record_probe(probe_status);
+    if (access_status != RESERVATION_FAIL && cache_index != (unsigned)-1 &&
+        (probe_status == MISS || probe_status == SECTOR_MISS ||
+         probe_status == HIT_RESERVED)) {
+      cache_block_state state = m_tag_array->get_block(cache_index)->get_status(
+          mf->get_access_sector_mask());
+      if (state != RESERVED)
+        m_latebind_stats->record_reservation_ready(
+            cache_index, mf->get_access_sector_mask().to_ulong(), time);
+    }
+    m_latebind_stats->record_accept(mf, time, probe_status, access_status);
+  }
   m_stats.inc_stats(mf->get_access_type(),
                     m_stats.select_stats_status(probe_status, access_status),
                     mf->get_streamID());
@@ -2026,6 +2083,18 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events) {
   return data_cache::access(addr, mf, time, events);
+}
+
+void l2_cache::note_reply(mem_fetch *mf, unsigned long long time) {
+  if (m_latebind_stats) m_latebind_stats->record_reply(mf, time);
+}
+
+void l2_cache::note_consumed(mem_fetch *mf, unsigned long long time) {
+  if (m_latebind_stats) m_latebind_stats->record_consumed(mf, time);
+}
+
+void l2_cache::print_latebind_global_stats(FILE *fp) {
+  l2_latebind_stats::print_global(fp);
 }
 
 /// Access function for tex_cache

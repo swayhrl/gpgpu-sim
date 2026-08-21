@@ -37,6 +37,7 @@
 #include "../abstract_hardware_model.h"
 #include "../tr1_hash_map.h"
 #include "gpu-misc.h"
+#include "l2_latebind_stats.h"
 #include "mem_fetch.h"
 
 #include <iostream>
@@ -991,6 +992,9 @@ class tag_array {
   void add_pending_line(mem_fetch *mf);
   void remove_pending_line(mem_fetch *mf);
   void inc_dirty() { m_dirty++; }
+  void set_latebind_stats(l2_latebind_stats *stats) {
+    m_latebind_stats = stats;
+  }
 
  protected:
   // This constructor is intended for use only from derived classes that wish to
@@ -1023,6 +1027,7 @@ class tag_array {
   int m_type_id;  // what kind of cache is this (normal, texture, constant)
 
   bool is_used;  // a flag if the whole cache has ever been accessed before
+  l2_latebind_stats *m_latebind_stats;
 
   typedef tr1_hash_map<new_addr_type, unsigned> line_table;
   line_table pending_lines;
@@ -1293,9 +1298,10 @@ class baseline_cache : public cache_t {
       : m_config(config),
         m_tag_array(new tag_array(config, core_id, type_id)),
         m_mshrs(config.m_mshr_entries, config.m_mshr_max_merge),
-        m_bandwidth_management(config),
         m_level(level),
-        m_gpu(gpu) {
+        m_gpu(gpu),
+        m_latebind_stats(NULL),
+        m_bandwidth_management(config) {
     init(name, config, memport, status);
   }
 
@@ -1336,6 +1342,7 @@ class baseline_cache : public cache_t {
   void invalidate() { m_tag_array->invalidate(); }
   void print(FILE *fp, unsigned &accesses, unsigned &misses) const;
   void display_state(FILE *fp) const;
+  void print_latebind_stats(FILE *fp) const;
 
   // Stat collection
   const cache_stats &get_stats() const { return m_stats; }
@@ -1391,6 +1398,7 @@ class baseline_cache : public cache_t {
       : m_config(config),
         m_tag_array(new_tag_array),
         m_mshrs(config.m_mshr_entries, config.m_mshr_max_merge),
+        m_latebind_stats(NULL),
         m_bandwidth_management(config) {
     init(name, config, memport, status);
   }
@@ -1405,6 +1413,7 @@ class baseline_cache : public cache_t {
   mem_fetch_interface *m_memport;
   cache_gpu_level m_level;
   gpgpu_sim *m_gpu;
+  l2_latebind_stats *m_latebind_stats;
 
   struct extra_mf_fields {
     extra_mf_fields() { m_valid = false; }
@@ -1737,15 +1746,24 @@ class l2_cache : public data_cache {
   l2_cache(const char *name, cache_config &config, int core_id, int type_id,
            mem_fetch_interface *memport, mem_fetch_allocator *mfcreator,
            enum mem_fetch_status status, class gpgpu_sim *gpu,
-           enum cache_gpu_level level)
+           enum cache_gpu_level level, bool latebind_stats = false,
+           unsigned subpartition_id = 0)
       : data_cache(name, config, core_id, type_id, memport, mfcreator, status,
-                   L2_WR_ALLOC_R, L2_WRBK_ACC, gpu, level) {}
+                   L2_WR_ALLOC_R, L2_WRBK_ACC, gpu, level) {
+    if (latebind_stats) {
+      m_latebind_stats = new l2_latebind_stats(name, subpartition_id);
+      m_tag_array->set_latebind_stats(m_latebind_stats);
+    }
+  }
 
-  virtual ~l2_cache() {}
+  virtual ~l2_cache() { delete m_latebind_stats; }
 
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events);
+  void note_reply(mem_fetch *mf, unsigned long long time);
+  void note_consumed(mem_fetch *mf, unsigned long long time);
+  static void print_latebind_global_stats(FILE *fp);
 };
 
 /*****************************************************************************/
