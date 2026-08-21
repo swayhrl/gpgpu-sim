@@ -1827,6 +1827,8 @@ class l2_cache : public data_cache {
                         std::list<cache_event> &events,
                         enum cache_request_status &access_status);
   bool frc_can_swap(mem_fetch *mf) const;
+  bool frc_can_swap_entry(unsigned entry) const;
+  void frc_try_swaps(unsigned time);
   void frc_swap_line(unsigned frc_index, unsigned time);
   void frc_charge_management(mem_fetch *mf, unsigned cycles);
   void frc_complete_fill(mem_fetch *mf, unsigned time);
@@ -1844,6 +1846,7 @@ class l2_cache : public data_cache {
   std::map<mem_fetch *, unsigned> m_frc_wb_owner;
   std::list<mem_fetch *> m_frc_miss_queue;
   std::list<mem_fetch *> m_frc_response_queue;
+  bool m_frc_lower_turn = true;
   unsigned long long m_frc_lookups = 0;
   unsigned long long m_frc_allocations = 0;
   unsigned long long m_frc_lower_reads = 0;

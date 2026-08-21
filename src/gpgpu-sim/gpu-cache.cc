@@ -2111,8 +2111,9 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
   // Otherwise baseline allocation could create a second owner before swap.
   if (mf->isatomic() || mf->get_is_write()) {
     int frc_index = m_frc->lookup(addr);
-    bool frc_fetching =
-        frc_index >= 0 && m_frc->at(frc_index).state == FRC_FETCHING;
+    bool frc_fetching = frc_index >= 0 &&
+                        (m_frc->at(frc_index).state == FRC_FETCHING ||
+                         m_frc->at(frc_index).state == FRC_FETCHED);
     if (mf->isatomic()) {
       if (frc_fetching) {
         m_frc_atomic_conflict_stalls++;
@@ -2182,7 +2183,7 @@ bool l2_cache::frc_handles_read(enum cache_request_status l2_status,
       access_status = RESERVATION_FAIL;
       return true;
     }
-    if (entry.state == FRC_EVICTING) {
+    if (entry.state == FRC_FETCHED || entry.state == FRC_EVICTING) {
       access_status = RESERVATION_FAIL;
       return true;
     }
@@ -2242,11 +2243,17 @@ bool l2_cache::frc_can_swap(mem_fetch *mf) const {
   std::map<mem_fetch *, frc_fill_record>::const_iterator owner =
       m_frc_fill_owner.find(mf);
   if (owner == m_frc_fill_owner.end()) return true;
-  const frc_cache::entry &entry = m_frc->at(owner->second.entry);
-  // Only the final arriving sector needs a currently allocatable L2 way.
-  if (entry.pending_mask != owner->second.sector) return true;
+  // An FRC entry owns returned data before it owns an L2 victim.  Always
+  // accept the lower response into FRC so it cannot head-of-line block a
+  // conventional fill behind it in the DRAM-to-L2 FIFO.
+  return true;
+}
+
+bool l2_cache::frc_can_swap_entry(unsigned frc_index) const {
+  const frc_cache::entry &entry = m_frc->at(frc_index);
+  if (entry.state != FRC_FETCHED) return false;
   std::map<unsigned, mem_fetch *>::const_iterator primary =
-      m_frc_primary.find(owner->second.entry);
+      m_frc_primary.find(frc_index);
   if (primary == m_frc_primary.end()) return false;
   unsigned cache_index = (unsigned)-1;
   enum cache_request_status status = m_tag_array->probe(
@@ -2285,12 +2292,16 @@ void l2_cache::frc_complete_fill(mem_fetch *mf, unsigned time) {
   // This is an internal lower request, never an upper response.
   m_bandwidth_management.use_fill_port(mf);
   delete mf;
-  if (!entry.pending_mask) frc_swap_line(frc_index, time);
+  if (!entry.pending_mask) {
+    entry.state = FRC_FETCHED;
+    entry.fetched_time = time;
+    if (frc_can_swap_entry(frc_index)) frc_swap_line(frc_index, time);
+  }
 }
 
 void l2_cache::frc_swap_line(unsigned frc_index, unsigned time) {
   frc_cache::entry &entry = m_frc->at(frc_index);
-  assert(entry.state == FRC_FETCHING);
+  assert(entry.state == FRC_FETCHED);
   assert(entry.pending_mask == 0);
   assert(entry.valid_mask && !(entry.valid_mask & (entry.valid_mask - 1)));
   std::map<unsigned, mem_fetch *>::iterator primary =
@@ -2305,8 +2316,6 @@ void l2_cache::frc_swap_line(unsigned frc_index, unsigned time) {
       m_tag_array->access(block_addr, time, cache_index, wb, evicted, mf);
   assert(status != RESERVATION_FAIL);
   m_tag_array->fill(cache_index, time, mf);
-  entry.state = FRC_FETCHED;
-  entry.fetched_time = time;
   m_frc_swaps++;
   m_frc_primary.erase(primary);
 
@@ -2359,25 +2368,40 @@ void l2_cache::frc_charge_management(mem_fetch *mf, unsigned cycles) {
 }
 
 void l2_cache::cycle() {
-  if (m_frc_miss_queue.empty()) {
+  if (!m_frc) {
     baseline_cache::cycle();
     return;
   }
 
-  // FRC fetches/writes get one shared lower-port arbitration opportunity per
-  // cycle.  Giving the finite FRC store priority is the paper-mode policy;
-  // baseline traffic proceeds whenever this queue is empty.
-  mem_fetch *mf = m_frc_miss_queue.front();
-  if (!m_memport->full(mf->size(), mf->get_is_write())) {
-    m_frc_miss_queue.pop_front();
+  frc_try_swaps(m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle);
+  bool frc_pending = !m_frc_miss_queue.empty();
+  bool baseline_pending = !m_miss_queue.empty();
+  bool select_frc = frc_pending &&
+                    (!baseline_pending || m_frc_lower_turn);
+  mem_fetch *mf = select_frc ? m_frc_miss_queue.front()
+                              : (baseline_pending ? m_miss_queue.front()
+                                                  : NULL);
+  if (mf && !m_memport->full(mf->size(), mf->get_is_write())) {
+    if (select_frc)
+      m_frc_miss_queue.pop_front();
+    else
+      m_miss_queue.pop_front();
     m_memport->push(mf);
     if (m_latebind_stats)
       m_latebind_stats->record_lower_request(
           mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
-    if (m_frc_wb_owner.find(mf) != m_frc_wb_owner.end())
+    if (select_frc && m_frc_wb_owner.find(mf) != m_frc_wb_owner.end())
       frc_release_writeback(mf);
+    if (frc_pending && baseline_pending) m_frc_lower_turn = !m_frc_lower_turn;
   }
   frc_sample_ports();
+}
+
+void l2_cache::frc_try_swaps(unsigned time) {
+  if (!m_frc) return;
+  for (unsigned i = 0; i < m_frc->entries(); ++i) {
+    if (frc_can_swap_entry(i)) frc_swap_line(i, time);
+  }
 }
 
 bool l2_cache::frc_waiters_full(unsigned entry) const {
