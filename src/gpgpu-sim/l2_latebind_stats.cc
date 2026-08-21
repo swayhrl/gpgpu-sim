@@ -37,6 +37,7 @@ l2_latebind_stats::l2_latebind_stats(const char *cache_name,
   m_writeback_queue_max = 0;
   m_lower_read_delay_count = 0;
   m_lower_read_pre_mem_cycles = 0;
+  m_lower_read_mem_cycles = 0;
   m_lower_read_post_mem_cycles = 0;
   m_unresolved_requests = 0;
   m_unresolved_reservations = 0;
@@ -254,6 +255,7 @@ void l2_latebind_stats::record_lower_return(mem_fetch *mf,
   assert(time >= request->second.lower_issue_time);
   request->second.lower_returned = true;
   request->second.lower_return_time = time;
+  m_lower_read_mem_cycles += time - request->second.lower_issue_time;
 }
 
 void l2_latebind_stats::print_histogram(FILE *fp, const char *name,
@@ -281,6 +283,7 @@ void l2_latebind_stats::print(FILE *fp) const {
           "wb_lower_accepted=%llu wb_bytes=%llu wb_sectors=%llu "
           "wb_queue_cycles=%llu wb_queue_max=%llu "
           "lower_read_delay_count=%llu lower_read_pre_mem_cycles=%llu "
+          "lower_read_mem_cycles=%llu "
           "lower_read_post_mem_cycles=%llu unresolved_requests=%zu "
           "unresolved_reservations=%zu\n",
           m_subpartition_id, m_cache_name.c_str(), m_probe[HIT],
@@ -295,6 +298,7 @@ void l2_latebind_stats::print(FILE *fp) const {
           m_writeback_enqueued, m_writeback_lower_accepted, m_writeback_bytes,
           m_writeback_sectors, m_writeback_queue_cycles, m_writeback_queue_max,
           m_lower_read_delay_count, m_lower_read_pre_mem_cycles,
+          m_lower_read_mem_cycles,
           m_lower_read_post_mem_cycles,
           m_requests.size(), m_reservation_start.size());
   print_histogram(fp, "reservation_lifetime", m_reservation_lifetime);
@@ -310,7 +314,7 @@ void l2_latebind_stats::add_histogram(histogram &dst,
 }
 
 void l2_latebind_stats::print_global(FILE *fp) {
-  unsigned long long totals[27] = {0};
+  unsigned long long totals[28] = {0};
   histogram reservation_lifetime;
   histogram request_latency[3];
   for (std::vector<l2_latebind_stats *>::const_iterator it =
@@ -344,6 +348,7 @@ void l2_latebind_stats::print_global(FILE *fp) {
     totals[24] += s.m_lower_read_delay_count;
     totals[25] += s.m_lower_read_pre_mem_cycles;
     totals[26] += s.m_lower_read_post_mem_cycles;
+    totals[27] += s.m_lower_read_mem_cycles;
     add_histogram(reservation_lifetime, s.m_reservation_lifetime);
     for (unsigned cls = 0; cls < 3; ++cls)
       add_histogram(request_latency[cls], s.m_request_latency[cls]);
@@ -362,13 +367,14 @@ void l2_latebind_stats::print_global(FILE *fp) {
           "fill_port_busy_cycles=%llu wb_enqueued=%llu "
           "wb_lower_accepted=%llu wb_bytes=%llu wb_sectors=%llu "
           "lower_read_delay_count=%llu lower_read_pre_mem_cycles=%llu "
+          "lower_read_mem_cycles=%llu "
           "lower_read_post_mem_cycles=%llu\n",
           s_instances.size(), totals[0], totals[1], totals[2], totals[3],
           totals[4], totals[5], totals[6], totals[7], totals[8], totals[9],
           totals[10], totals[23], totals[11], totals[12], totals[13], totals[14],
           totals[15], totals[16], totals[17], totals[18], totals[19],
           totals[20], totals[21], totals[22], totals[24], totals[25],
-          totals[26]);
+          totals[27], totals[26]);
   print_histogram(fp, "global_reservation_lifetime", reservation_lifetime);
   print_histogram(fp, "global_request_latency_hit", request_latency[0]);
   print_histogram(fp, "global_request_latency_merged", request_latency[1]);

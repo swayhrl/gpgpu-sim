@@ -99,6 +99,7 @@ class l2_latebind_stats {
   unsigned long long m_writeback_queue_max;
   unsigned long long m_lower_read_delay_count;
   unsigned long long m_lower_read_pre_mem_cycles;
+  unsigned long long m_lower_read_mem_cycles;
   unsigned long long m_lower_read_post_mem_cycles;
   unsigned long long m_unresolved_requests;
   unsigned long long m_unresolved_reservations;
