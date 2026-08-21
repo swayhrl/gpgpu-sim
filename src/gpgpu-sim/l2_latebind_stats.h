@@ -55,6 +55,7 @@ class l2_latebind_stats {
     bool accepted;
     bool lower_issued;
     bool lower_returned;
+    bool lower_inflight;
     unsigned long long lower_issue_time;
     unsigned long long lower_return_time;
   };
@@ -103,6 +104,10 @@ class l2_latebind_stats {
   unsigned long long m_writeback_queue_cycles;
   unsigned long long m_writeback_queue_max;
   unsigned long long m_lower_read_delay_count;
+  // Peak concurrently issued lower reads for this L2 subpartition.  This is
+  // observation only: it changes neither cache admission nor port arbitration.
+  unsigned long long m_lower_read_inflight;
+  unsigned long long m_lower_read_inflight_peak;
   unsigned long long m_lower_read_pre_offer_cycles;
   unsigned long long m_lower_read_pre_mem_cycles;
   unsigned long long m_lower_read_mem_cycles;

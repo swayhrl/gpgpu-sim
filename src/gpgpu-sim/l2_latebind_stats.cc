@@ -36,6 +36,8 @@ l2_latebind_stats::l2_latebind_stats(const char *cache_name,
   m_writeback_queue_cycles = 0;
   m_writeback_queue_max = 0;
   m_lower_read_delay_count = 0;
+  m_lower_read_inflight = 0;
+  m_lower_read_inflight_peak = 0;
   m_lower_read_pre_offer_cycles = 0;
   m_lower_read_pre_mem_cycles = 0;
   m_lower_read_mem_cycles = 0;
@@ -77,6 +79,7 @@ void l2_latebind_stats::record_offer(mem_fetch *mf, unsigned long long time,
     record.accepted = false;
     record.lower_issued = false;
     record.lower_returned = false;
+    record.lower_inflight = false;
     record.lower_issue_time = 0;
     record.lower_return_time = 0;
     std::pair<request_map::iterator, bool> result =
@@ -109,6 +112,7 @@ void l2_latebind_stats::record_latency(mem_fetch *mf,
                  it->second.probe_status == HIT_RESERVED ? 1 : 2;
   m_request_latency[cls][lifetime_bucket(time - it->second.accept_time)]++;
   if (it->second.lower_issued && it->second.lower_returned) {
+    assert(!it->second.lower_inflight);
     assert(it->second.lower_issue_time >= it->second.accept_time);
     assert(it->second.lower_issue_time >= it->second.offer_time);
     assert(time >= it->second.lower_return_time);
@@ -236,6 +240,10 @@ void l2_latebind_stats::record_lower_request(mem_fetch *mf,
     assert(time >= request->second.accept_time);
     request->second.lower_issued = true;
     request->second.lower_issue_time = time;
+    request->second.lower_inflight = true;
+    m_lower_read_inflight++;
+    m_lower_read_inflight_peak = std::max(m_lower_read_inflight_peak,
+                                           m_lower_read_inflight);
   }
   writeback_map::iterator it = m_writebacks.find(mf);
   if (it == m_writebacks.end()) return;
@@ -256,6 +264,10 @@ void l2_latebind_stats::record_frc_lower_request(mem_fetch *fetch,
   assert(time >= request->second.accept_time);
   request->second.lower_issued = true;
   request->second.lower_issue_time = time;
+  request->second.lower_inflight = true;
+  m_lower_read_inflight++;
+  m_lower_read_inflight_peak = std::max(m_lower_read_inflight_peak,
+                                         m_lower_read_inflight);
   std::pair<frc_fetch_map::iterator, bool> result =
       m_frc_fetch_primary.insert(std::make_pair(fetch, primary));
   assert(result.second);
@@ -273,8 +285,12 @@ void l2_latebind_stats::record_lower_return(mem_fetch *mf,
   }
   assert(request->second.lower_issued);
   assert(!request->second.lower_returned);
+  assert(request->second.lower_inflight);
   assert(time >= request->second.lower_issue_time);
   request->second.lower_returned = true;
+  request->second.lower_inflight = false;
+  assert(m_lower_read_inflight > 0);
+  m_lower_read_inflight--;
   request->second.lower_return_time = time;
   m_lower_read_mem_cycles += time - request->second.lower_issue_time;
 }
@@ -303,7 +319,8 @@ void l2_latebind_stats::print(FILE *fp) const {
           "fill_port_busy_cycles=%llu wb_enqueued=%llu "
           "wb_lower_accepted=%llu wb_bytes=%llu wb_sectors=%llu "
           "wb_queue_cycles=%llu wb_queue_max=%llu "
-          "lower_read_delay_count=%llu lower_read_pre_offer_cycles=%llu "
+          "lower_read_delay_count=%llu lower_read_inflight=%llu "
+          "lower_read_inflight_peak=%llu lower_read_pre_offer_cycles=%llu "
           "lower_read_pre_mem_cycles=%llu "
           "lower_read_mem_cycles=%llu "
           "lower_read_post_mem_cycles=%llu unresolved_requests=%zu "
@@ -319,7 +336,8 @@ void l2_latebind_stats::print(FILE *fp) const {
           m_dirty_sector_max, m_data_port_busy_cycles, m_fill_port_busy_cycles,
           m_writeback_enqueued, m_writeback_lower_accepted, m_writeback_bytes,
           m_writeback_sectors, m_writeback_queue_cycles, m_writeback_queue_max,
-          m_lower_read_delay_count, m_lower_read_pre_offer_cycles,
+          m_lower_read_delay_count, m_lower_read_inflight,
+          m_lower_read_inflight_peak, m_lower_read_pre_offer_cycles,
           m_lower_read_pre_mem_cycles,
           m_lower_read_mem_cycles,
           m_lower_read_post_mem_cycles,
@@ -337,7 +355,7 @@ void l2_latebind_stats::add_histogram(histogram &dst,
 }
 
 void l2_latebind_stats::print_global(FILE *fp) {
-  unsigned long long totals[29] = {0};
+  unsigned long long totals[31] = {0};
   histogram reservation_lifetime;
   histogram request_latency[3];
   for (std::vector<l2_latebind_stats *>::const_iterator it =
@@ -369,10 +387,12 @@ void l2_latebind_stats::print_global(FILE *fp) {
     totals[21] += s.m_writeback_bytes;
     totals[22] += s.m_writeback_sectors;
     totals[24] += s.m_lower_read_delay_count;
-    totals[25] += s.m_lower_read_pre_mem_cycles;
-    totals[26] += s.m_lower_read_post_mem_cycles;
-    totals[27] += s.m_lower_read_mem_cycles;
-    totals[28] += s.m_lower_read_pre_offer_cycles;
+    totals[25] += s.m_lower_read_inflight;
+    totals[26] = std::max(totals[26], s.m_lower_read_inflight_peak);
+    totals[27] += s.m_lower_read_pre_mem_cycles;
+    totals[28] += s.m_lower_read_post_mem_cycles;
+    totals[29] += s.m_lower_read_mem_cycles;
+    totals[30] += s.m_lower_read_pre_offer_cycles;
     add_histogram(reservation_lifetime, s.m_reservation_lifetime);
     for (unsigned cls = 0; cls < 3; ++cls)
       add_histogram(request_latency[cls], s.m_request_latency[cls]);
@@ -390,7 +410,8 @@ void l2_latebind_stats::print_global(FILE *fp) {
           "dirty_sector_max=%llu data_port_busy_cycles=%llu "
           "fill_port_busy_cycles=%llu wb_enqueued=%llu "
           "wb_lower_accepted=%llu wb_bytes=%llu wb_sectors=%llu "
-          "lower_read_delay_count=%llu lower_read_pre_offer_cycles=%llu "
+          "lower_read_delay_count=%llu lower_read_inflight=%llu "
+          "lower_read_inflight_peak=%llu lower_read_pre_offer_cycles=%llu "
           "lower_read_pre_mem_cycles=%llu "
           "lower_read_mem_cycles=%llu "
           "lower_read_post_mem_cycles=%llu\n",
@@ -399,7 +420,7 @@ void l2_latebind_stats::print_global(FILE *fp) {
           totals[10], totals[23], totals[11], totals[12], totals[13], totals[14],
           totals[15], totals[16], totals[17], totals[18], totals[19],
           totals[20], totals[21], totals[22], totals[24], totals[25],
-          totals[28], totals[27], totals[26]);
+          totals[26], totals[30], totals[27], totals[29], totals[28]);
   print_histogram(fp, "global_reservation_lifetime", reservation_lifetime);
   print_histogram(fp, "global_request_latency_hit", request_latency[0]);
   print_histogram(fp, "global_request_latency_merged", request_latency[1]);
