@@ -1918,7 +1918,11 @@ enum cache_request_status data_cache::rd_miss_base(
       // used, so set the right chip address from the original mf
       wb->set_chip(mf->get_tlx_addr().chip);
       wb->set_partition(mf->get_tlx_addr().sub_partition);
-      send_write_request(wb, WRITE_BACK_REQUEST_SENT, time, events);
+      // Preserve the victim payload with the writeback event.  Besides making
+      // baseline data-port accounting correct, FRC uses the same payload when
+      // a delayed victim is retired from an FRC entry.
+      send_write_request(wb, cache_event(WRITE_BACK_REQUEST_SENT, evicted),
+                         time, events);
     }
     return MISS;
   }
