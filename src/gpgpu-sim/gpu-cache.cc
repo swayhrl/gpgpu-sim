@@ -2293,7 +2293,7 @@ void l2_cache::flush() {
 void l2_cache::invalidate() { flush(); }
 
 void l2_cache::print_frc_stats(FILE *fp) const {
-  if (!m_frc) return;
+  if (!m_frc || !m_frc_lookups) return;
   unsigned fetching = 0;
   unsigned fetched = 0;
   unsigned evicting = 0;
@@ -2310,7 +2310,7 @@ void l2_cache::print_frc_stats(FILE *fp) const {
           "lookups=%llu allocations=%llu merges=%llu "
           "set_full_fallbacks=%llu credit_fallbacks=%llu swaps=%llu "
           "clean_swaps=%llu dirty_swaps=%llu wb_lower_accepted=%llu "
-          "fetching=%u fetched=%u evicting=%u\\n",
+          "fetching=%u fetched=%u evicting=%u\n",
           m_name.c_str(), m_frc->entries(), m_frc->assoc(),
           m_frc_conservative_timing ? "conservative" : "paper",
           m_frc_lookups, m_frc_allocations, m_frc_merges,
