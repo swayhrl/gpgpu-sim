@@ -53,6 +53,9 @@ class c2p_cache_config {
   unsigned snapshot_rebuild_interval;
   unsigned probe_timeout;
   unsigned target_probe_queue_size;
+  // Diagnostic-only control: bypass just the target-L1 data-port contention
+  // for C2P probes.  It is off for every architectural experiment.
+  bool diagnostic_target_port_bypass;
   unsigned snapshot_copies;
   unsigned scheme;
   unsigned comparator_cluster_size;
@@ -76,6 +79,13 @@ struct c2p_cache_stats {
   unsigned long long peer_probe_hits;
   unsigned long long peer_probe_misses;
   unsigned long long peer_l1_accesses;
+  // These are observation counters only.  They separate target-port
+  // contention, FIFO residence, and requester-fill backpressure without
+  // changing C2P transaction timing.
+  unsigned long long target_probe_port_busy_cycles;
+  unsigned long long target_probe_queue_wait_cycles;
+  unsigned long long target_probe_queue_full_cycles;
+  unsigned long long requester_fill_wait_cycles;
   unsigned long long remote_hits;
   unsigned long long fallback_no_candidate;
   unsigned long long fallback_candidates_exhausted;

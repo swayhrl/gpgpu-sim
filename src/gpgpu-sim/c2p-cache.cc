@@ -67,6 +67,7 @@ c2p_cache_config::c2p_cache_config()
       snapshot_rebuild_interval(0),
       probe_timeout(32),
       target_probe_queue_size(32),
+      diagnostic_target_port_bypass(false),
       snapshot_copies(4),
       scheme(C2P_SCHEME),
       comparator_cluster_size(8),
@@ -127,6 +128,11 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
   option_parser_register(opp, "-c2p_cache_target_probe_queue_size", OPT_UINT32,
                          &target_probe_queue_size,
                          "C2P remote probe FIFO entries per target L1", "32");
+  option_parser_register(
+      opp, "-c2p_cache_diagnostic_target_port_bypass", OPT_BOOL,
+      &diagnostic_target_port_bypass,
+      "diagnostic only: remove C2P probe contention for target L1 data port",
+      "0");
   option_parser_register(opp, "-c2p_cache_snapshot_copies", OPT_UINT32,
                          &snapshot_copies, "C2P Snapshot Matrix copies", "4");
   option_parser_register(
@@ -172,6 +178,10 @@ void c2p_cache_stats::clear() {
   peer_probe_hits = 0;
   peer_probe_misses = 0;
   peer_l1_accesses = 0;
+  target_probe_port_busy_cycles = 0;
+  target_probe_queue_wait_cycles = 0;
+  target_probe_queue_full_cycles = 0;
+  requester_fill_wait_cycles = 0;
   remote_hits = 0;
   fallback_no_candidate = 0;
   fallback_candidates_exhausted = 0;
@@ -718,15 +728,28 @@ void c2p_cache::complete_matches(unsigned long long now) {
 void c2p_cache::service_target_probe_queues(unsigned long long now) {
   for (unsigned sid = 0; sid < m_target_probe_queues.size(); ++sid) {
     std::deque<transaction *> &queue = m_target_probe_queues[sid];
-    if (queue.empty() || !m_l1s[sid]->data_port_free()) continue;
+    if (queue.empty()) continue;
+    if (!m_config.diagnostic_target_port_bypass &&
+        !m_l1s[sid]->data_port_free()) {
+      ++m_stats.target_probe_port_busy_cycles;
+      continue;
+    }
 
-    transaction *txn = queue.front();
-    queue.pop_front();
-    assert(txn->state == WAIT_TARGET_PROBE);
-    m_l1s[sid]->c2p_reserve_probe_port(txn->probe_latency);
-    txn->probe_sid = sid;
-    txn->state = WAIT_PROBE;
-    txn->ready_cycle = now + txn->probe_latency;
+    // The normal model admits one target-array access when its shared data
+    // port is free.  The diagnostic control removes only that contention: it
+    // drains the already-selected C2P probes without reserving the target
+    // port, while preserving each probe's modeled tag latency.
+    do {
+      transaction *txn = queue.front();
+      queue.pop_front();
+      assert(txn->state == WAIT_TARGET_PROBE);
+      m_stats.target_probe_queue_wait_cycles += now - txn->probe_wait_start;
+      if (!m_config.diagnostic_target_port_bypass)
+        m_l1s[sid]->c2p_reserve_probe_port(txn->probe_latency);
+      txn->probe_sid = sid;
+      txn->state = WAIT_PROBE;
+      txn->ready_cycle = now + txn->probe_latency;
+    } while (m_config.diagnostic_target_port_bypass && !queue.empty());
   }
 }
 
@@ -752,11 +775,14 @@ void c2p_cache::advance_probes(unsigned long long now) {
       }
     }
 
-    if (it->state == WAIT_RETURN && now >= it->ready_cycle &&
-        it->requester->fill_port_free()) {
-      it->requester->c2p_fill(it->mf, now);
-      record_peer_accesses(true, it->peer_accesses);
-      erase = true;
+    if (it->state == WAIT_RETURN && now >= it->ready_cycle) {
+      if (it->requester->fill_port_free()) {
+        it->requester->c2p_fill(it->mf, now);
+        record_peer_accesses(true, it->peer_accesses);
+        erase = true;
+      } else {
+        ++m_stats.requester_fill_wait_cycles;
+      }
     }
 
     if (it->state == WAIT_TARGET_PROBE &&
@@ -772,6 +798,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
           std::find(queue.begin(), queue.end(), &*it);
       assert(queued != queue.end());
       queue.erase(queued);
+      m_stats.target_probe_queue_wait_cycles += now - it->probe_wait_start;
       ++m_stats.fallback_probe_timeout;
       it->state = WAIT_FALLBACK;
     }
@@ -792,6 +819,19 @@ void c2p_cache::advance_probes(unsigned long long now) {
         // cycle.  The timeout below applies only when that finite FIFO is
         // full, at which point the original request may safely fall back.
         if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
+            m_config.diagnostic_target_port_bypass) {
+          // This is a counterfactual diagnostic, not an architectural C2P
+          // mode: remove just target-port/FIFO contention.  Candidate order,
+          // tag latency, return latency, requester-fill pressure, and all
+          // fallback behavior outside that contention remain unchanged.
+          it->probe_sid = sid;
+          ++it->candidate_next;
+          ++it->peer_accesses;
+          ++m_stats.peer_probes;
+          ++m_stats.peer_l1_accesses;
+          it->state = WAIT_PROBE;
+          it->ready_cycle = now + it->probe_latency;
+        } else if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
             m_target_probe_queues[sid].size() < m_config.target_probe_queue_size) {
           m_target_probe_queues[sid].push_back(&*it);
           ++it->candidate_next;
@@ -810,9 +850,15 @@ void c2p_cache::advance_probes(unsigned long long now) {
             ++m_stats.peer_l1_accesses;
           it->state = WAIT_PROBE;
           it->ready_cycle = now + it->probe_latency;
-        } else if (now - it->probe_wait_start >= m_config.probe_timeout) {
-          ++m_stats.fallback_probe_timeout;
-          it->state = WAIT_FALLBACK;
+        } else {
+          if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
+              m_target_probe_queues[sid].size() >=
+                  m_config.target_probe_queue_size)
+            ++m_stats.target_probe_queue_full_cycles;
+          if (now - it->probe_wait_start >= m_config.probe_timeout) {
+            ++m_stats.fallback_probe_timeout;
+            it->state = WAIT_FALLBACK;
+          }
         }
       }
     }
@@ -866,6 +912,14 @@ void c2p_cache::print_stats(FILE *fout) const {
   fprintf(fout, "c2p_peer_probe_hits = %llu\n", m_stats.peer_probe_hits);
   fprintf(fout, "c2p_peer_probe_misses = %llu\n", m_stats.peer_probe_misses);
   fprintf(fout, "c2p_peer_l1_accesses = %llu\n", m_stats.peer_l1_accesses);
+  fprintf(fout, "c2p_target_probe_port_busy_cycles = %llu\n",
+          m_stats.target_probe_port_busy_cycles);
+  fprintf(fout, "c2p_target_probe_queue_wait_cycles = %llu\n",
+          m_stats.target_probe_queue_wait_cycles);
+  fprintf(fout, "c2p_target_probe_queue_full_cycles = %llu\n",
+          m_stats.target_probe_queue_full_cycles);
+  fprintf(fout, "c2p_requester_fill_wait_cycles = %llu\n",
+          m_stats.requester_fill_wait_cycles);
   fprintf(fout, "c2p_remote_hits = %llu\n", m_stats.remote_hits);
   // Each completed remote hit consumes the original L1 MSHR/fill path but
   // never sends that miss to the lower level, so this is the directly
