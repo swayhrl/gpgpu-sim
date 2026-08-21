@@ -60,12 +60,12 @@ paper's continuous background-refresh description.
 
 Candidate probes are serialized nearest-first.  Each target L1 has a finite
 32-entry remote-probe FIFO: a selected candidate waits there until the target
-data port is free, then reserves that port for its tag latency.  The timeout
-applies only while that FIFO is full, rather than while a useful request is
-already queued at its target.  A remote return waits for the requester's fill
-port.  If no candidate exists, candidates all miss, or a full target FIFO
-stays unavailable through the timeout, the original transaction proceeds to
-the ordinary L2 path.
+data port is free, then reserves that port for its tag latency.  A timeout
+covers both a full FIFO and a queued probe whose target port fails to make
+progress; either case removes the pending probe and sends the original
+transaction through the ordinary L2 path.  A remote return waits for the
+requester's fill port.  If no candidate exists or all candidates miss, the
+original transaction likewise proceeds to the ordinary L2 path.
 
 Oracle availability is sampled when the L1 miss enters C2P.  A real remote
 probe happens later and can observe a line filled by another SM in the

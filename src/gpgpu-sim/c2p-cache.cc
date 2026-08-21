@@ -725,6 +725,23 @@ void c2p_cache::advance_probes(unsigned long long now) {
       erase = true;
     }
 
+    if (it->state == WAIT_TARGET_PROBE &&
+        now - it->probe_wait_start >= m_config.probe_timeout) {
+      // A finite target FIFO decouples ordinary data-port contention from
+      // candidate issue.  It must still have a bounded escape when the
+      // target port itself makes no progress (for example while a writeback
+      // path is blocked); otherwise its head can retain the original miss
+      // forever and prevent the baseline L2 path from recovering progress.
+      std::deque<transaction *> &queue =
+          m_target_probe_queues[it->candidates[it->candidate_next - 1]];
+      std::deque<transaction *>::iterator queued =
+          std::find(queue.begin(), queue.end(), &*it);
+      assert(queued != queue.end());
+      queue.erase(queued);
+      ++m_stats.fallback_probe_timeout;
+      it->state = WAIT_FALLBACK;
+    }
+
     if (it->state == READY_TO_PROBE) {
       if (it->candidate_next >= it->candidates.size()) {
         if (it->candidates.empty())
