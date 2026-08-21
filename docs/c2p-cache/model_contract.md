@@ -93,6 +93,16 @@ Every core result reports at least:
 
 The result bundle must retain configuration, trace provenance, simulator and
 model commits, C2P counters, and the oracle/ideal/C2P/baseline comparison.
+
+## Build coupling
+
+Accel-Sim's trace front end includes GPGPU-Sim public configuration headers.
+Whenever this model adds or reorders a public configuration field, rebuild the
+front end against the selected external `GPGPUSIM_ROOT` before replaying a
+trace.  Replacing only `libcudart.so` after such a header change is an ABI
+mismatch and can corrupt configuration parsing before simulation starts.  The
+replay provenance must therefore identify both the backend commit and the
+front-end binary hash.
 The primary outcomes are redundant L2 reduction, remote-hit rate, candidates
 per query, the miss-time Snapshot TP/TN/FP/FN classification, R1S1 speedup,
 and R0S1 overhead.  The accept-time oracle counter is reported separately as
