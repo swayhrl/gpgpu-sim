@@ -2263,7 +2263,8 @@ bool l2_cache::frc_can_swap(mem_fetch *mf) const {
   if (f == m_extra_mf_fields.end()) return false;
   unsigned cache_index = (unsigned)-1;
   enum cache_request_status status = m_tag_array->probe(
-      m_config.block_addr(f->second.m_addr), cache_index, mf, false, true);
+      m_config.block_addr(f->second.m_addr), cache_index, primary->second,
+      false, true);
   return status != RESERVATION_FAIL;
 }
 
