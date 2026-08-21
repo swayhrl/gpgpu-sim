@@ -576,7 +576,10 @@ void c2p_cache::schedule_rows(unsigned long long now) {
     if (it->state != WAIT_ROWS || now < it->ready_cycle) continue;
     for (unsigned row_i = 0; row_i < it->rows.size(); ++row_i) {
       if (it->row_done[row_i]) continue;
-      const unsigned bank = it->rows[row_i] / 80;
+      const unsigned bank = it->rows[row_i] /
+                            (kTagMaskRowsPerBank +
+                             m_config.snapshot_bf_rows_per_bank);
+      assert(bank < m_bank_copy_used.size());
       for (unsigned copy = 0; copy < m_bank_copy_used[bank].size(); ++copy) {
         if (!m_bank_copy_used[bank][copy]) {
           m_bank_copy_used[bank][copy] = true;
