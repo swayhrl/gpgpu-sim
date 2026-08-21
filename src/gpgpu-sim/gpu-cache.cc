@@ -2189,6 +2189,7 @@ bool l2_cache::frc_handles_read(enum cache_request_status l2_status,
       mshr_addr, mf->get_addr(), (unsigned)-1, mf->get_data_size(), m_config);
   m_frc_fill_owner[mf] = frc_fill_record(
       index, mf->get_access_sector_mask().to_ulong(), true);
+  m_frc_lower_reads++;
   m_frc_primary[index] = mf;
   mf->set_data_size(m_config.get_atom_sz());
   mf->set_addr(mshr_addr);
@@ -2212,6 +2213,7 @@ bool l2_cache::frc_handles_read(enum cache_request_status l2_status,
     fetch->set_chip(mf->get_tlx_addr().chip);
     fetch->set_partition(mf->get_tlx_addr().sub_partition);
     m_frc_fill_owner[fetch] = frc_fill_record(index, sector_mask, false);
+    m_frc_lower_reads++;
     m_miss_queue.push_back(fetch);
     fetch->set_status(m_miss_queue_status, time);
   }
@@ -2377,13 +2379,13 @@ void l2_cache::print_frc_stats(FILE *fp) const {
   }
   fprintf(fp,
           "frc_l2 cache=%s entries=%u assoc=%u timing=%s "
-          "lookups=%llu allocations=%llu merges=%llu "
+          "lookups=%llu allocations=%llu lower_reads=%llu merges=%llu "
           "set_full_fallbacks=%llu credit_fallbacks=%llu swaps=%llu "
           "clean_swaps=%llu dirty_swaps=%llu wb_lower_accepted=%llu "
           "fetching=%u fetched=%u evicting=%u\n",
           m_name.c_str(), m_frc->entries(), m_frc->assoc(),
           m_frc_conservative_timing ? "conservative" : "paper",
-          m_frc_lookups, m_frc_allocations, m_frc_merges,
+          m_frc_lookups, m_frc_allocations, m_frc_lower_reads, m_frc_merges,
           m_frc_set_full_fallbacks, m_frc_credit_fallbacks, m_frc_swaps,
           m_frc_clean_swaps, m_frc_dirty_swaps, m_frc_wb_lower_accepted,
           fetching, fetched, evicting);
