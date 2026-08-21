@@ -35,6 +35,9 @@ l2_latebind_stats::l2_latebind_stats(const char *cache_name,
   m_writeback_sectors = 0;
   m_writeback_queue_cycles = 0;
   m_writeback_queue_max = 0;
+  m_lower_read_delay_count = 0;
+  m_lower_read_pre_mem_cycles = 0;
+  m_lower_read_post_mem_cycles = 0;
   m_unresolved_requests = 0;
   m_unresolved_reservations = 0;
   s_instances.push_back(this);
@@ -67,6 +70,10 @@ void l2_latebind_stats::record_accept(mem_fetch *mf, unsigned long long time,
   record.accept_time = time;
   record.probe_status = probe_status;
   record.access_status = access_status;
+  record.lower_issued = false;
+  record.lower_returned = false;
+  record.lower_issue_time = 0;
+  record.lower_return_time = 0;
   std::pair<request_map::iterator, bool> result =
       m_requests.insert(std::make_pair(mf, record));
   // A request is offered to L2 at most once after it has been accepted.
@@ -84,6 +91,14 @@ void l2_latebind_stats::record_latency(mem_fetch *mf,
   unsigned cls = it->second.probe_status == HIT ? 0 :
                  it->second.probe_status == HIT_RESERVED ? 1 : 2;
   m_request_latency[cls][lifetime_bucket(time - it->second.accept_time)]++;
+  if (it->second.lower_issued && it->second.lower_returned) {
+    assert(it->second.lower_issue_time >= it->second.accept_time);
+    assert(time >= it->second.lower_return_time);
+    m_lower_read_delay_count++;
+    m_lower_read_pre_mem_cycles +=
+        it->second.lower_issue_time - it->second.accept_time;
+    m_lower_read_post_mem_cycles += time - it->second.lower_return_time;
+  }
   m_requests.erase(it);
 }
 
@@ -194,11 +209,51 @@ void l2_latebind_stats::record_writeback_enqueue(mem_fetch *mf,
 
 void l2_latebind_stats::record_lower_request(mem_fetch *mf,
                                               unsigned long long time) {
+  request_map::iterator request = m_requests.find(mf);
+  if (request != m_requests.end()) {
+    assert(!request->second.lower_issued);
+    assert(time >= request->second.accept_time);
+    request->second.lower_issued = true;
+    request->second.lower_issue_time = time;
+  }
   writeback_map::iterator it = m_writebacks.find(mf);
   if (it == m_writebacks.end()) return;
   assert(time >= it->second.enqueue_time);
   m_writeback_lower_accepted++;
   m_writebacks.erase(it);
+}
+
+void l2_latebind_stats::record_frc_lower_request(mem_fetch *fetch,
+                                                  mem_fetch *primary,
+                                                  unsigned long long time) {
+  assert(fetch);
+  assert(primary);
+  request_map::iterator request = m_requests.find(primary);
+  assert(request != m_requests.end());
+  assert(!request->second.lower_issued);
+  assert(time >= request->second.accept_time);
+  request->second.lower_issued = true;
+  request->second.lower_issue_time = time;
+  std::pair<frc_fetch_map::iterator, bool> result =
+      m_frc_fetch_primary.insert(std::make_pair(fetch, primary));
+  assert(result.second);
+}
+
+void l2_latebind_stats::record_lower_return(mem_fetch *mf,
+                                             unsigned long long time) {
+  request_map::iterator request = m_requests.find(mf);
+  if (request == m_requests.end()) {
+    frc_fetch_map::iterator fetch = m_frc_fetch_primary.find(mf);
+    if (fetch == m_frc_fetch_primary.end()) return;
+    request = m_requests.find(fetch->second);
+    assert(request != m_requests.end());
+    m_frc_fetch_primary.erase(fetch);
+  }
+  assert(request->second.lower_issued);
+  assert(!request->second.lower_returned);
+  assert(time >= request->second.lower_issue_time);
+  request->second.lower_returned = true;
+  request->second.lower_return_time = time;
 }
 
 void l2_latebind_stats::print_histogram(FILE *fp, const char *name,
@@ -224,7 +279,9 @@ void l2_latebind_stats::print(FILE *fp) const {
           "dirty_sector_max=%llu data_port_busy_cycles=%llu "
           "fill_port_busy_cycles=%llu wb_enqueued=%llu "
           "wb_lower_accepted=%llu wb_bytes=%llu wb_sectors=%llu "
-          "wb_queue_cycles=%llu wb_queue_max=%llu unresolved_requests=%zu "
+          "wb_queue_cycles=%llu wb_queue_max=%llu "
+          "lower_read_delay_count=%llu lower_read_pre_mem_cycles=%llu "
+          "lower_read_post_mem_cycles=%llu unresolved_requests=%zu "
           "unresolved_reservations=%zu\n",
           m_subpartition_id, m_cache_name.c_str(), m_probe[HIT],
           m_probe[HIT_RESERVED], m_probe[MISS], m_probe[RESERVATION_FAIL],
@@ -237,6 +294,8 @@ void l2_latebind_stats::print(FILE *fp) const {
           m_dirty_sector_max, m_data_port_busy_cycles, m_fill_port_busy_cycles,
           m_writeback_enqueued, m_writeback_lower_accepted, m_writeback_bytes,
           m_writeback_sectors, m_writeback_queue_cycles, m_writeback_queue_max,
+          m_lower_read_delay_count, m_lower_read_pre_mem_cycles,
+          m_lower_read_post_mem_cycles,
           m_requests.size(), m_reservation_start.size());
   print_histogram(fp, "reservation_lifetime", m_reservation_lifetime);
   print_histogram(fp, "request_latency_hit", m_request_latency[0]);
@@ -251,7 +310,7 @@ void l2_latebind_stats::add_histogram(histogram &dst,
 }
 
 void l2_latebind_stats::print_global(FILE *fp) {
-  unsigned long long totals[24] = {0};
+  unsigned long long totals[27] = {0};
   histogram reservation_lifetime;
   histogram request_latency[3];
   for (std::vector<l2_latebind_stats *>::const_iterator it =
@@ -282,6 +341,9 @@ void l2_latebind_stats::print_global(FILE *fp) {
     totals[20] += s.m_writeback_lower_accepted;
     totals[21] += s.m_writeback_bytes;
     totals[22] += s.m_writeback_sectors;
+    totals[24] += s.m_lower_read_delay_count;
+    totals[25] += s.m_lower_read_pre_mem_cycles;
+    totals[26] += s.m_lower_read_post_mem_cycles;
     add_histogram(reservation_lifetime, s.m_reservation_lifetime);
     for (unsigned cls = 0; cls < 3; ++cls)
       add_histogram(request_latency[cls], s.m_request_latency[cls]);
@@ -298,12 +360,15 @@ void l2_latebind_stats::print_global(FILE *fp) {
           "resident_sector_max=%llu reserved_sector_max=%llu "
           "dirty_sector_max=%llu data_port_busy_cycles=%llu "
           "fill_port_busy_cycles=%llu wb_enqueued=%llu "
-          "wb_lower_accepted=%llu wb_bytes=%llu wb_sectors=%llu\n",
+          "wb_lower_accepted=%llu wb_bytes=%llu wb_sectors=%llu "
+          "lower_read_delay_count=%llu lower_read_pre_mem_cycles=%llu "
+          "lower_read_post_mem_cycles=%llu\n",
           s_instances.size(), totals[0], totals[1], totals[2], totals[3],
           totals[4], totals[5], totals[6], totals[7], totals[8], totals[9],
           totals[10], totals[23], totals[11], totals[12], totals[13], totals[14],
           totals[15], totals[16], totals[17], totals[18], totals[19],
-          totals[20], totals[21], totals[22]);
+          totals[20], totals[21], totals[22], totals[24], totals[25],
+          totals[26]);
   print_histogram(fp, "global_reservation_lifetime", reservation_lifetime);
   print_histogram(fp, "global_request_latency_hit", request_latency[0]);
   print_histogram(fp, "global_request_latency_merged", request_latency[1]);

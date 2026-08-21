@@ -1234,7 +1234,8 @@ void baseline_cache::cycle() {
       m_memport->push(mf);
       if (m_latebind_stats)
         m_latebind_stats->record_lower_request(
-            mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+            mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
+                    m_latebind_time_offset);
     }
   }
   bool data_port_busy = !m_bandwidth_management.data_port_free();
@@ -2271,6 +2272,7 @@ bool l2_cache::waiting_for_fill(mem_fetch *mf) {
 }
 
 void l2_cache::fill(mem_fetch *mf, unsigned time) {
+  if (m_latebind_stats) m_latebind_stats->record_lower_return(mf, time);
   if (m_frc_fill_owner.find(mf) == m_frc_fill_owner.end()) {
     baseline_cache::fill(mf, time);
     return;
@@ -2382,14 +2384,34 @@ void l2_cache::cycle() {
                               : (baseline_pending ? m_miss_queue.front()
                                                   : NULL);
   if (mf && !m_memport->full(mf->size(), mf->get_is_write())) {
+    if (m_latebind_stats) {
+      if (select_frc) {
+        std::map<mem_fetch *, frc_fill_record>::const_iterator owner =
+            m_frc_fill_owner.find(mf);
+        if (owner != m_frc_fill_owner.end()) {
+          std::map<unsigned, mem_fetch *>::const_iterator primary =
+              m_frc_primary.find(owner->second.entry);
+          assert(primary != m_frc_primary.end());
+          m_latebind_stats->record_frc_lower_request(
+              mf, primary->second,
+              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
+                  m_latebind_time_offset);
+        } else {
+          m_latebind_stats->record_lower_request(
+              mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
+                      m_latebind_time_offset);
+        }
+      } else {
+        m_latebind_stats->record_lower_request(
+            mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
+                    m_latebind_time_offset);
+      }
+    }
     if (select_frc)
       m_frc_miss_queue.pop_front();
     else
       m_miss_queue.pop_front();
     m_memport->push(mf);
-    if (m_latebind_stats)
-      m_latebind_stats->record_lower_request(
-          mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
     if (select_frc && m_frc_wb_owner.find(mf) != m_frc_wb_owner.end())
       frc_release_writeback(mf);
     if (frc_pending && baseline_pending) m_frc_lower_turn = !m_frc_lower_turn;
@@ -2510,11 +2532,13 @@ void l2_cache::print_frc_stats(FILE *fp) const {
 }
 
 void l2_cache::note_reply(mem_fetch *mf, unsigned long long time) {
-  if (m_latebind_stats) m_latebind_stats->record_reply(mf, time);
+  if (m_latebind_stats)
+    m_latebind_stats->record_reply(mf, time + m_latebind_time_offset);
 }
 
 void l2_cache::note_consumed(mem_fetch *mf, unsigned long long time) {
-  if (m_latebind_stats) m_latebind_stats->record_consumed(mf, time);
+  if (m_latebind_stats)
+    m_latebind_stats->record_consumed(mf, time + m_latebind_time_offset);
 }
 
 void l2_cache::print_latebind_global_stats(FILE *fp) {

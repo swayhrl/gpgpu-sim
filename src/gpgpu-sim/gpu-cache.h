@@ -1344,6 +1344,11 @@ class baseline_cache : public cache_t {
   void print(FILE *fp, unsigned &accesses, unsigned &misses) const;
   void display_state(FILE *fp) const;
   void print_latebind_stats(FILE *fp) const;
+  // Keep observation timestamps in the same kernel-time domain as L2 access
+  // and fill timestamps when cudamemcpy has advanced the L2 tag-time offset.
+  void set_latebind_time_offset(unsigned offset) {
+    m_latebind_time_offset = offset;
+  }
 
   // Stat collection
   const cache_stats &get_stats() const { return m_stats; }
@@ -1415,6 +1420,7 @@ class baseline_cache : public cache_t {
   cache_gpu_level m_level;
   gpgpu_sim *m_gpu;
   l2_latebind_stats *m_latebind_stats;
+  unsigned m_latebind_time_offset = 0;
 
   struct extra_mf_fields {
     extra_mf_fields() { m_valid = false; }

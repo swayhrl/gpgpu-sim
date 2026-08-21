@@ -36,6 +36,9 @@ class l2_latebind_stats {
   void record_writeback_enqueue(mem_fetch *mf, unsigned long long time,
                                 unsigned bytes, unsigned sectors);
   void record_lower_request(mem_fetch *mf, unsigned long long time);
+  void record_frc_lower_request(mem_fetch *fetch, mem_fetch *primary,
+                                unsigned long long time);
+  void record_lower_return(mem_fetch *mf, unsigned long long time);
 
   void print(FILE *fp) const;
   static void print_global(FILE *fp);
@@ -45,6 +48,10 @@ class l2_latebind_stats {
     unsigned long long accept_time;
     unsigned probe_status;
     unsigned access_status;
+    bool lower_issued;
+    bool lower_returned;
+    unsigned long long lower_issue_time;
+    unsigned long long lower_return_time;
   };
   struct writeback_record {
     unsigned long long enqueue_time;
@@ -54,6 +61,7 @@ class l2_latebind_stats {
 
   typedef std::map<mem_fetch *, request_record> request_map;
   typedef std::map<mem_fetch *, writeback_record> writeback_map;
+  typedef std::map<mem_fetch *, mem_fetch *> frc_fetch_map;
   typedef std::map<unsigned long long, unsigned long long> histogram;
 
   static unsigned long long lifetime_bucket(unsigned long long cycles);
@@ -89,11 +97,15 @@ class l2_latebind_stats {
   unsigned long long m_writeback_sectors;
   unsigned long long m_writeback_queue_cycles;
   unsigned long long m_writeback_queue_max;
+  unsigned long long m_lower_read_delay_count;
+  unsigned long long m_lower_read_pre_mem_cycles;
+  unsigned long long m_lower_read_post_mem_cycles;
   unsigned long long m_unresolved_requests;
   unsigned long long m_unresolved_reservations;
   std::map<unsigned long long, unsigned long long> m_reservation_start;
   request_map m_requests;
   writeback_map m_writebacks;
+  frc_fetch_map m_frc_fetch_primary;
   histogram m_reservation_lifetime;
   histogram m_request_latency[3];
 

@@ -470,6 +470,9 @@ memory_sub_partition::~memory_sub_partition() {
 }
 
 void memory_sub_partition::cache_cycle(unsigned cycle) {
+  if (!m_config->m_L2_config.disabled())
+    m_L2cache->set_latebind_time_offset(m_memcpy_cycle_offset);
+
   // L2 fill responses
   if (!m_config->m_L2_config.disabled()) {
     if (m_L2cache->access_ready() && !m_L2_icnt_queue->full()) {
