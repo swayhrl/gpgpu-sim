@@ -367,20 +367,30 @@ std::vector<unsigned> c2p_cache::exact_candidates(
   return candidates;
 }
 
-bool c2p_cache::accept_miss(l1_cache *requester, mem_fetch *mf,
-                            unsigned long long now) {
+c2p_cache::miss_action c2p_cache::accept_miss(l1_cache *requester,
+                                               mem_fetch *mf,
+                                               unsigned long long now) {
   if ((!m_config.enabled && !m_config.oracle_only) || mf->get_is_write() ||
       mf->isatomic() ||
       mf->get_access_type() != GLOBAL_ACC_R)
-    return false;
+    return MISS_TO_LOWER;
+
+  // ``l1_cache::cycle()`` retries an unconsumed miss queue head each cycle.
+  // A full RING must therefore stall before collecting miss/oracle counters;
+  // otherwise one architectural miss would be counted once per wait cycle.
+  if (m_config.enabled && !m_config.oracle_only &&
+      m_config.scheme == c2p_cache_config::RING_SCHEME &&
+      m_transactions.size() >= m_config.query_queue_size)
+    return MISS_STALL;
 
   ++m_stats.l1_misses;
   const bool oracle = m_config.collect_oracle && has_exact_peer(requester, mf);
   if (oracle) ++m_stats.oracle_peer_hits;
-  if (m_config.oracle_only || !m_config.enabled) return false;
+  if (m_config.oracle_only || !m_config.enabled) return MISS_TO_LOWER;
   if (m_transactions.size() >= m_config.query_queue_size) {
+    // C2P explicitly retains the baseline escape path under query pressure.
     ++m_stats.queries_queue_bypass;
-    return false;
+    return MISS_TO_LOWER;
   }
   if (m_config.scheme == c2p_cache_config::ATA_SCHEME) {
     if (m_ata_issue_cycle != now) {
@@ -389,7 +399,7 @@ bool c2p_cache::accept_miss(l1_cache *requester, mem_fetch *mf,
     }
     const unsigned cluster = cluster_id(requester->c2p_sid());
     if (m_ata_issues[cluster] >= m_config.ata_cluster_issue_width)
-      return false;
+      return MISS_TO_LOWER;
     ++m_ata_issues[cluster];
   }
   for (std::list<transaction>::const_iterator it = m_transactions.begin();
@@ -443,7 +453,7 @@ bool c2p_cache::accept_miss(l1_cache *requester, mem_fetch *mf,
   }
   m_transactions.push_back(txn);
   ++m_stats.queries_accepted;
-  return true;
+  return MISS_ACCEPTED;
 }
 
 void c2p_cache::on_l1_fill(l1_cache *cache, mem_fetch *mf) {

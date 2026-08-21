@@ -2078,13 +2078,22 @@ enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
 }
 
 void l1_cache::cycle() {
-  if (!m_miss_queue.empty() &&
-      m_gpu->get_c2p_cache()->accept_miss(
-          this, m_miss_queue.front(),
-          m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle)) {
-    m_miss_queue.pop_front();
-    cycle_port_accounting();
-    return;
+  if (!m_miss_queue.empty()) {
+    const c2p_cache::miss_action action =
+        m_gpu->get_c2p_cache()->accept_miss(
+            this, m_miss_queue.front(),
+            m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+    if (action == c2p_cache::MISS_ACCEPTED) {
+      m_miss_queue.pop_front();
+      cycle_port_accounting();
+      return;
+    }
+    if (action == c2p_cache::MISS_STALL) {
+      // The ring's discovery FIFO backpressures only lower-request issue.
+      // Cache ports still age every cycle while the miss queue head waits.
+      cycle_port_accounting();
+      return;
+    }
   }
   baseline_cache::cycle();
 }

@@ -115,13 +115,20 @@ struct c2p_cache_stats {
 
 class c2p_cache {
  public:
+  // A sharing controller can either consume a miss, leave it to the normal
+  // lower-cache path, or deliberately hold the L1 miss queue while a finite
+  // discovery structure drains.  The latter is required for RING: silently
+  // sending a full-ring request to L2 would erase the traversal bottleneck
+  // that defines the comparator.
+  enum miss_action { MISS_TO_LOWER, MISS_ACCEPTED, MISS_STALL };
+
   c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu);
 
   bool enabled() const { return m_config.enabled; }
   void reset();
   void register_l1(l1_cache *cache);
-  bool accept_miss(l1_cache *requester, mem_fetch *mf,
-                   unsigned long long now);
+  miss_action accept_miss(l1_cache *requester, mem_fetch *mf,
+                          unsigned long long now);
   void on_l1_fill(l1_cache *cache, mem_fetch *mf);
   void on_l1_flush(l1_cache *cache);
   void cycle(unsigned long long now);
