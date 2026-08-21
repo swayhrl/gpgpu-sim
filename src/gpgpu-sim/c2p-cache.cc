@@ -530,10 +530,13 @@ void c2p_cache::schedule_rows(unsigned long long now) {
 }
 
 unsigned c2p_cache::cluster_distance(unsigned from_sid, unsigned to_sid) const {
-  const unsigned clusters = std::max(1U, m_gpu->get_config().num_cluster());
-  const unsigned sm_per_cluster = std::max(1U, m_num_sms / clusters);
-  const unsigned from_cluster = from_sid / sm_per_cluster;
-  const unsigned to_cluster = to_sid / sm_per_cluster;
+  // The simulation may expose each SM as its own endpoint to avoid modeling
+  // artifacts in a shared simt_core_cluster.  Candidate locality must still
+  // follow the evaluated GPU's logical SM organization, not that endpoint
+  // decomposition.  comparator_cluster_size is the paper's 8-SM group for
+  // both ATA/CCD and C2P candidate ordering.
+  const unsigned from_cluster = cluster_id(from_sid);
+  const unsigned to_cluster = cluster_id(to_sid);
   if (from_cluster == to_cluster) return 0;
   return 1 + (from_cluster > to_cluster ? from_cluster - to_cluster
                                         : to_cluster - from_cluster);
