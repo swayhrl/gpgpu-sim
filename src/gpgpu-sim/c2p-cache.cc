@@ -238,6 +238,7 @@ void c2p_cache::reset() {
     std::fill(m_snapshot[row].begin(), m_snapshot[row].end(), 0);
   m_transactions.clear();
   m_update_queue.clear();
+  m_update_pipeline.clear();
   for (unsigned sid = 0; sid < m_target_probe_queues.size(); ++sid)
     m_target_probe_queues[sid].clear();
   m_rebuild_sid = 0;
@@ -432,6 +433,21 @@ void c2p_cache::on_l1_flush(l1_cache *cache) {
     else
       ++it;
   }
+  // A BF engine may already be encoding a fill/update for this column.  A
+  // flush invalidates that work too; otherwise a delayed completion would
+  // reintroduce stale snapshot bits after the column has been cleared.
+  for (std::deque<pending_update>::iterator it = m_update_pipeline.begin();
+       it != m_update_pipeline.end();) {
+    if (it->entry.sid == sid) {
+      if (it->entry.rebuild) {
+        assert(m_rebuild_pending_tags > 0);
+        --m_rebuild_pending_tags;
+      }
+      it = m_update_pipeline.erase(it);
+    } else {
+      ++it;
+    }
+  }
   if (m_rebuild_active && m_rebuild_target_sid == sid) {
     m_rebuild_tags.clear();
     m_rebuild_enqueue_next_tag = 0;
@@ -458,6 +474,21 @@ void c2p_cache::begin_next_rebuild() {
 }
 
 void c2p_cache::issue_update(unsigned long long now, unsigned &engines_left) {
+  // BF/tag-mask encoding is a two-cycle shared engine operation for both
+  // miss-side queries and background updates.  Commit updates only after
+  // that latency; querying keeps priority because issue_query_encodes() runs
+  // first and passes the remaining engine budget here.
+  while (!m_update_pipeline.empty() &&
+         m_update_pipeline.front().ready_cycle <= now) {
+    const update_entry entry = m_update_pipeline.front().entry;
+    m_update_pipeline.pop_front();
+    set_snapshot_bits(entry.sid, entry.line_tag);
+    ++m_stats.snapshot_updates;
+    if (entry.rebuild) {
+      assert(m_rebuild_pending_tags > 0);
+      --m_rebuild_pending_tags;
+    }
+  }
   if (!m_rebuild_active && now >= m_next_rebuild_cycle) {
     begin_next_rebuild();
   }
@@ -482,12 +513,8 @@ void c2p_cache::issue_update(unsigned long long now, unsigned &engines_left) {
   while (engines_left && !m_update_queue.empty()) {
     const update_entry entry = m_update_queue.front();
     m_update_queue.pop_front();
-    set_snapshot_bits(entry.sid, entry.line_tag);
-    ++m_stats.snapshot_updates;
-    if (entry.rebuild) {
-      assert(m_rebuild_pending_tags > 0);
-      --m_rebuild_pending_tags;
-    }
+    m_update_pipeline.push_back(
+        pending_update(entry, now + m_config.bf_latency));
     --engines_left;
   }
   if (m_rebuild_active &&

@@ -152,6 +152,13 @@ class c2p_cache {
     bool rebuild;
   };
 
+  struct pending_update {
+    pending_update(const update_entry &entry_, unsigned long long ready_cycle_)
+        : entry(entry_), ready_cycle(ready_cycle_) {}
+    update_entry entry;
+    unsigned long long ready_cycle;
+  };
+
   std::vector<unsigned> query_rows(uint64_t line_tag) const;
   void set_snapshot_bits(unsigned sid, uint64_t line_tag);
   void clear_snapshot_column(unsigned sid);
@@ -181,6 +188,7 @@ class c2p_cache {
   std::vector<std::vector<uint64_t> > m_snapshot;
   std::list<transaction> m_transactions;
   std::deque<update_entry> m_update_queue;
+  std::deque<pending_update> m_update_pipeline;
   // m_rebuild_sid is the next L1 selected for a rebuild.  Keep the active
   // target separately so a completed rebuild advances instead of repeatedly
   // rebuilding SM 0.

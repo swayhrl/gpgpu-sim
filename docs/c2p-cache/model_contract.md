@@ -36,7 +36,8 @@ Snapshot bits are updated on every normal L1 fill and are rebuilt from each L1
 tag array. A rebuild clears one selected column, transports its
 valid compact tags through the shared Update Queue at 128 B/cycle, then uses
 the idle share of the BF engines to OR the encoded positions back into that
-column. Miss-side queries always take engine priority. The default starts the
+column after the same configured BF-engine latency as a miss-side query.
+Miss-side queries always take engine priority. The default starts the
 next column as soon as the prior rebuild completes
 (`snapshot_rebuild_interval=0`), so all 64 columns are refreshed continuously
 rather than allowing insertion-only stale bits to accumulate for an arbitrary
