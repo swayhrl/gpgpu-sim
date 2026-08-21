@@ -2101,7 +2101,9 @@ enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
 enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events) {
-  if (!m_frc || mf->get_is_write())
+  // Writes and atomics retain the baseline sector rules until FRC owns their
+  // byte-mask and atomic ordering semantics end-to-end.
+  if (!m_frc || mf->get_is_write() || mf->isatomic())
     return data_cache::access(addr, mf, time, events);
 
   new_addr_type block_addr = m_config.block_addr(addr);
@@ -2137,13 +2139,25 @@ bool l2_cache::frc_handles_read(enum cache_request_status l2_status,
     frc_cache::entry &entry = m_frc->at(entry_index);
     // The address has one FRC owner.  It may merge only into the same sector
     // MSHR; an evicting payload is deliberately not a cache hit.
-    if (entry.state == FRC_FETCHING && m_mshrs.probe(mshr_addr) &&
-        !m_mshrs.full(mshr_addr)) {
-      m_mshrs.add(mshr_addr, mf);
-      m_stats.inc_stats(mf->get_access_type(), MSHR_HIT, mf->get_streamID());
-      m_frc_merges++;
-      access_status = MISS;
-      return true;
+    if (entry.state == FRC_FETCHING) {
+      unsigned sector_mask = mf->get_access_sector_mask().to_ulong();
+      assert(sector_mask && !(sector_mask & (sector_mask - 1)));
+      if (m_mshrs.probe(mshr_addr) && !m_mshrs.full(mshr_addr)) {
+        m_mshrs.add(mshr_addr, mf);
+        m_stats.inc_stats(mf->get_access_type(), MSHR_HIT,
+                          mf->get_streamID());
+        m_frc_merges++;
+        access_status = MISS;
+        return true;
+      }
+      // This sector is already being prefetched for the line, but had no
+      // upper request when the FRC entry was allocated.  Attach an MSHR now;
+      // its response is released by the line-level swap below.
+      if ((entry.pending_mask & sector_mask) && !m_mshrs.full(mshr_addr)) {
+        m_mshrs.add(mshr_addr, mf);
+        access_status = MISS;
+        return true;
+      }
     }
     if (entry.state == FRC_EVICTING) {
       access_status = RESERVATION_FAIL;
@@ -2157,7 +2171,9 @@ bool l2_cache::frc_handles_read(enum cache_request_status l2_status,
     return false;
   }
   if (m_mshrs.probe(mshr_addr) || m_mshrs.full(mshr_addr) ||
-      miss_queue_full(1)) {
+      // Four sector reads plus one reserved writeback slot.  Reserving the
+      // WB slot at admission makes a later dirty swap capacity-safe.
+      miss_queue_full(SECTOR_CHUNCK_SIZE + 1)) {
     m_frc_credit_fallbacks++;
     return false;
   }
@@ -2167,23 +2183,55 @@ bool l2_cache::frc_handles_read(enum cache_request_status l2_status,
   int index = m_frc->allocate(addr, time);
   m_frc_allocations++;
   frc_cache::entry &entry = m_frc->at(index);
-  entry.pending_mask = mf->get_access_sector_mask().to_ulong();
+  entry.pending_mask = (1u << SECTOR_CHUNCK_SIZE) - 1;
   m_mshrs.add(mshr_addr, mf);
   m_extra_mf_fields[mf] = extra_mf_fields(
       mshr_addr, mf->get_addr(), (unsigned)-1, mf->get_data_size(), m_config);
-  m_frc_fill_owner[mf] = index;
+  m_frc_fill_owner[mf] = frc_fill_record(
+      index, mf->get_access_sector_mask().to_ulong(), true);
+  m_frc_primary[index] = mf;
   mf->set_data_size(m_config.get_atom_sz());
   mf->set_addr(mshr_addr);
   m_miss_queue.push_back(mf);
   mf->set_status(m_miss_queue_status, time);
+  // FRC fetches the complete cache line.  The first sector keeps the upper
+  // request identity; the other three are internal reads and never reply to
+  // the interconnect.
+  for (unsigned sector = 0; sector < SECTOR_CHUNCK_SIZE; ++sector) {
+    unsigned sector_mask = 1u << sector;
+    if (sector_mask == mf->get_access_sector_mask().to_ulong()) continue;
+    mem_access_sector_mask_t fetch_sector_mask;
+    fetch_sector_mask.set(sector);
+    mem_access_byte_mask_t fetch_byte_mask;
+    mem_fetch *fetch = m_memfetch_creator->alloc(
+        entry.block_addr + sector * SECTOR_SIZE, mf->get_access_type(),
+        mf->get_access_warp_mask(), fetch_byte_mask, fetch_sector_mask,
+        m_config.get_atom_sz(), false,
+        m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, mf->get_wid(),
+        mf->get_sid(), mf->get_tpc(), NULL, mf->get_streamID());
+    fetch->set_chip(mf->get_tlx_addr().chip);
+    fetch->set_partition(mf->get_tlx_addr().sub_partition);
+    m_frc_fill_owner[fetch] = frc_fill_record(index, sector_mask, false);
+    m_miss_queue.push_back(fetch);
+    fetch->set_status(m_miss_queue_status, time);
+  }
   events.push_back(cache_event(READ_REQUEST_SENT));
   access_status = MISS;
   return true;
 }
 
 bool l2_cache::frc_can_swap(mem_fetch *mf) const {
-  if (m_frc_fill_owner.find(mf) == m_frc_fill_owner.end()) return true;
-  extra_mf_fields_lookup::const_iterator f = m_extra_mf_fields.find(mf);
+  std::map<mem_fetch *, frc_fill_record>::const_iterator owner =
+      m_frc_fill_owner.find(mf);
+  if (owner == m_frc_fill_owner.end()) return true;
+  const frc_cache::entry &entry = m_frc->at(owner->second.entry);
+  // Only the final arriving sector needs a currently allocatable L2 way.
+  if (entry.pending_mask != owner->second.sector) return true;
+  std::map<unsigned, mem_fetch *>::const_iterator primary =
+      m_frc_primary.find(owner->second.entry);
+  if (primary == m_frc_primary.end()) return false;
+  extra_mf_fields_lookup::const_iterator f =
+      m_extra_mf_fields.find(primary->second);
   if (f == m_extra_mf_fields.end()) return false;
   unsigned cache_index = (unsigned)-1;
   enum cache_request_status status = m_tag_array->probe(
@@ -2194,7 +2242,8 @@ bool l2_cache::frc_can_swap(mem_fetch *mf) const {
 bool l2_cache::can_accept_fill(mem_fetch *mf) const { return frc_can_swap(mf); }
 
 bool l2_cache::waiting_for_fill(mem_fetch *mf) {
-  return baseline_cache::waiting_for_fill(mf);
+  return baseline_cache::waiting_for_fill(mf) ||
+         m_frc_fill_owner.find(mf) != m_frc_fill_owner.end();
 }
 
 void l2_cache::fill(mem_fetch *mf, unsigned time) {
@@ -2206,15 +2255,30 @@ void l2_cache::fill(mem_fetch *mf, unsigned time) {
 }
 
 void l2_cache::frc_complete_fill(mem_fetch *mf, unsigned time) {
-  std::map<mem_fetch *, unsigned>::iterator owner = m_frc_fill_owner.find(mf);
+  std::map<mem_fetch *, frc_fill_record>::iterator owner =
+      m_frc_fill_owner.find(mf);
   assert(owner != m_frc_fill_owner.end());
-  unsigned frc_index = owner->second;
+  unsigned frc_index = owner->second.entry;
+  unsigned sector_mask = owner->second.sector;
+  bool primary = owner->second.primary;
   frc_cache::entry &entry = m_frc->at(frc_index);
   assert(entry.state == FRC_FETCHING);
-  extra_mf_fields_lookup::iterator e = m_extra_mf_fields.find(mf);
-  assert(e != m_extra_mf_fields.end());
-  assert(e->second.m_valid);
+  entry.pending_mask &= ~sector_mask;
+  entry.valid_mask |= sector_mask;
+  m_frc_fill_owner.erase(owner);
+  if (!primary) delete mf;
+  if (!entry.pending_mask) frc_swap_line(frc_index, time);
+}
 
+void l2_cache::frc_swap_line(unsigned frc_index, unsigned time) {
+  frc_cache::entry &entry = m_frc->at(frc_index);
+  assert(entry.state == FRC_FETCHING);
+  std::map<unsigned, mem_fetch *>::iterator primary =
+      m_frc_primary.find(frc_index);
+  assert(primary != m_frc_primary.end());
+  mem_fetch *mf = primary->second;
+  extra_mf_fields_lookup::iterator e = m_extra_mf_fields.find(mf);
+  assert(e != m_extra_mf_fields.end() && e->second.m_valid);
   mf->set_data_size(e->second.m_data_size);
   mf->set_addr(e->second.m_addr);
   new_addr_type block_addr = m_config.block_addr(e->second.m_addr);
@@ -2225,22 +2289,28 @@ void l2_cache::frc_complete_fill(mem_fetch *mf, unsigned time) {
       m_tag_array->access(block_addr, time, cache_index, wb, evicted, mf);
   assert(status != RESERVATION_FAIL);
   m_tag_array->fill(cache_index, time, mf);
-
-  bool has_atomic = false;
-  m_mshrs.mark_ready(e->second.m_block_addr, has_atomic);
-  if (has_atomic) {
-    cache_block_t *block = m_tag_array->get_block(cache_index);
-    if (!block->is_modified_line()) m_tag_array->inc_dirty();
-    block->set_status(MODIFIED, mf->get_access_sector_mask());
-    block->set_byte_mask(mf);
+  for (unsigned sector = 0; sector < SECTOR_CHUNCK_SIZE; ++sector) {
+    unsigned sector_mask = 1u << sector;
+    if (sector_mask == mf->get_access_sector_mask().to_ulong()) continue;
+    mem_access_sector_mask_t fill_mask;
+    fill_mask.set(sector);
+    mem_access_byte_mask_t fill_byte_mask;
+    m_tag_array->fill(block_addr, time, fill_mask, fill_byte_mask, false);
   }
-  entry.pending_mask &= ~mf->get_access_sector_mask().to_ulong();
-  entry.valid_mask |= mf->get_access_sector_mask().to_ulong();
+  for (unsigned sector = 0; sector < SECTOR_CHUNCK_SIZE; ++sector) {
+    new_addr_type mshr_addr =
+        m_config.mshr_addr(entry.block_addr + sector * SECTOR_SIZE);
+    if (m_mshrs.probe(mshr_addr)) {
+      bool has_atomic = false;
+      m_mshrs.mark_ready(mshr_addr, has_atomic);
+      assert(!has_atomic);
+    }
+  }
   entry.state = FRC_FETCHED;
   entry.fetched_time = time;
   m_frc_swaps++;
   m_extra_mf_fields.erase(e);
-  m_frc_fill_owner.erase(owner);
+  m_frc_primary.erase(primary);
 
   if (wb && m_config.m_write_policy != WRITE_THROUGH) {
     mem_fetch *wb_mf = m_memfetch_creator->alloc(

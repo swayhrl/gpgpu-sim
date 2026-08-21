@@ -1799,11 +1799,21 @@ class l2_cache : public data_cache {
   static void print_latebind_global_stats(FILE *fp);
 
  private:
+  struct frc_fill_record {
+    frc_fill_record() : entry(0), sector(0), primary(false) {}
+    frc_fill_record(unsigned e, unsigned s, bool p)
+        : entry(e), sector(s), primary(p) {}
+    unsigned entry;
+    unsigned sector;
+    bool primary;
+  };
+
   bool frc_handles_read(enum cache_request_status l2_status,
                         new_addr_type addr, mem_fetch *mf, unsigned time,
                         std::list<cache_event> &events,
                         enum cache_request_status &access_status);
   bool frc_can_swap(mem_fetch *mf) const;
+  void frc_swap_line(unsigned frc_index, unsigned time);
   void frc_complete_fill(mem_fetch *mf, unsigned time);
   void frc_release_writeback(mem_fetch *mf);
 
@@ -1811,7 +1821,8 @@ class l2_cache : public data_cache {
   unsigned m_frc_lookup_latency = 0;
   unsigned m_frc_swap_latency = 0;
   bool m_frc_conservative_timing = false;
-  std::map<mem_fetch *, unsigned> m_frc_fill_owner;
+  std::map<mem_fetch *, frc_fill_record> m_frc_fill_owner;
+  std::map<unsigned, mem_fetch *> m_frc_primary;
   std::map<mem_fetch *, unsigned> m_frc_wb_owner;
   unsigned long long m_frc_lookups = 0;
   unsigned long long m_frc_allocations = 0;
