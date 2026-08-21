@@ -1795,6 +1795,18 @@ class l2_cache : public data_cache {
   void fill(mem_fetch *mf, unsigned time);
   bool waiting_for_fill(mem_fetch *mf);
   bool can_accept_fill(mem_fetch *mf) const;
+  // FRC-owned completions bypass the baseline MSHR response table.
+  bool access_ready() const {
+    return !m_frc_response_queue.empty() || baseline_cache::access_ready();
+  }
+  mem_fetch *next_access() {
+    if (!m_frc_response_queue.empty()) {
+      mem_fetch *mf = m_frc_response_queue.front();
+      m_frc_response_queue.pop_front();
+      return mf;
+    }
+    return baseline_cache::next_access();
+  }
   void flush();
   void invalidate();
   void print_frc_stats(FILE *fp) const;
@@ -1804,12 +1816,10 @@ class l2_cache : public data_cache {
 
  private:
   struct frc_fill_record {
-    frc_fill_record() : entry(0), sector(0), primary(false) {}
-    frc_fill_record(unsigned e, unsigned s, bool p)
-        : entry(e), sector(s), primary(p) {}
+    frc_fill_record() : entry(0), sector(0) {}
+    frc_fill_record(unsigned e, unsigned s) : entry(e), sector(s) {}
     unsigned entry;
     unsigned sector;
-    bool primary;
   };
 
   bool frc_handles_read(enum cache_request_status l2_status,
@@ -1821,6 +1831,8 @@ class l2_cache : public data_cache {
   void frc_charge_management(mem_fetch *mf, unsigned cycles);
   void frc_complete_fill(mem_fetch *mf, unsigned time);
   void frc_release_writeback(mem_fetch *mf);
+  bool frc_waiters_full(unsigned entry) const;
+  void frc_sample_ports();
 
   frc_cache *m_frc = NULL;
   unsigned m_frc_lookup_latency = 0;
@@ -1828,7 +1840,10 @@ class l2_cache : public data_cache {
   bool m_frc_conservative_timing = false;
   std::map<mem_fetch *, frc_fill_record> m_frc_fill_owner;
   std::map<unsigned, mem_fetch *> m_frc_primary;
+  std::map<unsigned, std::list<mem_fetch *> > m_frc_waiters;
   std::map<mem_fetch *, unsigned> m_frc_wb_owner;
+  std::list<mem_fetch *> m_frc_miss_queue;
+  std::list<mem_fetch *> m_frc_response_queue;
   unsigned long long m_frc_lookups = 0;
   unsigned long long m_frc_allocations = 0;
   unsigned long long m_frc_lower_reads = 0;
@@ -1846,6 +1861,9 @@ class l2_cache : public data_cache {
   unsigned long long m_frc_wb_lower_accepted = 0;
   unsigned long long m_frc_wb_wait_cycles = 0;
   unsigned long long m_frc_flush_calls = 0;
+  unsigned m_frc_waiter_peak = 0;
+  unsigned m_frc_request_queue_peak = 0;
+  unsigned m_frc_response_queue_peak = 0;
 };
 
 /*****************************************************************************/

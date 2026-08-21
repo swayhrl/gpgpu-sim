@@ -2139,8 +2139,10 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
 
   enum cache_request_status access_status = RESERVATION_FAIL;
   if (frc_handles_read(probe_status, addr, mf, time, events, access_status)) {
-    // FRC accepts only after it has acquired an entry, an MSHR credit and two
-    // miss-queue credits (read plus a possible delayed dirty writeback).
+    // FRC owns the transient read until the sector can swap into L2.  Its
+    // finite request store is deliberately separate from baseline MSHRs and
+    // miss-queue slots; the two paths share only the actual lower port and
+    // L2 fill/replacement resources.
     record_access_from_probe(probe_status, access_status, cache_index, mf,
                              time);
     return access_status;
@@ -2160,23 +2162,25 @@ bool l2_cache::frc_handles_read(enum cache_request_status l2_status,
   int entry_index = m_frc->lookup(addr);
   if (entry_index >= 0) {
     frc_cache::entry &entry = m_frc->at(entry_index);
-    // The address has one FRC owner.  It may merge only into the same sector
-    // MSHR; an evicting payload is deliberately not a cache hit.
+    // The address has one FRC owner.  A fetching sector accepts a bounded
+    // set of upper waiters; an evicting payload is deliberately not a cache
+    // hit.
     if (entry.state == FRC_FETCHING) {
       unsigned sector_mask = mf->get_access_sector_mask().to_ulong();
       assert(sector_mask && !(sector_mask & (sector_mask - 1)));
-      if (m_mshrs.probe(mshr_addr) && !m_mshrs.full(mshr_addr)) {
-        m_mshrs.add(mshr_addr, mf);
+      assert(entry.pending_mask == sector_mask);
+      if (!frc_waiters_full(entry_index)) {
+        m_frc_waiters[entry_index].push_back(mf);
+        if (m_frc_waiters[entry_index].size() > m_frc_waiter_peak)
+          m_frc_waiter_peak = m_frc_waiters[entry_index].size();
         m_stats.inc_stats(mf->get_access_type(), MSHR_HIT,
                           mf->get_streamID());
         m_frc_merges++;
         access_status = MISS;
         return true;
       }
-      // FRC entries are partition-local sectors.  Allocation creates the
-      // matching MSHR before the entry becomes visible, so any later access
-      // to this entry must merge into that one MSHR.
-      assert(entry.pending_mask == sector_mask);
+      access_status = RESERVATION_FAIL;
+      return true;
     }
     if (entry.state == FRC_EVICTING) {
       access_status = RESERVATION_FAIL;
@@ -2189,10 +2193,10 @@ bool l2_cache::frc_handles_read(enum cache_request_status l2_status,
     m_frc_set_full_fallbacks++;
     return false;
   }
-  if (m_mshrs.probe(mshr_addr) || m_mshrs.full(mshr_addr) ||
-      // One local sector read plus one reserved writeback slot.  Reserving
-      // the writeback credit here makes a later dirty swap capacity-safe.
-      miss_queue_full(2)) {
+  // Do not create a second owner for a baseline transaction that already
+  // reserved this sector.  A full baseline MSHR table or miss queue is not an
+  // FRC resource constraint.
+  if (m_mshrs.probe(mshr_addr)) {
     m_frc_credit_fallbacks++;
     return false;
   }
@@ -2204,22 +2208,31 @@ bool l2_cache::frc_handles_read(enum cache_request_status l2_status,
   frc_cache::entry &entry = m_frc->at(index);
   entry.pending_mask = mf->get_access_sector_mask().to_ulong();
   assert(entry.pending_mask && !(entry.pending_mask & (entry.pending_mask - 1)));
-  m_mshrs.add(mshr_addr, mf);
-  m_extra_mf_fields[mf] = extra_mf_fields(
-      mshr_addr, mf->get_addr(), (unsigned)-1, mf->get_data_size(), m_config);
-  m_frc_fill_owner[mf] = frc_fill_record(
-      index, mf->get_access_sector_mask().to_ulong(), true);
+  // Keep the original upper request unchanged.  A new local sector request
+  // travels to memory; on its return the FRC swaps the sector into L2 and
+  // releases all original waiters through m_frc_response_queue.
+  mem_fetch *fetch = m_memfetch_creator->alloc(
+      mshr_addr, mf->get_access_type(), mf->get_access_warp_mask(),
+      mf->get_access_byte_mask(), mf->get_access_sector_mask(),
+      m_config.get_atom_sz(), false,
+      m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, mf->get_wid(),
+      mf->get_sid(), mf->get_tpc(), mf, mf->get_streamID());
+  m_frc_fill_owner[fetch] =
+      frc_fill_record(index, mf->get_access_sector_mask().to_ulong());
   m_frc_lower_reads++;
   m_frc_primary[index] = mf;
-  mf->set_data_size(m_config.get_atom_sz());
-  mf->set_addr(mshr_addr);
-  m_miss_queue.push_back(mf);
-  mf->set_status(m_miss_queue_status, time);
+  m_frc_waiters[index].push_back(mf);
+  if (m_frc_waiters[index].size() > m_frc_waiter_peak)
+    m_frc_waiter_peak = m_frc_waiters[index].size();
+  m_frc_miss_queue.push_back(fetch);
+  if (m_frc_miss_queue.size() > m_frc_request_queue_peak)
+    m_frc_request_queue_peak = m_frc_miss_queue.size();
+  fetch->set_status(m_miss_queue_status, time);
   // The request is already a partition-local sector.  Fetching other sectors
   // of this 128-byte cache line here would send requests owned by different
   // L2 slices through this slice's DRAM queue.
   if (m_frc_conservative_timing)
-    frc_charge_management(mf, m_frc_lookup_latency);
+    frc_charge_management(fetch, m_frc_lookup_latency);
   events.push_back(cache_event(READ_REQUEST_SENT));
   access_status = MISS;
   return true;
@@ -2235,12 +2248,10 @@ bool l2_cache::frc_can_swap(mem_fetch *mf) const {
   std::map<unsigned, mem_fetch *>::const_iterator primary =
       m_frc_primary.find(owner->second.entry);
   if (primary == m_frc_primary.end()) return false;
-  extra_mf_fields_lookup::const_iterator f =
-      m_extra_mf_fields.find(primary->second);
-  if (f == m_extra_mf_fields.end()) return false;
   unsigned cache_index = (unsigned)-1;
   enum cache_request_status status = m_tag_array->probe(
-      m_config.block_addr(f->second.m_addr), cache_index, primary->second,
+      m_config.block_addr(primary->second->get_addr()), cache_index,
+      primary->second,
       false, true);
   return status != RESERVATION_FAIL;
 }
@@ -2266,13 +2277,14 @@ void l2_cache::frc_complete_fill(mem_fetch *mf, unsigned time) {
   assert(owner != m_frc_fill_owner.end());
   unsigned frc_index = owner->second.entry;
   unsigned sector_mask = owner->second.sector;
-  bool primary = owner->second.primary;
   frc_cache::entry &entry = m_frc->at(frc_index);
   assert(entry.state == FRC_FETCHING);
   entry.pending_mask &= ~sector_mask;
   entry.valid_mask |= sector_mask;
   m_frc_fill_owner.erase(owner);
-  if (!primary) delete mf;
+  // This is an internal lower request, never an upper response.
+  m_bandwidth_management.use_fill_port(mf);
+  delete mf;
   if (!entry.pending_mask) frc_swap_line(frc_index, time);
 }
 
@@ -2285,11 +2297,7 @@ void l2_cache::frc_swap_line(unsigned frc_index, unsigned time) {
       m_frc_primary.find(frc_index);
   assert(primary != m_frc_primary.end());
   mem_fetch *mf = primary->second;
-  extra_mf_fields_lookup::iterator e = m_extra_mf_fields.find(mf);
-  assert(e != m_extra_mf_fields.end() && e->second.m_valid);
-  mf->set_data_size(e->second.m_data_size);
-  mf->set_addr(e->second.m_addr);
-  new_addr_type block_addr = m_config.block_addr(e->second.m_addr);
+  new_addr_type block_addr = m_config.block_addr(mf->get_addr());
   unsigned cache_index = (unsigned)-1;
   bool wb = false;
   evicted_block_info evicted;
@@ -2297,17 +2305,18 @@ void l2_cache::frc_swap_line(unsigned frc_index, unsigned time) {
       m_tag_array->access(block_addr, time, cache_index, wb, evicted, mf);
   assert(status != RESERVATION_FAIL);
   m_tag_array->fill(cache_index, time, mf);
-  new_addr_type mshr_addr = m_config.mshr_addr(entry.block_addr);
-  if (m_mshrs.probe(mshr_addr)) {
-    bool has_atomic = false;
-    m_mshrs.mark_ready(mshr_addr, has_atomic);
-    assert(!has_atomic);
-  }
   entry.state = FRC_FETCHED;
   entry.fetched_time = time;
   m_frc_swaps++;
-  m_extra_mf_fields.erase(e);
   m_frc_primary.erase(primary);
+
+  std::map<unsigned, std::list<mem_fetch *> >::iterator waiters =
+      m_frc_waiters.find(frc_index);
+  assert(waiters != m_frc_waiters.end() && !waiters->second.empty());
+  m_frc_response_queue.splice(m_frc_response_queue.end(), waiters->second);
+  if (m_frc_response_queue.size() > m_frc_response_queue_peak)
+    m_frc_response_queue_peak = m_frc_response_queue.size();
+  m_frc_waiters.erase(waiters);
 
   if (wb && m_config.m_write_policy != WRITE_THROUGH) {
     mem_fetch *wb_mf = m_memfetch_creator->alloc(
@@ -2317,9 +2326,14 @@ void l2_cache::frc_swap_line(unsigned frc_index, unsigned time) {
         NULL, mf->get_streamID());
     wb_mf->set_chip(mf->get_tlx_addr().chip);
     wb_mf->set_partition(mf->get_tlx_addr().sub_partition);
-    std::list<cache_event> events;
-    send_write_request(wb_mf, cache_event(WRITE_BACK_REQUEST_SENT, evicted),
-                       time, events);
+    m_frc_miss_queue.push_back(wb_mf);
+    if (m_frc_miss_queue.size() > m_frc_request_queue_peak)
+      m_frc_request_queue_peak = m_frc_miss_queue.size();
+    wb_mf->set_status(m_miss_queue_status, time);
+    if (m_latebind_stats)
+      m_latebind_stats->record_writeback_enqueue(
+          wb_mf, time, wb_mf->get_data_size(),
+          wb_mf->get_access_sector_mask().count());
     entry.state = FRC_EVICTING;
     m_frc_dirty_swaps++;
     entry.victim_addr = evicted.m_block_addr;
@@ -2345,11 +2359,59 @@ void l2_cache::frc_charge_management(mem_fetch *mf, unsigned cycles) {
 }
 
 void l2_cache::cycle() {
-  mem_fetch *front = m_miss_queue.empty() ? NULL : m_miss_queue.front();
-  baseline_cache::cycle();
-  if (front && m_frc_wb_owner.find(front) != m_frc_wb_owner.end() &&
-      (m_miss_queue.empty() || m_miss_queue.front() != front))
-    frc_release_writeback(front);
+  if (m_frc_miss_queue.empty()) {
+    baseline_cache::cycle();
+    return;
+  }
+
+  // FRC fetches/writes get one shared lower-port arbitration opportunity per
+  // cycle.  Giving the finite FRC store priority is the paper-mode policy;
+  // baseline traffic proceeds whenever this queue is empty.
+  mem_fetch *mf = m_frc_miss_queue.front();
+  if (!m_memport->full(mf->size(), mf->get_is_write())) {
+    m_frc_miss_queue.pop_front();
+    m_memport->push(mf);
+    if (m_latebind_stats)
+      m_latebind_stats->record_lower_request(
+          mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+    if (m_frc_wb_owner.find(mf) != m_frc_wb_owner.end())
+      frc_release_writeback(mf);
+  }
+  frc_sample_ports();
+}
+
+bool l2_cache::frc_waiters_full(unsigned entry) const {
+  std::map<unsigned, std::list<mem_fetch *> >::const_iterator waiters =
+      m_frc_waiters.find(entry);
+  assert(waiters != m_frc_waiters.end());
+  return waiters->second.size() >= m_config.m_mshr_max_merge;
+}
+
+void l2_cache::frc_sample_ports() {
+  bool data_port_busy = !m_bandwidth_management.data_port_free();
+  bool fill_port_busy = !m_bandwidth_management.fill_port_free();
+  m_stats.sample_cache_port_utility(data_port_busy, fill_port_busy);
+  if (m_latebind_stats) {
+    unsigned resident_sectors = 0;
+    unsigned reserved_sectors = 0;
+    unsigned dirty_sectors = 0;
+    for (unsigned i = 0; i < m_config.get_num_lines(); ++i) {
+      cache_block_t *block = m_tag_array->get_block(i);
+      for (unsigned sector = 0; sector < SECTOR_CHUNCK_SIZE; ++sector) {
+        mem_access_sector_mask_t sector_mask;
+        sector_mask.set(sector);
+        cache_block_state state = block->get_status(sector_mask);
+        if (state == RESERVED)
+          reserved_sectors++;
+        else if (state == VALID || state == MODIFIED)
+          resident_sectors++;
+        if (state == MODIFIED) dirty_sectors++;
+      }
+    }
+    m_latebind_stats->sample(resident_sectors, reserved_sectors,
+                             dirty_sectors, data_port_busy, fill_port_busy);
+  }
+  m_bandwidth_management.replenish_port_bandwidth();
 }
 
 void l2_cache::frc_release_writeback(mem_fetch *mf) {
@@ -2369,6 +2431,10 @@ void l2_cache::frc_release_writeback(mem_fetch *mf) {
 void l2_cache::flush() {
   assert(m_frc_fill_owner.empty());
   assert(m_frc_wb_owner.empty());
+  assert(m_frc_primary.empty());
+  assert(m_frc_waiters.empty());
+  assert(m_frc_miss_queue.empty());
+  assert(m_frc_response_queue.empty());
   if (m_frc) {
     m_frc_flush_calls++;
     for (unsigned i = 0; i < m_frc->entries(); ++i) m_frc->release(i);
@@ -2402,6 +2468,8 @@ void l2_cache::print_frc_stats(FILE *fp) const {
           "set_full_fallbacks=%llu credit_fallbacks=%llu swaps=%llu "
           "clean_swaps=%llu dirty_swaps=%llu wb_lower_accepted=%llu "
           "wb_wait_cycles=%llu flush_calls=%llu "
+          "waiter_limit=%u waiter_peak=%u request_queue_peak=%u "
+          "response_queue_peak=%u "
           "fetching=%u fetched=%u evicting=%u\n",
           m_name.c_str(), m_frc->entries(), m_frc->assoc(),
           m_frc_conservative_timing ? "conservative" : "paper",
@@ -2412,6 +2480,8 @@ void l2_cache::print_frc_stats(FILE *fp) const {
           m_frc_set_full_fallbacks, m_frc_credit_fallbacks, m_frc_swaps,
           m_frc_clean_swaps, m_frc_dirty_swaps, m_frc_wb_lower_accepted,
           m_frc_wb_wait_cycles, m_frc_flush_calls,
+          m_config.m_mshr_max_merge, m_frc_waiter_peak,
+          m_frc_request_queue_peak, m_frc_response_queue_peak,
           fetching, fetched, evicting);
 }
 
