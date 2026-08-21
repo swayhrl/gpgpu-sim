@@ -508,7 +508,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
   if (!m_dram_L2_queue->empty()) {
     mem_fetch *mf = m_dram_L2_queue->top();
     if (!m_config->m_L2_config.disabled() && m_L2cache->waiting_for_fill(mf)) {
-      if (m_L2cache->fill_port_free()) {
+      if (m_L2cache->fill_port_free() && m_L2cache->can_accept_fill(mf)) {
         mf->set_status(IN_PARTITION_L2_FILL_QUEUE,
                        m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
         m_L2cache->fill(mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
@@ -650,6 +650,7 @@ void memory_sub_partition::print_cache_stat(unsigned &accesses,
   if (!m_config->m_L2_config.disabled()) {
     m_L2cache->print(fp, accesses, misses);
     m_L2cache->print_latebind_stats(fp);
+    m_L2cache->print_frc_stats(fp);
     if (m_config->l2_latebind_stats &&
         m_id + 1 == m_config->m_n_mem_sub_partition)
       l2_cache::print_latebind_global_stats(fp);

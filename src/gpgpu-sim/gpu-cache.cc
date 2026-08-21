@@ -2046,8 +2046,24 @@ enum cache_request_status data_cache::access(new_addr_type addr, mem_fetch *mf,
   unsigned cache_index = (unsigned)-1;
   enum cache_request_status probe_status =
       m_tag_array->probe(block_addr, cache_index, mf, mf->is_write(), true);
+  return access_from_probe(wr, probe_status, addr, cache_index, mf, time,
+                           events);
+}
+
+enum cache_request_status data_cache::access_from_probe(
+    bool wr, enum cache_request_status probe_status, new_addr_type addr,
+    unsigned cache_index, mem_fetch *mf, unsigned time,
+    std::list<cache_event> &events) {
   enum cache_request_status access_status =
       process_tag_probe(wr, probe_status, addr, cache_index, mf, time, events);
+  record_access_from_probe(probe_status, access_status, cache_index, mf, time);
+  return access_status;
+}
+
+void data_cache::record_access_from_probe(
+    enum cache_request_status probe_status,
+    enum cache_request_status access_status, unsigned cache_index,
+    mem_fetch *mf, unsigned time) {
   if (m_latebind_stats) {
     m_latebind_stats->record_probe(probe_status);
     if (access_status != RESERVATION_FAIL && cache_index != (unsigned)-1 &&
@@ -2067,7 +2083,6 @@ enum cache_request_status data_cache::access(new_addr_type addr, mem_fetch *mf,
   m_stats.inc_stats_pw(mf->get_access_type(),
                        m_stats.select_stats_status(probe_status, access_status),
                        mf->get_streamID());
-  return access_status;
 }
 
 /// This is meant to model the first level data cache in Fermi.
@@ -2086,7 +2101,222 @@ enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
 enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events) {
-  return data_cache::access(addr, mf, time, events);
+  if (!m_frc || mf->get_is_write())
+    return data_cache::access(addr, mf, time, events);
+
+  new_addr_type block_addr = m_config.block_addr(addr);
+  unsigned cache_index = (unsigned)-1;
+  enum cache_request_status probe_status =
+      m_tag_array->probe(block_addr, cache_index, mf, false, true);
+  if (probe_status == HIT)
+    return access_from_probe(false, probe_status, addr, cache_index, mf, time,
+                             events);
+
+  enum cache_request_status access_status = RESERVATION_FAIL;
+  if (frc_handles_read(probe_status, addr, mf, time, events, access_status)) {
+    // FRC accepts only after it has acquired an entry, an MSHR credit and two
+    // miss-queue credits (read plus a possible delayed dirty writeback).
+    record_access_from_probe(probe_status, access_status, cache_index, mf,
+                             time);
+    return access_status;
+  }
+  return access_from_probe(false, probe_status, addr, cache_index, mf, time,
+                           events);
+}
+
+bool l2_cache::frc_handles_read(enum cache_request_status l2_status,
+                                new_addr_type addr, mem_fetch *mf,
+                                unsigned time,
+                                std::list<cache_event> &events,
+                                enum cache_request_status &access_status) {
+  (void)l2_status;
+  m_frc_lookups++;
+  new_addr_type mshr_addr = m_config.mshr_addr(mf->get_addr());
+  int entry_index = m_frc->lookup(addr);
+  if (entry_index >= 0) {
+    frc_cache::entry &entry = m_frc->at(entry_index);
+    // The address has one FRC owner.  It may merge only into the same sector
+    // MSHR; an evicting payload is deliberately not a cache hit.
+    if (entry.state == FRC_FETCHING && m_mshrs.probe(mshr_addr) &&
+        !m_mshrs.full(mshr_addr)) {
+      m_mshrs.add(mshr_addr, mf);
+      m_stats.inc_stats(mf->get_access_type(), MSHR_HIT, mf->get_streamID());
+      m_frc_merges++;
+      access_status = MISS;
+      return true;
+    }
+    if (entry.state == FRC_EVICTING) {
+      access_status = RESERVATION_FAIL;
+      return true;
+    }
+    return false;
+  }
+
+  if (m_frc->find_free(addr) < 0) {
+    m_frc_set_full_fallbacks++;
+    return false;
+  }
+  if (m_mshrs.probe(mshr_addr) || m_mshrs.full(mshr_addr) ||
+      miss_queue_full(1)) {
+    m_frc_credit_fallbacks++;
+    return false;
+  }
+
+  // A read that would normally fail because every L2 way is RESERVED is the
+  // central FRC case: no L2 tag state is touched until this fill returns.
+  int index = m_frc->allocate(addr, time);
+  m_frc_allocations++;
+  frc_cache::entry &entry = m_frc->at(index);
+  entry.pending_mask = mf->get_access_sector_mask().to_ulong();
+  m_mshrs.add(mshr_addr, mf);
+  m_extra_mf_fields[mf] = extra_mf_fields(
+      mshr_addr, mf->get_addr(), (unsigned)-1, mf->get_data_size(), m_config);
+  m_frc_fill_owner[mf] = index;
+  mf->set_data_size(m_config.get_atom_sz());
+  mf->set_addr(mshr_addr);
+  m_miss_queue.push_back(mf);
+  mf->set_status(m_miss_queue_status, time);
+  events.push_back(cache_event(READ_REQUEST_SENT));
+  access_status = MISS;
+  return true;
+}
+
+bool l2_cache::frc_can_swap(mem_fetch *mf) const {
+  if (m_frc_fill_owner.find(mf) == m_frc_fill_owner.end()) return true;
+  extra_mf_fields_lookup::const_iterator f = m_extra_mf_fields.find(mf);
+  if (f == m_extra_mf_fields.end()) return false;
+  unsigned cache_index = (unsigned)-1;
+  enum cache_request_status status = m_tag_array->probe(
+      m_config.block_addr(f->second.m_addr), cache_index, mf, false, true);
+  return status != RESERVATION_FAIL;
+}
+
+bool l2_cache::can_accept_fill(mem_fetch *mf) const { return frc_can_swap(mf); }
+
+bool l2_cache::waiting_for_fill(mem_fetch *mf) {
+  return baseline_cache::waiting_for_fill(mf);
+}
+
+void l2_cache::fill(mem_fetch *mf, unsigned time) {
+  if (m_frc_fill_owner.find(mf) == m_frc_fill_owner.end()) {
+    baseline_cache::fill(mf, time);
+    return;
+  }
+  frc_complete_fill(mf, time);
+}
+
+void l2_cache::frc_complete_fill(mem_fetch *mf, unsigned time) {
+  std::map<mem_fetch *, unsigned>::iterator owner = m_frc_fill_owner.find(mf);
+  assert(owner != m_frc_fill_owner.end());
+  unsigned frc_index = owner->second;
+  frc_cache::entry &entry = m_frc->at(frc_index);
+  assert(entry.state == FRC_FETCHING);
+  extra_mf_fields_lookup::iterator e = m_extra_mf_fields.find(mf);
+  assert(e != m_extra_mf_fields.end());
+  assert(e->second.m_valid);
+
+  mf->set_data_size(e->second.m_data_size);
+  mf->set_addr(e->second.m_addr);
+  new_addr_type block_addr = m_config.block_addr(e->second.m_addr);
+  unsigned cache_index = (unsigned)-1;
+  bool wb = false;
+  evicted_block_info evicted;
+  enum cache_request_status status =
+      m_tag_array->access(block_addr, time, cache_index, wb, evicted, mf);
+  assert(status != RESERVATION_FAIL);
+  m_tag_array->fill(cache_index, time, mf);
+
+  bool has_atomic = false;
+  m_mshrs.mark_ready(e->second.m_block_addr, has_atomic);
+  if (has_atomic) {
+    cache_block_t *block = m_tag_array->get_block(cache_index);
+    if (!block->is_modified_line()) m_tag_array->inc_dirty();
+    block->set_status(MODIFIED, mf->get_access_sector_mask());
+    block->set_byte_mask(mf);
+  }
+  entry.pending_mask &= ~mf->get_access_sector_mask().to_ulong();
+  entry.valid_mask |= mf->get_access_sector_mask().to_ulong();
+  entry.state = FRC_FETCHED;
+  entry.fetched_time = time;
+  m_frc_swaps++;
+  m_extra_mf_fields.erase(e);
+  m_frc_fill_owner.erase(owner);
+
+  if (wb && m_config.m_write_policy != WRITE_THROUGH) {
+    mem_fetch *wb_mf = m_memfetch_creator->alloc(
+        evicted.m_block_addr, m_wrbk_type, mf->get_access_warp_mask(),
+        evicted.m_byte_mask, evicted.m_sector_mask, evicted.m_modified_size,
+        true, m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle, -1, -1, -1,
+        NULL, mf->get_streamID());
+    wb_mf->set_chip(mf->get_tlx_addr().chip);
+    wb_mf->set_partition(mf->get_tlx_addr().sub_partition);
+    std::list<cache_event> events;
+    send_write_request(wb_mf, cache_event(WRITE_BACK_REQUEST_SENT, evicted),
+                       time, events);
+    entry.state = FRC_EVICTING;
+    m_frc_dirty_swaps++;
+    entry.victim_addr = evicted.m_block_addr;
+    entry.victim_mask = evicted.m_sector_mask.to_ulong();
+    m_frc_wb_owner[wb_mf] = frc_index;
+  } else {
+    m_frc_clean_swaps++;
+    m_frc->release(frc_index);
+  }
+  if (m_frc_conservative_timing) m_bandwidth_management.use_fill_port(mf);
+}
+
+void l2_cache::cycle() {
+  mem_fetch *front = m_miss_queue.empty() ? NULL : m_miss_queue.front();
+  baseline_cache::cycle();
+  if (front && m_frc_wb_owner.find(front) != m_frc_wb_owner.end() &&
+      (m_miss_queue.empty() || m_miss_queue.front() != front))
+    frc_release_writeback(front);
+}
+
+void l2_cache::frc_release_writeback(mem_fetch *mf) {
+  std::map<mem_fetch *, unsigned>::iterator owner = m_frc_wb_owner.find(mf);
+  assert(owner != m_frc_wb_owner.end());
+  assert(m_frc->at(owner->second).state == FRC_EVICTING);
+  m_frc_wb_lower_accepted++;
+  m_frc->release(owner->second);
+  m_frc_wb_owner.erase(owner);
+}
+
+void l2_cache::flush() {
+  assert(m_frc_fill_owner.empty());
+  assert(m_frc_wb_owner.empty());
+  if (m_frc)
+    for (unsigned i = 0; i < m_frc->entries(); ++i) m_frc->release(i);
+  baseline_cache::flush();
+}
+
+void l2_cache::invalidate() { flush(); }
+
+void l2_cache::print_frc_stats(FILE *fp) const {
+  if (!m_frc) return;
+  unsigned fetching = 0;
+  unsigned fetched = 0;
+  unsigned evicting = 0;
+  for (unsigned i = 0; i < m_frc->entries(); ++i) {
+    switch (m_frc->at(i).state) {
+      case FRC_FETCHING: fetching++; break;
+      case FRC_FETCHED: fetched++; break;
+      case FRC_EVICTING: evicting++; break;
+      case FRC_FREE: break;
+    }
+  }
+  fprintf(fp,
+          "frc_l2 cache=%s entries=%u assoc=%u timing=%s "
+          "lookups=%llu allocations=%llu merges=%llu "
+          "set_full_fallbacks=%llu credit_fallbacks=%llu swaps=%llu "
+          "clean_swaps=%llu dirty_swaps=%llu wb_lower_accepted=%llu "
+          "fetching=%u fetched=%u evicting=%u\\n",
+          m_name.c_str(), m_frc->entries(), m_frc->assoc(),
+          m_frc_conservative_timing ? "conservative" : "paper",
+          m_frc_lookups, m_frc_allocations, m_frc_merges,
+          m_frc_set_full_fallbacks, m_frc_credit_fallbacks, m_frc_swaps,
+          m_frc_clean_swaps, m_frc_dirty_swaps, m_frc_wb_lower_accepted,
+          fetching, fetched, evicting);
 }
 
 void l2_cache::note_reply(mem_fetch *mf, unsigned long long time) {

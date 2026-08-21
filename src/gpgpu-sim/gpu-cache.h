@@ -1597,6 +1597,17 @@ class data_cache : public baseline_cache {
                                            std::list<cache_event> &events);
 
  protected:
+  // Reuse one L2 tag probe when a derived cache adds a parallel structure.
+  // Keeping this in data_cache prevents a fallback from counting/probing twice.
+  enum cache_request_status access_from_probe(
+      bool wr, enum cache_request_status probe_status, new_addr_type addr,
+      unsigned cache_index, mem_fetch *mf, unsigned time,
+      std::list<cache_event> &events);
+  void record_access_from_probe(enum cache_request_status probe_status,
+                                enum cache_request_status access_status,
+                                unsigned cache_index, mem_fetch *mf,
+                                unsigned time);
+
   data_cache(const char *name, cache_config &config, int core_id, int type_id,
              mem_fetch_interface *memport, mem_fetch_allocator *mfcreator,
              enum mem_fetch_status status, tag_array *new_tag_array,
@@ -1776,15 +1787,41 @@ class l2_cache : public data_cache {
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events);
+  void cycle();
+  void fill(mem_fetch *mf, unsigned time);
+  bool waiting_for_fill(mem_fetch *mf);
+  bool can_accept_fill(mem_fetch *mf) const;
+  void flush();
+  void invalidate();
+  void print_frc_stats(FILE *fp) const;
   void note_reply(mem_fetch *mf, unsigned long long time);
   void note_consumed(mem_fetch *mf, unsigned long long time);
   static void print_latebind_global_stats(FILE *fp);
 
  private:
+  bool frc_handles_read(enum cache_request_status l2_status,
+                        new_addr_type addr, mem_fetch *mf, unsigned time,
+                        std::list<cache_event> &events,
+                        enum cache_request_status &access_status);
+  bool frc_can_swap(mem_fetch *mf) const;
+  void frc_complete_fill(mem_fetch *mf, unsigned time);
+  void frc_release_writeback(mem_fetch *mf);
+
   frc_cache *m_frc = NULL;
   unsigned m_frc_lookup_latency = 0;
   unsigned m_frc_swap_latency = 0;
   bool m_frc_conservative_timing = false;
+  std::map<mem_fetch *, unsigned> m_frc_fill_owner;
+  std::map<mem_fetch *, unsigned> m_frc_wb_owner;
+  unsigned long long m_frc_lookups = 0;
+  unsigned long long m_frc_allocations = 0;
+  unsigned long long m_frc_merges = 0;
+  unsigned long long m_frc_set_full_fallbacks = 0;
+  unsigned long long m_frc_credit_fallbacks = 0;
+  unsigned long long m_frc_swaps = 0;
+  unsigned long long m_frc_clean_swaps = 0;
+  unsigned long long m_frc_dirty_swaps = 0;
+  unsigned long long m_frc_wb_lower_accepted = 0;
 };
 
 /*****************************************************************************/
