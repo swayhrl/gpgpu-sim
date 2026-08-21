@@ -882,4 +882,16 @@ void c2p_cache::print_stats(FILE *fout) const {
           histogram_percentile(m_peer_access_miss_hist, 99));
   fprintf(fout, "c2p_peer_access_miss_max = %u\n",
           histogram_max(m_peer_access_miss_hist));
+  // Keep the complete distributions as well as percentile summaries.  The
+  // paper's Figure 14 compares the number of peer L1s consulted by completed
+  // remote hits and by probe attempts that ultimately fall back; a percentile
+  // alone cannot recreate that plot or expose a long tail.
+  for (unsigned i = 1; i < m_peer_access_hit_hist.size(); ++i) {
+    if (m_peer_access_hit_hist[i])
+      fprintf(fout, "c2p_peer_access_hit_count_%u = %llu\n", i,
+              m_peer_access_hit_hist[i]);
+    if (m_peer_access_miss_hist[i])
+      fprintf(fout, "c2p_peer_access_miss_count_%u = %llu\n", i,
+              m_peer_access_miss_hist[i]);
+  }
 }
