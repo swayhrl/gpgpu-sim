@@ -47,6 +47,7 @@ class c2p_cache_config {
   unsigned update_transport_bytes_per_cycle;
   unsigned snapshot_rebuild_interval;
   unsigned probe_timeout;
+  unsigned target_probe_queue_size;
   unsigned snapshot_copies;
   unsigned scheme;
   unsigned comparator_cluster_size;
@@ -112,6 +113,7 @@ class c2p_cache {
     WAIT_ROWS,
     WAIT_MATCH,
     READY_TO_PROBE,
+    WAIT_TARGET_PROBE,
     WAIT_PROBE,
     WAIT_RETURN,
     WAIT_FALLBACK
@@ -159,6 +161,7 @@ class c2p_cache {
   void issue_query_encodes(unsigned long long now, unsigned &engines_left);
   void schedule_rows(unsigned long long now);
   void complete_matches(unsigned long long now);
+  void service_target_probe_queues(unsigned long long now);
   void advance_probes(unsigned long long now);
   void record_peer_accesses(bool hit, unsigned accesses);
   bool has_exact_peer(l1_cache *requester, mem_fetch *mf) const;
@@ -189,6 +192,7 @@ class c2p_cache {
   unsigned m_rebuild_enqueue_next_tag;
   unsigned m_rebuild_pending_tags;
   std::vector<std::vector<bool> > m_bank_copy_used;
+  std::vector<std::deque<transaction *> > m_target_probe_queues;
   std::vector<unsigned> m_ccd_counters;
   unsigned long long m_ata_issue_cycle;
   std::vector<unsigned> m_ata_issues;

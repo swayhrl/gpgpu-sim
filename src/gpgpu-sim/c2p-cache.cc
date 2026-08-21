@@ -60,6 +60,7 @@ c2p_cache_config::c2p_cache_config()
       update_transport_bytes_per_cycle(128),
       snapshot_rebuild_interval(0),
       probe_timeout(32),
+      target_probe_queue_size(32),
       snapshot_copies(4),
       scheme(C2P_SCHEME),
       comparator_cluster_size(8),
@@ -111,7 +112,10 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
                          "0");
   option_parser_register(opp, "-c2p_cache_probe_timeout", OPT_UINT32,
                          &probe_timeout,
-                         "C2P target-L1 busy timeout before L2 fallback", "32");
+                         "C2P full target-probe queue timeout before L2 fallback", "32");
+  option_parser_register(opp, "-c2p_cache_target_probe_queue_size", OPT_UINT32,
+                         &target_probe_queue_size,
+                         "C2P remote probe FIFO entries per target L1", "32");
   option_parser_register(opp, "-c2p_cache_snapshot_copies", OPT_UINT32,
                          &snapshot_copies, "C2P Snapshot Matrix copies", "4");
   option_parser_register(
@@ -211,6 +215,7 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
       m_bank_copy_used(kSnapshotBanks,
                        std::vector<bool>(std::max(1U, config.snapshot_copies),
                                          false)),
+      m_target_probe_queues(m_num_sms),
       m_ccd_counters(
           std::max(1U, (m_num_sms + std::max(1U, config.comparator_cluster_size) - 1) /
                            std::max(1U, config.comparator_cluster_size)),
@@ -225,6 +230,7 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
       m_peer_access_miss_hist(m_num_sms + 1, 0) {
   assert(m_config.scheme <= c2p_cache_config::RING_SCHEME);
   assert(m_config.comparator_cluster_size > 0);
+  assert(m_config.target_probe_queue_size > 0);
 }
 
 void c2p_cache::reset() {
@@ -232,6 +238,8 @@ void c2p_cache::reset() {
     std::fill(m_snapshot[row].begin(), m_snapshot[row].end(), 0);
   m_transactions.clear();
   m_update_queue.clear();
+  for (unsigned sid = 0; sid < m_target_probe_queues.size(); ++sid)
+    m_target_probe_queues[sid].clear();
   m_rebuild_sid = 0;
   m_rebuild_target_sid = (unsigned)-1;
   m_rebuild_active = false;
@@ -646,7 +654,23 @@ void c2p_cache::complete_matches(unsigned long long now) {
   }
 }
 
+void c2p_cache::service_target_probe_queues(unsigned long long now) {
+  for (unsigned sid = 0; sid < m_target_probe_queues.size(); ++sid) {
+    std::deque<transaction *> &queue = m_target_probe_queues[sid];
+    if (queue.empty() || !m_l1s[sid]->data_port_free()) continue;
+
+    transaction *txn = queue.front();
+    queue.pop_front();
+    assert(txn->state == WAIT_TARGET_PROBE);
+    m_l1s[sid]->c2p_reserve_probe_port(txn->probe_latency);
+    txn->probe_sid = sid;
+    txn->state = WAIT_PROBE;
+    txn->ready_cycle = now + txn->probe_latency;
+  }
+}
+
 void c2p_cache::advance_probes(unsigned long long now) {
+  service_target_probe_queues(now);
   for (std::list<transaction>::iterator it = m_transactions.begin();
        it != m_transactions.end();) {
     bool erase = false;
@@ -684,7 +708,20 @@ void c2p_cache::advance_probes(unsigned long long now) {
       } else {
         const unsigned sid = it->candidates[it->candidate_next];
         l1_cache *target = m_l1s[sid];
-        if (target->data_port_free()) {
+        // C2P uses a finite request FIFO at each target L1.  Queueing a
+        // selected peer preserves the target-port contention model without
+        // discarding a useful probe merely because that port is busy this
+        // cycle.  The timeout below applies only when that finite FIFO is
+        // full, at which point the original request may safely fall back.
+        if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
+            m_target_probe_queues[sid].size() < m_config.target_probe_queue_size) {
+          m_target_probe_queues[sid].push_back(&*it);
+          ++it->candidate_next;
+          ++it->peer_accesses;
+          ++m_stats.peer_probes;
+          ++m_stats.peer_l1_accesses;
+          it->state = WAIT_TARGET_PROBE;
+        } else if (target->data_port_free()) {
           target->c2p_reserve_probe_port(it->probe_latency);
           it->probe_sid = sid;
           ++it->candidate_next;

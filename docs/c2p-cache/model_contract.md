@@ -57,10 +57,13 @@ manuscript does not state them. They are config options and must be reported
 with every result. The primary configuration uses no idle gap, matching the
 paper's continuous background-refresh description.
 
-Candidate probes are serialized nearest-first.  A remote probe reserves the
-target L1 data port for its tag latency; a remote return waits for the
-requester's fill port.  If no candidate exists, candidates all miss, or a
-target stays busy through the timeout, the original transaction proceeds to
+Candidate probes are serialized nearest-first.  Each target L1 has a finite
+32-entry remote-probe FIFO: a selected candidate waits there until the target
+data port is free, then reserves that port for its tag latency.  The timeout
+applies only while that FIFO is full, rather than while a useful request is
+already queued at its target.  A remote return waits for the requester's fill
+port.  If no candidate exists, candidates all miss, or a full target FIFO
+stays unavailable through the timeout, the original transaction proceeds to
 the ordinary L2 path.
 
 Oracle availability is sampled when the L1 miss enters C2P.  A real remote
