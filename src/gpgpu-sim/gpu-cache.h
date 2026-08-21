@@ -1829,7 +1829,8 @@ class l2_cache : public data_cache {
   };
 
   bool frc_handles_read(enum cache_request_status l2_status,
-                        new_addr_type addr, mem_fetch *mf, unsigned time,
+                        unsigned miss_time_candidate, new_addr_type addr,
+                        mem_fetch *mf, unsigned time,
                         std::list<cache_event> &events,
                         enum cache_request_status &access_status);
   bool frc_can_swap(mem_fetch *mf) const;
@@ -1855,6 +1856,7 @@ class l2_cache : public data_cache {
   bool m_frc_lower_turn = true;
   unsigned long long m_frc_lookups = 0;
   unsigned long long m_frc_allocations = 0;
+  unsigned long long m_frc_early_fetches = 0;
   unsigned long long m_frc_lower_reads = 0;
   unsigned long long m_frc_management_cycles = 0;
   unsigned long long m_frc_merges = 0;
@@ -1867,6 +1869,9 @@ class l2_cache : public data_cache {
   unsigned long long m_frc_swaps = 0;
   unsigned long long m_frc_clean_swaps = 0;
   unsigned long long m_frc_dirty_swaps = 0;
+  unsigned long long m_frc_resident_hits_while_fetching = 0;
+  unsigned long long m_frc_fill_time_selections = 0;
+  unsigned long long m_frc_fill_time_candidate_changes = 0;
   unsigned long long m_frc_wb_lower_accepted = 0;
   unsigned long long m_frc_wb_wait_cycles = 0;
   unsigned long long m_frc_flush_calls = 0;

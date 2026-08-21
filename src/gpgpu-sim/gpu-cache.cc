@@ -2135,12 +2135,20 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
   unsigned cache_index = (unsigned)-1;
   enum cache_request_status probe_status =
       m_tag_array->probe(block_addr, cache_index, mf, false, true);
-  if (probe_status == HIT)
+  if (probe_status == HIT) {
+    for (unsigned i = 0; i < m_frc->entries(); ++i) {
+      if (m_frc->at(i).state == FRC_FETCHING) {
+        m_frc_resident_hits_while_fetching++;
+        break;
+      }
+    }
     return access_from_probe(false, probe_status, addr, cache_index, mf, time,
                              events);
+  }
 
   enum cache_request_status access_status = RESERVATION_FAIL;
-  if (frc_handles_read(probe_status, addr, mf, time, events, access_status)) {
+  if (frc_handles_read(probe_status, cache_index, addr, mf, time, events,
+                       access_status)) {
     // FRC owns the transient read until the sector can swap into L2.  Its
     // finite request store is deliberately separate from baseline MSHRs and
     // miss-queue slots; the two paths share only the actual lower port and
@@ -2154,6 +2162,7 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
 }
 
 bool l2_cache::frc_handles_read(enum cache_request_status l2_status,
+                                unsigned miss_time_candidate,
                                 new_addr_type addr, mem_fetch *mf,
                                 unsigned time,
                                 std::list<cache_event> &events,
@@ -2207,7 +2216,14 @@ bool l2_cache::frc_handles_read(enum cache_request_status l2_status,
   // central FRC case: no L2 tag state is touched until this fill returns.
   int index = m_frc->allocate(addr, time);
   m_frc_allocations++;
+  m_frc_early_fetches++;
   frc_cache::entry &entry = m_frc->at(index);
+  if (l2_status == MISS && miss_time_candidate != (unsigned)-1 &&
+      !m_tag_array->get_block(miss_time_candidate)->is_invalid_line()) {
+    entry.has_miss_time_candidate = true;
+    entry.miss_time_candidate_addr =
+        m_tag_array->get_block(miss_time_candidate)->m_block_addr;
+  }
   entry.pending_mask = mf->get_access_sector_mask().to_ulong();
   assert(entry.pending_mask && !(entry.pending_mask & (entry.pending_mask - 1)));
   // Keep the original upper request unchanged.  A new local sector request
@@ -2311,6 +2327,17 @@ void l2_cache::frc_swap_line(unsigned frc_index, unsigned time) {
   assert(primary != m_frc_primary.end());
   mem_fetch *mf = primary->second;
   new_addr_type block_addr = m_config.block_addr(mf->get_addr());
+  unsigned fill_time_candidate = (unsigned)-1;
+  enum cache_request_status fill_time_status =
+      m_tag_array->probe(block_addr, fill_time_candidate, mf, false, true);
+  if (fill_time_status == MISS && fill_time_candidate != (unsigned)-1 &&
+      !m_tag_array->get_block(fill_time_candidate)->is_invalid_line()) {
+    m_frc_fill_time_selections++;
+    if (entry.has_miss_time_candidate &&
+        entry.miss_time_candidate_addr !=
+            m_tag_array->get_block(fill_time_candidate)->m_block_addr)
+      m_frc_fill_time_candidate_changes++;
+  }
   unsigned cache_index = (unsigned)-1;
   bool wb = false;
   evicted_block_info evicted;
@@ -2507,24 +2534,29 @@ void l2_cache::print_frc_stats(FILE *fp) const {
   }
   fprintf(fp,
           "frc_l2 cache=%s entries=%u assoc=%u timing=%s "
-          "lookups=%llu allocations=%llu lower_reads=%llu "
+          "lookups=%llu allocations=%llu early_fetches=%llu lower_reads=%llu "
           "management_cycles=%llu merges=%llu "
           "write_fallbacks=%llu atomic_fallbacks=%llu "
           "write_conflict_stalls=%llu atomic_conflict_stalls=%llu "
           "set_full_fallbacks=%llu credit_fallbacks=%llu swaps=%llu "
           "clean_swaps=%llu dirty_swaps=%llu wb_lower_accepted=%llu "
+          "resident_hits_while_fetching=%llu fill_time_selections=%llu "
+          "fill_time_candidate_changes=%llu "
           "wb_wait_cycles=%llu flush_calls=%llu "
           "waiter_limit=%u waiter_peak=%u request_queue_peak=%u "
           "response_queue_peak=%u "
           "fetching=%u fetched=%u evicting=%u\n",
           m_name.c_str(), m_frc->entries(), m_frc->assoc(),
           m_frc_conservative_timing ? "conservative" : "paper",
-          m_frc_lookups, m_frc_allocations, m_frc_lower_reads,
+          m_frc_lookups, m_frc_allocations, m_frc_early_fetches,
+          m_frc_lower_reads,
           m_frc_management_cycles, m_frc_merges,
           m_frc_write_fallbacks, m_frc_atomic_fallbacks,
           m_frc_write_conflict_stalls, m_frc_atomic_conflict_stalls,
           m_frc_set_full_fallbacks, m_frc_credit_fallbacks, m_frc_swaps,
           m_frc_clean_swaps, m_frc_dirty_swaps, m_frc_wb_lower_accepted,
+          m_frc_resident_hits_while_fetching, m_frc_fill_time_selections,
+          m_frc_fill_time_candidate_changes,
           m_frc_wb_wait_cycles, m_frc_flush_calls,
           m_config.m_mshr_max_merge, m_frc_waiter_peak,
           m_frc_request_queue_peak, m_frc_response_queue_peak,

@@ -58,6 +58,8 @@ int frc_cache::allocate(new_addr_type addr, unsigned long long time) {
   e.block_addr = block_addr(addr);
   e.valid_mask = 0;
   e.pending_mask = 0;
+  e.has_miss_time_candidate = false;
+  e.miss_time_candidate_addr = 0;
   e.victim_addr = 0;
   e.victim_mask = 0;
   e.alloc_time = time;

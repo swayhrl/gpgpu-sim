@@ -27,6 +27,8 @@ class frc_cache {
           block_addr(0),
           valid_mask(0),
           pending_mask(0),
+          has_miss_time_candidate(false),
+          miss_time_candidate_addr(0),
           victim_addr(0),
           victim_mask(0),
           alloc_time(0),
@@ -37,6 +39,10 @@ class frc_cache {
     new_addr_type block_addr;
     unsigned valid_mask;
     unsigned pending_mask;
+    // Observation-only sample of the conventional candidate at allocation.
+    // FRC swap never uses this field to choose a victim.
+    bool has_miss_time_candidate;
+    new_addr_type miss_time_candidate_addr;
     new_addr_type victim_addr;
     unsigned victim_mask;
     unsigned long long alloc_time;
