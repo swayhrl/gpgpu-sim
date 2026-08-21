@@ -1814,6 +1814,7 @@ class l2_cache : public data_cache {
                         enum cache_request_status &access_status);
   bool frc_can_swap(mem_fetch *mf) const;
   void frc_swap_line(unsigned frc_index, unsigned time);
+  void frc_charge_management(mem_fetch *mf, unsigned cycles);
   void frc_complete_fill(mem_fetch *mf, unsigned time);
   void frc_release_writeback(mem_fetch *mf);
 

@@ -2217,6 +2217,8 @@ bool l2_cache::frc_handles_read(enum cache_request_status l2_status,
     m_miss_queue.push_back(fetch);
     fetch->set_status(m_miss_queue_status, time);
   }
+  if (m_frc_conservative_timing)
+    frc_charge_management(mf, m_frc_lookup_latency);
   events.push_back(cache_event(READ_REQUEST_SENT));
   access_status = MISS;
   return true;
@@ -2334,7 +2336,16 @@ void l2_cache::frc_swap_line(unsigned frc_index, unsigned time) {
     m_frc_clean_swaps++;
     m_frc->release(frc_index);
   }
-  if (m_frc_conservative_timing) m_bandwidth_management.use_fill_port(mf);
+  if (m_frc_conservative_timing)
+    frc_charge_management(mf, m_frc_swap_latency);
+}
+
+void l2_cache::frc_charge_management(mem_fetch *mf, unsigned cycles) {
+  // The normal fill-port model consumes one cycle for a 32B atom on QV100.
+  // Repeating that charge serializes FRC metadata/data movement without
+  // adding a pipeline register or altering the paper-timing mode.
+  for (unsigned i = 0; i < cycles; ++i)
+    m_bandwidth_management.use_fill_port(mf);
 }
 
 void l2_cache::cycle() {
