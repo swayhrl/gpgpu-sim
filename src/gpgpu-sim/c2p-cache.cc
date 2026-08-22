@@ -67,6 +67,7 @@ c2p_cache_config::c2p_cache_config()
       snapshot_rebuild_interval(0),
       probe_timeout(32),
       target_probe_queue_size(32),
+      max_candidate_probes(0),
       diagnostic_target_port_bypass(false),
       snapshot_copies(4),
       scheme(C2P_SCHEME),
@@ -128,6 +129,10 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
   option_parser_register(opp, "-c2p_cache_target_probe_queue_size", OPT_UINT32,
                          &target_probe_queue_size,
                          "C2P remote probe FIFO entries per target L1", "32");
+  option_parser_register(opp, "-c2p_cache_max_candidate_probes", OPT_UINT32,
+                         &max_candidate_probes,
+                         "C2P+ failed-candidate probe budget (0=exhaustive)",
+                         "0");
   option_parser_register(
       opp, "-c2p_cache_diagnostic_target_port_bypass", OPT_BOOL,
       &diagnostic_target_port_bypass,
@@ -201,6 +206,7 @@ void c2p_cache_stats::clear() {
   remote_hits = 0;
   fallback_no_candidate = 0;
   fallback_candidates_exhausted = 0;
+  fallback_candidate_budget = 0;
   fallback_probe_timeout = 0;
   fallback_queue = 0;
   snapshot_false_positive = 0;
@@ -897,6 +903,14 @@ void c2p_cache::advance_probes(unsigned long long now) {
         else
           ++m_stats.fallback_candidates_exhausted;
         begin_fallback(*it, now);
+      } else if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
+                 m_config.max_candidate_probes != 0 &&
+                 it->candidate_next >= m_config.max_candidate_probes) {
+        // C2P+ bounds only failed probes.  A selected candidate is always
+        // allowed to complete; after this many misses the original request
+        // takes the normal lower path instead of extending a serial FP tail.
+        ++m_stats.fallback_candidate_budget;
+        begin_fallback(*it, now);
       } else {
         const unsigned sid = it->candidates[it->candidate_next];
         l1_cache *target = m_l1s[sid];
@@ -1078,6 +1092,8 @@ void c2p_cache::print_stats(FILE *fout) const {
   fprintf(fout, "c2p_fallback_no_candidate = %llu\n", m_stats.fallback_no_candidate);
   fprintf(fout, "c2p_fallback_candidates_exhausted = %llu\n",
           m_stats.fallback_candidates_exhausted);
+  fprintf(fout, "c2p_fallback_candidate_budget = %llu\n",
+          m_stats.fallback_candidate_budget);
   fprintf(fout, "c2p_fallback_probe_timeout = %llu\n", m_stats.fallback_probe_timeout);
   fprintf(fout, "c2p_fallback_queue = %llu\n", m_stats.fallback_queue);
   fprintf(fout, "c2p_snapshot_false_positive = %llu\n", m_stats.snapshot_false_positive);

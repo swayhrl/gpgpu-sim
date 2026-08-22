@@ -53,6 +53,8 @@ class c2p_cache_config {
   unsigned snapshot_rebuild_interval;
   unsigned probe_timeout;
   unsigned target_probe_queue_size;
+  // C2P+ only: zero preserves the default exhaustive candidate scan.
+  unsigned max_candidate_probes;
   // Diagnostic-only control: bypass just the target-L1 data-port contention
   // for C2P probes.  It is off for every architectural experiment.
   bool diagnostic_target_port_bypass;
@@ -113,6 +115,7 @@ struct c2p_cache_stats {
   unsigned long long remote_hits;
   unsigned long long fallback_no_candidate;
   unsigned long long fallback_candidates_exhausted;
+  unsigned long long fallback_candidate_budget;
   unsigned long long fallback_probe_timeout;
   unsigned long long fallback_queue;
   unsigned long long snapshot_false_positive;
