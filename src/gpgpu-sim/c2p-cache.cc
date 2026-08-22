@@ -74,6 +74,9 @@ c2p_cache_config::c2p_cache_config()
       probe_timeout(32),
       target_probe_queue_size(32),
       max_candidate_probes(0),
+      adaptive_probe_policy(false),
+      adaptive_probe_score_threshold(4),
+      adaptive_probe_explore_period(64),
       separate_target_tag_port(false),
       diagnostic_target_port_bypass(false),
       snapshot_copies(4),
@@ -140,6 +143,18 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
                          &max_candidate_probes,
                          "C2P+ failed-candidate probe budget (0=exhaustive)",
                          "0");
+  option_parser_register(
+      opp, "-c2p_cache_adaptive_probe_policy", OPT_BOOL,
+      &adaptive_probe_policy,
+      "C2P+ PC-hash/ordinal adaptive confirmation policy", "0");
+  option_parser_register(
+      opp, "-c2p_cache_adaptive_probe_score_threshold", OPT_UINT32,
+      &adaptive_probe_score_threshold,
+      "C2P+ 3-bit adaptive utility threshold (0..7)", "4");
+  option_parser_register(
+      opp, "-c2p_cache_adaptive_probe_explore_period", OPT_UINT32,
+      &adaptive_probe_explore_period,
+      "C2P+ forced-continuation period (0 disables exploration)", "64");
   option_parser_register(
       opp, "-c2p_cache_separate_target_tag_port", OPT_BOOL,
       &separate_target_tag_port,
@@ -226,6 +241,23 @@ void c2p_cache_stats::clear() {
       probe_pc_ordinal_hits[bucket][ordinal] = 0;
       probe_pc_ordinal_misses[bucket][ordinal] = 0;
     }
+  adaptive_continuation_opportunities = 0;
+  adaptive_continue_predictor = 0;
+  adaptive_continue_exploration = 0;
+  adaptive_stop_predictor = 0;
+  adaptive_stop_hard_cap = 0;
+  adaptive_stop_later_peer = 0;
+  adaptive_stop_no_later_peer = 0;
+  adaptive_stop_remaining_candidates = 0;
+  adaptive_stop_next_peer_distance_total = 0;
+  adaptive_first_probe_hits = 0;
+  adaptive_first_probe_misses = 0;
+  adaptive_predictor_probe_hits = 0;
+  adaptive_predictor_probe_misses = 0;
+  adaptive_exploration_probe_hits = 0;
+  adaptive_exploration_probe_misses = 0;
+  for (unsigned score = 0; score != 8; ++score)
+    adaptive_score_hist[score] = 0;
   fallback_target_wait_timeout = 0;
   fallback_target_admission_timeout = 0;
   peer_lost_before_query = 0;
@@ -268,6 +300,8 @@ c2p_cache::transaction::transaction(l1_cache *requester_, mem_fetch *mf_,
       candidate_next(0),
       probe_pc_bucket(fold_hash((uint64_t)mf_->get_pc(), 0xC2F0u) &
                       (C2P_PROBE_POLICY_PC_BUCKETS - 1)),
+      probe_reason(PROBE_FIRST),
+      adaptive_continue_decided(false),
       probe_sid((unsigned)-1),
       peer_accesses(0),
       oracle_peer_hit(false),
@@ -307,12 +341,21 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
           0),
       m_ring_next_issue_cycle(0),
       m_peer_access_hit_hist(m_num_sms + 1, 0),
-      m_peer_access_miss_hist(m_num_sms + 1, 0) {
+      m_peer_access_miss_hist(m_num_sms + 1, 0),
+      m_adaptive_probe_scores(
+          C2P_PROBE_POLICY_PC_BUCKETS,
+          std::vector<unsigned char>(C2P_PROBE_POLICY_MAX_ORDINAL, 4)),
+      m_adaptive_explore_counter(0) {
   assert(m_config.scheme <= c2p_cache_config::RING_SCHEME);
   assert(is_power_of_two(m_config.snapshot_bf_rows_per_bank));
   assert(m_config.bf_hashes > 0);
   assert(m_config.comparator_cluster_size > 0);
   assert(m_config.target_probe_queue_size > 0);
+  assert(m_config.adaptive_probe_score_threshold <= 7);
+  assert(!m_config.adaptive_probe_policy ||
+         (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
+          m_config.separate_target_tag_port &&
+          m_config.max_candidate_probes == 0));
   assert(!(m_config.separate_target_tag_port &&
            m_config.diagnostic_target_port_bypass));
 }
@@ -340,6 +383,10 @@ void c2p_cache::reset() {
   m_ring_next_issue_cycle = 0;
   std::fill(m_peer_access_hit_hist.begin(), m_peer_access_hit_hist.end(), 0);
   std::fill(m_peer_access_miss_hist.begin(), m_peer_access_miss_hist.end(), 0);
+  for (unsigned bucket = 0; bucket < m_adaptive_probe_scores.size(); ++bucket)
+    std::fill(m_adaptive_probe_scores[bucket].begin(),
+              m_adaptive_probe_scores[bucket].end(), 4);
+  m_adaptive_explore_counter = 0;
   m_stats.clear();
 }
 
@@ -848,6 +895,97 @@ void c2p_cache::begin_fallback(transaction &txn, unsigned long long now) {
   transition(txn, WAIT_FALLBACK, now);
 }
 
+bool c2p_cache::adaptive_should_continue(transaction &txn) {
+  // The first candidate is unconditional.  This method therefore sees one to
+  // three failed confirmations and chooses whether to issue ordinal 2--4.
+  assert(m_config.adaptive_probe_policy);
+  assert(txn.candidate_next != 0);
+  assert(txn.candidate_next < C2P_PROBE_POLICY_MAX_ORDINAL);
+  assert(txn.candidate_next < txn.candidates.size());
+  ++m_stats.adaptive_continuation_opportunities;
+
+  const unsigned score =
+      m_adaptive_probe_scores[txn.probe_pc_bucket][txn.candidate_next];
+  ++m_stats.adaptive_score_hist[score];
+  const bool explore_due = m_config.adaptive_probe_explore_period != 0 &&
+      (m_adaptive_explore_counter++ %
+           m_config.adaptive_probe_explore_period ==
+       0);
+  if (score >= m_config.adaptive_probe_score_threshold) {
+    txn.probe_reason = PROBE_PREDICTOR;
+    ++m_stats.adaptive_continue_predictor;
+    return true;
+  }
+  if (explore_due) {
+    txn.probe_reason = PROBE_EXPLORATION;
+    ++m_stats.adaptive_continue_exploration;
+    return true;
+  }
+  ++m_stats.adaptive_stop_predictor;
+  return false;
+}
+
+void c2p_cache::adaptive_record_probe_result(transaction &txn, bool hit) {
+  if (!m_config.adaptive_probe_policy) return;
+  // The just-completed probe consumes any saved choice to continue. A later
+  // candidate must make a fresh prediction, but an issue blocked by the
+  // target FIFO must not make the same prediction again.
+  txn.adaptive_continue_decided = false;
+  assert(txn.candidate_next != 0);
+  const unsigned ordinal = txn.candidate_next;
+  if (ordinal <= C2P_PROBE_POLICY_MAX_ORDINAL) {
+    unsigned char &score =
+        m_adaptive_probe_scores[txn.probe_pc_bucket][ordinal - 1];
+    // +2/-1 makes the 4/8 threshold a utility test with a break-even
+    // probability near one third rather than a literal 50% hit predictor.
+    if (hit)
+      score = std::min(7U, (unsigned)score + 2);
+    else if (score)
+      --score;
+  }
+  if (txn.probe_reason == PROBE_FIRST) {
+    if (hit)
+      ++m_stats.adaptive_first_probe_hits;
+    else
+      ++m_stats.adaptive_first_probe_misses;
+  } else if (txn.probe_reason == PROBE_PREDICTOR) {
+    if (hit)
+      ++m_stats.adaptive_predictor_probe_hits;
+    else
+      ++m_stats.adaptive_predictor_probe_misses;
+  } else {
+    assert(txn.probe_reason == PROBE_EXPLORATION);
+    if (hit)
+      ++m_stats.adaptive_exploration_probe_hits;
+    else
+      ++m_stats.adaptive_exploration_probe_misses;
+  }
+}
+
+void c2p_cache::adaptive_record_stop(const transaction &txn, bool hard_cap) {
+  assert(m_config.adaptive_probe_policy);
+  assert(txn.candidate_next < txn.candidates.size());
+  if (hard_cap)
+    ++m_stats.adaptive_stop_hard_cap;
+  m_stats.adaptive_stop_remaining_candidates +=
+      txn.candidates.size() - txn.candidate_next;
+
+  // This exact scan is diagnostic-only and does not reserve a tag/data port,
+  // alter state, or delay the lower fallback.  It tells us whether stopping
+  // saved an FP tail or discarded an exact peer still resident at stop time.
+  for (unsigned index = txn.candidate_next; index < txn.candidates.size();
+       ++index) {
+    const unsigned sid = txn.candidates[index];
+    if (m_l1s[sid]->c2p_probe(txn.mf)) {
+      ++m_stats.adaptive_stop_later_peer;
+      m_stats.adaptive_stop_next_peer_distance_total +=
+          index - txn.candidate_next + 1;
+      return;
+    }
+  }
+  ++m_stats.adaptive_stop_no_later_peer;
+}
+
 void c2p_cache::service_target_probe_queues(unsigned long long now) {
   for (unsigned sid = 0; sid < m_target_probe_queues.size(); ++sid) {
     std::deque<transaction *> &queue = m_target_probe_queues[sid];
@@ -898,6 +1036,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
         // the accept-time oracle snapshot.
         ++m_stats.peer_probe_hits;
         ++m_stats.remote_hits;
+        adaptive_record_probe_result(*it, true);
         const unsigned ordinal = probe_policy_ordinal_bin(it->candidate_next);
         ++m_stats.probe_ordinal_hits[ordinal];
         ++m_stats.probe_pc_ordinal_hits[it->probe_pc_bucket][ordinal];
@@ -907,6 +1046,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
         it->ready_cycle = now + it->return_latency;
       } else {
         ++m_stats.peer_probe_misses;
+        adaptive_record_probe_result(*it, false);
         const unsigned ordinal = probe_policy_ordinal_bin(it->candidate_next);
         ++m_stats.probe_ordinal_misses[ordinal];
         ++m_stats.probe_pc_ordinal_misses[it->probe_pc_bucket][ordinal];
@@ -953,6 +1093,14 @@ void c2p_cache::advance_probes(unsigned long long now) {
           ++m_stats.fallback_candidates_exhausted;
         begin_fallback(*it, now);
       } else if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
+                 m_config.adaptive_probe_policy &&
+                 it->candidate_next >= C2P_PROBE_POLICY_MAX_ORDINAL) {
+        // The adaptive policy never confirms more than four candidates.  This
+        // is independent of its learned score and bounds both request state
+        // and diagnostic oracle work.
+        adaptive_record_stop(*it, true);
+        begin_fallback(*it, now);
+      } else if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
                  m_config.max_candidate_probes != 0 &&
                  it->candidate_next >= m_config.max_candidate_probes) {
         // C2P+ bounds only failed probes.  A selected candidate is always
@@ -961,66 +1109,82 @@ void c2p_cache::advance_probes(unsigned long long now) {
         ++m_stats.fallback_candidate_budget;
         begin_fallback(*it, now);
       } else {
-        const unsigned sid = it->candidates[it->candidate_next];
-        l1_cache *target = m_l1s[sid];
-        if (it->candidate_next != 0) {
-          const unsigned ordinal = probe_policy_ordinal_bin(it->candidate_next);
-          const unsigned lower_ready =
-              it->requester->c2p_lower_ready(it->mf) ? 1 : 0;
-          const unsigned target_credit =
-              m_target_probe_queues[sid].size() <
-                      m_config.target_probe_queue_size
-                  ? 1
-                  : 0;
-          ++m_stats.continuation_decisions[ordinal][lower_ready]
-                                             [target_credit];
-        }
-        // C2P uses a finite request FIFO at each target L1.  Queueing a
-        // selected peer preserves the target-port contention model without
-        // discarding a useful probe merely because that port is busy this
-        // cycle.  The timeout below applies only when that finite FIFO is
-        // full, at which point the original request may safely fall back.
         if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
-            m_config.diagnostic_target_port_bypass) {
-          // This is a counterfactual diagnostic, not an architectural C2P
-          // mode: remove just target-port/FIFO contention.  Candidate order,
-          // tag latency, return latency, requester-fill pressure, and all
-          // fallback behavior outside that contention remain unchanged.
-          it->probe_sid = sid;
-          ++it->candidate_next;
-          ++it->peer_accesses;
-          ++m_stats.peer_probes;
-          ++m_stats.peer_l1_accesses;
-          transition(*it, WAIT_PROBE, now);
-          it->ready_cycle = now + it->probe_latency;
-        } else if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
-            m_target_probe_queues[sid].size() < m_config.target_probe_queue_size) {
-          m_target_probe_queues[sid].push_back(&*it);
-          ++it->candidate_next;
-          ++it->peer_accesses;
-          ++m_stats.peer_probes;
-          ++m_stats.peer_l1_accesses;
-          transition(*it, WAIT_TARGET_PROBE, now);
-        } else if (target->data_port_free()) {
-          target->c2p_reserve_probe_port(it->probe_latency);
-          it->probe_sid = sid;
-          ++it->candidate_next;
-          ++it->peer_accesses;
-          ++m_stats.peer_probes;
-          if (m_config.scheme == c2p_cache_config::C2P_SCHEME ||
-              m_config.scheme == c2p_cache_config::RING_SCHEME)
-            ++m_stats.peer_l1_accesses;
-          transition(*it, WAIT_PROBE, now);
-          it->ready_cycle = now + it->probe_latency;
-        } else {
-          if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
-              m_target_probe_queues[sid].size() >=
-                  m_config.target_probe_queue_size)
-            ++m_stats.target_probe_queue_full_cycles;
-          if (now - it->probe_wait_start >= m_config.probe_timeout) {
-            ++m_stats.fallback_probe_timeout;
-            ++m_stats.fallback_target_admission_timeout;
+            m_config.adaptive_probe_policy && it->candidate_next != 0 &&
+            !it->adaptive_continue_decided) {
+          if (adaptive_should_continue(*it))
+            it->adaptive_continue_decided = true;
+          else {
+            adaptive_record_stop(*it, false);
             begin_fallback(*it, now);
+          }
+        }
+        if (it->state == READY_TO_PROBE) {
+          const unsigned sid = it->candidates[it->candidate_next];
+          l1_cache *target = m_l1s[sid];
+          if (m_config.adaptive_probe_policy && it->candidate_next == 0)
+            it->probe_reason = PROBE_FIRST;
+          if (it->candidate_next != 0) {
+            const unsigned ordinal =
+                probe_policy_ordinal_bin(it->candidate_next);
+            const unsigned lower_ready =
+                it->requester->c2p_lower_ready(it->mf) ? 1 : 0;
+            const unsigned target_credit =
+                m_target_probe_queues[sid].size() <
+                        m_config.target_probe_queue_size
+                    ? 1
+                    : 0;
+            ++m_stats.continuation_decisions[ordinal][lower_ready]
+                                               [target_credit];
+          }
+          // C2P uses a finite request FIFO at each target L1. Queueing a
+          // selected peer preserves the target-port contention model without
+          // discarding a useful probe merely because that port is busy this
+          // cycle. The timeout below applies only when that finite FIFO is
+          // full, at which point the original request may safely fall back.
+          if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
+              m_config.diagnostic_target_port_bypass) {
+            // This is a counterfactual diagnostic, not an architectural C2P
+            // mode: remove just target-port/FIFO contention. Candidate order,
+            // tag latency, return latency, requester-fill pressure, and all
+            // fallback behavior outside that contention remain unchanged.
+            it->probe_sid = sid;
+            ++it->candidate_next;
+            ++it->peer_accesses;
+            ++m_stats.peer_probes;
+            ++m_stats.peer_l1_accesses;
+            transition(*it, WAIT_PROBE, now);
+            it->ready_cycle = now + it->probe_latency;
+          } else if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
+                     m_target_probe_queues[sid].size() <
+                         m_config.target_probe_queue_size) {
+            m_target_probe_queues[sid].push_back(&*it);
+            ++it->candidate_next;
+            ++it->peer_accesses;
+            ++m_stats.peer_probes;
+            ++m_stats.peer_l1_accesses;
+            transition(*it, WAIT_TARGET_PROBE, now);
+          } else if (target->data_port_free()) {
+            target->c2p_reserve_probe_port(it->probe_latency);
+            it->probe_sid = sid;
+            ++it->candidate_next;
+            ++it->peer_accesses;
+            ++m_stats.peer_probes;
+            if (m_config.scheme == c2p_cache_config::C2P_SCHEME ||
+                m_config.scheme == c2p_cache_config::RING_SCHEME)
+              ++m_stats.peer_l1_accesses;
+            transition(*it, WAIT_PROBE, now);
+            it->ready_cycle = now + it->probe_latency;
+          } else {
+            if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
+                m_target_probe_queues[sid].size() >=
+                    m_config.target_probe_queue_size)
+              ++m_stats.target_probe_queue_full_cycles;
+            if (now - it->probe_wait_start >= m_config.probe_timeout) {
+              ++m_stats.fallback_probe_timeout;
+              ++m_stats.fallback_target_admission_timeout;
+              begin_fallback(*it, now);
+            }
           }
         }
       }
@@ -1174,6 +1338,39 @@ void c2p_cache::print_stats(FILE *fout) const {
               lower_ready, target_credit,
               m_stats.continuation_decisions[C2P_PROBE_POLICY_MAX_ORDINAL]
                                                 [lower_ready][target_credit]);
+  fprintf(fout, "c2p_adaptive_continuation_opportunities = %llu\n",
+          m_stats.adaptive_continuation_opportunities);
+  fprintf(fout, "c2p_adaptive_continue_predictor = %llu\n",
+          m_stats.adaptive_continue_predictor);
+  fprintf(fout, "c2p_adaptive_continue_exploration = %llu\n",
+          m_stats.adaptive_continue_exploration);
+  fprintf(fout, "c2p_adaptive_stop_predictor = %llu\n",
+          m_stats.adaptive_stop_predictor);
+  fprintf(fout, "c2p_adaptive_stop_hard_cap = %llu\n",
+          m_stats.adaptive_stop_hard_cap);
+  fprintf(fout, "c2p_adaptive_stop_later_peer = %llu\n",
+          m_stats.adaptive_stop_later_peer);
+  fprintf(fout, "c2p_adaptive_stop_no_later_peer = %llu\n",
+          m_stats.adaptive_stop_no_later_peer);
+  fprintf(fout, "c2p_adaptive_stop_remaining_candidates = %llu\n",
+          m_stats.adaptive_stop_remaining_candidates);
+  fprintf(fout, "c2p_adaptive_stop_next_peer_distance_total = %llu\n",
+          m_stats.adaptive_stop_next_peer_distance_total);
+  fprintf(fout, "c2p_adaptive_first_probe_hits = %llu\n",
+          m_stats.adaptive_first_probe_hits);
+  fprintf(fout, "c2p_adaptive_first_probe_misses = %llu\n",
+          m_stats.adaptive_first_probe_misses);
+  fprintf(fout, "c2p_adaptive_predictor_probe_hits = %llu\n",
+          m_stats.adaptive_predictor_probe_hits);
+  fprintf(fout, "c2p_adaptive_predictor_probe_misses = %llu\n",
+          m_stats.adaptive_predictor_probe_misses);
+  fprintf(fout, "c2p_adaptive_exploration_probe_hits = %llu\n",
+          m_stats.adaptive_exploration_probe_hits);
+  fprintf(fout, "c2p_adaptive_exploration_probe_misses = %llu\n",
+          m_stats.adaptive_exploration_probe_misses);
+  for (unsigned score = 0; score != 8; ++score)
+    fprintf(fout, "c2p_adaptive_score_%u_samples = %llu\n", score,
+            m_stats.adaptive_score_hist[score]);
   fprintf(fout, "c2p_fallback_target_wait_timeout = %llu\n",
           m_stats.fallback_target_wait_timeout);
   fprintf(fout, "c2p_fallback_target_admission_timeout = %llu\n",
