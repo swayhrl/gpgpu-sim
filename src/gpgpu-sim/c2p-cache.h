@@ -21,6 +21,15 @@ class gpgpu_sim;
 class l1_cache;
 class mem_fetch;
 
+// These bins are observation-only.  They cover the first confirmations that
+// the adaptive C2P+ design may later choose between, while keeping a single
+// overflow bin for longer candidate chains.
+enum {
+  C2P_PROBE_POLICY_MAX_ORDINAL = 4,
+  C2P_PROBE_POLICY_ORDINAL_BINS = C2P_PROBE_POLICY_MAX_ORDINAL + 1,
+  C2P_PROBE_POLICY_PC_BUCKETS = 64
+};
+
 class c2p_cache_config {
  public:
   enum sharing_scheme {
@@ -108,6 +117,20 @@ struct c2p_cache_stats {
   unsigned long long remote_hit_probe_ordinal_samples;
   unsigned long long fallback_probe_ordinal_total;
   unsigned long long fallback_probe_ordinal_samples;
+  // Observation-only evidence for a later adaptive confirmation policy.  The
+  // first four bins correspond to exact probe ordinals; bin four is overflow.
+  // The PC table is an offline hash study, not a predictor consulted by C2P.
+  unsigned long long probe_ordinal_hits[C2P_PROBE_POLICY_ORDINAL_BINS];
+  unsigned long long probe_ordinal_misses[C2P_PROBE_POLICY_ORDINAL_BINS];
+  unsigned long long probe_pc_ordinal_hits[C2P_PROBE_POLICY_PC_BUCKETS]
+                                          [C2P_PROBE_POLICY_ORDINAL_BINS];
+  unsigned long long probe_pc_ordinal_misses[C2P_PROBE_POLICY_PC_BUCKETS]
+                                            [C2P_PROBE_POLICY_ORDINAL_BINS];
+  // A continuation decision occurs after one or more failed probes while a
+  // next Snapshot candidate exists.  lower_ready and target_credit are
+  // sampled for diagnosis only and never influence this transaction.
+  unsigned long long continuation_decisions
+      [C2P_PROBE_POLICY_ORDINAL_BINS][2][2];
   // A timeout can occur after a target FIFO admission or while the candidate
   // cannot enter a full target FIFO.  Keep these causes distinct.
   unsigned long long fallback_target_wait_timeout;
@@ -198,6 +221,7 @@ class c2p_cache {
     std::vector<bool> row_done;
     std::vector<unsigned> candidates;
     unsigned candidate_next;
+    unsigned probe_pc_bucket;
     unsigned probe_sid;
     unsigned peer_accesses;
     bool oracle_peer_hit;

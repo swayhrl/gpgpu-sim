@@ -47,6 +47,12 @@ uint32_t fold_hash(uint64_t value, uint32_t salt) {
   x ^= x >> 31;
   return (uint32_t)(x ^ (x >> 32));
 }
+
+unsigned probe_policy_ordinal_bin(unsigned ordinal) {
+  assert(ordinal != 0);
+  return ordinal <= C2P_PROBE_POLICY_MAX_ORDINAL ? ordinal - 1
+                                                  : C2P_PROBE_POLICY_MAX_ORDINAL;
+}
 }  // namespace
 
 c2p_cache_config::c2p_cache_config()
@@ -206,6 +212,20 @@ void c2p_cache_stats::clear() {
   remote_hit_probe_ordinal_samples = 0;
   fallback_probe_ordinal_total = 0;
   fallback_probe_ordinal_samples = 0;
+  for (unsigned ordinal = 0; ordinal < C2P_PROBE_POLICY_ORDINAL_BINS;
+       ++ordinal) {
+    probe_ordinal_hits[ordinal] = 0;
+    probe_ordinal_misses[ordinal] = 0;
+    for (unsigned lower_ready = 0; lower_ready != 2; ++lower_ready)
+      for (unsigned target_credit = 0; target_credit != 2; ++target_credit)
+        continuation_decisions[ordinal][lower_ready][target_credit] = 0;
+  }
+  for (unsigned bucket = 0; bucket < C2P_PROBE_POLICY_PC_BUCKETS; ++bucket)
+    for (unsigned ordinal = 0; ordinal < C2P_PROBE_POLICY_ORDINAL_BINS;
+         ++ordinal) {
+      probe_pc_ordinal_hits[bucket][ordinal] = 0;
+      probe_pc_ordinal_misses[bucket][ordinal] = 0;
+    }
   fallback_target_wait_timeout = 0;
   fallback_target_admission_timeout = 0;
   peer_lost_before_query = 0;
@@ -246,6 +266,8 @@ c2p_cache::transaction::transaction(l1_cache *requester_, mem_fetch *mf_,
       probe_wait_start(now),
       state(WAIT_ENCODE),
       candidate_next(0),
+      probe_pc_bucket(fold_hash((uint64_t)mf_->get_pc(), 0xC2F0u) &
+                      (C2P_PROBE_POLICY_PC_BUCKETS - 1)),
       probe_sid((unsigned)-1),
       peer_accesses(0),
       oracle_peer_hit(false),
@@ -876,12 +898,18 @@ void c2p_cache::advance_probes(unsigned long long now) {
         // the accept-time oracle snapshot.
         ++m_stats.peer_probe_hits;
         ++m_stats.remote_hits;
+        const unsigned ordinal = probe_policy_ordinal_bin(it->candidate_next);
+        ++m_stats.probe_ordinal_hits[ordinal];
+        ++m_stats.probe_pc_ordinal_hits[it->probe_pc_bucket][ordinal];
         m_stats.remote_hit_probe_ordinal_total += it->candidate_next;
         ++m_stats.remote_hit_probe_ordinal_samples;
         transition(*it, WAIT_RETURN, now);
         it->ready_cycle = now + it->return_latency;
       } else {
         ++m_stats.peer_probe_misses;
+        const unsigned ordinal = probe_policy_ordinal_bin(it->candidate_next);
+        ++m_stats.probe_ordinal_misses[ordinal];
+        ++m_stats.probe_pc_ordinal_misses[it->probe_pc_bucket][ordinal];
         transition(*it, READY_TO_PROBE, now);
         it->probe_wait_start = now;
       }
@@ -935,6 +963,18 @@ void c2p_cache::advance_probes(unsigned long long now) {
       } else {
         const unsigned sid = it->candidates[it->candidate_next];
         l1_cache *target = m_l1s[sid];
+        if (it->candidate_next != 0) {
+          const unsigned ordinal = probe_policy_ordinal_bin(it->candidate_next);
+          const unsigned lower_ready =
+              it->requester->c2p_lower_ready(it->mf) ? 1 : 0;
+          const unsigned target_credit =
+              m_target_probe_queues[sid].size() <
+                      m_config.target_probe_queue_size
+                  ? 1
+                  : 0;
+          ++m_stats.continuation_decisions[ordinal][lower_ready]
+                                             [target_credit];
+        }
         // C2P uses a finite request FIFO at each target L1.  Queueing a
         // selected peer preserves the target-port contention model without
         // discarding a useful probe merely because that port is busy this
@@ -1099,6 +1139,41 @@ void c2p_cache::print_stats(FILE *fout) const {
           m_stats.fallback_probe_ordinal_total);
   fprintf(fout, "c2p_fallback_probe_ordinal_samples = %llu\n",
           m_stats.fallback_probe_ordinal_samples);
+  for (unsigned ordinal = 0; ordinal < C2P_PROBE_POLICY_MAX_ORDINAL;
+       ++ordinal) {
+    fprintf(fout, "c2p_probe_ordinal_%u_hits = %llu\n", ordinal + 1,
+            m_stats.probe_ordinal_hits[ordinal]);
+    fprintf(fout, "c2p_probe_ordinal_%u_misses = %llu\n", ordinal + 1,
+            m_stats.probe_ordinal_misses[ordinal]);
+  }
+  fprintf(fout, "c2p_probe_ordinal_overflow_hits = %llu\n",
+          m_stats.probe_ordinal_hits[C2P_PROBE_POLICY_MAX_ORDINAL]);
+  fprintf(fout, "c2p_probe_ordinal_overflow_misses = %llu\n",
+          m_stats.probe_ordinal_misses[C2P_PROBE_POLICY_MAX_ORDINAL]);
+  for (unsigned bucket = 0; bucket < C2P_PROBE_POLICY_PC_BUCKETS; ++bucket)
+    for (unsigned ordinal = 0; ordinal < C2P_PROBE_POLICY_MAX_ORDINAL;
+         ++ordinal) {
+      fprintf(fout, "c2p_probe_pc_bucket_%u_ordinal_%u_hits = %llu\n", bucket,
+              ordinal + 1, m_stats.probe_pc_ordinal_hits[bucket][ordinal]);
+      fprintf(fout, "c2p_probe_pc_bucket_%u_ordinal_%u_misses = %llu\n", bucket,
+              ordinal + 1, m_stats.probe_pc_ordinal_misses[bucket][ordinal]);
+    }
+  for (unsigned ordinal = 0; ordinal < C2P_PROBE_POLICY_MAX_ORDINAL;
+       ++ordinal)
+    for (unsigned lower_ready = 0; lower_ready != 2; ++lower_ready)
+      for (unsigned target_credit = 0; target_credit != 2; ++target_credit)
+        fprintf(fout,
+                "c2p_continuation_after_fail_%u_lower_ready_%u_target_credit_%u = %llu\n",
+                ordinal + 1, lower_ready, target_credit,
+                m_stats.continuation_decisions[ordinal][lower_ready]
+                                                  [target_credit]);
+  for (unsigned lower_ready = 0; lower_ready != 2; ++lower_ready)
+    for (unsigned target_credit = 0; target_credit != 2; ++target_credit)
+      fprintf(fout,
+              "c2p_continuation_after_fail_overflow_lower_ready_%u_target_credit_%u = %llu\n",
+              lower_ready, target_credit,
+              m_stats.continuation_decisions[C2P_PROBE_POLICY_MAX_ORDINAL]
+                                                [lower_ready][target_credit]);
   fprintf(fout, "c2p_fallback_target_wait_timeout = %llu\n",
           m_stats.fallback_target_wait_timeout);
   fprintf(fout, "c2p_fallback_target_admission_timeout = %llu\n",
