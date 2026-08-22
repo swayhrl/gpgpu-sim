@@ -75,6 +75,11 @@ class c2p_cache_config {
   // When enabled, retain a distinct adaptive score for each initial Snapshot
   // candidate-count bin: 1--2, 3--4, 5--8, and 9+ candidates.
   bool adaptive_probe_candidate_count_bins;
+  // For initial candidate bins at or above this threshold, choose a bounded
+  // confirmation package after the compulsory first miss. A package commits
+  // to probes through ordinal four once selected.
+  bool adaptive_probe_package_policy;
+  unsigned adaptive_probe_package_min_candidate_bin;
   // Read-only simulator observation of every post-miss decision point. It
   // never changes candidate issue, fallback, or resource arbitration.
   bool adaptive_probe_observe_tail;
@@ -167,6 +172,14 @@ struct c2p_cache_stats {
   unsigned long long adaptive_exploration_probe_misses;
   unsigned long long adaptive_exploration_probe_timeouts;
   unsigned long long adaptive_score_hist[8];
+  unsigned long long adaptive_package_opportunities;
+  unsigned long long adaptive_package_start_predictor;
+  unsigned long long adaptive_package_start_exploration;
+  unsigned long long adaptive_package_stop_predictor;
+  unsigned long long adaptive_package_hit;
+  unsigned long long adaptive_package_no_hit;
+  unsigned long long adaptive_package_timeout;
+  unsigned long long adaptive_package_score_hist[8];
   // At every point where a failed probe leaves another candidate, classify the
   // initial candidate-set size and the first later exact peer, if any. These
   // are counterfactual observations: no lookup result is fed into the policy.
@@ -257,6 +270,8 @@ class c2p_cache {
     PROBE_EXPLORATION
   };
 
+  enum package_outcome { PACKAGE_HIT, PACKAGE_NO_HIT, PACKAGE_TIMEOUT };
+
   struct transaction {
     transaction(l1_cache *requester, mem_fetch *mf, unsigned requester_sid,
                 uint64_t line_tag, unsigned long long now);
@@ -281,6 +296,8 @@ class c2p_cache {
     // until the candidate is actually issued or the transaction falls back.
     bool adaptive_continue_decided;
     bool adaptive_tail_observed;
+    bool adaptive_package_active;
+    bool adaptive_package_outcome_recorded;
     unsigned probe_sid;
     unsigned peer_accesses;
     bool oracle_peer_hit;
@@ -321,12 +338,16 @@ class c2p_cache {
   void retire(transaction &txn, unsigned long long now);
   void begin_fallback(transaction &txn, unsigned long long now);
   bool adaptive_should_continue(transaction &txn);
+  bool adaptive_should_start_package(transaction &txn);
   void adaptive_record_probe_result(transaction &txn, bool hit);
   void adaptive_record_probe_timeout(transaction &txn);
+  void adaptive_record_package_outcome(transaction &txn,
+                                       package_outcome outcome);
   void adaptive_observe_tail(transaction &txn);
   void adaptive_record_stop(const transaction &txn, bool hard_cap);
   unsigned adaptive_candidate_bin(const transaction &txn) const;
   unsigned adaptive_score_index(const transaction &txn, unsigned ordinal) const;
+  unsigned adaptive_package_score_index(const transaction &txn) const;
   void record_peer_accesses(bool hit, unsigned accesses);
   bool has_exact_peer(l1_cache *requester, mem_fetch *mf) const;
   std::vector<unsigned> exact_candidates(const transaction &txn,
@@ -371,6 +392,8 @@ class c2p_cache {
   // the original PC-hash x ordinal policy. `unsigned char` makes the intended
   // 1 KiB maximum storage cost explicit even in this software model.
   std::vector<unsigned char> m_adaptive_probe_scores;
+  // One 3-bit score for each PC-hash x candidate-count bin package decision.
+  std::vector<unsigned char> m_adaptive_package_scores;
   unsigned long long m_adaptive_explore_counter;
   c2p_cache_stats m_stats;
 };

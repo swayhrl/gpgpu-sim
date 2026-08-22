@@ -78,6 +78,8 @@ c2p_cache_config::c2p_cache_config()
       adaptive_probe_score_threshold(4),
       adaptive_probe_explore_period(64),
       adaptive_probe_candidate_count_bins(false),
+      adaptive_probe_package_policy(false),
+      adaptive_probe_package_min_candidate_bin(2),
       adaptive_probe_observe_tail(false),
       separate_target_tag_port(false),
       diagnostic_target_port_bypass(false),
@@ -161,6 +163,14 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
       opp, "-c2p_cache_adaptive_probe_candidate_count_bins", OPT_BOOL,
       &adaptive_probe_candidate_count_bins,
       "C2P+ index adaptive scores by initial candidate-count bin", "0");
+  option_parser_register(
+      opp, "-c2p_cache_adaptive_probe_package_policy", OPT_BOOL,
+      &adaptive_probe_package_policy,
+      "C2P+ use a PC-hash/candidate-bin confirmation package", "0");
+  option_parser_register(
+      opp, "-c2p_cache_adaptive_probe_package_min_candidate_bin", OPT_UINT32,
+      &adaptive_probe_package_min_candidate_bin,
+      "minimum candidate-count bin for package confirmation (0..3)", "2");
   option_parser_register(
       opp, "-c2p_cache_adaptive_probe_observe_tail", OPT_BOOL,
       &adaptive_probe_observe_tail,
@@ -271,6 +281,15 @@ void c2p_cache_stats::clear() {
   adaptive_exploration_probe_timeouts = 0;
   for (unsigned score = 0; score != 8; ++score)
     adaptive_score_hist[score] = 0;
+  adaptive_package_opportunities = 0;
+  adaptive_package_start_predictor = 0;
+  adaptive_package_start_exploration = 0;
+  adaptive_package_stop_predictor = 0;
+  adaptive_package_hit = 0;
+  adaptive_package_no_hit = 0;
+  adaptive_package_timeout = 0;
+  for (unsigned score = 0; score != 8; ++score)
+    adaptive_package_score_hist[score] = 0;
   for (unsigned bin = 0; bin != C2P_PROBE_POLICY_CANDIDATE_BINS; ++bin) {
     adaptive_tail_observe_opportunities[bin] = 0;
     adaptive_tail_observe_later_peer[bin] = 0;
@@ -324,6 +343,8 @@ c2p_cache::transaction::transaction(l1_cache *requester_, mem_fetch *mf_,
       probe_reason(PROBE_FIRST),
       adaptive_continue_decided(false),
       adaptive_tail_observed(false),
+      adaptive_package_active(false),
+      adaptive_package_outcome_recorded(false),
       probe_sid((unsigned)-1),
       peer_accesses(0),
       oracle_peer_hit(false),
@@ -368,6 +389,9 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
                                   C2P_PROBE_POLICY_MAX_ORDINAL *
                                   C2P_PROBE_POLICY_CANDIDATE_BINS,
                               4),
+      m_adaptive_package_scores(C2P_PROBE_POLICY_PC_BUCKETS *
+                                    C2P_PROBE_POLICY_CANDIDATE_BINS,
+                                4),
       m_adaptive_explore_counter(0) {
   assert(m_config.scheme <= c2p_cache_config::RING_SCHEME);
   assert(is_power_of_two(m_config.snapshot_bf_rows_per_bank));
@@ -377,6 +401,11 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
   assert(m_config.adaptive_probe_score_threshold <= 7);
   assert(!m_config.adaptive_probe_candidate_count_bins ||
          m_config.adaptive_probe_policy);
+  assert(!m_config.adaptive_probe_package_policy ||
+         (m_config.adaptive_probe_policy &&
+          m_config.adaptive_probe_candidate_count_bins));
+  assert(m_config.adaptive_probe_package_min_candidate_bin <
+         C2P_PROBE_POLICY_CANDIDATE_BINS);
   assert(!m_config.adaptive_probe_policy ||
          (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
           m_config.separate_target_tag_port &&
@@ -409,6 +438,8 @@ void c2p_cache::reset() {
   std::fill(m_peer_access_hit_hist.begin(), m_peer_access_hit_hist.end(), 0);
   std::fill(m_peer_access_miss_hist.begin(), m_peer_access_miss_hist.end(), 0);
   std::fill(m_adaptive_probe_scores.begin(), m_adaptive_probe_scores.end(), 4);
+  std::fill(m_adaptive_package_scores.begin(),
+            m_adaptive_package_scores.end(), 4);
   m_adaptive_explore_counter = 0;
   m_stats.clear();
 }
@@ -949,6 +980,41 @@ bool c2p_cache::adaptive_should_continue(transaction &txn) {
   return false;
 }
 
+bool c2p_cache::adaptive_should_start_package(transaction &txn) {
+  // Packages are chosen once, immediately after the mandatory first probe
+  // misses. The selected request then keeps confirming through ordinal four.
+  assert(m_config.adaptive_probe_package_policy);
+  assert(txn.candidate_next == 1);
+  assert(adaptive_candidate_bin(txn) >=
+         m_config.adaptive_probe_package_min_candidate_bin);
+  ++m_stats.adaptive_continuation_opportunities;
+  ++m_stats.adaptive_package_opportunities;
+
+  const unsigned score =
+      m_adaptive_package_scores[adaptive_package_score_index(txn)];
+  ++m_stats.adaptive_score_hist[score];
+  ++m_stats.adaptive_package_score_hist[score];
+  const bool explore_due = m_config.adaptive_probe_explore_period != 0 &&
+      (m_adaptive_explore_counter++ %
+           m_config.adaptive_probe_explore_period ==
+       0);
+  if (score >= m_config.adaptive_probe_score_threshold) {
+    txn.probe_reason = PROBE_PREDICTOR;
+    ++m_stats.adaptive_continue_predictor;
+    ++m_stats.adaptive_package_start_predictor;
+    return true;
+  }
+  if (explore_due) {
+    txn.probe_reason = PROBE_EXPLORATION;
+    ++m_stats.adaptive_continue_exploration;
+    ++m_stats.adaptive_package_start_exploration;
+    return true;
+  }
+  ++m_stats.adaptive_stop_predictor;
+  ++m_stats.adaptive_package_stop_predictor;
+  return false;
+}
+
 unsigned c2p_cache::adaptive_candidate_bin(const transaction &txn) const {
   const unsigned count = txn.candidates.size();
   assert(count != 0);
@@ -966,6 +1032,12 @@ unsigned c2p_cache::adaptive_score_index(const transaction &txn,
                                      : 0;
   return ((txn.probe_pc_bucket * C2P_PROBE_POLICY_MAX_ORDINAL + ordinal - 1) *
           C2P_PROBE_POLICY_CANDIDATE_BINS + candidate_bin);
+}
+
+unsigned c2p_cache::adaptive_package_score_index(
+    const transaction &txn) const {
+  return txn.probe_pc_bucket * C2P_PROBE_POLICY_CANDIDATE_BINS +
+         adaptive_candidate_bin(txn);
 }
 
 void c2p_cache::adaptive_record_probe_result(transaction &txn, bool hit) {
@@ -1004,6 +1076,7 @@ void c2p_cache::adaptive_record_probe_result(transaction &txn, bool hit) {
     else
       ++m_stats.adaptive_exploration_probe_misses;
   }
+  if (hit) adaptive_record_package_outcome(txn, PACKAGE_HIT);
 }
 
 void c2p_cache::adaptive_observe_tail(transaction &txn) {
@@ -1043,6 +1116,28 @@ void c2p_cache::adaptive_record_probe_timeout(transaction &txn) {
   else {
     assert(txn.probe_reason == PROBE_EXPLORATION);
     ++m_stats.adaptive_exploration_probe_timeouts;
+  }
+  adaptive_record_package_outcome(txn, PACKAGE_TIMEOUT);
+}
+
+void c2p_cache::adaptive_record_package_outcome(transaction &txn,
+                                                 package_outcome outcome) {
+  if (!m_config.adaptive_probe_package_policy ||
+      !txn.adaptive_package_active || txn.adaptive_package_outcome_recorded)
+    return;
+  txn.adaptive_package_outcome_recorded = true;
+  txn.adaptive_package_active = false;
+  unsigned char &score =
+      m_adaptive_package_scores[adaptive_package_score_index(txn)];
+  if (outcome == PACKAGE_HIT) {
+    ++m_stats.adaptive_package_hit;
+    score = std::min(7U, (unsigned)score + 2);
+  } else if (outcome == PACKAGE_NO_HIT) {
+    ++m_stats.adaptive_package_no_hit;
+    if (score) --score;
+  } else {
+    assert(outcome == PACKAGE_TIMEOUT);
+    ++m_stats.adaptive_package_timeout;
   }
 }
 
@@ -1183,6 +1278,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
           ++m_stats.fallback_no_candidate;
         else
           ++m_stats.fallback_candidates_exhausted;
+        adaptive_record_package_outcome(*it, PACKAGE_NO_HIT);
         begin_fallback(*it, now);
       } else if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
                  m_config.adaptive_probe_policy &&
@@ -1191,6 +1287,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
         // is independent of its learned score and bounds both request state
         // and diagnostic oracle work.
         adaptive_record_stop(*it, true);
+        adaptive_record_package_outcome(*it, PACKAGE_NO_HIT);
         begin_fallback(*it, now);
       } else if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
                  m_config.max_candidate_probes != 0 &&
@@ -1204,9 +1301,23 @@ void c2p_cache::advance_probes(unsigned long long now) {
         if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
             m_config.adaptive_probe_policy && it->candidate_next != 0 &&
             !it->adaptive_continue_decided) {
-          if (adaptive_should_continue(*it))
+          if (it->adaptive_package_active) {
             it->adaptive_continue_decided = true;
-          else {
+          } else if (m_config.adaptive_probe_package_policy &&
+                     it->candidate_next == 1 &&
+                     adaptive_candidate_bin(*it) >=
+                         m_config.adaptive_probe_package_min_candidate_bin) {
+            if (adaptive_should_start_package(*it)) {
+              it->adaptive_package_active = true;
+              it->adaptive_package_outcome_recorded = false;
+              it->adaptive_continue_decided = true;
+            } else {
+              adaptive_record_stop(*it, false);
+              begin_fallback(*it, now);
+            }
+          } else if (adaptive_should_continue(*it)) {
+            it->adaptive_continue_decided = true;
+          } else {
             adaptive_record_stop(*it, false);
             begin_fallback(*it, now);
           }
@@ -1275,6 +1386,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
             if (now - it->probe_wait_start >= m_config.probe_timeout) {
               ++m_stats.fallback_probe_timeout;
               ++m_stats.fallback_target_admission_timeout;
+              adaptive_record_package_outcome(*it, PACKAGE_TIMEOUT);
               begin_fallback(*it, now);
             }
           }
@@ -1469,6 +1581,23 @@ void c2p_cache::print_stats(FILE *fout) const {
   for (unsigned score = 0; score != 8; ++score)
     fprintf(fout, "c2p_adaptive_score_%u_samples = %llu\n", score,
             m_stats.adaptive_score_hist[score]);
+  fprintf(fout, "c2p_adaptive_package_opportunities = %llu\n",
+          m_stats.adaptive_package_opportunities);
+  fprintf(fout, "c2p_adaptive_package_start_predictor = %llu\n",
+          m_stats.adaptive_package_start_predictor);
+  fprintf(fout, "c2p_adaptive_package_start_exploration = %llu\n",
+          m_stats.adaptive_package_start_exploration);
+  fprintf(fout, "c2p_adaptive_package_stop_predictor = %llu\n",
+          m_stats.adaptive_package_stop_predictor);
+  fprintf(fout, "c2p_adaptive_package_hit = %llu\n",
+          m_stats.adaptive_package_hit);
+  fprintf(fout, "c2p_adaptive_package_no_hit = %llu\n",
+          m_stats.adaptive_package_no_hit);
+  fprintf(fout, "c2p_adaptive_package_timeout = %llu\n",
+          m_stats.adaptive_package_timeout);
+  for (unsigned score = 0; score != 8; ++score)
+    fprintf(fout, "c2p_adaptive_package_score_%u_samples = %llu\n", score,
+            m_stats.adaptive_package_score_hist[score]);
   for (unsigned bin = 0; bin != C2P_PROBE_POLICY_CANDIDATE_BINS; ++bin) {
     fprintf(fout, "c2p_adaptive_tail_bin_%u_opportunities = %llu\n", bin,
             m_stats.adaptive_tail_observe_opportunities[bin]);
