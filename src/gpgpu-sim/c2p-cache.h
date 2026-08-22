@@ -86,6 +86,30 @@ struct c2p_cache_stats {
   unsigned long long target_probe_queue_wait_cycles;
   unsigned long long target_probe_queue_full_cycles;
   unsigned long long requester_fill_wait_cycles;
+  // Per-transaction state residence is observation-only.  It attributes an
+  // accepted miss's lifetime without changing state transitions or latency.
+  unsigned long long residence_encode_cycles;
+  unsigned long long residence_rows_cycles;
+  unsigned long long residence_match_cycles;
+  unsigned long long residence_ready_cycles;
+  unsigned long long residence_target_probe_cycles;
+  unsigned long long residence_probe_cycles;
+  unsigned long long residence_return_cycles;
+  unsigned long long residence_fallback_cycles;
+  // Probe ordinal distinguishes long false-candidate tails from a target-side
+  // stall after a useful candidate was already selected.
+  unsigned long long remote_hit_probe_ordinal_total;
+  unsigned long long remote_hit_probe_ordinal_samples;
+  unsigned long long fallback_probe_ordinal_total;
+  unsigned long long fallback_probe_ordinal_samples;
+  // A timeout can occur after a target FIFO admission or while the candidate
+  // cannot enter a full target FIFO.  Keep these causes distinct.
+  unsigned long long fallback_target_wait_timeout;
+  unsigned long long fallback_target_admission_timeout;
+  // The accept-time oracle and query-time exact peer set can differ because
+  // normal L1 fills/evictions continue while a transaction waits.
+  unsigned long long peer_lost_before_query;
+  unsigned long long peer_gained_before_query;
   unsigned long long remote_hits;
   unsigned long long fallback_no_candidate;
   unsigned long long fallback_candidates_exhausted;
@@ -159,6 +183,7 @@ class c2p_cache {
     unsigned requester_sid;
     uint64_t line_tag;
     unsigned long long enqueue_cycle;
+    unsigned long long state_enter_cycle;
     unsigned long long ready_cycle;
     unsigned long long probe_wait_start;
     transaction_state state;
@@ -201,6 +226,10 @@ class c2p_cache {
   void complete_matches(unsigned long long now);
   void service_target_probe_queues(unsigned long long now);
   void advance_probes(unsigned long long now);
+  void transition(transaction &txn, transaction_state state,
+                  unsigned long long now);
+  void retire(transaction &txn, unsigned long long now);
+  void begin_fallback(transaction &txn, unsigned long long now);
   void record_peer_accesses(bool hit, unsigned accesses);
   bool has_exact_peer(l1_cache *requester, mem_fetch *mf) const;
   std::vector<unsigned> exact_candidates(const transaction &txn,

@@ -182,6 +182,22 @@ void c2p_cache_stats::clear() {
   target_probe_queue_wait_cycles = 0;
   target_probe_queue_full_cycles = 0;
   requester_fill_wait_cycles = 0;
+  residence_encode_cycles = 0;
+  residence_rows_cycles = 0;
+  residence_match_cycles = 0;
+  residence_ready_cycles = 0;
+  residence_target_probe_cycles = 0;
+  residence_probe_cycles = 0;
+  residence_return_cycles = 0;
+  residence_fallback_cycles = 0;
+  remote_hit_probe_ordinal_total = 0;
+  remote_hit_probe_ordinal_samples = 0;
+  fallback_probe_ordinal_total = 0;
+  fallback_probe_ordinal_samples = 0;
+  fallback_target_wait_timeout = 0;
+  fallback_target_admission_timeout = 0;
+  peer_lost_before_query = 0;
+  peer_gained_before_query = 0;
   remote_hits = 0;
   fallback_no_candidate = 0;
   fallback_candidates_exhausted = 0;
@@ -212,6 +228,7 @@ c2p_cache::transaction::transaction(l1_cache *requester_, mem_fetch *mf_,
       requester_sid(requester_sid_),
       line_tag(line_tag_),
       enqueue_cycle(now),
+      state_enter_cycle(now),
       ready_cycle(now),
       probe_wait_start(now),
       state(WAIT_ENCODE),
@@ -581,7 +598,7 @@ void c2p_cache::issue_query_encodes(unsigned long long now,
   for (std::list<transaction>::iterator it = m_transactions.begin();
        it != m_transactions.end() && engines_left; ++it) {
     if (it->state != WAIT_ENCODE) continue;
-    it->state = WAIT_ROWS;
+    transition(*it, WAIT_ROWS, now);
     it->ready_cycle = now + m_config.bf_latency;
     --engines_left;
   }
@@ -612,7 +629,7 @@ void c2p_cache::schedule_rows(unsigned long long now) {
     for (unsigned row_i = 0; row_i < it->row_done.size(); ++row_i)
       all_rows &= it->row_done[row_i];
     if (all_rows) {
-      it->state = WAIT_MATCH;
+      transition(*it, WAIT_MATCH, now);
       it->ready_cycle = now + m_config.snapshot_latency;
     }
   }
@@ -679,6 +696,10 @@ void c2p_cache::complete_matches(unsigned long long now) {
         else
           ++m_stats.snapshot_true_negative;
         const bool query_peer_hit = has_exact_peer(it->requester, it->mf);
+        if (it->oracle_peer_hit && !query_peer_hit)
+          ++m_stats.peer_lost_before_query;
+        else if (!it->oracle_peer_hit && query_peer_hit)
+          ++m_stats.peer_gained_before_query;
         if (!it->candidates.empty() && query_peer_hit)
           ++m_stats.snapshot_query_true_positive;
         else if (!it->candidates.empty())
@@ -737,9 +758,54 @@ void c2p_cache::complete_matches(unsigned long long now) {
     }
     m_stats.candidate_total += it->candidates.size();
     ++m_stats.candidate_queries;
-    it->state = READY_TO_PROBE;
+    transition(*it, READY_TO_PROBE, now);
     it->probe_wait_start = now;
   }
+}
+
+void c2p_cache::transition(transaction &txn, transaction_state state,
+                           unsigned long long now) {
+  assert(now >= txn.state_enter_cycle);
+  const unsigned long long residence = now - txn.state_enter_cycle;
+  switch (txn.state) {
+    case WAIT_ENCODE:
+      m_stats.residence_encode_cycles += residence;
+      break;
+    case WAIT_ROWS:
+      m_stats.residence_rows_cycles += residence;
+      break;
+    case WAIT_MATCH:
+      m_stats.residence_match_cycles += residence;
+      break;
+    case READY_TO_PROBE:
+      m_stats.residence_ready_cycles += residence;
+      break;
+    case WAIT_TARGET_PROBE:
+      m_stats.residence_target_probe_cycles += residence;
+      break;
+    case WAIT_PROBE:
+      m_stats.residence_probe_cycles += residence;
+      break;
+    case WAIT_RETURN:
+      m_stats.residence_return_cycles += residence;
+      break;
+    case WAIT_FALLBACK:
+      m_stats.residence_fallback_cycles += residence;
+      break;
+  }
+  txn.state = state;
+  txn.state_enter_cycle = now;
+}
+
+void c2p_cache::retire(transaction &txn, unsigned long long now) {
+  // Account for the final residence without introducing an artificial state.
+  transition(txn, txn.state, now);
+}
+
+void c2p_cache::begin_fallback(transaction &txn, unsigned long long now) {
+  m_stats.fallback_probe_ordinal_total += txn.candidate_next;
+  ++m_stats.fallback_probe_ordinal_samples;
+  transition(txn, WAIT_FALLBACK, now);
 }
 
 void c2p_cache::service_target_probe_queues(unsigned long long now) {
@@ -764,7 +830,7 @@ void c2p_cache::service_target_probe_queues(unsigned long long now) {
       if (!m_config.diagnostic_target_port_bypass)
         m_l1s[sid]->c2p_reserve_probe_port(txn->probe_latency);
       txn->probe_sid = sid;
-      txn->state = WAIT_PROBE;
+      transition(*txn, WAIT_PROBE, now);
       txn->ready_cycle = now + txn->probe_latency;
     } while (m_config.diagnostic_target_port_bypass && !queue.empty());
   }
@@ -783,11 +849,13 @@ void c2p_cache::advance_probes(unsigned long long now) {
         // the accept-time oracle snapshot.
         ++m_stats.peer_probe_hits;
         ++m_stats.remote_hits;
-        it->state = WAIT_RETURN;
+        m_stats.remote_hit_probe_ordinal_total += it->candidate_next;
+        ++m_stats.remote_hit_probe_ordinal_samples;
+        transition(*it, WAIT_RETURN, now);
         it->ready_cycle = now + it->return_latency;
       } else {
         ++m_stats.peer_probe_misses;
-        it->state = READY_TO_PROBE;
+        transition(*it, READY_TO_PROBE, now);
         it->probe_wait_start = now;
       }
     }
@@ -796,6 +864,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
       if (it->requester->fill_port_free()) {
         it->requester->c2p_fill(it->mf, now);
         record_peer_accesses(true, it->peer_accesses);
+        retire(*it, now);
         erase = true;
       } else {
         ++m_stats.requester_fill_wait_cycles;
@@ -817,7 +886,8 @@ void c2p_cache::advance_probes(unsigned long long now) {
       queue.erase(queued);
       m_stats.target_probe_queue_wait_cycles += now - it->probe_wait_start;
       ++m_stats.fallback_probe_timeout;
-      it->state = WAIT_FALLBACK;
+      ++m_stats.fallback_target_wait_timeout;
+      begin_fallback(*it, now);
     }
 
     if (it->state == READY_TO_PROBE) {
@@ -826,7 +896,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
           ++m_stats.fallback_no_candidate;
         else
           ++m_stats.fallback_candidates_exhausted;
-        it->state = WAIT_FALLBACK;
+        begin_fallback(*it, now);
       } else {
         const unsigned sid = it->candidates[it->candidate_next];
         l1_cache *target = m_l1s[sid];
@@ -846,7 +916,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
           ++it->peer_accesses;
           ++m_stats.peer_probes;
           ++m_stats.peer_l1_accesses;
-          it->state = WAIT_PROBE;
+          transition(*it, WAIT_PROBE, now);
           it->ready_cycle = now + it->probe_latency;
         } else if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
             m_target_probe_queues[sid].size() < m_config.target_probe_queue_size) {
@@ -855,7 +925,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
           ++it->peer_accesses;
           ++m_stats.peer_probes;
           ++m_stats.peer_l1_accesses;
-          it->state = WAIT_TARGET_PROBE;
+          transition(*it, WAIT_TARGET_PROBE, now);
         } else if (target->data_port_free()) {
           target->c2p_reserve_probe_port(it->probe_latency);
           it->probe_sid = sid;
@@ -865,7 +935,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
           if (m_config.scheme == c2p_cache_config::C2P_SCHEME ||
               m_config.scheme == c2p_cache_config::RING_SCHEME)
             ++m_stats.peer_l1_accesses;
-          it->state = WAIT_PROBE;
+          transition(*it, WAIT_PROBE, now);
           it->ready_cycle = now + it->probe_latency;
         } else {
           if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
@@ -874,7 +944,8 @@ void c2p_cache::advance_probes(unsigned long long now) {
             ++m_stats.target_probe_queue_full_cycles;
           if (now - it->probe_wait_start >= m_config.probe_timeout) {
             ++m_stats.fallback_probe_timeout;
-            it->state = WAIT_FALLBACK;
+            ++m_stats.fallback_target_admission_timeout;
+            begin_fallback(*it, now);
           }
         }
       }
@@ -884,6 +955,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
       it->requester->c2p_send_lower(it->mf);
       ++m_stats.fallback_queue;
       record_peer_accesses(false, it->peer_accesses);
+      retire(*it, now);
       erase = true;
     }
     if (erase)
@@ -966,6 +1038,38 @@ void c2p_cache::print_stats(FILE *fout) const {
           m_stats.target_probe_queue_full_cycles);
   fprintf(fout, "c2p_requester_fill_wait_cycles = %llu\n",
           m_stats.requester_fill_wait_cycles);
+  fprintf(fout, "c2p_residence_encode_cycles = %llu\n",
+          m_stats.residence_encode_cycles);
+  fprintf(fout, "c2p_residence_rows_cycles = %llu\n",
+          m_stats.residence_rows_cycles);
+  fprintf(fout, "c2p_residence_match_cycles = %llu\n",
+          m_stats.residence_match_cycles);
+  fprintf(fout, "c2p_residence_ready_cycles = %llu\n",
+          m_stats.residence_ready_cycles);
+  fprintf(fout, "c2p_residence_target_probe_cycles = %llu\n",
+          m_stats.residence_target_probe_cycles);
+  fprintf(fout, "c2p_residence_probe_cycles = %llu\n",
+          m_stats.residence_probe_cycles);
+  fprintf(fout, "c2p_residence_return_cycles = %llu\n",
+          m_stats.residence_return_cycles);
+  fprintf(fout, "c2p_residence_fallback_cycles = %llu\n",
+          m_stats.residence_fallback_cycles);
+  fprintf(fout, "c2p_remote_hit_probe_ordinal_total = %llu\n",
+          m_stats.remote_hit_probe_ordinal_total);
+  fprintf(fout, "c2p_remote_hit_probe_ordinal_samples = %llu\n",
+          m_stats.remote_hit_probe_ordinal_samples);
+  fprintf(fout, "c2p_fallback_probe_ordinal_total = %llu\n",
+          m_stats.fallback_probe_ordinal_total);
+  fprintf(fout, "c2p_fallback_probe_ordinal_samples = %llu\n",
+          m_stats.fallback_probe_ordinal_samples);
+  fprintf(fout, "c2p_fallback_target_wait_timeout = %llu\n",
+          m_stats.fallback_target_wait_timeout);
+  fprintf(fout, "c2p_fallback_target_admission_timeout = %llu\n",
+          m_stats.fallback_target_admission_timeout);
+  fprintf(fout, "c2p_peer_lost_before_query = %llu\n",
+          m_stats.peer_lost_before_query);
+  fprintf(fout, "c2p_peer_gained_before_query = %llu\n",
+          m_stats.peer_gained_before_query);
   fprintf(fout, "c2p_remote_hits = %llu\n", m_stats.remote_hits);
   // Each completed remote hit consumes the original L1 MSHR/fill path but
   // never sends that miss to the lower level, so this is the directly
