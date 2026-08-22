@@ -77,6 +77,8 @@ c2p_cache_config::c2p_cache_config()
       adaptive_probe_policy(false),
       adaptive_probe_score_threshold(4),
       adaptive_probe_explore_period(64),
+      adaptive_probe_candidate_count_bins(false),
+      adaptive_probe_observe_tail(false),
       separate_target_tag_port(false),
       diagnostic_target_port_bypass(false),
       snapshot_copies(4),
@@ -155,6 +157,14 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
       opp, "-c2p_cache_adaptive_probe_explore_period", OPT_UINT32,
       &adaptive_probe_explore_period,
       "C2P+ forced-continuation period (0 disables exploration)", "64");
+  option_parser_register(
+      opp, "-c2p_cache_adaptive_probe_candidate_count_bins", OPT_BOOL,
+      &adaptive_probe_candidate_count_bins,
+      "C2P+ index adaptive scores by initial candidate-count bin", "0");
+  option_parser_register(
+      opp, "-c2p_cache_adaptive_probe_observe_tail", OPT_BOOL,
+      &adaptive_probe_observe_tail,
+      "observe initial candidate bins and exact later-peer distance", "0");
   option_parser_register(
       opp, "-c2p_cache_separate_target_tag_port", OPT_BOOL,
       &separate_target_tag_port,
@@ -261,6 +271,14 @@ void c2p_cache_stats::clear() {
   adaptive_exploration_probe_timeouts = 0;
   for (unsigned score = 0; score != 8; ++score)
     adaptive_score_hist[score] = 0;
+  for (unsigned bin = 0; bin != C2P_PROBE_POLICY_CANDIDATE_BINS; ++bin) {
+    adaptive_tail_observe_opportunities[bin] = 0;
+    adaptive_tail_observe_later_peer[bin] = 0;
+    adaptive_tail_observe_no_later_peer[bin] = 0;
+    for (unsigned distance = 0; distance != C2P_PROBE_POLICY_DISTANCE_BINS;
+         ++distance)
+      adaptive_tail_observe_distance[bin][distance] = 0;
+  }
   fallback_target_wait_timeout = 0;
   fallback_target_admission_timeout = 0;
   peer_lost_before_query = 0;
@@ -305,6 +323,7 @@ c2p_cache::transaction::transaction(l1_cache *requester_, mem_fetch *mf_,
                       (C2P_PROBE_POLICY_PC_BUCKETS - 1)),
       probe_reason(PROBE_FIRST),
       adaptive_continue_decided(false),
+      adaptive_tail_observed(false),
       probe_sid((unsigned)-1),
       peer_accesses(0),
       oracle_peer_hit(false),
@@ -345,9 +364,10 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
       m_ring_next_issue_cycle(0),
       m_peer_access_hit_hist(m_num_sms + 1, 0),
       m_peer_access_miss_hist(m_num_sms + 1, 0),
-      m_adaptive_probe_scores(
-          C2P_PROBE_POLICY_PC_BUCKETS,
-          std::vector<unsigned char>(C2P_PROBE_POLICY_MAX_ORDINAL, 4)),
+      m_adaptive_probe_scores(C2P_PROBE_POLICY_PC_BUCKETS *
+                                  C2P_PROBE_POLICY_MAX_ORDINAL *
+                                  C2P_PROBE_POLICY_CANDIDATE_BINS,
+                              4),
       m_adaptive_explore_counter(0) {
   assert(m_config.scheme <= c2p_cache_config::RING_SCHEME);
   assert(is_power_of_two(m_config.snapshot_bf_rows_per_bank));
@@ -355,6 +375,8 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
   assert(m_config.comparator_cluster_size > 0);
   assert(m_config.target_probe_queue_size > 0);
   assert(m_config.adaptive_probe_score_threshold <= 7);
+  assert(!m_config.adaptive_probe_candidate_count_bins ||
+         m_config.adaptive_probe_policy);
   assert(!m_config.adaptive_probe_policy ||
          (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
           m_config.separate_target_tag_port &&
@@ -386,9 +408,7 @@ void c2p_cache::reset() {
   m_ring_next_issue_cycle = 0;
   std::fill(m_peer_access_hit_hist.begin(), m_peer_access_hit_hist.end(), 0);
   std::fill(m_peer_access_miss_hist.begin(), m_peer_access_miss_hist.end(), 0);
-  for (unsigned bucket = 0; bucket < m_adaptive_probe_scores.size(); ++bucket)
-    std::fill(m_adaptive_probe_scores[bucket].begin(),
-              m_adaptive_probe_scores[bucket].end(), 4);
+  std::fill(m_adaptive_probe_scores.begin(), m_adaptive_probe_scores.end(), 4);
   m_adaptive_explore_counter = 0;
   m_stats.clear();
 }
@@ -907,8 +927,9 @@ bool c2p_cache::adaptive_should_continue(transaction &txn) {
   assert(txn.candidate_next < txn.candidates.size());
   ++m_stats.adaptive_continuation_opportunities;
 
-  const unsigned score =
-      m_adaptive_probe_scores[txn.probe_pc_bucket][txn.candidate_next];
+  const unsigned next_ordinal = txn.candidate_next + 1;
+  const unsigned score = m_adaptive_probe_scores[
+      adaptive_score_index(txn, next_ordinal)];
   ++m_stats.adaptive_score_hist[score];
   const bool explore_due = m_config.adaptive_probe_explore_period != 0 &&
       (m_adaptive_explore_counter++ %
@@ -928,17 +949,37 @@ bool c2p_cache::adaptive_should_continue(transaction &txn) {
   return false;
 }
 
+unsigned c2p_cache::adaptive_candidate_bin(const transaction &txn) const {
+  const unsigned count = txn.candidates.size();
+  assert(count != 0);
+  if (count <= 2) return 0;
+  if (count <= 4) return 1;
+  if (count <= 8) return 2;
+  return 3;
+}
+
+unsigned c2p_cache::adaptive_score_index(const transaction &txn,
+                                         unsigned ordinal) const {
+  assert(ordinal != 0 && ordinal <= C2P_PROBE_POLICY_MAX_ORDINAL);
+  const unsigned candidate_bin = m_config.adaptive_probe_candidate_count_bins
+                                     ? adaptive_candidate_bin(txn)
+                                     : 0;
+  return ((txn.probe_pc_bucket * C2P_PROBE_POLICY_MAX_ORDINAL + ordinal - 1) *
+          C2P_PROBE_POLICY_CANDIDATE_BINS + candidate_bin);
+}
+
 void c2p_cache::adaptive_record_probe_result(transaction &txn, bool hit) {
-  if (!m_config.adaptive_probe_policy) return;
   // The just-completed probe consumes any saved choice to continue. A later
   // candidate must make a fresh prediction, but an issue blocked by the
   // target FIFO must not make the same prediction again.
   txn.adaptive_continue_decided = false;
+  txn.adaptive_tail_observed = false;
+  if (!m_config.adaptive_probe_policy) return;
   assert(txn.candidate_next != 0);
   const unsigned ordinal = txn.candidate_next;
   if (ordinal <= C2P_PROBE_POLICY_MAX_ORDINAL) {
     unsigned char &score =
-        m_adaptive_probe_scores[txn.probe_pc_bucket][ordinal - 1];
+        m_adaptive_probe_scores[adaptive_score_index(txn, ordinal)];
     // +2/-1 makes the 4/8 threshold a utility test with a break-even
     // probability near one third rather than a literal 50% hit predictor.
     if (hit)
@@ -963,6 +1004,31 @@ void c2p_cache::adaptive_record_probe_result(transaction &txn, bool hit) {
     else
       ++m_stats.adaptive_exploration_probe_misses;
   }
+}
+
+void c2p_cache::adaptive_observe_tail(transaction &txn) {
+  if (!m_config.adaptive_probe_observe_tail) return;
+  assert(txn.candidate_next != 0);
+  assert(txn.candidate_next < txn.candidates.size());
+  const unsigned candidate_bin = adaptive_candidate_bin(txn);
+  ++m_stats.adaptive_tail_observe_opportunities[candidate_bin];
+
+  // A read-only exact scan records the counterfactual result of stopping at
+  // this decision point. It is never used by the adaptive policy itself.
+  for (unsigned index = txn.candidate_next; index < txn.candidates.size();
+       ++index) {
+    if (m_l1s[txn.candidates[index]]->c2p_probe(txn.mf)) {
+      ++m_stats.adaptive_tail_observe_later_peer[candidate_bin];
+      const unsigned distance = index - txn.candidate_next + 1;
+      const unsigned distance_bin =
+          distance <= C2P_PROBE_POLICY_MAX_ORDINAL
+              ? distance - 1
+              : C2P_PROBE_POLICY_MAX_ORDINAL;
+      ++m_stats.adaptive_tail_observe_distance[candidate_bin][distance_bin];
+      return;
+    }
+  }
+  ++m_stats.adaptive_tail_observe_no_later_peer[candidate_bin];
 }
 
 void c2p_cache::adaptive_record_probe_timeout(transaction &txn) {
@@ -1105,6 +1171,13 @@ void c2p_cache::advance_probes(unsigned long long now) {
     }
 
     if (it->state == READY_TO_PROBE) {
+      if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
+          m_config.adaptive_probe_observe_tail && it->candidate_next != 0 &&
+          it->candidate_next < it->candidates.size() &&
+          !it->adaptive_tail_observed) {
+        adaptive_observe_tail(*it);
+        it->adaptive_tail_observed = true;
+      }
       if (it->candidate_next >= it->candidates.size()) {
         if (it->candidates.empty())
           ++m_stats.fallback_no_candidate;
@@ -1396,6 +1469,21 @@ void c2p_cache::print_stats(FILE *fout) const {
   for (unsigned score = 0; score != 8; ++score)
     fprintf(fout, "c2p_adaptive_score_%u_samples = %llu\n", score,
             m_stats.adaptive_score_hist[score]);
+  for (unsigned bin = 0; bin != C2P_PROBE_POLICY_CANDIDATE_BINS; ++bin) {
+    fprintf(fout, "c2p_adaptive_tail_bin_%u_opportunities = %llu\n", bin,
+            m_stats.adaptive_tail_observe_opportunities[bin]);
+    fprintf(fout, "c2p_adaptive_tail_bin_%u_later_peer = %llu\n", bin,
+            m_stats.adaptive_tail_observe_later_peer[bin]);
+    fprintf(fout, "c2p_adaptive_tail_bin_%u_no_later_peer = %llu\n", bin,
+            m_stats.adaptive_tail_observe_no_later_peer[bin]);
+    for (unsigned distance = 0;
+         distance != C2P_PROBE_POLICY_DISTANCE_BINS; ++distance)
+      fprintf(fout,
+              "c2p_adaptive_tail_bin_%u_distance_%s%u = %llu\n", bin,
+              distance == C2P_PROBE_POLICY_MAX_ORDINAL ? "overflow_" : "",
+              distance == C2P_PROBE_POLICY_MAX_ORDINAL ? 5 : distance + 1,
+              m_stats.adaptive_tail_observe_distance[bin][distance]);
+  }
   fprintf(fout, "c2p_fallback_target_wait_timeout = %llu\n",
           m_stats.fallback_target_wait_timeout);
   fprintf(fout, "c2p_fallback_target_admission_timeout = %llu\n",

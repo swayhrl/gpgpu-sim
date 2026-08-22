@@ -27,7 +27,9 @@ class mem_fetch;
 enum {
   C2P_PROBE_POLICY_MAX_ORDINAL = 4,
   C2P_PROBE_POLICY_ORDINAL_BINS = C2P_PROBE_POLICY_MAX_ORDINAL + 1,
-  C2P_PROBE_POLICY_PC_BUCKETS = 64
+  C2P_PROBE_POLICY_PC_BUCKETS = 64,
+  C2P_PROBE_POLICY_CANDIDATE_BINS = 4,
+  C2P_PROBE_POLICY_DISTANCE_BINS = C2P_PROBE_POLICY_MAX_ORDINAL + 1
 };
 
 class c2p_cache_config {
@@ -70,6 +72,12 @@ class c2p_cache_config {
   bool adaptive_probe_policy;
   unsigned adaptive_probe_score_threshold;
   unsigned adaptive_probe_explore_period;
+  // When enabled, retain a distinct adaptive score for each initial Snapshot
+  // candidate-count bin: 1--2, 3--4, 5--8, and 9+ candidates.
+  bool adaptive_probe_candidate_count_bins;
+  // Read-only simulator observation of every post-miss decision point. It
+  // never changes candidate issue, fallback, or resource arbitration.
+  bool adaptive_probe_observe_tail;
   // C2P+ counterfactual: a one-request-per-cycle remote tag pipeline that
   // does not reserve the target L1 data port.
   bool separate_target_tag_port;
@@ -159,6 +167,17 @@ struct c2p_cache_stats {
   unsigned long long adaptive_exploration_probe_misses;
   unsigned long long adaptive_exploration_probe_timeouts;
   unsigned long long adaptive_score_hist[8];
+  // At every point where a failed probe leaves another candidate, classify the
+  // initial candidate-set size and the first later exact peer, if any. These
+  // are counterfactual observations: no lookup result is fed into the policy.
+  unsigned long long adaptive_tail_observe_opportunities
+      [C2P_PROBE_POLICY_CANDIDATE_BINS];
+  unsigned long long adaptive_tail_observe_later_peer
+      [C2P_PROBE_POLICY_CANDIDATE_BINS];
+  unsigned long long adaptive_tail_observe_no_later_peer
+      [C2P_PROBE_POLICY_CANDIDATE_BINS];
+  unsigned long long adaptive_tail_observe_distance
+      [C2P_PROBE_POLICY_CANDIDATE_BINS][C2P_PROBE_POLICY_DISTANCE_BINS];
   // A timeout can occur after a target FIFO admission or while the candidate
   // cannot enter a full target FIFO.  Keep these causes distinct.
   unsigned long long fallback_target_wait_timeout;
@@ -261,6 +280,7 @@ class c2p_cache {
     // cycles. Decide the adaptive continuation once, then retain that choice
     // until the candidate is actually issued or the transaction falls back.
     bool adaptive_continue_decided;
+    bool adaptive_tail_observed;
     unsigned probe_sid;
     unsigned peer_accesses;
     bool oracle_peer_hit;
@@ -303,7 +323,10 @@ class c2p_cache {
   bool adaptive_should_continue(transaction &txn);
   void adaptive_record_probe_result(transaction &txn, bool hit);
   void adaptive_record_probe_timeout(transaction &txn);
+  void adaptive_observe_tail(transaction &txn);
   void adaptive_record_stop(const transaction &txn, bool hard_cap);
+  unsigned adaptive_candidate_bin(const transaction &txn) const;
+  unsigned adaptive_score_index(const transaction &txn, unsigned ordinal) const;
   void record_peer_accesses(bool hit, unsigned accesses);
   bool has_exact_peer(l1_cache *requester, mem_fetch *mf) const;
   std::vector<unsigned> exact_candidates(const transaction &txn,
@@ -342,10 +365,12 @@ class c2p_cache {
   unsigned long long m_ring_next_issue_cycle;
   std::vector<unsigned long long> m_peer_access_hit_hist;
   std::vector<unsigned long long> m_peer_access_miss_hist;
-  // Four confirmation ordinals x 64 PC buckets, each represented by a
-  // 3-bit saturating utility score.  `unsigned char` makes the intended
-  // storage cost explicit even though this is a software model.
-  std::vector<std::vector<unsigned char> > m_adaptive_probe_scores;
+  // Four confirmation ordinals x 64 PC buckets x four candidate-count bins,
+  // each represented by a 3-bit saturating utility score. The count-bin
+  // dimension is only indexed when configured; otherwise bin zero preserves
+  // the original PC-hash x ordinal policy. `unsigned char` makes the intended
+  // 1 KiB maximum storage cost explicit even in this software model.
+  std::vector<unsigned char> m_adaptive_probe_scores;
   unsigned long long m_adaptive_explore_counter;
   c2p_cache_stats m_stats;
 };
