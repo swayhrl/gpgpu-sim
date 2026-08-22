@@ -55,6 +55,9 @@ class c2p_cache_config {
   unsigned target_probe_queue_size;
   // C2P+ only: zero preserves the default exhaustive candidate scan.
   unsigned max_candidate_probes;
+  // C2P+ counterfactual: a one-request-per-cycle remote tag pipeline that
+  // does not reserve the target L1 data port.
+  bool separate_target_tag_port;
   // Diagnostic-only control: bypass just the target-L1 data-port contention
   // for C2P probes.  It is off for every architectural experiment.
   bool diagnostic_target_port_bypass;
@@ -85,6 +88,7 @@ struct c2p_cache_stats {
   // contention, FIFO residence, and requester-fill backpressure without
   // changing C2P transaction timing.
   unsigned long long target_probe_port_busy_cycles;
+  unsigned long long target_tag_port_busy_cycles;
   unsigned long long target_probe_queue_wait_cycles;
   unsigned long long target_probe_queue_full_cycles;
   unsigned long long requester_fill_wait_cycles;
@@ -264,6 +268,7 @@ class c2p_cache {
   unsigned m_rebuild_pending_tags;
   std::vector<std::vector<bool> > m_bank_copy_used;
   std::vector<std::deque<transaction *> > m_target_probe_queues;
+  std::vector<unsigned long long> m_target_tag_next_issue_cycle;
   std::vector<unsigned> m_ccd_counters;
   unsigned long long m_ata_issue_cycle;
   std::vector<unsigned> m_ata_issues;

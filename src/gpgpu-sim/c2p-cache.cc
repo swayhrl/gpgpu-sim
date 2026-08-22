@@ -68,6 +68,7 @@ c2p_cache_config::c2p_cache_config()
       probe_timeout(32),
       target_probe_queue_size(32),
       max_candidate_probes(0),
+      separate_target_tag_port(false),
       diagnostic_target_port_bypass(false),
       snapshot_copies(4),
       scheme(C2P_SCHEME),
@@ -134,6 +135,11 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
                          "C2P+ failed-candidate probe budget (0=exhaustive)",
                          "0");
   option_parser_register(
+      opp, "-c2p_cache_separate_target_tag_port", OPT_BOOL,
+      &separate_target_tag_port,
+      "C2P+ model a pipelined remote tag port separate from target data port",
+      "0");
+  option_parser_register(
       opp, "-c2p_cache_diagnostic_target_port_bypass", OPT_BOOL,
       &diagnostic_target_port_bypass,
       "diagnostic only: remove C2P probe contention for target L1 data port",
@@ -184,6 +190,7 @@ void c2p_cache_stats::clear() {
   peer_probe_misses = 0;
   peer_l1_accesses = 0;
   target_probe_port_busy_cycles = 0;
+  target_tag_port_busy_cycles = 0;
   target_probe_queue_wait_cycles = 0;
   target_probe_queue_full_cycles = 0;
   requester_fill_wait_cycles = 0;
@@ -266,6 +273,7 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
                        std::vector<bool>(std::max(1U, config.snapshot_copies),
                                          false)),
       m_target_probe_queues(m_num_sms),
+      m_target_tag_next_issue_cycle(m_num_sms, 0),
       m_ccd_counters(
           std::max(1U, (m_num_sms + std::max(1U, config.comparator_cluster_size) - 1) /
                            std::max(1U, config.comparator_cluster_size)),
@@ -283,6 +291,8 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
   assert(m_config.bf_hashes > 0);
   assert(m_config.comparator_cluster_size > 0);
   assert(m_config.target_probe_queue_size > 0);
+  assert(!(m_config.separate_target_tag_port &&
+           m_config.diagnostic_target_port_bypass));
 }
 
 void c2p_cache::reset() {
@@ -293,6 +303,8 @@ void c2p_cache::reset() {
   m_update_pipeline.clear();
   for (unsigned sid = 0; sid < m_target_probe_queues.size(); ++sid)
     m_target_probe_queues[sid].clear();
+  std::fill(m_target_tag_next_issue_cycle.begin(),
+            m_target_tag_next_issue_cycle.end(), 0);
   m_rebuild_sid = 0;
   m_rebuild_target_sid = (unsigned)-1;
   m_rebuild_active = false;
@@ -818,26 +830,35 @@ void c2p_cache::service_target_probe_queues(unsigned long long now) {
   for (unsigned sid = 0; sid < m_target_probe_queues.size(); ++sid) {
     std::deque<transaction *> &queue = m_target_probe_queues[sid];
     if (queue.empty()) continue;
-    if (!m_config.diagnostic_target_port_bypass &&
+    const bool separate_tag_port =
+        m_config.scheme == c2p_cache_config::C2P_SCHEME &&
+        m_config.separate_target_tag_port;
+    if (separate_tag_port && now < m_target_tag_next_issue_cycle[sid]) {
+      ++m_stats.target_tag_port_busy_cycles;
+      continue;
+    }
+    if (!separate_tag_port && !m_config.diagnostic_target_port_bypass &&
         !m_l1s[sid]->data_port_free()) {
       ++m_stats.target_probe_port_busy_cycles;
       continue;
     }
 
     // The normal model admits one target-array access when its shared data
-    // port is free.  The diagnostic control removes only that contention: it
-    // drains the already-selected C2P probes without reserving the target
-    // port, while preserving each probe's modeled tag latency.
+    // port is free.  C2P+ can instead issue one pipelined remote-tag lookup
+    // per target per cycle without reserving that data port.  The diagnostic
+    // control remains the unlimited upper bound, not this implementation.
     do {
       transaction *txn = queue.front();
       queue.pop_front();
       assert(txn->state == WAIT_TARGET_PROBE);
       m_stats.target_probe_queue_wait_cycles += now - txn->probe_wait_start;
-      if (!m_config.diagnostic_target_port_bypass)
+      if (!separate_tag_port && !m_config.diagnostic_target_port_bypass)
         m_l1s[sid]->c2p_reserve_probe_port(txn->probe_latency);
       txn->probe_sid = sid;
       transition(*txn, WAIT_PROBE, now);
       txn->ready_cycle = now + txn->probe_latency;
+      if (separate_tag_port)
+        m_target_tag_next_issue_cycle[sid] = now + 1;
     } while (m_config.diagnostic_target_port_bypass && !queue.empty());
   }
 }
@@ -1046,6 +1067,8 @@ void c2p_cache::print_stats(FILE *fout) const {
   fprintf(fout, "c2p_peer_l1_accesses = %llu\n", m_stats.peer_l1_accesses);
   fprintf(fout, "c2p_target_probe_port_busy_cycles = %llu\n",
           m_stats.target_probe_port_busy_cycles);
+  fprintf(fout, "c2p_target_tag_port_busy_cycles = %llu\n",
+          m_stats.target_tag_port_busy_cycles);
   fprintf(fout, "c2p_target_probe_queue_wait_cycles = %llu\n",
           m_stats.target_probe_queue_wait_cycles);
   fprintf(fout, "c2p_target_probe_queue_full_cycles = %llu\n",
