@@ -252,10 +252,13 @@ void c2p_cache_stats::clear() {
   adaptive_stop_next_peer_distance_total = 0;
   adaptive_first_probe_hits = 0;
   adaptive_first_probe_misses = 0;
+  adaptive_first_probe_timeouts = 0;
   adaptive_predictor_probe_hits = 0;
   adaptive_predictor_probe_misses = 0;
+  adaptive_predictor_probe_timeouts = 0;
   adaptive_exploration_probe_hits = 0;
   adaptive_exploration_probe_misses = 0;
+  adaptive_exploration_probe_timeouts = 0;
   for (unsigned score = 0; score != 8; ++score)
     adaptive_score_hist[score] = 0;
   fallback_target_wait_timeout = 0;
@@ -962,6 +965,21 @@ void c2p_cache::adaptive_record_probe_result(transaction &txn, bool hit) {
   }
 }
 
+void c2p_cache::adaptive_record_probe_timeout(transaction &txn) {
+  if (!m_config.adaptive_probe_policy) return;
+  // peer_probes is charged when a C2P target FIFO accepts the candidate.
+  // A queue-timeout is therefore a third terminal outcome of that issued
+  // probe, distinct from both a tag hit and a tag miss.
+  if (txn.probe_reason == PROBE_FIRST)
+    ++m_stats.adaptive_first_probe_timeouts;
+  else if (txn.probe_reason == PROBE_PREDICTOR)
+    ++m_stats.adaptive_predictor_probe_timeouts;
+  else {
+    assert(txn.probe_reason == PROBE_EXPLORATION);
+    ++m_stats.adaptive_exploration_probe_timeouts;
+  }
+}
+
 void c2p_cache::adaptive_record_stop(const transaction &txn, bool hard_cap) {
   assert(m_config.adaptive_probe_policy);
   assert(txn.candidate_next < txn.candidates.size());
@@ -1082,6 +1100,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
       m_stats.target_probe_queue_wait_cycles += now - it->probe_wait_start;
       ++m_stats.fallback_probe_timeout;
       ++m_stats.fallback_target_wait_timeout;
+      adaptive_record_probe_timeout(*it);
       begin_fallback(*it, now);
     }
 
@@ -1360,14 +1379,20 @@ void c2p_cache::print_stats(FILE *fout) const {
           m_stats.adaptive_first_probe_hits);
   fprintf(fout, "c2p_adaptive_first_probe_misses = %llu\n",
           m_stats.adaptive_first_probe_misses);
+  fprintf(fout, "c2p_adaptive_first_probe_timeouts = %llu\n",
+          m_stats.adaptive_first_probe_timeouts);
   fprintf(fout, "c2p_adaptive_predictor_probe_hits = %llu\n",
           m_stats.adaptive_predictor_probe_hits);
   fprintf(fout, "c2p_adaptive_predictor_probe_misses = %llu\n",
           m_stats.adaptive_predictor_probe_misses);
+  fprintf(fout, "c2p_adaptive_predictor_probe_timeouts = %llu\n",
+          m_stats.adaptive_predictor_probe_timeouts);
   fprintf(fout, "c2p_adaptive_exploration_probe_hits = %llu\n",
           m_stats.adaptive_exploration_probe_hits);
   fprintf(fout, "c2p_adaptive_exploration_probe_misses = %llu\n",
           m_stats.adaptive_exploration_probe_misses);
+  fprintf(fout, "c2p_adaptive_exploration_probe_timeouts = %llu\n",
+          m_stats.adaptive_exploration_probe_timeouts);
   for (unsigned score = 0; score != 8; ++score)
     fprintf(fout, "c2p_adaptive_score_%u_samples = %llu\n", score,
             m_stats.adaptive_score_hist[score]);

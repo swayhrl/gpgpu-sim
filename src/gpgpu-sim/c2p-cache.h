@@ -151,10 +151,13 @@ struct c2p_cache_stats {
   unsigned long long adaptive_stop_next_peer_distance_total;
   unsigned long long adaptive_first_probe_hits;
   unsigned long long adaptive_first_probe_misses;
+  unsigned long long adaptive_first_probe_timeouts;
   unsigned long long adaptive_predictor_probe_hits;
   unsigned long long adaptive_predictor_probe_misses;
+  unsigned long long adaptive_predictor_probe_timeouts;
   unsigned long long adaptive_exploration_probe_hits;
   unsigned long long adaptive_exploration_probe_misses;
+  unsigned long long adaptive_exploration_probe_timeouts;
   unsigned long long adaptive_score_hist[8];
   // A timeout can occur after a target FIFO admission or while the candidate
   // cannot enter a full target FIFO.  Keep these causes distinct.
@@ -299,6 +302,7 @@ class c2p_cache {
   void begin_fallback(transaction &txn, unsigned long long now);
   bool adaptive_should_continue(transaction &txn);
   void adaptive_record_probe_result(transaction &txn, bool hit);
+  void adaptive_record_probe_timeout(transaction &txn);
   void adaptive_record_stop(const transaction &txn, bool hard_cap);
   void record_peer_accesses(bool hit, unsigned accesses);
   bool has_exact_peer(l1_cache *requester, mem_fetch *mf) const;
