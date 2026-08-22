@@ -68,7 +68,7 @@ class c2p_cache_config {
   // C2P+ only: zero preserves the default exhaustive candidate scan.
   unsigned max_candidate_probes;
   // C2P+ adaptive confirmation policy.  A request always probes its first
-  // candidate; later candidates are selected by a small PC-hash/ordinal
+  // candidate; later candidates are selected by a small feature/ordinal
   // utility table.  Disabled by default so canonical C2P is unchanged.
   bool adaptive_probe_policy;
   unsigned adaptive_probe_score_threshold;
@@ -81,6 +81,10 @@ class c2p_cache_config {
   // to probes through ordinal four once selected.
   bool adaptive_probe_package_policy;
   unsigned adaptive_probe_package_min_candidate_bin;
+  // Select an address-region x requester-cluster hash in place of the PC
+  // hash for package decisions.  Both choices use exactly 64 x 4 3-bit
+  // entries; this is an experiment-time selector, not extra predictor state.
+  bool adaptive_probe_addr_topology_policy;
   // Read-only simulator observation of every post-miss decision point. It
   // never changes candidate issue, fallback, or resource arbitration.
   bool adaptive_probe_observe_tail;
@@ -184,6 +188,14 @@ struct c2p_cache_stats {
   unsigned long long adaptive_package_no_hit;
   unsigned long long adaptive_package_timeout;
   unsigned long long adaptive_package_score_hist[8];
+  // A package can exhaust its four probes with candidates still available.
+  // Keep that residual exact-peer opportunity distinct from ordinary package
+  // misses, so policy traffic and its lost sharing opportunity are auditable.
+  unsigned long long adaptive_package_residual_opportunities;
+  unsigned long long adaptive_package_residual_later_peer;
+  unsigned long long adaptive_package_residual_no_later_peer;
+  unsigned long long adaptive_package_residual_remaining_candidates;
+  unsigned long long adaptive_package_residual_next_peer_distance_total;
   // At every point where a failed probe leaves another candidate, classify the
   // initial candidate-set size and the first later exact peer, if any. These
   // are counterfactual observations: no lookup result is fed into the policy.
@@ -358,6 +370,7 @@ class c2p_cache {
   void adaptive_record_probe_timeout(transaction &txn);
   void adaptive_record_package_outcome(transaction &txn,
                                        package_outcome outcome);
+  void adaptive_record_package_residual(const transaction &txn);
   void adaptive_observe_tail(transaction &txn);
   void adaptive_observe_addr_topology(const transaction &txn, bool later_peer,
                                       unsigned distance, bool lower_ready,
@@ -366,6 +379,7 @@ class c2p_cache {
   unsigned adaptive_candidate_bin(const transaction &txn) const;
   unsigned adaptive_score_index(const transaction &txn, unsigned ordinal) const;
   unsigned adaptive_package_score_index(const transaction &txn) const;
+  unsigned adaptive_addr_topology_bucket(const transaction &txn) const;
   void record_peer_accesses(bool hit, unsigned accesses);
   bool has_exact_peer(l1_cache *requester, mem_fetch *mf) const;
   std::vector<unsigned> exact_candidates(const transaction &txn,
@@ -410,7 +424,9 @@ class c2p_cache {
   // the original PC-hash x ordinal policy. `unsigned char` makes the intended
   // 1 KiB maximum storage cost explicit even in this software model.
   std::vector<unsigned char> m_adaptive_probe_scores;
-  // One 3-bit score for each PC-hash x candidate-count bin package decision.
+  // One 3-bit score for each selected feature-hash x candidate-count-bin
+  // package decision.  The PC and address/topology policies are separate
+  // experiment configurations and therefore have identical 64 x 4 capacity.
   std::vector<unsigned char> m_adaptive_package_scores;
   unsigned long long m_adaptive_explore_counter;
   unsigned m_addr_observe_cluster_count;

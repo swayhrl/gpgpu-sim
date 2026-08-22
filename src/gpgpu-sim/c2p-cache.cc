@@ -80,6 +80,7 @@ c2p_cache_config::c2p_cache_config()
       adaptive_probe_candidate_count_bins(false),
       adaptive_probe_package_policy(false),
       adaptive_probe_package_min_candidate_bin(2),
+      adaptive_probe_addr_topology_policy(false),
       adaptive_probe_observe_tail(false),
       adaptive_probe_observe_addr_topology(false),
       separate_target_tag_port(false),
@@ -172,6 +173,10 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
       opp, "-c2p_cache_adaptive_probe_package_min_candidate_bin", OPT_UINT32,
       &adaptive_probe_package_min_candidate_bin,
       "minimum candidate-count bin for package confirmation (0..3)", "2");
+  option_parser_register(
+      opp, "-c2p_cache_adaptive_probe_addr_topology_policy", OPT_BOOL,
+      &adaptive_probe_addr_topology_policy,
+      "C2P+ use address-region x requester-cluster package hash", "0");
   option_parser_register(
       opp, "-c2p_cache_adaptive_probe_observe_tail", OPT_BOOL,
       &adaptive_probe_observe_tail,
@@ -295,6 +300,11 @@ void c2p_cache_stats::clear() {
   adaptive_package_timeout = 0;
   for (unsigned score = 0; score != 8; ++score)
     adaptive_package_score_hist[score] = 0;
+  adaptive_package_residual_opportunities = 0;
+  adaptive_package_residual_later_peer = 0;
+  adaptive_package_residual_no_later_peer = 0;
+  adaptive_package_residual_remaining_candidates = 0;
+  adaptive_package_residual_next_peer_distance_total = 0;
   for (unsigned bin = 0; bin != C2P_PROBE_POLICY_CANDIDATE_BINS; ++bin) {
     adaptive_tail_observe_opportunities[bin] = 0;
     adaptive_tail_observe_later_peer[bin] = 0;
@@ -419,6 +429,8 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
   assert(!m_config.adaptive_probe_package_policy ||
          (m_config.adaptive_probe_policy &&
           m_config.adaptive_probe_candidate_count_bins));
+  assert(!m_config.adaptive_probe_addr_topology_policy ||
+         m_config.adaptive_probe_package_policy);
   assert(m_config.adaptive_probe_package_min_candidate_bin <
          C2P_PROBE_POLICY_CANDIDATE_BINS);
   assert(!m_config.adaptive_probe_observe_addr_topology ||
@@ -1059,8 +1071,24 @@ unsigned c2p_cache::adaptive_score_index(const transaction &txn,
 
 unsigned c2p_cache::adaptive_package_score_index(
     const transaction &txn) const {
-  return txn.probe_pc_bucket * C2P_PROBE_POLICY_CANDIDATE_BINS +
+  const unsigned feature_bucket = m_config.adaptive_probe_addr_topology_policy
+                                      ? adaptive_addr_topology_bucket(txn)
+                                      : txn.probe_pc_bucket;
+  return feature_bucket * C2P_PROBE_POLICY_CANDIDATE_BINS +
          adaptive_candidate_bin(txn);
+}
+
+unsigned c2p_cache::adaptive_addr_topology_bucket(
+    const transaction &txn) const {
+  // Reduce the 32 address-region x requester-cluster feature space to the
+  // same 64 entries used by the PC package table.  The comparison therefore
+  // changes predictor information only; capacity, counter width, threshold,
+  // exploration, and the four-probe cap remain identical.
+  const unsigned region =
+      fold_hash(txn.line_tag, 0xA771u) & (C2P_ADDR_OBSERVE_REGION_BUCKETS - 1);
+  const unsigned requester_cluster = cluster_id(txn.requester_sid);
+  const uint64_t feature = ((uint64_t)region << 32) | requester_cluster;
+  return fold_hash(feature, 0xA772u) & (C2P_PROBE_POLICY_PC_BUCKETS - 1);
 }
 
 void c2p_cache::adaptive_record_probe_result(transaction &txn, bool hit) {
@@ -1210,6 +1238,26 @@ void c2p_cache::adaptive_record_package_outcome(transaction &txn,
   }
 }
 
+void c2p_cache::adaptive_record_package_residual(const transaction &txn) {
+  if (!m_config.adaptive_probe_package_policy ||
+      !txn.adaptive_package_active ||
+      txn.candidate_next >= txn.candidates.size())
+    return;
+  ++m_stats.adaptive_package_residual_opportunities;
+  m_stats.adaptive_package_residual_remaining_candidates +=
+      txn.candidates.size() - txn.candidate_next;
+  for (unsigned index = txn.candidate_next; index < txn.candidates.size();
+       ++index) {
+    if (m_l1s[txn.candidates[index]]->c2p_probe(txn.mf)) {
+      ++m_stats.adaptive_package_residual_later_peer;
+      m_stats.adaptive_package_residual_next_peer_distance_total +=
+          index - txn.candidate_next + 1;
+      return;
+    }
+  }
+  ++m_stats.adaptive_package_residual_no_later_peer;
+}
+
 void c2p_cache::adaptive_record_stop(const transaction &txn, bool hard_cap) {
   assert(m_config.adaptive_probe_policy);
   assert(txn.candidate_next < txn.candidates.size());
@@ -1355,6 +1403,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
         // The adaptive policy never confirms more than four candidates.  This
         // is independent of its learned score and bounds both request state
         // and diagnostic oracle work.
+        adaptive_record_package_residual(*it);
         adaptive_record_stop(*it, true);
         adaptive_record_package_outcome(*it, PACKAGE_NO_HIT);
         begin_fallback(*it, now);
@@ -1667,6 +1716,18 @@ void c2p_cache::print_stats(FILE *fout) const {
   for (unsigned score = 0; score != 8; ++score)
     fprintf(fout, "c2p_adaptive_package_score_%u_samples = %llu\n", score,
             m_stats.adaptive_package_score_hist[score]);
+  fprintf(fout, "c2p_adaptive_package_residual_opportunities = %llu\n",
+          m_stats.adaptive_package_residual_opportunities);
+  fprintf(fout, "c2p_adaptive_package_residual_later_peer = %llu\n",
+          m_stats.adaptive_package_residual_later_peer);
+  fprintf(fout, "c2p_adaptive_package_residual_no_later_peer = %llu\n",
+          m_stats.adaptive_package_residual_no_later_peer);
+  fprintf(fout,
+          "c2p_adaptive_package_residual_remaining_candidates = %llu\n",
+          m_stats.adaptive_package_residual_remaining_candidates);
+  fprintf(fout,
+          "c2p_adaptive_package_residual_next_peer_distance_total = %llu\n",
+          m_stats.adaptive_package_residual_next_peer_distance_total);
   for (unsigned bin = 0; bin != C2P_PROBE_POLICY_CANDIDATE_BINS; ++bin) {
     fprintf(fout, "c2p_adaptive_tail_bin_%u_opportunities = %llu\n", bin,
             m_stats.adaptive_tail_observe_opportunities[bin]);
