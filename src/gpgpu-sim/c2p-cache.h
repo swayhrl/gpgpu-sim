@@ -29,7 +29,8 @@ enum {
   C2P_PROBE_POLICY_ORDINAL_BINS = C2P_PROBE_POLICY_MAX_ORDINAL + 1,
   C2P_PROBE_POLICY_PC_BUCKETS = 64,
   C2P_PROBE_POLICY_CANDIDATE_BINS = 4,
-  C2P_PROBE_POLICY_DISTANCE_BINS = C2P_PROBE_POLICY_MAX_ORDINAL + 1
+  C2P_PROBE_POLICY_DISTANCE_BINS = C2P_PROBE_POLICY_MAX_ORDINAL + 1,
+  C2P_ADDR_OBSERVE_REGION_BUCKETS = 32
 };
 
 class c2p_cache_config {
@@ -83,6 +84,9 @@ class c2p_cache_config {
   // Read-only simulator observation of every post-miss decision point. It
   // never changes candidate issue, fallback, or resource arbitration.
   bool adaptive_probe_observe_tail;
+  // Further split the first post-miss observation by a line-address region
+  // hash and requester topology.  This is an offline feature study only.
+  bool adaptive_probe_observe_addr_topology;
   // C2P+ counterfactual: a one-request-per-cycle remote tag pipeline that
   // does not reserve the target L1 data port.
   bool separate_target_tag_port;
@@ -272,6 +276,17 @@ class c2p_cache {
 
   enum package_outcome { PACKAGE_HIT, PACKAGE_NO_HIT, PACKAGE_TIMEOUT };
 
+  struct addr_topology_observation {
+    addr_topology_observation()
+        : opportunities(0), later_peer(0), within_4(0), lower_ready(0),
+          target_credit(0) {}
+    unsigned long long opportunities;
+    unsigned long long later_peer;
+    unsigned long long within_4;
+    unsigned long long lower_ready;
+    unsigned long long target_credit;
+  };
+
   struct transaction {
     transaction(l1_cache *requester, mem_fetch *mf, unsigned requester_sid,
                 uint64_t line_tag, unsigned long long now);
@@ -344,6 +359,9 @@ class c2p_cache {
   void adaptive_record_package_outcome(transaction &txn,
                                        package_outcome outcome);
   void adaptive_observe_tail(transaction &txn);
+  void adaptive_observe_addr_topology(const transaction &txn, bool later_peer,
+                                      unsigned distance, bool lower_ready,
+                                      bool target_credit);
   void adaptive_record_stop(const transaction &txn, bool hard_cap);
   unsigned adaptive_candidate_bin(const transaction &txn) const;
   unsigned adaptive_score_index(const transaction &txn, unsigned ordinal) const;
@@ -395,6 +413,10 @@ class c2p_cache {
   // One 3-bit score for each PC-hash x candidate-count bin package decision.
   std::vector<unsigned char> m_adaptive_package_scores;
   unsigned long long m_adaptive_explore_counter;
+  unsigned m_addr_observe_cluster_count;
+  std::vector<addr_topology_observation> m_addr_observe_region;
+  std::vector<addr_topology_observation> m_addr_observe_cluster;
+  std::vector<addr_topology_observation> m_addr_observe_region_cluster;
   c2p_cache_stats m_stats;
 };
 

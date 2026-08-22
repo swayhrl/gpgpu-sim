@@ -81,6 +81,7 @@ c2p_cache_config::c2p_cache_config()
       adaptive_probe_package_policy(false),
       adaptive_probe_package_min_candidate_bin(2),
       adaptive_probe_observe_tail(false),
+      adaptive_probe_observe_addr_topology(false),
       separate_target_tag_port(false),
       diagnostic_target_port_bypass(false),
       snapshot_copies(4),
@@ -175,6 +176,10 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
       opp, "-c2p_cache_adaptive_probe_observe_tail", OPT_BOOL,
       &adaptive_probe_observe_tail,
       "observe initial candidate bins and exact later-peer distance", "0");
+  option_parser_register(
+      opp, "-c2p_cache_adaptive_probe_observe_addr_topology", OPT_BOOL,
+      &adaptive_probe_observe_addr_topology,
+      "observe line-region and requester-topology confirmation features", "0");
   option_parser_register(
       opp, "-c2p_cache_separate_target_tag_port", OPT_BOOL,
       &separate_target_tag_port,
@@ -392,7 +397,17 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
       m_adaptive_package_scores(C2P_PROBE_POLICY_PC_BUCKETS *
                                     C2P_PROBE_POLICY_CANDIDATE_BINS,
                                 4),
-      m_adaptive_explore_counter(0) {
+      m_adaptive_explore_counter(0),
+      m_addr_observe_cluster_count(
+          std::max(1U, (m_num_sms + std::max(1U, config.comparator_cluster_size) - 1) /
+                           std::max(1U, config.comparator_cluster_size))),
+      m_addr_observe_region(C2P_ADDR_OBSERVE_REGION_BUCKETS *
+                                C2P_PROBE_POLICY_CANDIDATE_BINS),
+      m_addr_observe_cluster(m_addr_observe_cluster_count *
+                                 C2P_PROBE_POLICY_CANDIDATE_BINS),
+      m_addr_observe_region_cluster(
+          C2P_ADDR_OBSERVE_REGION_BUCKETS * m_addr_observe_cluster_count *
+          C2P_PROBE_POLICY_CANDIDATE_BINS) {
   assert(m_config.scheme <= c2p_cache_config::RING_SCHEME);
   assert(is_power_of_two(m_config.snapshot_bf_rows_per_bank));
   assert(m_config.bf_hashes > 0);
@@ -406,6 +421,8 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
           m_config.adaptive_probe_candidate_count_bins));
   assert(m_config.adaptive_probe_package_min_candidate_bin <
          C2P_PROBE_POLICY_CANDIDATE_BINS);
+  assert(!m_config.adaptive_probe_observe_addr_topology ||
+         m_config.adaptive_probe_observe_tail);
   assert(!m_config.adaptive_probe_policy ||
          (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
           m_config.separate_target_tag_port &&
@@ -441,6 +458,12 @@ void c2p_cache::reset() {
   std::fill(m_adaptive_package_scores.begin(),
             m_adaptive_package_scores.end(), 4);
   m_adaptive_explore_counter = 0;
+  std::fill(m_addr_observe_region.begin(), m_addr_observe_region.end(),
+            addr_topology_observation());
+  std::fill(m_addr_observe_cluster.begin(), m_addr_observe_cluster.end(),
+            addr_topology_observation());
+  std::fill(m_addr_observe_region_cluster.begin(),
+            m_addr_observe_region_cluster.end(), addr_topology_observation());
   m_stats.clear();
 }
 
@@ -1088,20 +1111,66 @@ void c2p_cache::adaptive_observe_tail(transaction &txn) {
 
   // A read-only exact scan records the counterfactual result of stopping at
   // this decision point. It is never used by the adaptive policy itself.
+  bool later_peer = false;
+  unsigned distance = 0;
   for (unsigned index = txn.candidate_next; index < txn.candidates.size();
        ++index) {
     if (m_l1s[txn.candidates[index]]->c2p_probe(txn.mf)) {
+      later_peer = true;
+      distance = index - txn.candidate_next + 1;
       ++m_stats.adaptive_tail_observe_later_peer[candidate_bin];
-      const unsigned distance = index - txn.candidate_next + 1;
       const unsigned distance_bin =
           distance <= C2P_PROBE_POLICY_MAX_ORDINAL
               ? distance - 1
               : C2P_PROBE_POLICY_MAX_ORDINAL;
       ++m_stats.adaptive_tail_observe_distance[candidate_bin][distance_bin];
-      return;
+      break;
     }
   }
-  ++m_stats.adaptive_tail_observe_no_later_peer[candidate_bin];
+  if (!later_peer)
+    ++m_stats.adaptive_tail_observe_no_later_peer[candidate_bin];
+
+  // Package selection is made only after the mandatory first probe misses.
+  // Keep this feature study at that same single decision point per request;
+  // later observations belong to an already selected confirmation sequence.
+  if (m_config.adaptive_probe_observe_addr_topology && txn.candidate_next == 1) {
+    const unsigned target_sid = txn.candidates[txn.candidate_next];
+    const bool lower_ready = txn.requester->c2p_lower_ready(txn.mf);
+    const bool target_credit =
+        m_target_probe_queues[target_sid].size() < m_config.target_probe_queue_size;
+    adaptive_observe_addr_topology(txn, later_peer, distance, lower_ready,
+                                   target_credit);
+  }
+}
+
+void c2p_cache::adaptive_observe_addr_topology(
+    const transaction &txn, bool later_peer, unsigned distance,
+    bool lower_ready, bool target_credit) {
+  const unsigned candidate_bin = adaptive_candidate_bin(txn);
+  const unsigned region =
+      fold_hash(txn.line_tag, 0xA771u) & (C2P_ADDR_OBSERVE_REGION_BUCKETS - 1);
+  const unsigned cluster = cluster_id(txn.requester_sid);
+  assert(cluster < m_addr_observe_cluster_count);
+
+  addr_topology_observation *entries[] = {
+      &m_addr_observe_region[region * C2P_PROBE_POLICY_CANDIDATE_BINS +
+                             candidate_bin],
+      &m_addr_observe_cluster[cluster * C2P_PROBE_POLICY_CANDIDATE_BINS +
+                              candidate_bin],
+      &m_addr_observe_region_cluster[
+          (region * m_addr_observe_cluster_count + cluster) *
+              C2P_PROBE_POLICY_CANDIDATE_BINS +
+          candidate_bin]};
+  for (unsigned entry_i = 0; entry_i != sizeof(entries) / sizeof(entries[0]);
+       ++entry_i) {
+    addr_topology_observation &entry = *entries[entry_i];
+    ++entry.opportunities;
+    if (later_peer) ++entry.later_peer;
+    if (later_peer && distance <= C2P_PROBE_POLICY_MAX_ORDINAL)
+      ++entry.within_4;
+    if (lower_ready) ++entry.lower_ready;
+    if (target_credit) ++entry.target_credit;
+  }
 }
 
 void c2p_cache::adaptive_record_probe_timeout(transaction &txn) {
@@ -1612,6 +1681,78 @@ void c2p_cache::print_stats(FILE *fout) const {
               distance == C2P_PROBE_POLICY_MAX_ORDINAL ? "overflow_" : "",
               distance == C2P_PROBE_POLICY_MAX_ORDINAL ? 5 : distance + 1,
               m_stats.adaptive_tail_observe_distance[bin][distance]);
+  }
+  if (m_config.adaptive_probe_observe_addr_topology) {
+    // Emit only populated buckets.  These are offline observation records,
+    // not predictor state and never participate in a timing decision.
+    for (unsigned region = 0; region != C2P_ADDR_OBSERVE_REGION_BUCKETS;
+         ++region)
+      for (unsigned bin = 0; bin != C2P_PROBE_POLICY_CANDIDATE_BINS; ++bin) {
+        const addr_topology_observation &entry =
+            m_addr_observe_region[region * C2P_PROBE_POLICY_CANDIDATE_BINS +
+                                  bin];
+        if (!entry.opportunities) continue;
+        fprintf(fout,
+                "c2p_addr_obs_region_%u_bin_%u_opportunities = %llu\n",
+                region, bin, entry.opportunities);
+        fprintf(fout, "c2p_addr_obs_region_%u_bin_%u_later_peer = %llu\n",
+                region, bin, entry.later_peer);
+        fprintf(fout, "c2p_addr_obs_region_%u_bin_%u_within_4 = %llu\n",
+                region, bin, entry.within_4);
+        fprintf(fout, "c2p_addr_obs_region_%u_bin_%u_lower_ready = %llu\n",
+                region, bin, entry.lower_ready);
+        fprintf(fout,
+                "c2p_addr_obs_region_%u_bin_%u_target_credit = %llu\n",
+                region, bin, entry.target_credit);
+      }
+    for (unsigned cluster = 0; cluster != m_addr_observe_cluster_count;
+         ++cluster)
+      for (unsigned bin = 0; bin != C2P_PROBE_POLICY_CANDIDATE_BINS; ++bin) {
+        const addr_topology_observation &entry =
+            m_addr_observe_cluster[cluster * C2P_PROBE_POLICY_CANDIDATE_BINS +
+                                   bin];
+        if (!entry.opportunities) continue;
+        fprintf(fout,
+                "c2p_addr_obs_cluster_%u_bin_%u_opportunities = %llu\n",
+                cluster, bin, entry.opportunities);
+        fprintf(fout, "c2p_addr_obs_cluster_%u_bin_%u_later_peer = %llu\n",
+                cluster, bin, entry.later_peer);
+        fprintf(fout, "c2p_addr_obs_cluster_%u_bin_%u_within_4 = %llu\n",
+                cluster, bin, entry.within_4);
+        fprintf(fout, "c2p_addr_obs_cluster_%u_bin_%u_lower_ready = %llu\n",
+                cluster, bin, entry.lower_ready);
+        fprintf(fout,
+                "c2p_addr_obs_cluster_%u_bin_%u_target_credit = %llu\n",
+                cluster, bin, entry.target_credit);
+      }
+    for (unsigned region = 0; region != C2P_ADDR_OBSERVE_REGION_BUCKETS;
+         ++region)
+      for (unsigned cluster = 0; cluster != m_addr_observe_cluster_count;
+           ++cluster)
+        for (unsigned bin = 0; bin != C2P_PROBE_POLICY_CANDIDATE_BINS;
+             ++bin) {
+          const addr_topology_observation &entry =
+              m_addr_observe_region_cluster[
+                  (region * m_addr_observe_cluster_count + cluster) *
+                      C2P_PROBE_POLICY_CANDIDATE_BINS +
+                  bin];
+          if (!entry.opportunities) continue;
+          fprintf(fout,
+                  "c2p_addr_obs_region_%u_cluster_%u_bin_%u_opportunities = %llu\n",
+                  region, cluster, bin, entry.opportunities);
+          fprintf(fout,
+                  "c2p_addr_obs_region_%u_cluster_%u_bin_%u_later_peer = %llu\n",
+                  region, cluster, bin, entry.later_peer);
+          fprintf(fout,
+                  "c2p_addr_obs_region_%u_cluster_%u_bin_%u_within_4 = %llu\n",
+                  region, cluster, bin, entry.within_4);
+          fprintf(fout,
+                  "c2p_addr_obs_region_%u_cluster_%u_bin_%u_lower_ready = %llu\n",
+                  region, cluster, bin, entry.lower_ready);
+          fprintf(fout,
+                  "c2p_addr_obs_region_%u_cluster_%u_bin_%u_target_credit = %llu\n",
+                  region, cluster, bin, entry.target_credit);
+        }
   }
   fprintf(fout, "c2p_fallback_target_wait_timeout = %llu\n",
           m_stats.fallback_target_wait_timeout);
