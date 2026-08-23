@@ -77,9 +77,7 @@ c2p_cache_config::c2p_cache_config()
       adaptive_probe_policy(false),
       adaptive_probe_score_threshold(4),
       adaptive_probe_explore_period(64),
-      adaptive_probe_candidate_count_bins(false),
       adaptive_probe_package_policy(false),
-      adaptive_probe_package_min_candidate_bin(2),
       adaptive_probe_addr_topology_policy(false),
       adaptive_probe_observe_tail(false),
       adaptive_probe_observe_addr_topology(false),
@@ -152,7 +150,7 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
   option_parser_register(
       opp, "-c2p_cache_adaptive_probe_policy", OPT_BOOL,
       &adaptive_probe_policy,
-      "C2P+ PC-hash/ordinal adaptive confirmation policy", "0");
+      "C2P+ feature-hash confirmation package policy", "0");
   option_parser_register(
       opp, "-c2p_cache_adaptive_probe_score_threshold", OPT_UINT32,
       &adaptive_probe_score_threshold,
@@ -160,19 +158,11 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
   option_parser_register(
       opp, "-c2p_cache_adaptive_probe_explore_period", OPT_UINT32,
       &adaptive_probe_explore_period,
-      "C2P+ forced-continuation period (0 disables exploration)", "64");
-  option_parser_register(
-      opp, "-c2p_cache_adaptive_probe_candidate_count_bins", OPT_BOOL,
-      &adaptive_probe_candidate_count_bins,
-      "C2P+ index adaptive scores by initial candidate-count bin", "0");
+      "C2P+ forced package period (0 disables exploration)", "64");
   option_parser_register(
       opp, "-c2p_cache_adaptive_probe_package_policy", OPT_BOOL,
       &adaptive_probe_package_policy,
-      "C2P+ use a PC-hash/candidate-bin confirmation package", "0");
-  option_parser_register(
-      opp, "-c2p_cache_adaptive_probe_package_min_candidate_bin", OPT_UINT32,
-      &adaptive_probe_package_min_candidate_bin,
-      "minimum candidate-count bin for package confirmation (0..3)", "2");
+      "C2P+ use one feature-hash/candidate-bin confirmation package", "0");
   option_parser_register(
       opp, "-c2p_cache_adaptive_probe_addr_topology_policy", OPT_BOOL,
       &adaptive_probe_addr_topology_policy,
@@ -400,10 +390,6 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
       m_ring_next_issue_cycle(0),
       m_peer_access_hit_hist(m_num_sms + 1, 0),
       m_peer_access_miss_hist(m_num_sms + 1, 0),
-      m_adaptive_probe_scores(C2P_PROBE_POLICY_PC_BUCKETS *
-                                  C2P_PROBE_POLICY_MAX_ORDINAL *
-                                  C2P_PROBE_POLICY_CANDIDATE_BINS,
-                              4),
       m_adaptive_package_scores(C2P_PROBE_POLICY_PC_BUCKETS *
                                     C2P_PROBE_POLICY_CANDIDATE_BINS,
                                 4),
@@ -424,21 +410,17 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
   assert(m_config.comparator_cluster_size > 0);
   assert(m_config.target_probe_queue_size > 0);
   assert(m_config.adaptive_probe_score_threshold <= 7);
-  assert(!m_config.adaptive_probe_candidate_count_bins ||
-         m_config.adaptive_probe_policy);
   assert(!m_config.adaptive_probe_package_policy ||
-         (m_config.adaptive_probe_policy &&
-          m_config.adaptive_probe_candidate_count_bins));
+         m_config.adaptive_probe_policy);
   assert(!m_config.adaptive_probe_addr_topology_policy ||
          m_config.adaptive_probe_package_policy);
-  assert(m_config.adaptive_probe_package_min_candidate_bin <
-         C2P_PROBE_POLICY_CANDIDATE_BINS);
   assert(!m_config.adaptive_probe_observe_addr_topology ||
          m_config.adaptive_probe_observe_tail);
   assert(!m_config.adaptive_probe_policy ||
          (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
           m_config.separate_target_tag_port &&
-          m_config.max_candidate_probes == 0));
+          m_config.max_candidate_probes == 0 &&
+          m_config.adaptive_probe_package_policy));
   assert(!(m_config.separate_target_tag_port &&
            m_config.diagnostic_target_port_bypass));
 }
@@ -466,7 +448,6 @@ void c2p_cache::reset() {
   m_ring_next_issue_cycle = 0;
   std::fill(m_peer_access_hit_hist.begin(), m_peer_access_hit_hist.end(), 0);
   std::fill(m_peer_access_miss_hist.begin(), m_peer_access_miss_hist.end(), 0);
-  std::fill(m_adaptive_probe_scores.begin(), m_adaptive_probe_scores.end(), 4);
   std::fill(m_adaptive_package_scores.begin(),
             m_adaptive_package_scores.end(), 4);
   m_adaptive_explore_counter = 0;
@@ -984,44 +965,12 @@ void c2p_cache::begin_fallback(transaction &txn, unsigned long long now) {
   transition(txn, WAIT_FALLBACK, now);
 }
 
-bool c2p_cache::adaptive_should_continue(transaction &txn) {
-  // The first candidate is unconditional.  This method therefore sees one to
-  // three failed confirmations and chooses whether to issue ordinal 2--4.
-  assert(m_config.adaptive_probe_policy);
-  assert(txn.candidate_next != 0);
-  assert(txn.candidate_next < C2P_PROBE_POLICY_MAX_ORDINAL);
-  assert(txn.candidate_next < txn.candidates.size());
-  ++m_stats.adaptive_continuation_opportunities;
-
-  const unsigned next_ordinal = txn.candidate_next + 1;
-  const unsigned score = m_adaptive_probe_scores[
-      adaptive_score_index(txn, next_ordinal)];
-  ++m_stats.adaptive_score_hist[score];
-  const bool explore_due = m_config.adaptive_probe_explore_period != 0 &&
-      (m_adaptive_explore_counter++ %
-           m_config.adaptive_probe_explore_period ==
-       0);
-  if (score >= m_config.adaptive_probe_score_threshold) {
-    txn.probe_reason = PROBE_PREDICTOR;
-    ++m_stats.adaptive_continue_predictor;
-    return true;
-  }
-  if (explore_due) {
-    txn.probe_reason = PROBE_EXPLORATION;
-    ++m_stats.adaptive_continue_exploration;
-    return true;
-  }
-  ++m_stats.adaptive_stop_predictor;
-  return false;
-}
-
 bool c2p_cache::adaptive_should_start_package(transaction &txn) {
-  // Packages are chosen once, immediately after the mandatory first probe
-  // misses. The selected request then keeps confirming through ordinal four.
+  // The only adaptive decision happens immediately after the mandatory first
+  // probe misses. The selected request then keeps confirming through ordinal
+  // four. Every candidate-count bin uses this same 64 x 4 table.
   assert(m_config.adaptive_probe_package_policy);
   assert(txn.candidate_next == 1);
-  assert(adaptive_candidate_bin(txn) >=
-         m_config.adaptive_probe_package_min_candidate_bin);
   ++m_stats.adaptive_continuation_opportunities;
   ++m_stats.adaptive_package_opportunities;
 
@@ -1059,16 +1008,6 @@ unsigned c2p_cache::adaptive_candidate_bin(const transaction &txn) const {
   return 3;
 }
 
-unsigned c2p_cache::adaptive_score_index(const transaction &txn,
-                                         unsigned ordinal) const {
-  assert(ordinal != 0 && ordinal <= C2P_PROBE_POLICY_MAX_ORDINAL);
-  const unsigned candidate_bin = m_config.adaptive_probe_candidate_count_bins
-                                     ? adaptive_candidate_bin(txn)
-                                     : 0;
-  return ((txn.probe_pc_bucket * C2P_PROBE_POLICY_MAX_ORDINAL + ordinal - 1) *
-          C2P_PROBE_POLICY_CANDIDATE_BINS + candidate_bin);
-}
-
 unsigned c2p_cache::adaptive_package_score_index(
     const transaction &txn) const {
   const unsigned feature_bucket = m_config.adaptive_probe_addr_topology_policy
@@ -1092,24 +1031,12 @@ unsigned c2p_cache::adaptive_addr_topology_bucket(
 }
 
 void c2p_cache::adaptive_record_probe_result(transaction &txn, bool hit) {
-  // The just-completed probe consumes any saved choice to continue. A later
-  // candidate must make a fresh prediction, but an issue blocked by the
-  // target FIFO must not make the same prediction again.
+  // A completed probe consumes the saved issue decision. A selected package
+  // reinstates that decision without rereading its score; a FIFO stall must
+  // not create another policy decision.
   txn.adaptive_continue_decided = false;
   txn.adaptive_tail_observed = false;
   if (!m_config.adaptive_probe_policy) return;
-  assert(txn.candidate_next != 0);
-  const unsigned ordinal = txn.candidate_next;
-  if (ordinal <= C2P_PROBE_POLICY_MAX_ORDINAL) {
-    unsigned char &score =
-        m_adaptive_probe_scores[adaptive_score_index(txn, ordinal)];
-    // +2/-1 makes the 4/8 threshold a utility test with a break-even
-    // probability near one third rather than a literal 50% hit predictor.
-    if (hit)
-      score = std::min(7U, (unsigned)score + 2);
-    else if (score)
-      --score;
-  }
   if (txn.probe_reason == PROBE_FIRST) {
     if (hit)
       ++m_stats.adaptive_first_probe_hits;
@@ -1421,10 +1348,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
             !it->adaptive_continue_decided) {
           if (it->adaptive_package_active) {
             it->adaptive_continue_decided = true;
-          } else if (m_config.adaptive_probe_package_policy &&
-                     it->candidate_next == 1 &&
-                     adaptive_candidate_bin(*it) >=
-                         m_config.adaptive_probe_package_min_candidate_bin) {
+          } else if (it->candidate_next == 1) {
             if (adaptive_should_start_package(*it)) {
               it->adaptive_package_active = true;
               it->adaptive_package_outcome_recorded = false;
@@ -1433,11 +1357,10 @@ void c2p_cache::advance_probes(unsigned long long now) {
               adaptive_record_stop(*it, false);
               begin_fallback(*it, now);
             }
-          } else if (adaptive_should_continue(*it)) {
-            it->adaptive_continue_decided = true;
           } else {
-            adaptive_record_stop(*it, false);
-            begin_fallback(*it, now);
+            // A valid adaptive transaction reaches ordinal two and beyond
+            // only after the one package decision above selected it.
+            assert(false);
           }
         }
         if (it->state == READY_TO_PROBE) {

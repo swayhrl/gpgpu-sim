@@ -68,19 +68,15 @@ class c2p_cache_config {
   // C2P+ only: zero preserves the default exhaustive candidate scan.
   unsigned max_candidate_probes;
   // C2P+ adaptive confirmation policy.  A request always probes its first
-  // candidate; later candidates are selected by a small feature/ordinal
-  // utility table.  Disabled by default so canonical C2P is unchanged.
+  // candidate; after a miss, one feature x candidate-bin package decision
+  // selects either lower fallback or confirmation through ordinal four.
+  // Disabled by default so canonical C2P is unchanged.
   bool adaptive_probe_policy;
   unsigned adaptive_probe_score_threshold;
   unsigned adaptive_probe_explore_period;
-  // When enabled, retain a distinct adaptive score for each initial Snapshot
-  // candidate-count bin: 1--2, 3--4, 5--8, and 9+ candidates.
-  bool adaptive_probe_candidate_count_bins;
-  // For initial candidate bins at or above this threshold, choose a bounded
-  // confirmation package after the compulsory first miss. A package commits
-  // to probes through ordinal four once selected.
+  // Select the bounded package after every compulsory first miss.  The four
+  // fixed bins are 1--2, 3--4, 5--8, and 9+ initial candidates.
   bool adaptive_probe_package_policy;
-  unsigned adaptive_probe_package_min_candidate_bin;
   // Select an address-region x requester-cluster hash in place of the PC
   // hash for package decisions.  Both choices use exactly 64 x 4 3-bit
   // entries; this is an experiment-time selector, not extra predictor state.
@@ -364,7 +360,6 @@ class c2p_cache {
                   unsigned long long now);
   void retire(transaction &txn, unsigned long long now);
   void begin_fallback(transaction &txn, unsigned long long now);
-  bool adaptive_should_continue(transaction &txn);
   bool adaptive_should_start_package(transaction &txn);
   void adaptive_record_probe_result(transaction &txn, bool hit);
   void adaptive_record_probe_timeout(transaction &txn);
@@ -377,7 +372,6 @@ class c2p_cache {
                                       bool target_credit);
   void adaptive_record_stop(const transaction &txn, bool hard_cap);
   unsigned adaptive_candidate_bin(const transaction &txn) const;
-  unsigned adaptive_score_index(const transaction &txn, unsigned ordinal) const;
   unsigned adaptive_package_score_index(const transaction &txn) const;
   unsigned adaptive_addr_topology_bucket(const transaction &txn) const;
   void record_peer_accesses(bool hit, unsigned accesses);
@@ -418,15 +412,10 @@ class c2p_cache {
   unsigned long long m_ring_next_issue_cycle;
   std::vector<unsigned long long> m_peer_access_hit_hist;
   std::vector<unsigned long long> m_peer_access_miss_hist;
-  // Four confirmation ordinals x 64 PC buckets x four candidate-count bins,
-  // each represented by a 3-bit saturating utility score. The count-bin
-  // dimension is only indexed when configured; otherwise bin zero preserves
-  // the original PC-hash x ordinal policy. `unsigned char` makes the intended
-  // 1 KiB maximum storage cost explicit even in this software model.
-  std::vector<unsigned char> m_adaptive_probe_scores;
-  // One 3-bit score for each selected feature-hash x candidate-count-bin
-  // package decision.  The PC and address/topology policies are separate
-  // experiment configurations and therefore have identical 64 x 4 capacity.
+  // The only adaptive predictor state: one 3-bit score for each selected
+  // feature-hash x candidate-count-bin package decision. PC-hash and
+  // address/topology are separate configurations with identical 64 x 4
+  // capacity (768 logical bits); AddrTopo never depends on an instruction PC.
   std::vector<unsigned char> m_adaptive_package_scores;
   unsigned long long m_adaptive_explore_counter;
   unsigned m_addr_observe_cluster_count;
