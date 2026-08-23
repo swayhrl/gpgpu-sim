@@ -30,6 +30,8 @@ enum {
   C2P_PROBE_POLICY_PC_BUCKETS = 64,
   C2P_PROBE_POLICY_CANDIDATE_BINS = 4,
   C2P_PROBE_POLICY_DISTANCE_BINS = C2P_PROBE_POLICY_MAX_ORDINAL + 1,
+  // Waiting C2P fallbacks are bucketed as 0, 1, 2--3, and 4 or more.
+  C2P_PROBE_POLICY_FALLBACK_PRESSURE_BINS = 4,
   C2P_ADDR_OBSERVE_REGION_BUCKETS = 32
 };
 
@@ -74,6 +76,12 @@ class c2p_cache_config {
   bool adaptive_probe_policy;
   unsigned adaptive_probe_score_threshold;
   unsigned adaptive_probe_explore_period;
+  // Reset score for every entry in the one 64 x 4 confirmation table. The
+  // legal three-bit score range is 0..7.
+  unsigned adaptive_probe_initial_score;
+  // Experimental guardrail: after the first miss, scan a Snapshot candidate
+  // list of at most four entries to completion. Disabled by default.
+  bool adaptive_probe_force_full_small_candidates;
   // Select the bounded package after every compulsory first miss.  The four
   // fixed bins are 1--2, 3--4, 5--8, and 9+ initial candidates.
   bool adaptive_probe_package_policy;
@@ -149,6 +157,11 @@ struct c2p_cache_stats {
                                           [C2P_PROBE_POLICY_ORDINAL_BINS];
   unsigned long long probe_pc_ordinal_misses[C2P_PROBE_POLICY_PC_BUCKETS]
                                             [C2P_PROBE_POLICY_ORDINAL_BINS];
+  // Candidate-bin x ordinal separates short-list remote hits from long tails.
+  unsigned long long probe_candidate_bin_ordinal_hits
+      [C2P_PROBE_POLICY_CANDIDATE_BINS][C2P_PROBE_POLICY_ORDINAL_BINS];
+  unsigned long long probe_candidate_bin_ordinal_misses
+      [C2P_PROBE_POLICY_CANDIDATE_BINS][C2P_PROBE_POLICY_ORDINAL_BINS];
   // A continuation decision occurs after one or more failed probes while a
   // next Snapshot candidate exists.  lower_ready and target_credit are
   // sampled for diagnosis only and never influence this transaction.
@@ -160,12 +173,31 @@ struct c2p_cache_stats {
   unsigned long long adaptive_continuation_opportunities;
   unsigned long long adaptive_continue_predictor;
   unsigned long long adaptive_continue_exploration;
+  unsigned long long adaptive_continue_forced;
   unsigned long long adaptive_stop_predictor;
   unsigned long long adaptive_stop_hard_cap;
   unsigned long long adaptive_stop_later_peer;
   unsigned long long adaptive_stop_no_later_peer;
   unsigned long long adaptive_stop_remaining_candidates;
   unsigned long long adaptive_stop_next_peer_distance_total;
+  // Read-only exact-peer histogram at learned early-stop points. The fixed
+  // four-probe cap is intentionally excluded from this diagnostic.
+  unsigned long long adaptive_early_stop_opportunities
+      [C2P_PROBE_POLICY_CANDIDATE_BINS];
+  unsigned long long adaptive_early_stop_later_peer
+      [C2P_PROBE_POLICY_CANDIDATE_BINS];
+  unsigned long long adaptive_early_stop_no_later_peer
+      [C2P_PROBE_POLICY_CANDIDATE_BINS];
+  unsigned long long adaptive_early_stop_distance
+      [C2P_PROBE_POLICY_CANDIDATE_BINS][C2P_PROBE_POLICY_DISTANCE_BINS];
+  // These account only the stop-to-lower-send delay. Pressure is the number
+  // of already waiting C2P fallbacks, bucketed as 0, 1, 2--3, and 4+.
+  unsigned long long adaptive_early_stop_lower_samples
+      [C2P_PROBE_POLICY_FALLBACK_PRESSURE_BINS];
+  unsigned long long adaptive_early_stop_lower_cycles
+      [C2P_PROBE_POLICY_FALLBACK_PRESSURE_BINS];
+  unsigned long long adaptive_early_stop_lower_waited
+      [C2P_PROBE_POLICY_FALLBACK_PRESSURE_BINS];
   unsigned long long adaptive_first_probe_hits;
   unsigned long long adaptive_first_probe_misses;
   unsigned long long adaptive_first_probe_timeouts;
@@ -175,10 +207,14 @@ struct c2p_cache_stats {
   unsigned long long adaptive_exploration_probe_hits;
   unsigned long long adaptive_exploration_probe_misses;
   unsigned long long adaptive_exploration_probe_timeouts;
+  unsigned long long adaptive_forced_probe_hits;
+  unsigned long long adaptive_forced_probe_misses;
+  unsigned long long adaptive_forced_probe_timeouts;
   unsigned long long adaptive_score_hist[8];
   unsigned long long adaptive_package_opportunities;
   unsigned long long adaptive_package_start_predictor;
   unsigned long long adaptive_package_start_exploration;
+  unsigned long long adaptive_package_start_forced;
   unsigned long long adaptive_package_stop_predictor;
   unsigned long long adaptive_package_hit;
   unsigned long long adaptive_package_no_hit;
@@ -279,7 +315,8 @@ class c2p_cache {
   enum probe_issue_reason {
     PROBE_FIRST,
     PROBE_PREDICTOR,
-    PROBE_EXPLORATION
+    PROBE_EXPLORATION,
+    PROBE_FORCED
   };
 
   enum package_outcome { PACKAGE_HIT, PACKAGE_NO_HIT, PACKAGE_TIMEOUT };
@@ -321,6 +358,9 @@ class c2p_cache {
     bool adaptive_tail_observed;
     bool adaptive_package_active;
     bool adaptive_package_outcome_recorded;
+    bool adaptive_early_stop_pending;
+    unsigned adaptive_early_stop_pressure;
+    unsigned long long adaptive_early_stop_cycle;
     unsigned probe_sid;
     unsigned peer_accesses;
     bool oracle_peer_hit;
@@ -370,7 +410,8 @@ class c2p_cache {
   void adaptive_observe_addr_topology(const transaction &txn, bool later_peer,
                                       unsigned distance, bool lower_ready,
                                       bool target_credit);
-  void adaptive_record_stop(const transaction &txn, bool hard_cap);
+  void adaptive_record_stop(transaction &txn, bool hard_cap,
+                            unsigned long long now);
   unsigned adaptive_candidate_bin(const transaction &txn) const;
   unsigned adaptive_package_score_index(const transaction &txn) const;
   unsigned adaptive_addr_topology_bucket(const transaction &txn) const;

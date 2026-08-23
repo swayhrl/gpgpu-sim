@@ -77,6 +77,8 @@ c2p_cache_config::c2p_cache_config()
       adaptive_probe_policy(false),
       adaptive_probe_score_threshold(4),
       adaptive_probe_explore_period(64),
+      adaptive_probe_initial_score(4),
+      adaptive_probe_force_full_small_candidates(false),
       adaptive_probe_package_policy(false),
       adaptive_probe_addr_topology_policy(false),
       adaptive_probe_observe_tail(false),
@@ -159,6 +161,14 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
       opp, "-c2p_cache_adaptive_probe_explore_period", OPT_UINT32,
       &adaptive_probe_explore_period,
       "C2P+ forced package period (0 disables exploration)", "64");
+  option_parser_register(
+      opp, "-c2p_cache_adaptive_probe_initial_score", OPT_UINT32,
+      &adaptive_probe_initial_score,
+      "C2P+ confirmation-table reset score (0..7)", "4");
+  option_parser_register(
+      opp, "-c2p_cache_adaptive_probe_force_full_small_candidates", OPT_BOOL,
+      &adaptive_probe_force_full_small_candidates,
+      "C2P+ scan candidate lists of at most four to completion", "0");
   option_parser_register(
       opp, "-c2p_cache_adaptive_probe_package_policy", OPT_BOOL,
       &adaptive_probe_package_policy,
@@ -255,6 +265,12 @@ void c2p_cache_stats::clear() {
       for (unsigned target_credit = 0; target_credit != 2; ++target_credit)
         continuation_decisions[ordinal][lower_ready][target_credit] = 0;
   }
+  for (unsigned bin = 0; bin < C2P_PROBE_POLICY_CANDIDATE_BINS; ++bin)
+    for (unsigned ordinal = 0; ordinal < C2P_PROBE_POLICY_ORDINAL_BINS;
+         ++ordinal) {
+      probe_candidate_bin_ordinal_hits[bin][ordinal] = 0;
+      probe_candidate_bin_ordinal_misses[bin][ordinal] = 0;
+    }
   for (unsigned bucket = 0; bucket < C2P_PROBE_POLICY_PC_BUCKETS; ++bucket)
     for (unsigned ordinal = 0; ordinal < C2P_PROBE_POLICY_ORDINAL_BINS;
          ++ordinal) {
@@ -264,12 +280,27 @@ void c2p_cache_stats::clear() {
   adaptive_continuation_opportunities = 0;
   adaptive_continue_predictor = 0;
   adaptive_continue_exploration = 0;
+  adaptive_continue_forced = 0;
   adaptive_stop_predictor = 0;
   adaptive_stop_hard_cap = 0;
   adaptive_stop_later_peer = 0;
   adaptive_stop_no_later_peer = 0;
   adaptive_stop_remaining_candidates = 0;
   adaptive_stop_next_peer_distance_total = 0;
+  for (unsigned bin = 0; bin < C2P_PROBE_POLICY_CANDIDATE_BINS; ++bin) {
+    adaptive_early_stop_opportunities[bin] = 0;
+    adaptive_early_stop_later_peer[bin] = 0;
+    adaptive_early_stop_no_later_peer[bin] = 0;
+    for (unsigned distance = 0;
+         distance < C2P_PROBE_POLICY_DISTANCE_BINS; ++distance)
+      adaptive_early_stop_distance[bin][distance] = 0;
+  }
+  for (unsigned pressure = 0;
+       pressure != C2P_PROBE_POLICY_FALLBACK_PRESSURE_BINS; ++pressure) {
+    adaptive_early_stop_lower_samples[pressure] = 0;
+    adaptive_early_stop_lower_cycles[pressure] = 0;
+    adaptive_early_stop_lower_waited[pressure] = 0;
+  }
   adaptive_first_probe_hits = 0;
   adaptive_first_probe_misses = 0;
   adaptive_first_probe_timeouts = 0;
@@ -279,11 +310,15 @@ void c2p_cache_stats::clear() {
   adaptive_exploration_probe_hits = 0;
   adaptive_exploration_probe_misses = 0;
   adaptive_exploration_probe_timeouts = 0;
+  adaptive_forced_probe_hits = 0;
+  adaptive_forced_probe_misses = 0;
+  adaptive_forced_probe_timeouts = 0;
   for (unsigned score = 0; score != 8; ++score)
     adaptive_score_hist[score] = 0;
   adaptive_package_opportunities = 0;
   adaptive_package_start_predictor = 0;
   adaptive_package_start_exploration = 0;
+  adaptive_package_start_forced = 0;
   adaptive_package_stop_predictor = 0;
   adaptive_package_hit = 0;
   adaptive_package_no_hit = 0;
@@ -350,6 +385,9 @@ c2p_cache::transaction::transaction(l1_cache *requester_, mem_fetch *mf_,
       adaptive_tail_observed(false),
       adaptive_package_active(false),
       adaptive_package_outcome_recorded(false),
+      adaptive_early_stop_pending(false),
+      adaptive_early_stop_pressure(0),
+      adaptive_early_stop_cycle(0),
       probe_sid((unsigned)-1),
       peer_accesses(0),
       oracle_peer_hit(false),
@@ -392,7 +430,7 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
       m_peer_access_miss_hist(m_num_sms + 1, 0),
       m_adaptive_package_scores(C2P_PROBE_POLICY_PC_BUCKETS *
                                     C2P_PROBE_POLICY_CANDIDATE_BINS,
-                                4),
+                                config.adaptive_probe_initial_score),
       m_adaptive_explore_counter(0),
       m_addr_observe_cluster_count(
           std::max(1U, (m_num_sms + std::max(1U, config.comparator_cluster_size) - 1) /
@@ -410,6 +448,7 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
   assert(m_config.comparator_cluster_size > 0);
   assert(m_config.target_probe_queue_size > 0);
   assert(m_config.adaptive_probe_score_threshold <= 7);
+  assert(m_config.adaptive_probe_initial_score <= 7);
   assert(!m_config.adaptive_probe_package_policy ||
          m_config.adaptive_probe_policy);
   assert(!m_config.adaptive_probe_addr_topology_policy ||
@@ -449,7 +488,8 @@ void c2p_cache::reset() {
   std::fill(m_peer_access_hit_hist.begin(), m_peer_access_hit_hist.end(), 0);
   std::fill(m_peer_access_miss_hist.begin(), m_peer_access_miss_hist.end(), 0);
   std::fill(m_adaptive_package_scores.begin(),
-            m_adaptive_package_scores.end(), 4);
+            m_adaptive_package_scores.end(),
+            m_config.adaptive_probe_initial_score);
   m_adaptive_explore_counter = 0;
   std::fill(m_addr_observe_region.begin(), m_addr_observe_region.end(),
             addr_topology_observation());
@@ -974,6 +1014,14 @@ bool c2p_cache::adaptive_should_start_package(transaction &txn) {
   ++m_stats.adaptive_continuation_opportunities;
   ++m_stats.adaptive_package_opportunities;
 
+  if (m_config.adaptive_probe_force_full_small_candidates &&
+      txn.candidates.size() <= C2P_PROBE_POLICY_MAX_ORDINAL) {
+    txn.probe_reason = PROBE_FORCED;
+    ++m_stats.adaptive_continue_forced;
+    ++m_stats.adaptive_package_start_forced;
+    return true;
+  }
+
   const unsigned score =
       m_adaptive_package_scores[adaptive_package_score_index(txn)];
   ++m_stats.adaptive_score_hist[score];
@@ -1047,12 +1095,17 @@ void c2p_cache::adaptive_record_probe_result(transaction &txn, bool hit) {
       ++m_stats.adaptive_predictor_probe_hits;
     else
       ++m_stats.adaptive_predictor_probe_misses;
-  } else {
-    assert(txn.probe_reason == PROBE_EXPLORATION);
+  } else if (txn.probe_reason == PROBE_EXPLORATION) {
     if (hit)
       ++m_stats.adaptive_exploration_probe_hits;
     else
       ++m_stats.adaptive_exploration_probe_misses;
+  } else {
+    assert(txn.probe_reason == PROBE_FORCED);
+    if (hit)
+      ++m_stats.adaptive_forced_probe_hits;
+    else
+      ++m_stats.adaptive_forced_probe_misses;
   }
   if (hit) adaptive_record_package_outcome(txn, PACKAGE_HIT);
 }
@@ -1137,9 +1190,11 @@ void c2p_cache::adaptive_record_probe_timeout(transaction &txn) {
     ++m_stats.adaptive_first_probe_timeouts;
   else if (txn.probe_reason == PROBE_PREDICTOR)
     ++m_stats.adaptive_predictor_probe_timeouts;
-  else {
-    assert(txn.probe_reason == PROBE_EXPLORATION);
+  else if (txn.probe_reason == PROBE_EXPLORATION)
     ++m_stats.adaptive_exploration_probe_timeouts;
+  else {
+    assert(txn.probe_reason == PROBE_FORCED);
+    ++m_stats.adaptive_forced_probe_timeouts;
   }
   adaptive_record_package_outcome(txn, PACKAGE_TIMEOUT);
 }
@@ -1185,11 +1240,25 @@ void c2p_cache::adaptive_record_package_residual(const transaction &txn) {
   ++m_stats.adaptive_package_residual_no_later_peer;
 }
 
-void c2p_cache::adaptive_record_stop(const transaction &txn, bool hard_cap) {
+void c2p_cache::adaptive_record_stop(transaction &txn, bool hard_cap,
+                                     unsigned long long now) {
   assert(m_config.adaptive_probe_policy);
   assert(txn.candidate_next < txn.candidates.size());
   if (hard_cap)
     ++m_stats.adaptive_stop_hard_cap;
+  const unsigned candidate_bin = adaptive_candidate_bin(txn);
+  if (!hard_cap) {
+    ++m_stats.adaptive_early_stop_opportunities[candidate_bin];
+    txn.adaptive_early_stop_pending = true;
+    unsigned fallback_waiters = 0;
+    for (std::list<transaction>::const_iterator it = m_transactions.begin();
+         it != m_transactions.end(); ++it)
+      if (&*it != &txn && it->state == WAIT_FALLBACK) ++fallback_waiters;
+    txn.adaptive_early_stop_pressure =
+        fallback_waiters == 0 ? 0 : fallback_waiters == 1 ? 1
+                               : fallback_waiters <= 3 ? 2 : 3;
+    txn.adaptive_early_stop_cycle = now;
+  }
   m_stats.adaptive_stop_remaining_candidates +=
       txn.candidates.size() - txn.candidate_next;
 
@@ -1203,10 +1272,21 @@ void c2p_cache::adaptive_record_stop(const transaction &txn, bool hard_cap) {
       ++m_stats.adaptive_stop_later_peer;
       m_stats.adaptive_stop_next_peer_distance_total +=
           index - txn.candidate_next + 1;
+      if (!hard_cap) {
+        ++m_stats.adaptive_early_stop_later_peer[candidate_bin];
+        const unsigned distance = index - txn.candidate_next + 1;
+        const unsigned distance_bin =
+            distance <= C2P_PROBE_POLICY_MAX_ORDINAL
+                ? distance - 1
+                : C2P_PROBE_POLICY_MAX_ORDINAL;
+        ++m_stats.adaptive_early_stop_distance[candidate_bin][distance_bin];
+      }
       return;
     }
   }
   ++m_stats.adaptive_stop_no_later_peer;
+  if (!hard_cap)
+    ++m_stats.adaptive_early_stop_no_later_peer[candidate_bin];
 }
 
 void c2p_cache::service_target_probe_queues(unsigned long long now) {
@@ -1261,8 +1341,10 @@ void c2p_cache::advance_probes(unsigned long long now) {
         ++m_stats.remote_hits;
         adaptive_record_probe_result(*it, true);
         const unsigned ordinal = probe_policy_ordinal_bin(it->candidate_next);
+        const unsigned candidate_bin = adaptive_candidate_bin(*it);
         ++m_stats.probe_ordinal_hits[ordinal];
         ++m_stats.probe_pc_ordinal_hits[it->probe_pc_bucket][ordinal];
+        ++m_stats.probe_candidate_bin_ordinal_hits[candidate_bin][ordinal];
         m_stats.remote_hit_probe_ordinal_total += it->candidate_next;
         ++m_stats.remote_hit_probe_ordinal_samples;
         transition(*it, WAIT_RETURN, now);
@@ -1271,8 +1353,10 @@ void c2p_cache::advance_probes(unsigned long long now) {
         ++m_stats.peer_probe_misses;
         adaptive_record_probe_result(*it, false);
         const unsigned ordinal = probe_policy_ordinal_bin(it->candidate_next);
+        const unsigned candidate_bin = adaptive_candidate_bin(*it);
         ++m_stats.probe_ordinal_misses[ordinal];
         ++m_stats.probe_pc_ordinal_misses[it->probe_pc_bucket][ordinal];
+        ++m_stats.probe_candidate_bin_ordinal_misses[candidate_bin][ordinal];
         transition(*it, READY_TO_PROBE, now);
         it->probe_wait_start = now;
       }
@@ -1331,7 +1415,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
         // is independent of its learned score and bounds both request state
         // and diagnostic oracle work.
         adaptive_record_package_residual(*it);
-        adaptive_record_stop(*it, true);
+        adaptive_record_stop(*it, true, now);
         adaptive_record_package_outcome(*it, PACKAGE_NO_HIT);
         begin_fallback(*it, now);
       } else if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
@@ -1354,7 +1438,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
               it->adaptive_package_outcome_recorded = false;
               it->adaptive_continue_decided = true;
             } else {
-              adaptive_record_stop(*it, false);
+              adaptive_record_stop(*it, false, now);
               begin_fallback(*it, now);
             }
           } else {
@@ -1436,6 +1520,16 @@ void c2p_cache::advance_probes(unsigned long long now) {
     }
 
     if (it->state == WAIT_FALLBACK && it->requester->c2p_lower_ready(it->mf)) {
+      if (it->adaptive_early_stop_pending) {
+        const unsigned pressure = it->adaptive_early_stop_pressure;
+        assert(pressure < C2P_PROBE_POLICY_FALLBACK_PRESSURE_BINS &&
+               now >= it->adaptive_early_stop_cycle);
+        const unsigned long long delay = now - it->adaptive_early_stop_cycle;
+        ++m_stats.adaptive_early_stop_lower_samples[pressure];
+        m_stats.adaptive_early_stop_lower_cycles[pressure] += delay;
+        if (delay) ++m_stats.adaptive_early_stop_lower_waited[pressure];
+        it->adaptive_early_stop_pending = false;
+      }
       it->requester->c2p_send_lower(it->mf);
       ++m_stats.fallback_queue;
       record_peer_accesses(false, it->peer_accesses);
@@ -1567,6 +1661,23 @@ void c2p_cache::print_stats(FILE *fout) const {
       fprintf(fout, "c2p_probe_pc_bucket_%u_ordinal_%u_misses = %llu\n", bucket,
               ordinal + 1, m_stats.probe_pc_ordinal_misses[bucket][ordinal]);
     }
+  for (unsigned bin = 0; bin < C2P_PROBE_POLICY_CANDIDATE_BINS; ++bin)
+    for (unsigned ordinal = 0; ordinal < C2P_PROBE_POLICY_ORDINAL_BINS;
+         ++ordinal) {
+      if (ordinal == C2P_PROBE_POLICY_MAX_ORDINAL) {
+        fprintf(fout, "c2p_candidate_bin_%u_probe_ordinal_overflow_hits = %llu\n",
+                bin, m_stats.probe_candidate_bin_ordinal_hits[bin][ordinal]);
+        fprintf(fout, "c2p_candidate_bin_%u_probe_ordinal_overflow_misses = %llu\n",
+                bin, m_stats.probe_candidate_bin_ordinal_misses[bin][ordinal]);
+      } else {
+        fprintf(fout, "c2p_candidate_bin_%u_probe_ordinal_%u_hits = %llu\n",
+                bin, ordinal + 1,
+                m_stats.probe_candidate_bin_ordinal_hits[bin][ordinal]);
+        fprintf(fout, "c2p_candidate_bin_%u_probe_ordinal_%u_misses = %llu\n",
+                bin, ordinal + 1,
+                m_stats.probe_candidate_bin_ordinal_misses[bin][ordinal]);
+      }
+    }
   for (unsigned ordinal = 0; ordinal < C2P_PROBE_POLICY_MAX_ORDINAL;
        ++ordinal)
     for (unsigned lower_ready = 0; lower_ready != 2; ++lower_ready)
@@ -1589,6 +1700,8 @@ void c2p_cache::print_stats(FILE *fout) const {
           m_stats.adaptive_continue_predictor);
   fprintf(fout, "c2p_adaptive_continue_exploration = %llu\n",
           m_stats.adaptive_continue_exploration);
+  fprintf(fout, "c2p_adaptive_continue_forced = %llu\n",
+          m_stats.adaptive_continue_forced);
   fprintf(fout, "c2p_adaptive_stop_predictor = %llu\n",
           m_stats.adaptive_stop_predictor);
   fprintf(fout, "c2p_adaptive_stop_hard_cap = %llu\n",
@@ -1601,6 +1714,35 @@ void c2p_cache::print_stats(FILE *fout) const {
           m_stats.adaptive_stop_remaining_candidates);
   fprintf(fout, "c2p_adaptive_stop_next_peer_distance_total = %llu\n",
           m_stats.adaptive_stop_next_peer_distance_total);
+  for (unsigned bin = 0; bin < C2P_PROBE_POLICY_CANDIDATE_BINS; ++bin) {
+    fprintf(fout, "c2p_adaptive_early_stop_bin_%u_opportunities = %llu\n", bin,
+            m_stats.adaptive_early_stop_opportunities[bin]);
+    fprintf(fout, "c2p_adaptive_early_stop_bin_%u_later_peer = %llu\n", bin,
+            m_stats.adaptive_early_stop_later_peer[bin]);
+    fprintf(fout, "c2p_adaptive_early_stop_bin_%u_no_later_peer = %llu\n", bin,
+            m_stats.adaptive_early_stop_no_later_peer[bin]);
+    for (unsigned distance = 0;
+         distance < C2P_PROBE_POLICY_DISTANCE_BINS; ++distance) {
+      if (distance == C2P_PROBE_POLICY_MAX_ORDINAL)
+        fprintf(fout,
+                "c2p_adaptive_early_stop_bin_%u_distance_overflow = %llu\n",
+                bin, m_stats.adaptive_early_stop_distance[bin][distance]);
+      else
+        fprintf(fout,
+                "c2p_adaptive_early_stop_bin_%u_distance_%u = %llu\n", bin,
+                distance + 1,
+                m_stats.adaptive_early_stop_distance[bin][distance]);
+    }
+  }
+  for (unsigned pressure = 0;
+       pressure != C2P_PROBE_POLICY_FALLBACK_PRESSURE_BINS; ++pressure) {
+    fprintf(fout, "c2p_adaptive_early_stop_lower_pressure_%u_samples = %llu\n",
+            pressure, m_stats.adaptive_early_stop_lower_samples[pressure]);
+    fprintf(fout, "c2p_adaptive_early_stop_lower_pressure_%u_cycles = %llu\n",
+            pressure, m_stats.adaptive_early_stop_lower_cycles[pressure]);
+    fprintf(fout, "c2p_adaptive_early_stop_lower_pressure_%u_waited = %llu\n",
+            pressure, m_stats.adaptive_early_stop_lower_waited[pressure]);
+  }
   fprintf(fout, "c2p_adaptive_first_probe_hits = %llu\n",
           m_stats.adaptive_first_probe_hits);
   fprintf(fout, "c2p_adaptive_first_probe_misses = %llu\n",
@@ -1619,6 +1761,12 @@ void c2p_cache::print_stats(FILE *fout) const {
           m_stats.adaptive_exploration_probe_misses);
   fprintf(fout, "c2p_adaptive_exploration_probe_timeouts = %llu\n",
           m_stats.adaptive_exploration_probe_timeouts);
+  fprintf(fout, "c2p_adaptive_forced_probe_hits = %llu\n",
+          m_stats.adaptive_forced_probe_hits);
+  fprintf(fout, "c2p_adaptive_forced_probe_misses = %llu\n",
+          m_stats.adaptive_forced_probe_misses);
+  fprintf(fout, "c2p_adaptive_forced_probe_timeouts = %llu\n",
+          m_stats.adaptive_forced_probe_timeouts);
   for (unsigned score = 0; score != 8; ++score)
     fprintf(fout, "c2p_adaptive_score_%u_samples = %llu\n", score,
             m_stats.adaptive_score_hist[score]);
@@ -1628,6 +1776,8 @@ void c2p_cache::print_stats(FILE *fout) const {
           m_stats.adaptive_package_start_predictor);
   fprintf(fout, "c2p_adaptive_package_start_exploration = %llu\n",
           m_stats.adaptive_package_start_exploration);
+  fprintf(fout, "c2p_adaptive_package_start_forced = %llu\n",
+          m_stats.adaptive_package_start_forced);
   fprintf(fout, "c2p_adaptive_package_stop_predictor = %llu\n",
           m_stats.adaptive_package_stop_predictor);
   fprintf(fout, "c2p_adaptive_package_hit = %llu\n",
