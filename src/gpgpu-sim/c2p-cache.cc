@@ -93,6 +93,7 @@ c2p_cache_config::c2p_cache_config()
       ccd_predictor_latency(1),
       ccd_broadcast_latency(3),
       ring_hop_latency(2),
+      ring_queue_fallback(false),
       ring_link_pipeline(false),
       peer_line_latency(14) {}
 
@@ -222,6 +223,9 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
   option_parser_register(opp, "-c2p_cache_ring_hop_latency", OPT_UINT32,
                          &ring_hop_latency, "RING-like per-hop latency", "2");
   option_parser_register(
+      opp, "-c2p_cache_ring_queue_fallback", OPT_BOOL, &ring_queue_fallback,
+      "RING CCN sends new misses to L2 while its request network is full", "0");
+  option_parser_register(
       opp, "-c2p_cache_ring_link_pipeline", OPT_BOOL, &ring_link_pipeline,
       "RING-like directed-link pipeline instead of one global injector", "0");
   option_parser_register(opp, "-c2p_cache_peer_line_latency", OPT_UINT32,
@@ -248,6 +252,7 @@ void c2p_cache_stats::clear() {
   ring_no_match_traversals = 0;
   ring_traversal_hops = 0;
   ring_network_wait_cycles = 0;
+  ring_queue_bypasses = 0;
   target_probe_port_busy_cycles = 0;
   target_tag_port_busy_cycles = 0;
   target_probe_queue_wait_cycles = 0;
@@ -605,8 +610,16 @@ c2p_cache::miss_action c2p_cache::accept_miss(l1_cache *requester,
   // otherwise one architectural miss would be counted once per wait cycle.
   if (m_config.enabled && !m_config.oracle_only &&
       m_config.scheme == c2p_cache_config::RING_SCHEME &&
-      m_transactions.size() >= m_config.query_queue_size)
+      m_transactions.size() >= m_config.query_queue_size) {
+    if (m_config.ring_queue_fallback) {
+      // CCN uses finite per-node request queues and buffers.  When they are
+      // congested, new local misses bypass CCN to L2 until capacity returns;
+      // accepted ring requests still retain their full traversal behavior.
+      ++m_stats.ring_queue_bypasses;
+      return MISS_TO_LOWER;
+    }
     return MISS_STALL;
+  }
 
   ++m_stats.l1_misses;
   const bool oracle = m_config.collect_oracle && has_exact_peer(requester, mf);
@@ -1649,6 +1662,8 @@ void c2p_cache::print_stats(FILE *fout) const {
           m_stats.ring_traversal_hops);
   fprintf(fout, "c2p_ring_network_wait_cycles = %llu\n",
           m_stats.ring_network_wait_cycles);
+  fprintf(fout, "c2p_ring_queue_bypasses = %llu\n",
+          m_stats.ring_queue_bypasses);
   fprintf(fout, "c2p_target_probe_port_busy_cycles = %llu\n",
           m_stats.target_probe_port_busy_cycles);
   fprintf(fout, "c2p_target_tag_port_busy_cycles = %llu\n",

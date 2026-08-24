@@ -109,6 +109,10 @@ class c2p_cache_config {
   unsigned ccd_predictor_latency;
   unsigned ccd_broadcast_latency;
   unsigned ring_hop_latency;
+  // The CCN comparator sends new misses to the baseline L2 path when its
+  // finite request network is congested.  Keep strict stalling selectable so
+  // older experiments remain reproducible, but do not conflate it with CCN.
+  bool ring_queue_fallback;
   // The legacy comparator serializes all request injection through one global
   // source.  The optional model instead reserves the directed links crossed
   // by a request, preserving two cycles per hop while allowing disjoint ring
@@ -135,6 +139,7 @@ struct c2p_cache_stats {
   unsigned long long ring_no_match_traversals;
   unsigned long long ring_traversal_hops;
   unsigned long long ring_network_wait_cycles;
+  unsigned long long ring_queue_bypasses;
   // These are observation counters only.  They separate target-port
   // contention, FIFO residence, and requester-fill backpressure without
   // changing C2P transaction timing.
