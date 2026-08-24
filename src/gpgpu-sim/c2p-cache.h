@@ -430,7 +430,10 @@ class c2p_cache {
     bool adaptive_package_active;
     bool adaptive_package_outcome_recorded;
     bool adaptive_early_stop_pending;
+    // Outer admission makes one package decision when the untried suffix
+    // becomes all outer.  Retain it across failed outer probes.
     bool outer_admission_active;
+    bool outer_admission_decided;
     unsigned adaptive_early_stop_pressure;
     unsigned long long adaptive_early_stop_cycle;
     unsigned probe_sid;
@@ -503,7 +506,7 @@ class c2p_cache {
   bool outer_admission_should_probe(transaction &txn);
   void outer_admission_record_result(transaction &txn, bool hit);
   unsigned outer_admission_score_index(const transaction &txn) const;
-  bool candidates_are_outer_only(const transaction &txn) const;
+  bool remaining_candidates_are_outer_only(const transaction &txn) const;
   void record_peer_accesses(bool hit, unsigned accesses);
   void record_locality_accept(locality_class exact_class);
   void record_locality_query(const transaction &txn);

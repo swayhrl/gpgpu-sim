@@ -490,6 +490,7 @@ c2p_cache::transaction::transaction(l1_cache *requester_, mem_fetch *mf_,
       adaptive_package_outcome_recorded(false),
       adaptive_early_stop_pending(false),
       outer_admission_active(false),
+      outer_admission_decided(false),
       adaptive_early_stop_pressure(0),
       adaptive_early_stop_cycle(0),
       probe_sid((unsigned)-1),
@@ -1427,9 +1428,10 @@ unsigned c2p_cache::adaptive_addr_topology_bucket(
   return fold_hash(feature, 0xA772u) & (C2P_PROBE_POLICY_PC_BUCKETS - 1);
 }
 
-bool c2p_cache::candidates_are_outer_only(const transaction &txn) const {
-  if (txn.candidates.empty()) return false;
-  for (unsigned i = 0; i < txn.candidates.size(); ++i)
+bool c2p_cache::remaining_candidates_are_outer_only(
+    const transaction &txn) const {
+  if (txn.candidate_next >= txn.candidates.size()) return false;
+  for (unsigned i = txn.candidate_next; i < txn.candidates.size(); ++i)
     if (same_locality_group(txn.requester_sid, txn.candidates[i])) return false;
   return true;
 }
@@ -1447,9 +1449,12 @@ unsigned c2p_cache::outer_admission_score_index(
 }
 
 bool c2p_cache::outer_admission_should_probe(transaction &txn) {
-  assert(m_config.outer_admission_policy && txn.candidate_next == 0);
-  assert(candidates_are_outer_only(txn));
+  assert(m_config.outer_admission_policy && !txn.outer_admission_decided);
+  assert(remaining_candidates_are_outer_only(txn));
   ++m_stats.outer_admission_opportunities;
+  // This decision admits or bypasses the complete remaining outer package;
+  // do not retrain/redecide after each individual outer miss.
+  txn.outer_admission_decided = true;
   const unsigned score = m_outer_admission_scores[outer_admission_score_index(txn)];
   const bool explore = m_config.outer_admission_explore_period != 0 &&
       (m_outer_admission_explore_counter++ %
@@ -1804,8 +1809,9 @@ void c2p_cache::advance_probes(unsigned long long now) {
 
     if (it->state == READY_TO_PROBE) {
       if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
-          m_config.outer_admission_policy && it->candidate_next == 0 &&
-          candidates_are_outer_only(*it) && !outer_admission_should_probe(*it)) {
+          m_config.outer_admission_policy && !it->outer_admission_decided &&
+          remaining_candidates_are_outer_only(*it) &&
+          !outer_admission_should_probe(*it)) {
         begin_fallback(*it, now);
       }
       if (it->state != READY_TO_PROBE) {
