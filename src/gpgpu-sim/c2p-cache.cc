@@ -1808,7 +1808,25 @@ void c2p_cache::advance_probes(unsigned long long now) {
           candidates_are_outer_only(*it) && !outer_admission_should_probe(*it)) {
         begin_fallback(*it, now);
       }
-      if (it->state != READY_TO_PROBE) continue;
+      if (it->state != READY_TO_PROBE) {
+        // An admission rejection is already in the normal fallback state.
+        // Do not charge an artificial cycle merely because the decision was
+        // made at the start of this iteration; use the same lower ownership
+        // operation as the ordinary fallback block below.
+        if (it->state == WAIT_FALLBACK &&
+            it->requester->c2p_lower_ready(it->mf)) {
+          it->requester->c2p_send_lower(it->mf);
+          ++m_stats.fallback_queue;
+          record_peer_accesses(false, it->peer_accesses);
+          retire(*it, now);
+          erase = true;
+        }
+        if (erase)
+          it = m_transactions.erase(it);
+        else
+          ++it;
+        continue;
+      }
       if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
           m_config.adaptive_probe_observe_tail && it->candidate_next != 0 &&
           it->candidate_next < it->candidates.size() &&
