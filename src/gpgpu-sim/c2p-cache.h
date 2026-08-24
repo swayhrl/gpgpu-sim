@@ -488,7 +488,7 @@ class c2p_cache {
   unsigned adaptive_package_score_index(const transaction &txn) const;
   unsigned adaptive_addr_topology_bucket(const transaction &txn) const;
   void record_peer_accesses(bool hit, unsigned accesses);
-  void record_locality_accept(l1_cache *requester, mem_fetch *mf);
+  void record_locality_accept(locality_class exact_class);
   void record_locality_query(const transaction &txn);
   void record_locality_probe_issue(const transaction &txn, unsigned target_sid);
   void record_locality_probe_result(const transaction &txn, bool hit);

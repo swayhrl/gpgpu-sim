@@ -723,9 +723,9 @@ c2p_cache::locality_class c2p_cache::exact_locality_class(
   return LOCALITY_NONE;
 }
 
-void c2p_cache::record_locality_accept(l1_cache *requester, mem_fetch *mf) {
+void c2p_cache::record_locality_accept(locality_class exact_class) {
   if (!m_config.locality_observe) return;
-  ++m_stats.locality_exact_accept_class[exact_locality_class(requester, mf)];
+  ++m_stats.locality_exact_accept_class[exact_class];
 }
 
 void c2p_cache::record_locality_query(const transaction &txn) {
@@ -855,7 +855,20 @@ c2p_cache::miss_action c2p_cache::accept_miss(l1_cache *requester,
     return MISS_STALL;
 
   ++m_stats.l1_misses;
-  const bool oracle = m_config.collect_oracle && has_exact_peer(requester, mf);
+  // The ordinary oracle counter and the default-off locality observer both
+  // need accept-time peer residency.  Reuse one exact scan when observation
+  // is enabled; doing two scans affects only host runtime, but makes a large
+  // paired campaign needlessly slow.
+  const locality_class accept_locality =
+      m_config.locality_observe &&
+              m_config.scheme == c2p_cache_config::C2P_SCHEME
+          ? exact_locality_class(requester, mf)
+          : LOCALITY_NONE;
+  const bool oracle = m_config.collect_oracle &&
+      (m_config.locality_observe &&
+               m_config.scheme == c2p_cache_config::C2P_SCHEME
+           ? accept_locality != LOCALITY_NONE
+           : has_exact_peer(requester, mf));
   if (oracle) ++m_stats.oracle_peer_hits;
   if (ring_full) {
     // CCN uses finite per-node request queues and buffers.  When they are
@@ -890,7 +903,7 @@ c2p_cache::miss_action c2p_cache::accept_miss(l1_cache *requester,
   txn.probe_latency = m_config.remote_tag_latency;
   txn.return_latency = m_config.remote_return_latency;
   if (m_config.scheme == c2p_cache_config::C2P_SCHEME)
-    record_locality_accept(requester, mf);
+    record_locality_accept(accept_locality);
   if (m_config.scheme == c2p_cache_config::C2P_SCHEME) {
     txn.rows = query_rows(txn.line_tag);
     txn.row_done.assign(txn.rows.size(), false);
