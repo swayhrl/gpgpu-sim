@@ -756,17 +756,27 @@ void c2p_cache::record_locality_query(const transaction &txn) {
       exact_locality_class(txn.requester, txn.mf)];
 }
 
-void c2p_cache::record_locality_probe(const transaction &txn, bool hit) {
+void c2p_cache::record_locality_probe_issue(const transaction &txn,
+                                            unsigned target_sid) {
+  if (!m_config.locality_observe) return;
+  assert(target_sid < m_num_sms);
+  if (same_locality_group(txn.requester_sid, target_sid)) {
+    ++m_stats.locality_probes_local;
+  } else {
+    ++m_stats.locality_probes_outer;
+  }
+}
+
+void c2p_cache::record_locality_probe_result(const transaction &txn,
+                                             bool hit) {
   if (!m_config.locality_observe) return;
   assert(txn.probe_sid < m_num_sms);
   if (same_locality_group(txn.requester_sid, txn.probe_sid)) {
-    ++m_stats.locality_probes_local;
     if (hit)
       ++m_stats.locality_probe_hits_local;
     else
       ++m_stats.locality_probe_misses_local;
   } else {
-    ++m_stats.locality_probes_outer;
     if (hit)
       ++m_stats.locality_probe_hits_outer;
     else
@@ -1633,7 +1643,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
         // the accept-time oracle snapshot.
         ++m_stats.peer_probe_hits;
         ++m_stats.remote_hits;
-        record_locality_probe(*it, true);
+        record_locality_probe_result(*it, true);
         if (m_config.scheme == c2p_cache_config::RING_SCHEME)
           ring_throttle_record_hit(*it);
         adaptive_record_probe_result(*it, true);
@@ -1648,7 +1658,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
         it->ready_cycle = now + locality_return_latency(*it);
       } else {
         ++m_stats.peer_probe_misses;
-        record_locality_probe(*it, false);
+        record_locality_probe_result(*it, false);
         adaptive_record_probe_result(*it, false);
         const unsigned ordinal = probe_policy_ordinal_bin(it->candidate_next);
         const unsigned candidate_bin = adaptive_candidate_bin(*it);
@@ -1778,6 +1788,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
             ++it->candidate_next;
             ++it->peer_accesses;
             ++m_stats.peer_probes;
+            record_locality_probe_issue(*it, sid);
             ++m_stats.peer_l1_accesses;
             transition(*it, WAIT_PROBE, now);
             it->ready_cycle = now + locality_probe_latency(*it, sid);
@@ -1788,6 +1799,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
             ++it->candidate_next;
             ++it->peer_accesses;
             ++m_stats.peer_probes;
+            record_locality_probe_issue(*it, sid);
             ++m_stats.peer_l1_accesses;
             transition(*it, WAIT_TARGET_PROBE, now);
           } else if (target->data_port_free()) {
@@ -1797,6 +1809,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
             ++it->candidate_next;
             ++it->peer_accesses;
             ++m_stats.peer_probes;
+            record_locality_probe_issue(*it, sid);
             if (m_config.scheme == c2p_cache_config::C2P_SCHEME ||
                 m_config.scheme == c2p_cache_config::RING_SCHEME)
               ++m_stats.peer_l1_accesses;

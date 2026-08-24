@@ -490,7 +490,8 @@ class c2p_cache {
   void record_peer_accesses(bool hit, unsigned accesses);
   void record_locality_accept(l1_cache *requester, mem_fetch *mf);
   void record_locality_query(const transaction &txn);
-  void record_locality_probe(const transaction &txn, bool hit);
+  void record_locality_probe_issue(const transaction &txn, unsigned target_sid);
+  void record_locality_probe_result(const transaction &txn, bool hit);
   locality_class exact_locality_class(l1_cache *requester,
                                       mem_fetch *mf) const;
   bool same_locality_group(unsigned from_sid, unsigned to_sid) const;
