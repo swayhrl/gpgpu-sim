@@ -100,6 +100,11 @@ class c2p_cache_config {
   // ATA/CCD comparator scope or canonical C2P candidate ordering.
   bool locality_observe;
   unsigned locality_group_size;
+  // Optional two-tier far-L1 sensitivity model.  Canonical C2P leaves these
+  // disabled/zero and retains its historical ordering and timing.
+  bool locality_aware_candidate_order;
+  unsigned locality_outer_probe_extra_latency;
+  unsigned locality_outer_return_extra_latency;
   // C2P+ counterfactual: a one-request-per-cycle remote tag pipeline that
   // does not reserve the target L1 data port.
   bool separate_target_tag_port;
@@ -490,6 +495,9 @@ class c2p_cache {
                                       mem_fetch *mf) const;
   bool same_locality_group(unsigned from_sid, unsigned to_sid) const;
   unsigned locality_group_id(unsigned sid) const;
+  unsigned locality_probe_latency(const transaction &txn,
+                                  unsigned target_sid) const;
+  unsigned locality_return_latency(const transaction &txn) const;
   bool has_exact_peer(l1_cache *requester, mem_fetch *mf) const;
   std::vector<unsigned> exact_candidates(const transaction &txn,
                                          bool cluster_only) const;

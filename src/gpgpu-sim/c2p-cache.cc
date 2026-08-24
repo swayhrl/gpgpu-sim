@@ -85,6 +85,9 @@ c2p_cache_config::c2p_cache_config()
       adaptive_probe_observe_addr_topology(false),
       locality_observe(false),
       locality_group_size(4),
+      locality_aware_candidate_order(false),
+      locality_outer_probe_extra_latency(0),
+      locality_outer_return_extra_latency(0),
       separate_target_tag_port(false),
       diagnostic_target_port_bypass(false),
       snapshot_copies(4),
@@ -201,6 +204,21 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
       opp, "-c2p_cache_locality_group_size", OPT_UINT32,
       &locality_group_size,
       "C2P locality-observation SMs per logical near group", "4");
+  option_parser_register(
+      opp, "-c2p_cache_locality_aware_candidate_order", OPT_BOOL,
+      &locality_aware_candidate_order,
+      "C2P locality sensitivity: probe same locality group before outer peers",
+      "0");
+  option_parser_register(
+      opp, "-c2p_cache_locality_outer_probe_extra_latency", OPT_UINT32,
+      &locality_outer_probe_extra_latency,
+      "C2P locality sensitivity: extra cycles for an outer target tag probe",
+      "0");
+  option_parser_register(
+      opp, "-c2p_cache_locality_outer_return_extra_latency", OPT_UINT32,
+      &locality_outer_return_extra_latency,
+      "C2P locality sensitivity: extra cycles for an outer remote return",
+      "0");
   option_parser_register(
       opp, "-c2p_cache_separate_target_tag_port", OPT_BOOL,
       &separate_target_tag_port,
@@ -668,6 +686,23 @@ bool c2p_cache::same_locality_group(unsigned from_sid, unsigned to_sid) const {
   return locality_group_id(from_sid) == locality_group_id(to_sid);
 }
 
+unsigned c2p_cache::locality_probe_latency(const transaction &txn,
+                                            unsigned target_sid) const {
+  assert(target_sid < m_num_sms);
+  if (m_config.scheme != c2p_cache_config::C2P_SCHEME ||
+      same_locality_group(txn.requester_sid, target_sid))
+    return txn.probe_latency;
+  return txn.probe_latency + m_config.locality_outer_probe_extra_latency;
+}
+
+unsigned c2p_cache::locality_return_latency(const transaction &txn) const {
+  assert(txn.probe_sid < m_num_sms);
+  if (m_config.scheme != c2p_cache_config::C2P_SCHEME ||
+      same_locality_group(txn.requester_sid, txn.probe_sid))
+    return txn.return_latency;
+  return txn.return_latency + m_config.locality_outer_return_extra_latency;
+}
+
 c2p_cache::locality_class c2p_cache::exact_locality_class(
     l1_cache *requester, mem_fetch *mf) const {
   const unsigned requester_sid = requester->c2p_sid();
@@ -1091,6 +1126,13 @@ std::vector<unsigned> c2p_cache::ordered_candidates(
   }
   std::stable_sort(candidates.begin(), candidates.end(),
                    [this, &txn](unsigned a, unsigned b) {
+                     if (m_config.locality_aware_candidate_order) {
+                       const bool a_local =
+                           same_locality_group(txn.requester_sid, a);
+                       const bool b_local =
+                           same_locality_group(txn.requester_sid, b);
+                       if (a_local != b_local) return a_local;
+                     }
                      const unsigned da = cluster_distance(txn.requester_sid, a);
                      const unsigned db = cluster_distance(txn.requester_sid, b);
                      return da == db ? a < b : da < db;
@@ -1566,11 +1608,12 @@ void c2p_cache::service_target_probe_queues(unsigned long long now) {
       queue.pop_front();
       assert(txn->state == WAIT_TARGET_PROBE);
       m_stats.target_probe_queue_wait_cycles += now - txn->probe_wait_start;
-      if (!separate_tag_port && !m_config.diagnostic_target_port_bypass)
-        m_l1s[sid]->c2p_reserve_probe_port(txn->probe_latency);
       txn->probe_sid = sid;
+      const unsigned probe_latency = locality_probe_latency(*txn, sid);
+      if (!separate_tag_port && !m_config.diagnostic_target_port_bypass)
+        m_l1s[sid]->c2p_reserve_probe_port(probe_latency);
       transition(*txn, WAIT_PROBE, now);
-      txn->ready_cycle = now + txn->probe_latency;
+      txn->ready_cycle = now + probe_latency;
       if (separate_tag_port)
         m_target_tag_next_issue_cycle[sid] = now + 1;
     } while (m_config.diagnostic_target_port_bypass && !queue.empty());
@@ -1602,7 +1645,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
         m_stats.remote_hit_probe_ordinal_total += it->candidate_next;
         ++m_stats.remote_hit_probe_ordinal_samples;
         transition(*it, WAIT_RETURN, now);
-        it->ready_cycle = now + it->return_latency;
+        it->ready_cycle = now + locality_return_latency(*it);
       } else {
         ++m_stats.peer_probe_misses;
         record_locality_probe(*it, false);
@@ -1737,7 +1780,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
             ++m_stats.peer_probes;
             ++m_stats.peer_l1_accesses;
             transition(*it, WAIT_PROBE, now);
-            it->ready_cycle = now + it->probe_latency;
+            it->ready_cycle = now + locality_probe_latency(*it, sid);
           } else if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
                      m_target_probe_queues[sid].size() <
                          m_config.target_probe_queue_size) {
@@ -1748,8 +1791,9 @@ void c2p_cache::advance_probes(unsigned long long now) {
             ++m_stats.peer_l1_accesses;
             transition(*it, WAIT_TARGET_PROBE, now);
           } else if (target->data_port_free()) {
-            target->c2p_reserve_probe_port(it->probe_latency);
             it->probe_sid = sid;
+            const unsigned probe_latency = locality_probe_latency(*it, sid);
+            target->c2p_reserve_probe_port(probe_latency);
             ++it->candidate_next;
             ++it->peer_accesses;
             ++m_stats.peer_probes;
@@ -1757,7 +1801,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
                 m_config.scheme == c2p_cache_config::RING_SCHEME)
               ++m_stats.peer_l1_accesses;
             transition(*it, WAIT_PROBE, now);
-            it->ready_cycle = now + it->probe_latency;
+            it->ready_cycle = now + probe_latency;
           } else {
             if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
                 m_target_probe_queues[sid].size() >=
@@ -1867,6 +1911,12 @@ void c2p_cache::print_stats(FILE *fout) const {
           m_config.locality_observe ? 1 : 0);
   fprintf(fout, "c2p_locality_group_size = %u\n",
           m_config.locality_group_size);
+  fprintf(fout, "c2p_locality_aware_candidate_order = %u\n",
+          m_config.locality_aware_candidate_order ? 1 : 0);
+  fprintf(fout, "c2p_locality_outer_probe_extra_latency = %u\n",
+          m_config.locality_outer_probe_extra_latency);
+  fprintf(fout, "c2p_locality_outer_return_extra_latency = %u\n",
+          m_config.locality_outer_return_extra_latency);
   fprintf(fout, "c2p_locality_observed_queries = %llu\n",
           m_stats.locality_observed_queries);
   static const char *const locality_names[] = {
