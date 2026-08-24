@@ -608,22 +608,23 @@ c2p_cache::miss_action c2p_cache::accept_miss(l1_cache *requester,
   // ``l1_cache::cycle()`` retries an unconsumed miss queue head each cycle.
   // A full RING must therefore stall before collecting miss/oracle counters;
   // otherwise one architectural miss would be counted once per wait cycle.
-  if (m_config.enabled && !m_config.oracle_only &&
+  const bool ring_full =
+      m_config.enabled && !m_config.oracle_only &&
       m_config.scheme == c2p_cache_config::RING_SCHEME &&
-      m_transactions.size() >= m_config.query_queue_size) {
-    if (m_config.ring_queue_fallback) {
-      // CCN uses finite per-node request queues and buffers.  When they are
-      // congested, new local misses bypass CCN to L2 until capacity returns;
-      // accepted ring requests still retain their full traversal behavior.
-      ++m_stats.ring_queue_bypasses;
-      return MISS_TO_LOWER;
-    }
+      m_transactions.size() >= m_config.query_queue_size;
+  if (ring_full && !m_config.ring_queue_fallback)
     return MISS_STALL;
-  }
 
   ++m_stats.l1_misses;
   const bool oracle = m_config.collect_oracle && has_exact_peer(requester, mf);
   if (oracle) ++m_stats.oracle_peer_hits;
+  if (ring_full) {
+    // CCN uses finite per-node request queues and buffers.  When they are
+    // congested, new local misses bypass CCN to L2 until capacity returns;
+    // accepted ring requests still retain their full traversal behavior.
+    ++m_stats.ring_queue_bypasses;
+    return MISS_TO_LOWER;
+  }
   if (m_config.oracle_only || !m_config.enabled) return MISS_TO_LOWER;
   if (m_transactions.size() >= m_config.query_queue_size) {
     // C2P explicitly retains the baseline escape path under query pressure.
