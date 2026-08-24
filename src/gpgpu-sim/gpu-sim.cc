@@ -1104,6 +1104,11 @@ int gpgpu_sim::get_max_cta(const kernel_info_t &k) const {
   return m_shader_config->max_cta(k);
 }
 
+unsigned long long gpgpu_sim::shader_core_instructions(unsigned sid) const {
+  assert(sid < m_shader_config->num_shader());
+  return m_shader_stats->m_num_sim_insn[sid];
+}
+
 void gpgpu_sim::set_prop(cudaDeviceProp *prop) { m_cuda_properties = prop; }
 
 int gpgpu_sim::compute_capability_major() const {

@@ -95,6 +95,10 @@ c2p_cache_config::c2p_cache_config()
       ring_hop_latency(2),
       ring_queue_fallback(false),
       ring_link_pipeline(false),
+      ring_request_throttle(false),
+      ring_throttle_sample_instructions(1000000),
+      ring_throttle_period_instructions(10000000),
+      ring_throttle_min_hit_percent(5),
       peer_line_latency(14) {}
 
 void c2p_cache_config::reg_options(OptionParser *opp) {
@@ -228,6 +232,24 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
   option_parser_register(
       opp, "-c2p_cache_ring_link_pipeline", OPT_BOOL, &ring_link_pipeline,
       "RING-like directed-link pipeline instead of one global injector", "0");
+  option_parser_register(
+      opp, "-c2p_cache_ring_request_throttle", OPT_BOOL,
+      &ring_request_throttle,
+      "CCN-RT: bypass RING after a low-hit per-SM sample interval", "0");
+  option_parser_register(
+      opp, "-c2p_cache_ring_throttle_sample_instructions", OPT_UINT32,
+      &ring_throttle_sample_instructions,
+      "CCN-RT per-SM sampling interval in committed scalar instructions",
+      "1000000");
+  option_parser_register(
+      opp, "-c2p_cache_ring_throttle_period_instructions", OPT_UINT32,
+      &ring_throttle_period_instructions,
+      "CCN-RT per-SM sampling epoch in committed scalar instructions",
+      "10000000");
+  option_parser_register(
+      opp, "-c2p_cache_ring_throttle_min_hit_percent", OPT_UINT32,
+      &ring_throttle_min_hit_percent,
+      "CCN-RT minimum sampled remote-hit percentage", "5");
   option_parser_register(opp, "-c2p_cache_peer_line_latency", OPT_UINT32,
                          &peer_line_latency,
                          "ATA/CCD/RING-like remote cache-line access latency",
@@ -253,6 +275,10 @@ void c2p_cache_stats::clear() {
   ring_traversal_hops = 0;
   ring_network_wait_cycles = 0;
   ring_queue_bypasses = 0;
+  ring_throttle_bypasses = 0;
+  ring_throttle_samples = 0;
+  ring_throttle_sample_requests = 0;
+  ring_throttle_sample_hits = 0;
   target_probe_port_busy_cycles = 0;
   target_tag_port_busy_cycles = 0;
   target_probe_queue_wait_cycles = 0;
@@ -406,6 +432,8 @@ c2p_cache::transaction::transaction(l1_cache *requester_, mem_fetch *mf_,
       oracle_peer_hit(false),
       sharing_attempt(false),
       ring_started(false),
+      ring_throttle_sampled(false),
+      ring_throttle_epoch(0),
       probe_latency(0),
       return_latency(0) {}
 
@@ -440,6 +468,7 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
           0),
       m_ring_next_issue_cycle(0),
       m_ring_link_next_issue_cycle(m_num_sms, 0),
+      m_ring_throttle(m_num_sms),
       m_peer_access_hit_hist(m_num_sms + 1, 0),
       m_peer_access_miss_hist(m_num_sms + 1, 0),
       m_adaptive_package_scores(C2P_PROBE_POLICY_PC_BUCKETS *
@@ -461,6 +490,11 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
   assert(m_config.bf_hashes > 0);
   assert(m_config.comparator_cluster_size > 0);
   assert(m_config.target_probe_queue_size > 0);
+  assert(!m_config.ring_request_throttle ||
+         (m_config.ring_throttle_sample_instructions > 0 &&
+          m_config.ring_throttle_period_instructions >=
+              m_config.ring_throttle_sample_instructions &&
+          m_config.ring_throttle_min_hit_percent <= 100));
   assert(m_config.adaptive_probe_score_threshold <= 7);
   assert(m_config.adaptive_probe_initial_score <= 7);
   assert(!m_config.adaptive_probe_package_policy ||
@@ -501,6 +535,8 @@ void c2p_cache::reset() {
   m_ring_next_issue_cycle = 0;
   std::fill(m_ring_link_next_issue_cycle.begin(),
             m_ring_link_next_issue_cycle.end(), 0);
+  std::fill(m_ring_throttle.begin(), m_ring_throttle.end(),
+            ring_throttle_state());
   std::fill(m_peer_access_hit_hist.begin(), m_peer_access_hit_hist.end(), 0);
   std::fill(m_peer_access_miss_hist.begin(), m_peer_access_miss_hist.end(), 0);
   std::fill(m_adaptive_package_scores.begin(),
@@ -597,6 +633,47 @@ std::vector<unsigned> c2p_cache::exact_candidates(
   return candidates;
 }
 
+bool c2p_cache::ring_throttle_allows(unsigned sid) {
+  if (!m_config.ring_request_throttle) return true;
+  assert(sid < m_ring_throttle.size());
+  const unsigned long long instructions = m_gpu->shader_core_instructions(sid);
+  const unsigned long long epoch =
+      instructions / m_config.ring_throttle_period_instructions;
+  const unsigned long long offset =
+      instructions % m_config.ring_throttle_period_instructions;
+  ring_throttle_state &state = m_ring_throttle[sid];
+
+  if (state.epoch != epoch) {
+    state = ring_throttle_state();
+    state.epoch = epoch;
+  }
+  if (state.sampling && offset >= m_config.ring_throttle_sample_instructions) {
+    // CCN-RT evaluates each source independently after its sampling window.
+    // No sample request means no evidence either way, so retain injection
+    // rather than turning a silent core into a permanently bypassing core.
+    state.sampling = false;
+    if (state.sample_requests) {
+      ++m_stats.ring_throttle_samples;
+      m_stats.ring_throttle_sample_requests += state.sample_requests;
+      m_stats.ring_throttle_sample_hits += state.sample_hits;
+      state.inject_enabled =
+          state.sample_hits * 100 >=
+          state.sample_requests * m_config.ring_throttle_min_hit_percent;
+    }
+  }
+  return state.sampling || state.inject_enabled;
+}
+
+void c2p_cache::ring_throttle_record_hit(const transaction &txn) {
+  if (!m_config.ring_request_throttle || !txn.ring_throttle_sampled) return;
+  assert(txn.requester_sid < m_ring_throttle.size());
+  ring_throttle_state &state = m_ring_throttle[txn.requester_sid];
+  // The paper samples observed hits during tS.  A response that arrives after
+  // the sampling boundary must not retroactively alter that epoch's decision.
+  if (state.epoch == txn.ring_throttle_epoch && state.sampling)
+    ++state.sample_hits;
+}
+
 c2p_cache::miss_action c2p_cache::accept_miss(l1_cache *requester,
                                                mem_fetch *mf,
                                                unsigned long long now) {
@@ -604,6 +681,17 @@ c2p_cache::miss_action c2p_cache::accept_miss(l1_cache *requester,
       mf->isatomic() ||
       mf->get_access_type() != GLOBAL_ACC_R)
     return MISS_TO_LOWER;
+
+  const bool ring_request =
+      m_config.enabled && !m_config.oracle_only &&
+      m_config.scheme == c2p_cache_config::RING_SCHEME;
+  if (ring_request && !ring_throttle_allows(requester->c2p_sid())) {
+    ++m_stats.l1_misses;
+    if (m_config.collect_oracle && has_exact_peer(requester, mf))
+      ++m_stats.oracle_peer_hits;
+    ++m_stats.ring_throttle_bypasses;
+    return MISS_TO_LOWER;
+  }
 
   // ``l1_cache::cycle()`` retries an unconsumed miss queue head each cycle.
   // A full RING must therefore stall before collecting miss/oracle counters;
@@ -689,6 +777,12 @@ c2p_cache::miss_action c2p_cache::accept_miss(l1_cache *requester,
     }
     txn.probe_latency = m_config.peer_line_latency;
     txn.return_latency = 0;
+  }
+  if (ring_request && m_config.ring_request_throttle) {
+    ring_throttle_state &state = m_ring_throttle[txn.requester_sid];
+    txn.ring_throttle_sampled = state.sampling;
+    txn.ring_throttle_epoch = state.epoch;
+    if (txn.ring_throttle_sampled) ++state.sample_requests;
   }
   m_transactions.push_back(txn);
   ++m_stats.queries_accepted;
@@ -1387,6 +1481,8 @@ void c2p_cache::advance_probes(unsigned long long now) {
         // the accept-time oracle snapshot.
         ++m_stats.peer_probe_hits;
         ++m_stats.remote_hits;
+        if (m_config.scheme == c2p_cache_config::RING_SCHEME)
+          ring_throttle_record_hit(*it);
         adaptive_record_probe_result(*it, true);
         const unsigned ordinal = probe_policy_ordinal_bin(it->candidate_next);
         const unsigned candidate_bin = adaptive_candidate_bin(*it);
@@ -1665,6 +1761,14 @@ void c2p_cache::print_stats(FILE *fout) const {
           m_stats.ring_network_wait_cycles);
   fprintf(fout, "c2p_ring_queue_bypasses = %llu\n",
           m_stats.ring_queue_bypasses);
+  fprintf(fout, "c2p_ring_throttle_bypasses = %llu\n",
+          m_stats.ring_throttle_bypasses);
+  fprintf(fout, "c2p_ring_throttle_samples = %llu\n",
+          m_stats.ring_throttle_samples);
+  fprintf(fout, "c2p_ring_throttle_sample_requests = %llu\n",
+          m_stats.ring_throttle_sample_requests);
+  fprintf(fout, "c2p_ring_throttle_sample_hits = %llu\n",
+          m_stats.ring_throttle_sample_hits);
   fprintf(fout, "c2p_target_probe_port_busy_cycles = %llu\n",
           m_stats.target_probe_port_busy_cycles);
   fprintf(fout, "c2p_target_tag_port_busy_cycles = %llu\n",

@@ -118,6 +118,13 @@ class c2p_cache_config {
   // by a request, preserving two cycles per hop while allowing disjoint ring
   // segments to carry independent requests concurrently.
   bool ring_link_pipeline;
+  // CCN-RT [Dublish et al.] periodically samples each source SM's observed
+  // remote-hit rate.  A source below the configured threshold bypasses CCN
+  // until its next sampling epoch; its shadow tags remain visible to peers.
+  bool ring_request_throttle;
+  unsigned ring_throttle_sample_instructions;
+  unsigned ring_throttle_period_instructions;
+  unsigned ring_throttle_min_hit_percent;
   unsigned peer_line_latency;
 };
 
@@ -140,6 +147,10 @@ struct c2p_cache_stats {
   unsigned long long ring_traversal_hops;
   unsigned long long ring_network_wait_cycles;
   unsigned long long ring_queue_bypasses;
+  unsigned long long ring_throttle_bypasses;
+  unsigned long long ring_throttle_samples;
+  unsigned long long ring_throttle_sample_requests;
+  unsigned long long ring_throttle_sample_hits;
   // These are observation counters only.  They separate target-port
   // contention, FIFO residence, and requester-fill backpressure without
   // changing C2P transaction timing.
@@ -382,8 +393,21 @@ class c2p_cache {
     bool oracle_peer_hit;
     bool sharing_attempt;
     bool ring_started;
+    bool ring_throttle_sampled;
+    unsigned long long ring_throttle_epoch;
     unsigned probe_latency;
     unsigned return_latency;
+  };
+
+  struct ring_throttle_state {
+    ring_throttle_state()
+        : epoch((unsigned long long)-1), sampling(true), inject_enabled(true),
+          sample_requests(0), sample_hits(0) {}
+    unsigned long long epoch;
+    bool sampling;
+    bool inject_enabled;
+    unsigned long long sample_requests;
+    unsigned long long sample_hits;
   };
 
   struct update_entry {
@@ -440,6 +464,8 @@ class c2p_cache {
   unsigned cluster_size() const;
   unsigned cluster_id(unsigned sid) const;
   unsigned ring_distance(unsigned from_sid, unsigned to_sid) const;
+  bool ring_throttle_allows(unsigned sid);
+  void ring_throttle_record_hit(const transaction &txn);
 
   const c2p_cache_config &m_config;
   gpgpu_sim *m_gpu;
@@ -468,6 +494,7 @@ class c2p_cache {
   std::vector<unsigned> m_ata_issues;
   unsigned long long m_ring_next_issue_cycle;
   std::vector<unsigned long long> m_ring_link_next_issue_cycle;
+  std::vector<ring_throttle_state> m_ring_throttle;
   std::vector<unsigned long long> m_peer_access_hit_hist;
   std::vector<unsigned long long> m_peer_access_miss_hist;
   // The only adaptive predictor state: one 3-bit score for each selected

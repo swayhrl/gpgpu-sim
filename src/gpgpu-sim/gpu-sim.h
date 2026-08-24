@@ -633,6 +633,10 @@ class gpgpu_sim : public gpgpu_t {
 
   const gpgpu_sim_config &get_config() const { return m_config; }
   c2p_cache *get_c2p_cache() const { return m_c2p_cache; }
+  // CCN request throttling is specified per core in committed instructions.
+  // Keep the per-core counter owned by shader statistics and expose only this
+  // read-only accessor to optional cache-side controllers.
+  unsigned long long shader_core_instructions(unsigned sid) const;
   void gpu_print_stat(unsigned long long streamID);
   void dump_pipeline(int mask, int s, int m) const;
 
