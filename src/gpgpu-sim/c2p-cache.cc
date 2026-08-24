@@ -83,6 +83,8 @@ c2p_cache_config::c2p_cache_config()
       adaptive_probe_addr_topology_policy(false),
       adaptive_probe_observe_tail(false),
       adaptive_probe_observe_addr_topology(false),
+      locality_observe(false),
+      locality_group_size(4),
       separate_target_tag_port(false),
       diagnostic_target_port_bypass(false),
       snapshot_copies(4),
@@ -192,6 +194,14 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
       &adaptive_probe_observe_addr_topology,
       "observe line-region and requester-topology confirmation features", "0");
   option_parser_register(
+      opp, "-c2p_cache_locality_observe", OPT_BOOL, &locality_observe,
+      "observe C2P local versus outer peer opportunities without changing timing",
+      "0");
+  option_parser_register(
+      opp, "-c2p_cache_locality_group_size", OPT_UINT32,
+      &locality_group_size,
+      "C2P locality-observation SMs per logical near group", "4");
+  option_parser_register(
       opp, "-c2p_cache_separate_target_tag_port", OPT_BOOL,
       &separate_target_tag_port,
       "C2P+ model a pipelined remote tag port separate from target data port",
@@ -270,6 +280,20 @@ void c2p_cache_stats::clear() {
   peer_probe_hits = 0;
   peer_probe_misses = 0;
   peer_l1_accesses = 0;
+  locality_observed_queries = 0;
+  locality_candidates_local = 0;
+  locality_candidates_outer = 0;
+  locality_probes_local = 0;
+  locality_probes_outer = 0;
+  locality_probe_hits_local = 0;
+  locality_probe_hits_outer = 0;
+  locality_probe_misses_local = 0;
+  locality_probe_misses_outer = 0;
+  for (unsigned locality = 0; locality != 4; ++locality) {
+    locality_snapshot_class[locality] = 0;
+    locality_exact_accept_class[locality] = 0;
+    locality_exact_query_class[locality] = 0;
+  }
   ring_traversals = 0;
   ring_no_match_traversals = 0;
   ring_traversal_hops = 0;
@@ -489,6 +513,7 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
   assert(is_power_of_two(m_config.snapshot_bf_rows_per_bank));
   assert(m_config.bf_hashes > 0);
   assert(m_config.comparator_cluster_size > 0);
+  assert(m_config.locality_group_size > 0);
   assert(m_config.target_probe_queue_size > 0);
   assert(!m_config.ring_request_throttle ||
          (m_config.ring_throttle_sample_instructions > 0 &&
@@ -633,6 +658,87 @@ std::vector<unsigned> c2p_cache::exact_candidates(
   return candidates;
 }
 
+unsigned c2p_cache::locality_group_id(unsigned sid) const {
+  assert(sid < m_num_sms);
+  return sid / m_config.locality_group_size;
+}
+
+bool c2p_cache::same_locality_group(unsigned from_sid, unsigned to_sid) const {
+  assert(from_sid < m_num_sms && to_sid < m_num_sms);
+  return locality_group_id(from_sid) == locality_group_id(to_sid);
+}
+
+c2p_cache::locality_class c2p_cache::exact_locality_class(
+    l1_cache *requester, mem_fetch *mf) const {
+  const unsigned requester_sid = requester->c2p_sid();
+  bool local = false;
+  bool outer = false;
+  for (unsigned sid = 0; sid < m_l1s.size(); ++sid) {
+    if (sid == requester_sid || m_l1s[sid] == NULL ||
+        !m_l1s[sid]->c2p_probe(mf))
+      continue;
+    if (same_locality_group(requester_sid, sid))
+      local = true;
+    else
+      outer = true;
+  }
+  if (local && outer) return LOCALITY_BOTH;
+  if (local) return LOCALITY_LOCAL_ONLY;
+  if (outer) return LOCALITY_OUTER_ONLY;
+  return LOCALITY_NONE;
+}
+
+void c2p_cache::record_locality_accept(l1_cache *requester, mem_fetch *mf) {
+  if (!m_config.locality_observe) return;
+  ++m_stats.locality_exact_accept_class[exact_locality_class(requester, mf)];
+}
+
+void c2p_cache::record_locality_query(const transaction &txn) {
+  if (!m_config.locality_observe) return;
+
+  bool local_candidate = false;
+  bool outer_candidate = false;
+  for (unsigned index = 0; index < txn.candidates.size(); ++index) {
+    if (same_locality_group(txn.requester_sid, txn.candidates[index])) {
+      local_candidate = true;
+      ++m_stats.locality_candidates_local;
+    } else {
+      outer_candidate = true;
+      ++m_stats.locality_candidates_outer;
+    }
+  }
+  locality_class snapshot_class = LOCALITY_NONE;
+  if (local_candidate && outer_candidate)
+    snapshot_class = LOCALITY_BOTH;
+  else if (local_candidate)
+    snapshot_class = LOCALITY_LOCAL_ONLY;
+  else if (outer_candidate)
+    snapshot_class = LOCALITY_OUTER_ONLY;
+
+  ++m_stats.locality_observed_queries;
+  ++m_stats.locality_snapshot_class[snapshot_class];
+  ++m_stats.locality_exact_query_class[
+      exact_locality_class(txn.requester, txn.mf)];
+}
+
+void c2p_cache::record_locality_probe(const transaction &txn, bool hit) {
+  if (!m_config.locality_observe) return;
+  assert(txn.probe_sid < m_num_sms);
+  if (same_locality_group(txn.requester_sid, txn.probe_sid)) {
+    ++m_stats.locality_probes_local;
+    if (hit)
+      ++m_stats.locality_probe_hits_local;
+    else
+      ++m_stats.locality_probe_misses_local;
+  } else {
+    ++m_stats.locality_probes_outer;
+    if (hit)
+      ++m_stats.locality_probe_hits_outer;
+    else
+      ++m_stats.locality_probe_misses_outer;
+  }
+}
+
 bool c2p_cache::ring_throttle_allows(unsigned sid) {
   if (!m_config.ring_request_throttle) return true;
   assert(sid < m_ring_throttle.size());
@@ -738,6 +844,8 @@ c2p_cache::miss_action c2p_cache::accept_miss(l1_cache *requester,
   txn.oracle_peer_hit = oracle;
   txn.probe_latency = m_config.remote_tag_latency;
   txn.return_latency = m_config.remote_return_latency;
+  if (m_config.scheme == c2p_cache_config::C2P_SCHEME)
+    record_locality_accept(requester, mf);
   if (m_config.scheme == c2p_cache_config::C2P_SCHEME) {
     txn.rows = query_rows(txn.line_tag);
     txn.row_done.assign(txn.rows.size(), false);
@@ -996,6 +1104,7 @@ void c2p_cache::complete_matches(unsigned long long now) {
     if (it->state != WAIT_MATCH || now < it->ready_cycle) continue;
     if (m_config.scheme == c2p_cache_config::C2P_SCHEME) {
       it->candidates = ordered_candidates(*it);
+      record_locality_query(*it);
       if (!m_config.ideal_peer_lookup) {
         // The paper's system-level TP/TN/FP/FN classifies candidate
         // generation against peer residency when the L1 miss is accepted.
@@ -1481,6 +1590,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
         // the accept-time oracle snapshot.
         ++m_stats.peer_probe_hits;
         ++m_stats.remote_hits;
+        record_locality_probe(*it, true);
         if (m_config.scheme == c2p_cache_config::RING_SCHEME)
           ring_throttle_record_hit(*it);
         adaptive_record_probe_result(*it, true);
@@ -1495,6 +1605,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
         it->ready_cycle = now + it->return_latency;
       } else {
         ++m_stats.peer_probe_misses;
+        record_locality_probe(*it, false);
         adaptive_record_probe_result(*it, false);
         const unsigned ordinal = probe_policy_ordinal_bin(it->candidate_next);
         const unsigned candidate_bin = adaptive_candidate_bin(*it);
@@ -1752,6 +1863,41 @@ void c2p_cache::print_stats(FILE *fout) const {
   fprintf(fout, "c2p_peer_probe_hits = %llu\n", m_stats.peer_probe_hits);
   fprintf(fout, "c2p_peer_probe_misses = %llu\n", m_stats.peer_probe_misses);
   fprintf(fout, "c2p_peer_l1_accesses = %llu\n", m_stats.peer_l1_accesses);
+  fprintf(fout, "c2p_locality_observe = %u\n",
+          m_config.locality_observe ? 1 : 0);
+  fprintf(fout, "c2p_locality_group_size = %u\n",
+          m_config.locality_group_size);
+  fprintf(fout, "c2p_locality_observed_queries = %llu\n",
+          m_stats.locality_observed_queries);
+  static const char *const locality_names[] = {
+      "none", "local_only", "outer_only", "both"};
+  for (unsigned locality = 0; locality != 4; ++locality) {
+    fprintf(fout, "c2p_locality_snapshot_%s = %llu\n",
+            locality_names[locality],
+            m_stats.locality_snapshot_class[locality]);
+    fprintf(fout, "c2p_locality_exact_accept_%s = %llu\n",
+            locality_names[locality],
+            m_stats.locality_exact_accept_class[locality]);
+    fprintf(fout, "c2p_locality_exact_query_%s = %llu\n",
+            locality_names[locality],
+            m_stats.locality_exact_query_class[locality]);
+  }
+  fprintf(fout, "c2p_locality_candidates_local = %llu\n",
+          m_stats.locality_candidates_local);
+  fprintf(fout, "c2p_locality_candidates_outer = %llu\n",
+          m_stats.locality_candidates_outer);
+  fprintf(fout, "c2p_locality_probes_local = %llu\n",
+          m_stats.locality_probes_local);
+  fprintf(fout, "c2p_locality_probes_outer = %llu\n",
+          m_stats.locality_probes_outer);
+  fprintf(fout, "c2p_locality_probe_hits_local = %llu\n",
+          m_stats.locality_probe_hits_local);
+  fprintf(fout, "c2p_locality_probe_hits_outer = %llu\n",
+          m_stats.locality_probe_hits_outer);
+  fprintf(fout, "c2p_locality_probe_misses_local = %llu\n",
+          m_stats.locality_probe_misses_local);
+  fprintf(fout, "c2p_locality_probe_misses_outer = %llu\n",
+          m_stats.locality_probe_misses_outer);
   fprintf(fout, "c2p_ring_traversals = %llu\n", m_stats.ring_traversals);
   fprintf(fout, "c2p_ring_no_match_traversals = %llu\n",
           m_stats.ring_no_match_traversals);

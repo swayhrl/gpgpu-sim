@@ -95,6 +95,11 @@ class c2p_cache_config {
   // Further split the first post-miss observation by a line-address region
   // hash and requester topology.  This is an offline feature study only.
   bool adaptive_probe_observe_addr_topology;
+  // A separate locality partition for C2P experiments.  It is deliberately
+  // independent from comparator_cluster_size: changing it must not alter the
+  // ATA/CCD comparator scope or canonical C2P candidate ordering.
+  bool locality_observe;
+  unsigned locality_group_size;
   // C2P+ counterfactual: a one-request-per-cycle remote tag pipeline that
   // does not reserve the target L1 data port.
   bool separate_target_tag_port;
@@ -140,6 +145,21 @@ struct c2p_cache_stats {
   unsigned long long peer_probe_hits;
   unsigned long long peer_probe_misses;
   unsigned long long peer_l1_accesses;
+  // Default-off 4-SM locality observation.  Each exact/snapshot class is
+  // one of none, local-only, outer-only, or both; probe classes are local
+  // versus outer at the time the target is actually selected.
+  unsigned long long locality_observed_queries;
+  unsigned long long locality_snapshot_class[4];
+  unsigned long long locality_exact_accept_class[4];
+  unsigned long long locality_exact_query_class[4];
+  unsigned long long locality_candidates_local;
+  unsigned long long locality_candidates_outer;
+  unsigned long long locality_probes_local;
+  unsigned long long locality_probes_outer;
+  unsigned long long locality_probe_hits_local;
+  unsigned long long locality_probe_hits_outer;
+  unsigned long long locality_probe_misses_local;
+  unsigned long long locality_probe_misses_outer;
   // RING-only path accounting.  A traversal is recorded once at copied-tag
   // issue, before the later data-array access or lower-memory fallback.
   unsigned long long ring_traversals;
@@ -348,6 +368,13 @@ class c2p_cache {
 
   enum package_outcome { PACKAGE_HIT, PACKAGE_NO_HIT, PACKAGE_TIMEOUT };
 
+  enum locality_class {
+    LOCALITY_NONE = 0,
+    LOCALITY_LOCAL_ONLY = 1,
+    LOCALITY_OUTER_ONLY = 2,
+    LOCALITY_BOTH = 3
+  };
+
   struct addr_topology_observation {
     addr_topology_observation()
         : opportunities(0), later_peer(0), within_4(0), lower_ready(0),
@@ -456,6 +483,13 @@ class c2p_cache {
   unsigned adaptive_package_score_index(const transaction &txn) const;
   unsigned adaptive_addr_topology_bucket(const transaction &txn) const;
   void record_peer_accesses(bool hit, unsigned accesses);
+  void record_locality_accept(l1_cache *requester, mem_fetch *mf);
+  void record_locality_query(const transaction &txn);
+  void record_locality_probe(const transaction &txn, bool hit);
+  locality_class exact_locality_class(l1_cache *requester,
+                                      mem_fetch *mf) const;
+  bool same_locality_group(unsigned from_sid, unsigned to_sid) const;
+  unsigned locality_group_id(unsigned sid) const;
   bool has_exact_peer(l1_cache *requester, mem_fetch *mf) const;
   std::vector<unsigned> exact_candidates(const transaction &txn,
                                          bool cluster_only) const;
