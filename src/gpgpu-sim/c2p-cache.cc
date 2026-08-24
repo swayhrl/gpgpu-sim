@@ -88,6 +88,10 @@ c2p_cache_config::c2p_cache_config()
       locality_aware_candidate_order(false),
       locality_outer_probe_extra_latency(0),
       locality_outer_return_extra_latency(0),
+      outer_admission_policy(false),
+      outer_admission_score_threshold(4),
+      outer_admission_explore_period(64),
+      outer_admission_initial_score(4),
       separate_target_tag_port(false),
       diagnostic_target_port_bypass(false),
       snapshot_copies(4),
@@ -219,6 +223,18 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
       &locality_outer_return_extra_latency,
       "C2P locality sensitivity: extra cycles for an outer remote return",
       "0");
+  option_parser_register(opp, "-c2p_cache_outer_admission_policy", OPT_BOOL,
+                         &outer_admission_policy,
+                         "C2P+ AddrTopo gate for outer-only candidate lists", "0");
+  option_parser_register(opp, "-c2p_cache_outer_admission_score_threshold",
+                         OPT_UINT32, &outer_admission_score_threshold,
+                         "C2P+ outer-admission 3-bit score threshold", "4");
+  option_parser_register(opp, "-c2p_cache_outer_admission_explore_period",
+                         OPT_UINT32, &outer_admission_explore_period,
+                         "C2P+ outer-admission exploration period (0=off)", "64");
+  option_parser_register(opp, "-c2p_cache_outer_admission_initial_score",
+                         OPT_UINT32, &outer_admission_initial_score,
+                         "C2P+ outer-admission reset score (0..7)", "4");
   option_parser_register(
       opp, "-c2p_cache_separate_target_tag_port", OPT_BOOL,
       &separate_target_tag_port,
@@ -307,6 +323,12 @@ void c2p_cache_stats::clear() {
   locality_probe_hits_outer = 0;
   locality_probe_misses_local = 0;
   locality_probe_misses_outer = 0;
+  outer_admission_opportunities = 0;
+  outer_admission_continue_predictor = 0;
+  outer_admission_continue_exploration = 0;
+  outer_admission_bypass_predictor = 0;
+  outer_admission_train_hit = 0;
+  outer_admission_train_no_hit = 0;
   for (unsigned locality = 0; locality != 4; ++locality) {
     locality_snapshot_class[locality] = 0;
     locality_exact_accept_class[locality] = 0;
@@ -467,6 +489,7 @@ c2p_cache::transaction::transaction(l1_cache *requester_, mem_fetch *mf_,
       adaptive_package_active(false),
       adaptive_package_outcome_recorded(false),
       adaptive_early_stop_pending(false),
+      outer_admission_active(false),
       adaptive_early_stop_pressure(0),
       adaptive_early_stop_cycle(0),
       probe_sid((unsigned)-1),
@@ -516,6 +539,10 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
       m_adaptive_package_scores(C2P_PROBE_POLICY_PC_BUCKETS *
                                     C2P_PROBE_POLICY_CANDIDATE_BINS,
                                 config.adaptive_probe_initial_score),
+      m_outer_admission_scores(C2P_PROBE_POLICY_PC_BUCKETS *
+                                    C2P_PROBE_POLICY_CANDIDATE_BINS,
+                                config.outer_admission_initial_score),
+      m_outer_admission_explore_counter(0),
       m_adaptive_explore_counter(0),
       m_addr_observe_cluster_count(
           std::max(1U, (m_num_sms + std::max(1U, config.comparator_cluster_size) - 1) /
@@ -540,6 +567,8 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
           m_config.ring_throttle_min_hit_percent <= 100));
   assert(m_config.adaptive_probe_score_threshold <= 7);
   assert(m_config.adaptive_probe_initial_score <= 7);
+  assert(m_config.outer_admission_score_threshold <= 7);
+  assert(m_config.outer_admission_initial_score <= 7);
   assert(!m_config.adaptive_probe_package_policy ||
          m_config.adaptive_probe_policy);
   assert(!m_config.adaptive_probe_addr_topology_policy ||
@@ -585,6 +614,9 @@ void c2p_cache::reset() {
   std::fill(m_adaptive_package_scores.begin(),
             m_adaptive_package_scores.end(),
             m_config.adaptive_probe_initial_score);
+  std::fill(m_outer_admission_scores.begin(), m_outer_admission_scores.end(),
+            m_config.outer_admission_initial_score);
+  m_outer_admission_explore_counter = 0;
   m_adaptive_explore_counter = 0;
   std::fill(m_addr_observe_region.begin(), m_addr_observe_region.end(),
             addr_topology_observation());
@@ -1316,6 +1348,7 @@ void c2p_cache::retire(transaction &txn, unsigned long long now) {
 }
 
 void c2p_cache::begin_fallback(transaction &txn, unsigned long long now) {
+  outer_admission_record_result(txn, false);
   m_stats.fallback_probe_ordinal_total += txn.candidate_next;
   ++m_stats.fallback_probe_ordinal_samples;
   transition(txn, WAIT_FALLBACK, now);
@@ -1392,6 +1425,60 @@ unsigned c2p_cache::adaptive_addr_topology_bucket(
   const unsigned requester_cluster = cluster_id(txn.requester_sid);
   const uint64_t feature = ((uint64_t)region << 32) | requester_cluster;
   return fold_hash(feature, 0xA772u) & (C2P_PROBE_POLICY_PC_BUCKETS - 1);
+}
+
+bool c2p_cache::candidates_are_outer_only(const transaction &txn) const {
+  if (txn.candidates.empty()) return false;
+  for (unsigned i = 0; i < txn.candidates.size(); ++i)
+    if (same_locality_group(txn.requester_sid, txn.candidates[i])) return false;
+  return true;
+}
+
+unsigned c2p_cache::outer_admission_score_index(
+    const transaction &txn) const {
+  const unsigned region =
+      fold_hash(txn.line_tag, 0xA771u) & (C2P_ADDR_OBSERVE_REGION_BUCKETS - 1);
+  const uint64_t feature = ((uint64_t)region << 32) |
+                           locality_group_id(txn.requester_sid);
+  const unsigned bucket = fold_hash(feature, 0xA772u) &
+                          (C2P_PROBE_POLICY_PC_BUCKETS - 1);
+  return bucket * C2P_PROBE_POLICY_CANDIDATE_BINS +
+         adaptive_candidate_bin(txn);
+}
+
+bool c2p_cache::outer_admission_should_probe(transaction &txn) {
+  assert(m_config.outer_admission_policy && txn.candidate_next == 0);
+  assert(candidates_are_outer_only(txn));
+  ++m_stats.outer_admission_opportunities;
+  const unsigned score = m_outer_admission_scores[outer_admission_score_index(txn)];
+  const bool explore = m_config.outer_admission_explore_period != 0 &&
+      (m_outer_admission_explore_counter++ %
+           m_config.outer_admission_explore_period == 0);
+  if (score >= m_config.outer_admission_score_threshold) {
+    ++m_stats.outer_admission_continue_predictor;
+    txn.outer_admission_active = true;
+    return true;
+  }
+  if (explore) {
+    ++m_stats.outer_admission_continue_exploration;
+    txn.outer_admission_active = true;
+    return true;
+  }
+  ++m_stats.outer_admission_bypass_predictor;
+  return false;
+}
+
+void c2p_cache::outer_admission_record_result(transaction &txn, bool hit) {
+  if (!txn.outer_admission_active) return;
+  unsigned char &score = m_outer_admission_scores[outer_admission_score_index(txn)];
+  if (hit) {
+    score = std::min(7U, (unsigned)score + 2);
+    ++m_stats.outer_admission_train_hit;
+  } else {
+    if (score) --score;
+    ++m_stats.outer_admission_train_no_hit;
+  }
+  txn.outer_admission_active = false;
 }
 
 void c2p_cache::adaptive_record_probe_result(transaction &txn, bool hit) {
@@ -1656,6 +1743,7 @@ void c2p_cache::advance_probes(unsigned long long now) {
         // the accept-time oracle snapshot.
         ++m_stats.peer_probe_hits;
         ++m_stats.remote_hits;
+        outer_admission_record_result(*it, true);
         record_locality_probe_result(*it, true);
         if (m_config.scheme == c2p_cache_config::RING_SCHEME)
           ring_throttle_record_hit(*it);
@@ -1715,6 +1803,12 @@ void c2p_cache::advance_probes(unsigned long long now) {
     }
 
     if (it->state == READY_TO_PROBE) {
+      if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
+          m_config.outer_admission_policy && it->candidate_next == 0 &&
+          candidates_are_outer_only(*it) && !outer_admission_should_probe(*it)) {
+        begin_fallback(*it, now);
+      }
+      if (it->state != READY_TO_PROBE) continue;
       if (m_config.scheme == c2p_cache_config::C2P_SCHEME &&
           m_config.adaptive_probe_observe_tail && it->candidate_next != 0 &&
           it->candidate_next < it->candidates.size() &&
@@ -1974,6 +2068,20 @@ void c2p_cache::print_stats(FILE *fout) const {
           m_stats.locality_probe_misses_local);
   fprintf(fout, "c2p_locality_probe_misses_outer = %llu\n",
           m_stats.locality_probe_misses_outer);
+  fprintf(fout, "c2p_outer_admission_policy = %u\n",
+          m_config.outer_admission_policy ? 1 : 0);
+  fprintf(fout, "c2p_outer_admission_opportunities = %llu\n",
+          m_stats.outer_admission_opportunities);
+  fprintf(fout, "c2p_outer_admission_continue_predictor = %llu\n",
+          m_stats.outer_admission_continue_predictor);
+  fprintf(fout, "c2p_outer_admission_continue_exploration = %llu\n",
+          m_stats.outer_admission_continue_exploration);
+  fprintf(fout, "c2p_outer_admission_bypass_predictor = %llu\n",
+          m_stats.outer_admission_bypass_predictor);
+  fprintf(fout, "c2p_outer_admission_train_hit = %llu\n",
+          m_stats.outer_admission_train_hit);
+  fprintf(fout, "c2p_outer_admission_train_no_hit = %llu\n",
+          m_stats.outer_admission_train_no_hit);
   fprintf(fout, "c2p_ring_traversals = %llu\n", m_stats.ring_traversals);
   fprintf(fout, "c2p_ring_no_match_traversals = %llu\n",
           m_stats.ring_no_match_traversals);

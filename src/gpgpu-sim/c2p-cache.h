@@ -105,6 +105,12 @@ class c2p_cache_config {
   bool locality_aware_candidate_order;
   unsigned locality_outer_probe_extra_latency;
   unsigned locality_outer_return_extra_latency;
+  // Experimental C2P+ gate for a Snapshot list containing only outer peers.
+  // It is default-off and never suppresses a same-group candidate.
+  bool outer_admission_policy;
+  unsigned outer_admission_score_threshold;
+  unsigned outer_admission_explore_period;
+  unsigned outer_admission_initial_score;
   // C2P+ counterfactual: a one-request-per-cycle remote tag pipeline that
   // does not reserve the target L1 data port.
   bool separate_target_tag_port;
@@ -165,6 +171,12 @@ struct c2p_cache_stats {
   unsigned long long locality_probe_hits_outer;
   unsigned long long locality_probe_misses_local;
   unsigned long long locality_probe_misses_outer;
+  unsigned long long outer_admission_opportunities;
+  unsigned long long outer_admission_continue_predictor;
+  unsigned long long outer_admission_continue_exploration;
+  unsigned long long outer_admission_bypass_predictor;
+  unsigned long long outer_admission_train_hit;
+  unsigned long long outer_admission_train_no_hit;
   // RING-only path accounting.  A traversal is recorded once at copied-tag
   // issue, before the later data-array access or lower-memory fallback.
   unsigned long long ring_traversals;
@@ -418,6 +430,7 @@ class c2p_cache {
     bool adaptive_package_active;
     bool adaptive_package_outcome_recorded;
     bool adaptive_early_stop_pending;
+    bool outer_admission_active;
     unsigned adaptive_early_stop_pressure;
     unsigned long long adaptive_early_stop_cycle;
     unsigned probe_sid;
@@ -487,6 +500,10 @@ class c2p_cache {
   unsigned adaptive_candidate_bin(const transaction &txn) const;
   unsigned adaptive_package_score_index(const transaction &txn) const;
   unsigned adaptive_addr_topology_bucket(const transaction &txn) const;
+  bool outer_admission_should_probe(transaction &txn);
+  void outer_admission_record_result(transaction &txn, bool hit);
+  unsigned outer_admission_score_index(const transaction &txn) const;
+  bool candidates_are_outer_only(const transaction &txn) const;
   void record_peer_accesses(bool hit, unsigned accesses);
   void record_locality_accept(locality_class exact_class);
   void record_locality_query(const transaction &txn);
@@ -545,6 +562,8 @@ class c2p_cache {
   // address/topology are separate configurations with identical 64 x 4
   // capacity (768 logical bits); AddrTopo never depends on an instruction PC.
   std::vector<unsigned char> m_adaptive_package_scores;
+  std::vector<unsigned char> m_outer_admission_scores;
+  unsigned long long m_outer_admission_explore_counter;
   unsigned long long m_adaptive_explore_counter;
   unsigned m_addr_observe_cluster_count;
   std::vector<addr_topology_observation> m_addr_observe_region;
