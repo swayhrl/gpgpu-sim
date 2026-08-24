@@ -172,6 +172,8 @@ struct c2p_cache_stats {
   unsigned long long locality_probe_misses_local;
   unsigned long long locality_probe_misses_outer;
   unsigned long long outer_admission_opportunities;
+  unsigned long long outer_admission_initial_outer;
+  unsigned long long outer_admission_after_local;
   unsigned long long outer_admission_continue_predictor;
   unsigned long long outer_admission_continue_exploration;
   unsigned long long outer_admission_bypass_predictor;

@@ -324,6 +324,8 @@ void c2p_cache_stats::clear() {
   locality_probe_misses_local = 0;
   locality_probe_misses_outer = 0;
   outer_admission_opportunities = 0;
+  outer_admission_initial_outer = 0;
+  outer_admission_after_local = 0;
   outer_admission_continue_predictor = 0;
   outer_admission_continue_exploration = 0;
   outer_admission_bypass_predictor = 0;
@@ -1452,6 +1454,10 @@ bool c2p_cache::outer_admission_should_probe(transaction &txn) {
   assert(m_config.outer_admission_policy && !txn.outer_admission_decided);
   assert(remaining_candidates_are_outer_only(txn));
   ++m_stats.outer_admission_opportunities;
+  if (txn.candidate_next == 0)
+    ++m_stats.outer_admission_initial_outer;
+  else
+    ++m_stats.outer_admission_after_local;
   // This decision admits or bypasses the complete remaining outer package;
   // do not retrain/redecide after each individual outer miss.
   txn.outer_admission_decided = true;
@@ -2096,6 +2102,10 @@ void c2p_cache::print_stats(FILE *fout) const {
           m_config.outer_admission_policy ? 1 : 0);
   fprintf(fout, "c2p_outer_admission_opportunities = %llu\n",
           m_stats.outer_admission_opportunities);
+  fprintf(fout, "c2p_outer_admission_initial_outer = %llu\n",
+          m_stats.outer_admission_initial_outer);
+  fprintf(fout, "c2p_outer_admission_after_local = %llu\n",
+          m_stats.outer_admission_after_local);
   fprintf(fout, "c2p_outer_admission_continue_predictor = %llu\n",
           m_stats.outer_admission_continue_predictor);
   fprintf(fout, "c2p_outer_admission_continue_exploration = %llu\n",
