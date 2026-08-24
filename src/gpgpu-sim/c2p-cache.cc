@@ -93,6 +93,7 @@ c2p_cache_config::c2p_cache_config()
       ccd_predictor_latency(1),
       ccd_broadcast_latency(3),
       ring_hop_latency(2),
+      ring_link_pipeline(false),
       peer_line_latency(14) {}
 
 void c2p_cache_config::reg_options(OptionParser *opp) {
@@ -220,6 +221,9 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
                          "CCD-like cluster broadcast latency", "3");
   option_parser_register(opp, "-c2p_cache_ring_hop_latency", OPT_UINT32,
                          &ring_hop_latency, "RING-like per-hop latency", "2");
+  option_parser_register(
+      opp, "-c2p_cache_ring_link_pipeline", OPT_BOOL, &ring_link_pipeline,
+      "RING-like directed-link pipeline instead of one global injector", "0");
   option_parser_register(opp, "-c2p_cache_peer_line_latency", OPT_UINT32,
                          &peer_line_latency,
                          "ATA/CCD/RING-like remote cache-line access latency",
@@ -240,6 +244,10 @@ void c2p_cache_stats::clear() {
   peer_probe_hits = 0;
   peer_probe_misses = 0;
   peer_l1_accesses = 0;
+  ring_traversals = 0;
+  ring_no_match_traversals = 0;
+  ring_traversal_hops = 0;
+  ring_network_wait_cycles = 0;
   target_probe_port_busy_cycles = 0;
   target_tag_port_busy_cycles = 0;
   target_probe_queue_wait_cycles = 0;
@@ -426,6 +434,7 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
                            std::max(1U, config.comparator_cluster_size)),
           0),
       m_ring_next_issue_cycle(0),
+      m_ring_link_next_issue_cycle(m_num_sms, 0),
       m_peer_access_hit_hist(m_num_sms + 1, 0),
       m_peer_access_miss_hist(m_num_sms + 1, 0),
       m_adaptive_package_scores(C2P_PROBE_POLICY_PC_BUCKETS *
@@ -485,6 +494,8 @@ void c2p_cache::reset() {
   m_ata_issue_cycle = 0;
   std::fill(m_ata_issues.begin(), m_ata_issues.end(), 0);
   m_ring_next_issue_cycle = 0;
+  std::fill(m_ring_link_next_issue_cycle.begin(),
+            m_ring_link_next_issue_cycle.end(), 0);
   std::fill(m_peer_access_hit_hist.begin(), m_peer_access_hit_hist.end(), 0);
   std::fill(m_peer_access_miss_hist.begin(), m_peer_access_miss_hist.end(), 0);
   std::fill(m_adaptive_package_scores.begin(),
@@ -940,15 +951,38 @@ void c2p_cache::complete_matches(unsigned long long now) {
                            return ring_distance(requester_sid, a) <
                                   ring_distance(requester_sid, b);
                          });
+        const bool no_copied_tag_match = it->candidates.empty();
         const unsigned hops =
-            it->candidates.empty()
+            no_copied_tag_match
                 ? m_num_sms - 1
                 : ring_distance(it->requester_sid, it->candidates.front());
-        const unsigned long long start = std::max(now, m_ring_next_issue_cycle);
-        m_ring_next_issue_cycle = start + m_config.ring_hop_latency;
-        it->ready_cycle = start +
-                          (unsigned long long)hops * m_config.ring_hop_latency +
-                          m_config.remote_tag_latency;
+        unsigned long long arrival = now;
+        if (m_config.ring_link_pipeline) {
+          // A ring is serial along a directed link, not at a chip-global
+          // injection point.  Reserve exactly the links from requester to
+          // the first copied-tag match (or all other SMs on a no-match), so
+          // unrelated segments stay pipelined while true link conflicts queue.
+          for (unsigned hop = 0; hop < hops; ++hop) {
+            const unsigned link = (it->requester_sid + hop) % m_num_sms;
+            const unsigned long long start = std::max(
+                arrival, m_ring_link_next_issue_cycle[link]);
+            m_stats.ring_network_wait_cycles += start - arrival;
+            arrival = start + m_config.ring_hop_latency;
+            m_ring_link_next_issue_cycle[link] = arrival;
+          }
+        } else {
+          const unsigned long long start =
+              std::max(now, m_ring_next_issue_cycle);
+          // Preserve the pre-pipeline point as an explicit A/B comparator.
+          m_stats.ring_network_wait_cycles += start - now;
+          m_ring_next_issue_cycle = start + m_config.ring_hop_latency;
+          arrival = start +
+                    (unsigned long long)hops * m_config.ring_hop_latency;
+        }
+        ++m_stats.ring_traversals;
+        if (no_copied_tag_match) ++m_stats.ring_no_match_traversals;
+        m_stats.ring_traversal_hops += hops;
+        it->ready_cycle = arrival + m_config.remote_tag_latency;
         it->ring_started = true;
         if (now < it->ready_cycle) continue;
       }
@@ -1608,6 +1642,13 @@ void c2p_cache::print_stats(FILE *fout) const {
   fprintf(fout, "c2p_peer_probe_hits = %llu\n", m_stats.peer_probe_hits);
   fprintf(fout, "c2p_peer_probe_misses = %llu\n", m_stats.peer_probe_misses);
   fprintf(fout, "c2p_peer_l1_accesses = %llu\n", m_stats.peer_l1_accesses);
+  fprintf(fout, "c2p_ring_traversals = %llu\n", m_stats.ring_traversals);
+  fprintf(fout, "c2p_ring_no_match_traversals = %llu\n",
+          m_stats.ring_no_match_traversals);
+  fprintf(fout, "c2p_ring_traversal_hops = %llu\n",
+          m_stats.ring_traversal_hops);
+  fprintf(fout, "c2p_ring_network_wait_cycles = %llu\n",
+          m_stats.ring_network_wait_cycles);
   fprintf(fout, "c2p_target_probe_port_busy_cycles = %llu\n",
           m_stats.target_probe_port_busy_cycles);
   fprintf(fout, "c2p_target_tag_port_busy_cycles = %llu\n",

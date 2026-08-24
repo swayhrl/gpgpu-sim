@@ -109,6 +109,11 @@ class c2p_cache_config {
   unsigned ccd_predictor_latency;
   unsigned ccd_broadcast_latency;
   unsigned ring_hop_latency;
+  // The legacy comparator serializes all request injection through one global
+  // source.  The optional model instead reserves the directed links crossed
+  // by a request, preserving two cycles per hop while allowing disjoint ring
+  // segments to carry independent requests concurrently.
+  bool ring_link_pipeline;
   unsigned peer_line_latency;
 };
 
@@ -124,6 +129,12 @@ struct c2p_cache_stats {
   unsigned long long peer_probe_hits;
   unsigned long long peer_probe_misses;
   unsigned long long peer_l1_accesses;
+  // RING-only path accounting.  A traversal is recorded once at copied-tag
+  // issue, before the later data-array access or lower-memory fallback.
+  unsigned long long ring_traversals;
+  unsigned long long ring_no_match_traversals;
+  unsigned long long ring_traversal_hops;
+  unsigned long long ring_network_wait_cycles;
   // These are observation counters only.  They separate target-port
   // contention, FIFO residence, and requester-fill backpressure without
   // changing C2P transaction timing.
@@ -451,6 +462,7 @@ class c2p_cache {
   unsigned long long m_ata_issue_cycle;
   std::vector<unsigned> m_ata_issues;
   unsigned long long m_ring_next_issue_cycle;
+  std::vector<unsigned long long> m_ring_link_next_issue_cycle;
   std::vector<unsigned long long> m_peer_access_hit_hist;
   std::vector<unsigned long long> m_peer_access_miss_hist;
   // The only adaptive predictor state: one 3-bit score for each selected
