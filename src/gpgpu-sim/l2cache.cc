@@ -922,9 +922,11 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
 
   // prior L2 misses inserted into m_L2_dram_queue here
   if (!m_config->m_L2_config.disabled()) {
-    if (m_l2_char_collector)
+    if (m_l2_char_collector) {
+      const bool lower_eligible = !m_L2cache->miss_queue_empty();
       m_l2_char_collector->record_lower_drain(
-          !m_L2cache->miss_queue_empty(), m_L2_dram_queue->full());
+          lower_eligible, lower_eligible && m_L2_dram_queue->full());
+    }
     m_L2cache->cycle();
   }
 
