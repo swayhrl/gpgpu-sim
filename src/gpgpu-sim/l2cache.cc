@@ -49,6 +49,184 @@
 #include "mem_latency_stat.h"
 #include "shader.h"
 
+namespace {
+const char *const k_l2_block_reason_name[NUM_L2_BLOCK_REASONS] = {
+    "line_alloc", "mshr_new", "mshr_merge", "missq",
+    "data_port",  "respq",    "other"};
+
+void l2_char_update_max(unsigned long long value, unsigned long long &maximum) {
+  if (value > maximum) maximum = value;
+}
+}  // namespace
+
+void l2_char_stats::clear() {
+  sample_cycles = 0;
+  corrected_path_activation_count = 0;
+  corrected_path_lowerq_activation_count = 0;
+  corrected_path_respq_activation_count = 0;
+  corrected_path_dataport_activation_count = 0;
+  dataport_clean_miss_admit_while_busy = 0;
+  dataport_mshr_merge_admit_while_busy = 0;
+  dataport_hit_block_cycles = 0;
+  missq_merge_admit_while_full = 0;
+  missq_clean_miss_admit_one_slot = 0;
+  missq_dirty_miss_block_one_slot = 0;
+  missq_dirty_miss_admit_two_slots = 0;
+  missq_dirty_block_no_mutation = 0;
+  missq_dirty_block_partial_mutation = 0;
+  dirty_victim_preview_count = 0;
+  preview_commit_mismatch = 0;
+  mshr_entries_sum = mshr_entries_max = 0;
+  mshr_targets_sum = mshr_targets_max = 0;
+  mshr_ready_entries_sum = mshr_ready_entries_max = 0;
+  mshr_ready_targets_sum = mshr_ready_targets_max = 0;
+  missq_sum = missq_max = missq_demand_sum = missq_wb_sum = 0;
+  l2_dramq_sum = l2_dramq_max = 0;
+  dram_l2q_sum = dram_l2q_max = 0;
+  l2_icntq_sum = l2_icntq_max = 0;
+  icnt_l2q_sum = icnt_l2q_max = 0;
+  rop_sum = rop_max = 0;
+  data_port_busy_cycles = fill_port_busy_cycles = 0;
+  missq_full_cycles = dram_l2_full_cycles = 0;
+  l2_icnt_full_cycles = icnt_l2_full_cycles = 0;
+  for (unsigned i = 0; i < NUM_L2_BLOCK_REASONS; ++i) {
+    blocker_cycles[i] = 0;
+    blocker_requests[i] = 0;
+    blocker_episodes[i] = 0;
+  }
+}
+
+void l2_char_stats::sample(
+    unsigned mshr_entries, unsigned mshr_targets, unsigned mshr_ready_entries,
+    unsigned mshr_ready_targets, unsigned missq, unsigned missq_demand,
+    unsigned missq_wb, unsigned l2_dramq, unsigned dram_l2q,
+    unsigned l2_icntq, unsigned icnt_l2q, unsigned rop, bool data_busy,
+    bool fill_busy, bool missq_full, bool dram_l2_full, bool l2_icnt_full,
+    bool icnt_l2_full) {
+  sample_cycles++;
+  mshr_entries_sum += mshr_entries;
+  mshr_targets_sum += mshr_targets;
+  mshr_ready_entries_sum += mshr_ready_entries;
+  mshr_ready_targets_sum += mshr_ready_targets;
+  missq_sum += missq;
+  missq_demand_sum += missq_demand;
+  missq_wb_sum += missq_wb;
+  l2_dramq_sum += l2_dramq;
+  dram_l2q_sum += dram_l2q;
+  l2_icntq_sum += l2_icntq;
+  icnt_l2q_sum += icnt_l2q;
+  rop_sum += rop;
+  l2_char_update_max(mshr_entries, mshr_entries_max);
+  l2_char_update_max(mshr_targets, mshr_targets_max);
+  l2_char_update_max(mshr_ready_entries, mshr_ready_entries_max);
+  l2_char_update_max(mshr_ready_targets, mshr_ready_targets_max);
+  l2_char_update_max(missq, missq_max);
+  l2_char_update_max(l2_dramq, l2_dramq_max);
+  l2_char_update_max(dram_l2q, dram_l2q_max);
+  l2_char_update_max(l2_icntq, l2_icntq_max);
+  l2_char_update_max(icnt_l2q, icnt_l2q_max);
+  l2_char_update_max(rop, rop_max);
+  if (data_busy) data_port_busy_cycles++;
+  if (fill_busy) fill_port_busy_cycles++;
+  if (missq_full) missq_full_cycles++;
+  if (dram_l2_full) dram_l2_full_cycles++;
+  if (l2_icnt_full) l2_icnt_full_cycles++;
+  if (icnt_l2_full) icnt_l2_full_cycles++;
+}
+
+void l2_char_stats::record_blockers(
+    mem_fetch *mf, unsigned long long blocker_mask, unsigned long long cycle,
+    std::map<mem_fetch *, l2_block_episode_state> &state) {
+  if (!blocker_mask) return;
+  l2_block_episode_state &entry = state[mf];
+  if (!entry.first_block_cycle) entry.first_block_cycle = cycle;
+  entry.total_block_cycles++;
+  for (unsigned reason = 0; reason < NUM_L2_BLOCK_REASONS; ++reason) {
+    unsigned long long bit = 1ULL << reason;
+    if (!(blocker_mask & bit)) continue;
+    blocker_cycles[reason]++;
+    if (!(entry.ever_blocked_mask & bit)) {
+      blocker_requests[reason]++;
+      entry.ever_blocked_mask |= bit;
+    }
+    if (!(entry.prev_blocked_mask & bit)) blocker_episodes[reason]++;
+  }
+  entry.prev_blocked_mask = blocker_mask;
+}
+
+void l2_char_stats::print(FILE *fp, unsigned subpartition_id) const {
+  double denom = sample_cycles ? sample_cycles : 1;
+  fprintf(fp, "L2_char_subpartition = %u\n", subpartition_id);
+  fprintf(fp, "L2_char_corrected_path_activation_count = %llu\n",
+          corrected_path_activation_count);
+  fprintf(fp, "L2_char_corrected_path_lowerq_activation_count = %llu\n",
+          corrected_path_lowerq_activation_count);
+  fprintf(fp, "L2_char_corrected_path_respq_activation_count = %llu\n",
+          corrected_path_respq_activation_count);
+  fprintf(fp, "L2_char_corrected_path_dataport_activation_count = %llu\n",
+          corrected_path_dataport_activation_count);
+  fprintf(fp, "L2_char_dataport_clean_miss_admit_while_busy = %llu\n",
+          dataport_clean_miss_admit_while_busy);
+  fprintf(fp, "L2_char_dataport_mshr_merge_admit_while_busy = %llu\n",
+          dataport_mshr_merge_admit_while_busy);
+  fprintf(fp, "L2_char_dataport_hit_block_cycles = %llu\n",
+          dataport_hit_block_cycles);
+  fprintf(fp, "L2_char_missq_merge_admit_while_full = %llu\n",
+          missq_merge_admit_while_full);
+  fprintf(fp, "L2_char_missq_clean_miss_admit_one_slot = %llu\n",
+          missq_clean_miss_admit_one_slot);
+  fprintf(fp, "L2_char_missq_dirty_miss_block_one_slot = %llu\n",
+          missq_dirty_miss_block_one_slot);
+  fprintf(fp, "L2_char_missq_dirty_miss_admit_two_slots = %llu\n",
+          missq_dirty_miss_admit_two_slots);
+  fprintf(fp, "L2_char_missq_dirty_block_no_mutation = %llu\n",
+          missq_dirty_block_no_mutation);
+  fprintf(fp, "L2_char_missq_dirty_block_partial_mutation = %llu\n",
+          missq_dirty_block_partial_mutation);
+  fprintf(fp, "L2_char_dirty_victim_preview_count = %llu\n",
+          dirty_victim_preview_count);
+  fprintf(fp, "L2_char_preview_commit_mismatch = %llu\n",
+          preview_commit_mismatch);
+  fprintf(fp, "L2_char_mshr_entries_avg = %.6f\n",
+          mshr_entries_sum / denom);
+  fprintf(fp, "L2_char_mshr_entries_max = %llu\n", mshr_entries_max);
+  fprintf(fp, "L2_char_mshr_targets_avg = %.6f\n",
+          mshr_targets_sum / denom);
+  fprintf(fp, "L2_char_mshr_targets_max = %llu\n", mshr_targets_max);
+  fprintf(fp, "L2_char_mshr_ready_entries_avg = %.6f\n",
+          mshr_ready_entries_sum / denom);
+  fprintf(fp, "L2_char_mshr_ready_targets_avg = %.6f\n",
+          mshr_ready_targets_sum / denom);
+  fprintf(fp, "L2_char_missq_avg = %.6f\n", missq_sum / denom);
+  fprintf(fp, "L2_char_missq_max = %llu\n", missq_max);
+  fprintf(fp, "L2_char_missq_demand_avg = %.6f\n", missq_demand_sum / denom);
+  fprintf(fp, "L2_char_missq_wb_avg = %.6f\n", missq_wb_sum / denom);
+  fprintf(fp, "L2_char_l2_dramq_avg = %.6f\n", l2_dramq_sum / denom);
+  fprintf(fp, "L2_char_dram_l2q_avg = %.6f\n", dram_l2q_sum / denom);
+  fprintf(fp, "L2_char_l2_icntq_avg = %.6f\n", l2_icntq_sum / denom);
+  fprintf(fp, "L2_char_icnt_l2q_avg = %.6f\n", icnt_l2q_sum / denom);
+  fprintf(fp, "L2_char_rop_avg = %.6f\n", rop_sum / denom);
+  fprintf(fp, "L2_char_data_port_busy_cycles = %llu\n",
+          data_port_busy_cycles);
+  fprintf(fp, "L2_char_fill_port_busy_cycles = %llu\n",
+          fill_port_busy_cycles);
+  fprintf(fp, "L2_char_missq_full_cycles = %llu\n", missq_full_cycles);
+  fprintf(fp, "L2_char_dram_l2q_full_cycles = %llu\n",
+          dram_l2_full_cycles);
+  fprintf(fp, "L2_char_l2_icntq_full_cycles = %llu\n",
+          l2_icnt_full_cycles);
+  fprintf(fp, "L2_char_icnt_l2q_full_cycles = %llu\n",
+          icnt_l2_full_cycles);
+  for (unsigned reason = 0; reason < NUM_L2_BLOCK_REASONS; ++reason) {
+    fprintf(fp, "L2_char_block_cycles_%s = %llu\n",
+            k_l2_block_reason_name[reason], blocker_cycles[reason]);
+    fprintf(fp, "L2_char_block_requests_%s = %llu\n",
+            k_l2_block_reason_name[reason], blocker_requests[reason]);
+    fprintf(fp, "L2_char_block_episodes_%s = %llu\n",
+            k_l2_block_reason_name[reason], blocker_episodes[reason]);
+  }
+}
+
 mem_fetch *partition_mf_allocator::alloc(new_addr_type addr,
                                          mem_access_type type, unsigned size,
                                          bool wr, unsigned long long cycle,
