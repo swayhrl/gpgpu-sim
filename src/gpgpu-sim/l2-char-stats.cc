@@ -74,6 +74,7 @@ l2_char_collector::l2_char_collector(
       m_set_detail(set_detail), m_emit_windows(emit_windows), m_cycles(0),
       m_window_start(0), m_window_samples(0), m_data_busy(0), m_fill_busy(0),
       m_window_data_busy(0), m_window_fill_busy(0),
+      m_max_reserved_ways_any_set(0), m_cycles_any_set_all_reserved(0),
       m_dram_issue_eligible(0), m_dram_issue_returnq(0), m_dram_issue_credit(0),
       m_dram_issue_scheduler(0), m_dram_read_returnq(0),
       m_dram_read_credit(0), m_dram_read_scheduler(0), m_dram_wb_credit(0),
@@ -93,6 +94,7 @@ l2_char_collector::l2_char_collector(
   // context, not a finite-capacity resource, so report occupancy but never a
   // fabricated utilization/full ratio derived from the ICNT input depth.
   m_rop.init(0); m_set_reserved_distribution.init(ways);
+  m_all_reserved_sets.init(sets);
   m_window_reserved.init(sets * ways); m_window_mshr_entries.init(mshr_entries);
   m_window_mshr_targets.init(mshr_entries * merge_limit); m_window_missq.init(missq_capacity);
   m_window_missq_wb.init(missq_capacity); m_window_l2dramq.init(l2dramq_capacity);
@@ -153,6 +155,10 @@ void l2_char_collector::sample_cycle(unsigned long long cycle,
   if (m_set_detail)
     for (std::vector<unsigned>::const_iterator it = s.storage.reserved_by_set.begin();
          it != s.storage.reserved_by_set.end(); ++it) m_set_reserved_distribution.sample(*it);
+  m_all_reserved_sets.sample(s.storage.all_reserved_sets);
+  m_max_reserved_ways_any_set = std::max<unsigned long long>(
+      m_max_reserved_ways_any_set, s.storage.max_reserved_set);
+  if (s.storage.all_reserved_sets) ++m_cycles_any_set_all_reserved;
   observe_mshr_lifetimes(cycle, s.mshr_states);
   if (m_window_samples == m_window_cycles) close_window(cycle);
 }
@@ -288,6 +294,10 @@ void l2_char_collector::print(FILE *fp) const {
         << occ_fields("l2dramq", m_l2dramq) << occ_fields("draml2q", m_draml2q)
         << occ_fields("l2icntq", m_l2icntq) << occ_fields("icntl2q", m_icntl2q)
         << occ_fields("rop", m_rop) << occ_fields("set_reserved", m_set_reserved_distribution)
+        << "|max_reserved_ways_any_set=" << m_max_reserved_ways_any_set
+        << "|sets_all_ways_reserved_avg=" << m_all_reserved_sets.average()
+        << "|sets_all_ways_reserved_max=" << m_all_reserved_sets.maximum
+        << "|cycles_any_set_all_reserved=" << m_cycles_any_set_all_reserved
         << block_fields("block_set", m_frontend[0]) << block_fields("block_mshr_new", m_frontend[1])
         << block_fields("block_mshr_merge", m_frontend[2]) << block_fields("block_missq", m_frontend[3])
         << block_fields("block_dataport", m_frontend[4]) << block_fields("block_respq", m_frontend[5])

@@ -971,7 +971,11 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         admit = l2_admission_allowed(admission);
         if (m_l2_char_collector) {
           unsigned eligible = 0;
-          if (plan.probe_status == MISS || plan.probe_status == SECTOR_MISS)
+          // RESERVATION_FAIL is the production form of "all replacement
+          // ways are reserved".  It is still an allocation attempt, and
+          // must share the LINE_ALLOC denominator with ordinary misses.
+          if (plan.probe_status == MISS || plan.probe_status == SECTOR_MISS ||
+              plan.probe_status == RESERVATION_FAIL)
             eligible |= 1u << L2_BLOCK_LINE_ALLOC;
           if (plan.needs_new_mshr) eligible |= 1u << L2_BLOCK_MSHR_NEW;
           if (plan.needs_mshr_merge) eligible |= 1u << L2_BLOCK_MSHR_MERGE;

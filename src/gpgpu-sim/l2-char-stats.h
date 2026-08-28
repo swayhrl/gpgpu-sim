@@ -128,6 +128,9 @@ class l2_char_collector {
   l2_char_occ_stats m_missq, m_missq_demand, m_missq_wb, m_missq_other;
   l2_char_occ_stats m_l2dramq, m_draml2q, m_l2icntq, m_icntl2q, m_rop;
   l2_char_occ_stats m_set_reserved_distribution;
+  l2_char_occ_stats m_all_reserved_sets;
+  unsigned long long m_max_reserved_ways_any_set;
+  unsigned long long m_cycles_any_set_all_reserved;
   l2_char_occ_stats m_window_reserved, m_window_mshr_entries;
   l2_char_occ_stats m_window_mshr_targets, m_window_missq, m_window_missq_wb;
   l2_char_occ_stats m_window_l2dramq, m_window_draml2q;
