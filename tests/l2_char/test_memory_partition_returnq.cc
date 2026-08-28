@@ -147,6 +147,11 @@ int main(int argc, char **argv) {
   }
   assert(sp->l2_char_no_resource_leak());
 
+  // Print the actual collector records so this same production-path fixture
+  // proves DRAM ReturnQ causality for L2CHARV1 as well as the legacy P5A
+  // invariants above.
+  sp->print_l2_char_stats(stdout);
+
   printf("P5A PASS returnq_full=1 wb_head=%llu wb_issued=%llu "
          "read_head=%llu read_blocked=%llu credit_leak_free=1 "
          "resource_leak_free=1 fifo_reorder=0\n",

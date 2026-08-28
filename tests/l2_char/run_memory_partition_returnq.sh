@@ -22,4 +22,7 @@ mapfile -d '' intersim_objs < <(find "$build/intersim2" -name '*.o' -print0)
   -lz -lpthread -ldl -lssl -lcrypto -o "$out"
 
 "$out" "$root/configs/tested-cfgs/SM7_QV100/gpgpusim.config" \
-  "$root/tests/l2_char/memory_partition_returnq.config"
+  "$root/tests/l2_char/memory_partition_returnq.config" | tee "$out.log"
+
+grep -q '^L2CHARV1|INVARIANT|slice=0|status=PASS' "$out.log"
+grep -q 'dram_read_returnq=1' "$out.log"
