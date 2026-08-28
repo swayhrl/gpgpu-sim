@@ -35,6 +35,7 @@
 #include "../abstract_hardware_model.h"
 #include "dram.h"
 #include "l2_admission_rules.h"
+#include "l2-char-stats.h"
 
 #include <list>
 #include <map>
@@ -291,6 +292,12 @@ class memory_sub_partition {
   class mem_fetch *L2_dram_queue_top() const;
   void L2_dram_queue_pop();
 
+  // Observation-only hooks used by memory_partition_unit at real DRAM
+  // decision points.  They do not influence arbitration or queue state.
+  void l2_char_record_dram_issue(bool is_read, bool is_wb, bool return_block,
+                                 bool credit_block, bool scheduler_block);
+  void l2_char_record_dram_return(bool eligible, bool blocked);
+
   // interface to dram_L2_queue
   bool dram_L2_queue_empty() const;
   bool dram_L2_queue_full() const;
@@ -348,6 +355,13 @@ class memory_sub_partition {
   std::set<mem_fetch *> m_request_tracker;
   std::map<mem_fetch *, l2_block_episode_state> m_l2_block_state;
   l2_char_stats m_l2_char_stats;
+  l2_char_collector *m_l2_char_collector;
+  unsigned m_l2_char_l2dram_class[4];
+
+  void l2_char_record_l2dram_push(mem_fetch *mf);
+  void l2_char_record_l2dram_pop(mem_fetch *mf);
+  void l2_char_sample(unsigned long long cycle);
+  static unsigned l2_char_queue_class(const mem_fetch *mf);
 
   friend class L2interface;
 
@@ -373,6 +387,7 @@ class L2interface : public mem_fetch_interface {
   virtual void push(mem_fetch *mf) {
     mf->set_status(IN_PARTITION_L2_TO_DRAM_QUEUE, 0 /*FIXME*/);
     m_unit->m_L2_dram_queue->push(mf);
+    m_unit->l2_char_record_l2dram_push(mf);
   }
 
  private:

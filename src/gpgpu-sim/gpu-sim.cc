@@ -293,6 +293,18 @@ void memory_config::reg_options(class OptionParser *opp) {
       opp, "-gpgpu_l2_char_returnq_hold_cycles", OPT_UINT32,
       &gpgpu_l2_char_returnq_hold_cycles,
       "directed test hook: hold an occupied DRAM-to-L2 return queue", "0");
+  option_parser_register(opp, "-gpgpu_l2_char_enable", OPT_BOOL,
+                         &gpgpu_l2_char_enable,
+                         "enable timing-neutral L2CHARV1 instrumentation", "0");
+  option_parser_register(opp, "-gpgpu_l2_char_window", OPT_UINT32,
+                         &gpgpu_l2_char_window,
+                         "L2 cache-cycle samples per L2CHARV1 window", "5000");
+  option_parser_register(opp, "-gpgpu_l2_char_set_detail", OPT_BOOL,
+                         &gpgpu_l2_char_set_detail,
+                         "collect L2CHARV1 per-set reservation distribution", "1");
+  option_parser_register(opp, "-gpgpu_l2_char_emit_windows", OPT_BOOL,
+                         &gpgpu_l2_char_emit_windows,
+                         "emit L2CHARV1 temporal window records", "1");
   option_parser_register(opp, "-gpgpu_dram_buswidth", OPT_UINT32, &busW,
                          "default = 4 bytes (8 bytes per cycle at DDR)", "4");
   option_parser_register(

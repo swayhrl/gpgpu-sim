@@ -496,6 +496,8 @@ void memory_partition_unit::simple_dram_model_cycle() {
       unsigned dest_global_spid = mf_return->get_sub_partition_id();
       int dest_spid = global_sub_partition_id_to_local_id(dest_global_spid);
       assert(m_sub_partition[dest_spid]->get_id() == dest_global_spid);
+      m_sub_partition[dest_spid]->l2_char_record_dram_return(
+          true, m_sub_partition[dest_spid]->dram_L2_queue_full());
       if (!m_sub_partition[dest_spid]->dram_L2_queue_full()) {
         if (mf_return->get_access_type() == L1_WRBK_ACC) {
           m_sub_partition[dest_spid]->set_done(mf_return);
@@ -531,6 +533,20 @@ void memory_partition_unit::simple_dram_model_cycle() {
                m_config->m_n_sub_partition_per_memory_channel;
     if (!m_sub_partition[spid]->L2_dram_queue_empty()) {
       mem_fetch *mf = m_sub_partition[spid]->L2_dram_queue_top();
+      const bool char_needs_return = requires_dram_to_l2_return(mf);
+      const bool char_return_block =
+          char_needs_return && m_sub_partition[spid]->dram_L2_queue_full();
+      const bool char_general_credit =
+          m_arbitration_metadata.has_credits(spid, false);
+      const bool char_resource_credit =
+          m_arbitration_metadata.has_credits(spid, !char_needs_return);
+      const bool char_credit_block = !char_return_block &&
+          !dram_issue_allowed(char_needs_return, false, char_general_credit,
+                              !char_needs_return && char_resource_credit);
+      const bool char_scheduler_block = m_dram->full(mf->is_write());
+      m_sub_partition[spid]->l2_char_record_dram_issue(
+          char_needs_return, !char_needs_return, char_return_block,
+          char_credit_block, char_scheduler_block);
       if (m_l2_char_dram_issue_count >=
               m_config->gpgpu_l2_char_dram_issue_hold_after_issues &&
           m_l2_char_dram_issue_hold_remaining) {
@@ -571,6 +587,10 @@ void memory_partition_unit::dram_cycle() {
     unsigned dest_global_spid = mf_return->get_sub_partition_id();
     int dest_spid = global_sub_partition_id_to_local_id(dest_global_spid);
     assert(m_sub_partition[dest_spid]->get_id() == dest_global_spid);
+    if (mf_return->get_access_type() != L1_WRBK_ACC &&
+        mf_return->get_access_type() != L2_WRBK_ACC)
+      m_sub_partition[dest_spid]->l2_char_record_dram_return(
+          true, m_sub_partition[dest_spid]->dram_L2_queue_full());
     if (!m_sub_partition[dest_spid]->dram_L2_queue_full()) {
       if (mf_return->get_access_type() == L1_WRBK_ACC) {
         m_sub_partition[dest_spid]->set_done(mf_return);
@@ -604,6 +624,20 @@ void memory_partition_unit::dram_cycle() {
                m_config->m_n_sub_partition_per_memory_channel;
     if (!m_sub_partition[spid]->L2_dram_queue_empty()) {
       mem_fetch *mf = m_sub_partition[spid]->L2_dram_queue_top();
+      const bool char_needs_return = requires_dram_to_l2_return(mf);
+      const bool char_return_block =
+          char_needs_return && m_sub_partition[spid]->dram_L2_queue_full();
+      const bool char_general_credit =
+          m_arbitration_metadata.has_credits(spid, false);
+      const bool char_resource_credit =
+          m_arbitration_metadata.has_credits(spid, !char_needs_return);
+      const bool char_credit_block = !char_return_block &&
+          !dram_issue_allowed(char_needs_return, false, char_general_credit,
+                              !char_needs_return && char_resource_credit);
+      const bool char_scheduler_block = m_dram->full(mf->is_write());
+      m_sub_partition[spid]->l2_char_record_dram_issue(
+          char_needs_return, !char_needs_return, char_return_block,
+          char_credit_block, char_scheduler_block);
       if (m_l2_char_dram_issue_count >=
               m_config->gpgpu_l2_char_dram_issue_hold_after_issues &&
           m_l2_char_dram_issue_hold_remaining) {
@@ -742,6 +776,18 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
   m_L2_icnt_queue = new fifo_pipeline<mem_fetch>("L2-to-icnt", 0, L2_icnt);
   m_l2_char_returnq_hold_remaining =
       config->gpgpu_l2_char_returnq_hold_cycles;
+  m_l2_char_collector = 0;
+  for (unsigned i = 0; i < 4; ++i) m_l2_char_l2dram_class[i] = 0;
+  if (!m_config->m_L2_config.disabled() && config->gpgpu_l2_char_enable) {
+    m_L2cache->l2_char_tracking_enable();
+    m_l2_char_collector = new l2_char_collector(
+        m_id, m_config->m_L2_config.m_nset, m_config->m_L2_config.m_assoc,
+        m_L2cache->mshr_entry_capacity(), m_L2cache->mshr_merge_capacity(),
+        m_L2cache->miss_queue_capacity(), m_L2_dram_queue->get_max_len(),
+        m_dram_L2_queue->get_max_len(), m_L2_icnt_queue->get_max_len(),
+        m_icnt_L2_queue->get_max_len(), config->gpgpu_l2_char_window,
+        config->gpgpu_l2_char_set_detail, config->gpgpu_l2_char_emit_windows);
+  }
   wb_addr = -1;
 }
 
@@ -752,11 +798,77 @@ memory_sub_partition::~memory_sub_partition() {
   delete m_L2_icnt_queue;
   delete m_L2cache;
   delete m_L2interface;
+  delete m_l2_char_collector;
+}
+
+unsigned memory_sub_partition::l2_char_queue_class(const mem_fetch *mf) {
+  if (mf->get_access_type() == L2_WRBK_ACC ||
+      mf->get_access_type() == L1_WRBK_ACC) return 1;
+  if (!mf->get_is_write()) return 0;
+  return 2;
+}
+
+void memory_sub_partition::l2_char_record_l2dram_push(mem_fetch *mf) {
+  if (!m_l2_char_collector) return;
+  const unsigned klass = l2_char_queue_class(mf);
+  ++m_l2_char_l2dram_class[klass];
+  m_l2_char_collector->record_l2dram_push_class(klass);
+}
+
+void memory_sub_partition::l2_char_record_l2dram_pop(mem_fetch *mf) {
+  if (!m_l2_char_collector) return;
+  const unsigned klass = l2_char_queue_class(mf);
+  assert(m_l2_char_l2dram_class[klass]);
+  --m_l2_char_l2dram_class[klass];
+  m_l2_char_collector->record_l2dram_pop_class(klass);
+}
+
+void memory_sub_partition::l2_char_sample(unsigned long long cycle) {
+  if (!m_l2_char_collector) return;
+  l2_char_cycle_sample s;
+  m_L2cache->l2_char_storage_snapshot(s.storage.reserved, s.storage.dirty,
+                                       s.storage.valid, s.storage.reserved_by_set);
+  for (std::vector<unsigned>::const_iterator it = s.storage.reserved_by_set.begin();
+       it != s.storage.reserved_by_set.end(); ++it) {
+    if (*it > s.storage.max_reserved_set) s.storage.max_reserved_set = *it;
+    if (*it == m_config->m_L2_config.m_assoc) ++s.storage.all_reserved_sets;
+  }
+  s.mshr_entries = m_L2cache->mshr_entries_used();
+  s.mshr_ready_entries = m_L2cache->mshr_ready_entries();
+  s.mshr_targets = m_L2cache->mshr_targets_used();
+  s.mshr_ready_targets = m_L2cache->mshr_ready_targets();
+  s.max_merge_depth = m_L2cache->mshr_max_targets_on_one_entry();
+  std::vector<new_addr_type> addresses;
+  std::vector<unsigned> targets;
+  std::vector<bool> ready;
+  m_L2cache->l2_char_mshr_states(addresses, targets, ready);
+  for (unsigned i = 0; i < addresses.size(); ++i) {
+    s.mshr_states.push_back(l2_char_mshr_state(addresses[i], targets[i], ready[i]));
+    if (targets[i] == m_L2cache->mshr_merge_capacity()) ++s.merge_limit_entries;
+  }
+  unsigned other = 0;
+  m_L2cache->miss_queue_class_counts(s.missq_demand, s.missq_wb, other);
+  s.missq_other_write = other;
+  s.missq = m_L2cache->miss_queue_occupancy();
+  s.l2dramq = m_L2_dram_queue->get_n_element();
+  s.draml2q = m_dram_L2_queue->get_n_element();
+  s.l2icntq = m_L2_icnt_queue->get_n_element();
+  s.icntl2q = m_icnt_L2_queue->get_n_element();
+  s.rop = m_rop.size();
+  s.data_port_busy = !m_L2cache->data_port_free();
+  s.fill_port_busy = !m_L2cache->fill_port_free();
+  m_l2_char_collector->observe_queue_classes(
+      s.missq, s.missq_demand, s.missq_wb, s.missq_other_write, s.l2dramq);
+  m_l2_char_collector->sample_cycle(cycle, s);
 }
 
 void memory_sub_partition::cache_cycle(unsigned cycle) {
   // L2 fill responses
   if (!m_config->m_L2_config.disabled()) {
+    if (m_l2_char_collector)
+      m_l2_char_collector->record_mshr_response(
+          m_L2cache->access_ready(),
+          m_L2cache->access_ready() && m_L2_icnt_queue->full());
     if (m_L2cache->access_ready() && !m_L2_icnt_queue->full()) {
       mem_fetch *mf = m_L2cache->next_access();
       if (mf->get_access_type() !=
@@ -790,6 +902,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
   } else if (!m_dram_L2_queue->empty()) {
     mem_fetch *mf = m_dram_L2_queue->top();
     if (!m_config->m_L2_config.disabled() && m_L2cache->waiting_for_fill(mf)) {
+      if (m_l2_char_collector)
+        m_l2_char_collector->record_fill(true, !m_L2cache->fill_port_free());
       if (m_L2cache->fill_port_free()) {
         mf->set_status(IN_PARTITION_L2_FILL_QUEUE,
                        m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
@@ -807,7 +921,16 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
   }
 
   // prior L2 misses inserted into m_L2_dram_queue here
-  if (!m_config->m_L2_config.disabled()) m_L2cache->cycle();
+  if (!m_config->m_L2_config.disabled()) {
+    if (m_l2_char_collector)
+      m_l2_char_collector->record_lower_drain(
+          !m_L2cache->miss_queue_empty(), m_L2_dram_queue->full());
+    m_L2cache->cycle();
+  }
+
+  // This is the frozen sampling point: prior-cycle drains and fills have
+  // completed, but the current frontend head has not been admitted yet.
+  l2_char_sample(m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
 
   // New L2 texture accesses and/or non-texture accesses.  A full L2-to-DRAM
   // FIFO is not a frontend prerequisite: hits, MSHR merges, and locally
@@ -844,6 +967,21 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         admission.needs_response_slot = plan.needs_immediate_response_slot;
         admission.response_slot_available = !m_L2_icnt_queue->full();
         admit = l2_admission_allowed(admission);
+        if (m_l2_char_collector) {
+          unsigned eligible = 0;
+          if (plan.probe_status == MISS || plan.probe_status == SECTOR_MISS)
+            eligible |= 1u << L2_BLOCK_LINE_ALLOC;
+          if (plan.needs_new_mshr) eligible |= 1u << L2_BLOCK_MSHR_NEW;
+          if (plan.needs_mshr_merge) eligible |= 1u << L2_BLOCK_MSHR_MERGE;
+          if (plan.new_missq_entries) eligible |= 1u << L2_BLOCK_MISSQ;
+          if (plan.needs_data_port) eligible |= 1u << L2_BLOCK_DATA_PORT;
+          if (plan.needs_immediate_response_slot) eligible |= 1u << L2_BLOCK_RESPQ;
+          const unsigned blocked = admit ? 0 :
+              static_cast<unsigned>(l2_admission_blockers(admission));
+          m_l2_char_collector->record_frontend(
+              mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, eligible,
+              blocked);
+        }
       } else {
         // Preserve the historical shared controller behavior for non-QV100
         // policies until they receive their own reviewed exact plan.
@@ -937,6 +1075,18 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
                                   m_memcpy_cycle_offset,
                               events);
         m_l2_block_state.erase(mf);
+        if (m_l2_char_collector) {
+          m_l2_char_collector->clear_frontend_request(mf);
+          if (plan.needs_data_port) {
+            const unsigned source = plan.probe_status == HIT ? 0 :
+                                    plan.victim_dirty ? 1 : 2;
+            m_l2_char_collector->record_data_port_accept(source);
+          }
+          cache_event wb_event(WRITE_BACK_REQUEST_SENT);
+          if (plan.will_send_writeback && was_writeback_sent(events, wb_event)) {
+            m_l2_char_collector->record_wb_generated(plan.victim_modified_bytes);
+          }
+        }
         if (plan.exact) {
           cache_event writeback_event(WRITE_BACK_REQUEST_SENT);
           bool preview_matches = l2_preview_commit_matches(
@@ -1016,11 +1166,15 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
                      m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
       m_L2_dram_queue->push(mf);
       m_l2_block_state.erase(mf);
+      if (m_l2_char_collector) m_l2_char_collector->clear_frontend_request(mf);
       m_icnt_L2_queue->pop();
     }
   }
 
   // ROP delay queue
+  if (m_l2_char_collector && !m_rop.empty() &&
+      (cycle >= m_rop.front().ready_cycle))
+    m_l2_char_collector->record_rop(true, m_icnt_L2_queue->full());
   if (!m_rop.empty() && (cycle >= m_rop.front().ready_cycle) &&
       !m_icnt_L2_queue->full()) {
     mem_fetch *mf = m_rop.front().req;
@@ -1061,7 +1215,24 @@ class mem_fetch *memory_sub_partition::L2_dram_queue_top() const {
   return m_L2_dram_queue->top();
 }
 
-void memory_sub_partition::L2_dram_queue_pop() { m_L2_dram_queue->pop(); }
+void memory_sub_partition::L2_dram_queue_pop() {
+  mem_fetch *mf = m_L2_dram_queue->top();
+  l2_char_record_l2dram_pop(mf);
+  m_L2_dram_queue->pop();
+}
+
+void memory_sub_partition::l2_char_record_dram_issue(
+    bool is_read, bool is_wb, bool return_block, bool credit_block,
+    bool scheduler_block) {
+  if (m_l2_char_collector)
+    m_l2_char_collector->record_dram_issue(is_read, is_wb, return_block,
+                                            credit_block, scheduler_block);
+}
+
+void memory_sub_partition::l2_char_record_dram_return(bool eligible,
+                                                       bool blocked) {
+  if (m_l2_char_collector) m_l2_char_collector->record_dram_return(eligible, blocked);
+}
 
 bool memory_sub_partition::dram_L2_queue_full() const {
   return m_dram_L2_queue->full();
@@ -1104,6 +1275,7 @@ void memory_sub_partition::print(FILE *fp) const {
 
 void memory_sub_partition::print_l2_char_stats(FILE *fp) const {
   m_l2_char_stats.print(fp, m_id);
+  if (m_l2_char_collector) m_l2_char_collector->print(fp);
   fprintf(fp, "L2_char_resource_leak_free = %u\n",
           l2_char_no_resource_leak() ? 1 : 0);
 }

@@ -35,6 +35,19 @@
 #include <assert.h>
 #include "gpu-sim.h"
 #include "hashing.h"
+
+namespace {
+struct l2_char_tag_state {
+  l2_char_tag_state() : reserved(0), dirty(0), valid(0) {}
+  unsigned reserved, dirty, valid;
+  std::vector<unsigned char> reserved_way, dirty_way, valid_way;
+  std::vector<unsigned> reserved_by_set;
+};
+
+// Kept outside tag_array deliberately: tag_array is shared by L1 and L2 and
+// changing its object layout would make an observation-only feature risky.
+std::map<const tag_array *, l2_char_tag_state> g_l2_char_tag_states;
+}
 #include "stat-tool.h"
 
 // used to allocate memory that is large enough to adapt the changes in cache
@@ -171,6 +184,7 @@ unsigned l2_cache_config::set_index(new_addr_type addr) const {
 }
 
 tag_array::~tag_array() {
+  g_l2_char_tag_states.erase(this);
   unsigned cache_lines_num = m_config.get_max_num_lines();
   for (unsigned i = 0; i < cache_lines_num; ++i) delete m_lines[i];
   delete[] m_lines;
@@ -217,6 +231,57 @@ void tag_array::init(int core_id, int type_id) {
   m_type_id = type_id;
   is_used = false;
   m_dirty = 0;
+}
+
+void tag_array::l2_char_tracking_enable() {
+  l2_char_tag_state &state = g_l2_char_tag_states[this];
+  state = l2_char_tag_state();
+  state.reserved_way.assign(m_config.get_num_lines(), 0);
+  state.dirty_way.assign(m_config.get_num_lines(), 0);
+  state.valid_way.assign(m_config.get_num_lines(), 0);
+  state.reserved_by_set.assign(m_config.m_nset, 0);
+  // One construction-time initialization scan is bounded and occurs before
+  // L2 traffic.  Runtime sampling thereafter reads only these maintained
+  // counters; it never scans the cache array per L2 cycle.
+  for (unsigned i = 0; i < m_config.get_num_lines(); ++i)
+    l2_char_tracking_refresh_line(i);
+}
+
+void tag_array::l2_char_tracking_refresh_line(unsigned idx) {
+  std::map<const tag_array *, l2_char_tag_state>::iterator found =
+      g_l2_char_tag_states.find(this);
+  if (found == g_l2_char_tag_states.end()) return;
+  assert(idx < m_config.get_num_lines());
+  l2_char_tag_state &state = found->second;
+  const unsigned set = idx / m_config.m_assoc;
+  const unsigned char reserved = m_lines[idx]->is_reserved_line() ? 1 : 0;
+  const unsigned char dirty = m_lines[idx]->is_modified_line() ? 1 : 0;
+  const unsigned char valid = m_lines[idx]->is_valid_line() ? 1 : 0;
+  if (reserved != state.reserved_way[idx]) {
+    state.reserved += reserved ? 1 : -1;
+    state.reserved_by_set[set] += reserved ? 1 : -1;
+    state.reserved_way[idx] = reserved;
+  }
+  if (dirty != state.dirty_way[idx]) {
+    state.dirty += dirty ? 1 : -1;
+    state.dirty_way[idx] = dirty;
+  }
+  if (valid != state.valid_way[idx]) {
+    state.valid += valid ? 1 : -1;
+    state.valid_way[idx] = valid;
+  }
+}
+
+void tag_array::l2_char_storage_snapshot(unsigned &reserved, unsigned &dirty,
+                                          unsigned &valid,
+                                          std::vector<unsigned> &reserved_by_set) const {
+  std::map<const tag_array *, l2_char_tag_state>::const_iterator found =
+      g_l2_char_tag_states.find(this);
+  assert(found != g_l2_char_tag_states.end());
+  reserved = found->second.reserved;
+  dirty = found->second.dirty;
+  valid = found->second.valid;
+  reserved_by_set = found->second.reserved_by_set;
 }
 
 void tag_array::add_pending_line(mem_fetch *mf) {
@@ -412,6 +477,7 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
               status);
       abort();
   }
+  if (status != RESERVATION_FAIL) l2_char_tracking_refresh_line(idx);
   return status;
 }
 
@@ -450,6 +516,7 @@ void tag_array::fill(new_addr_type addr, unsigned time,
   if (m_lines[idx]->is_modified_line() && !before) {
     m_dirty++;
   }
+  l2_char_tracking_refresh_line(idx);
 }
 
 void tag_array::fill(unsigned index, unsigned time, mem_fetch *mf) {
@@ -460,6 +527,7 @@ void tag_array::fill(unsigned index, unsigned time, mem_fetch *mf) {
   if (m_lines[index]->is_modified_line() && !before) {
     m_dirty++;
   }
+  l2_char_tracking_refresh_line(index);
 }
 
 // TODO: we need write back the flushed data to the upper level
@@ -474,6 +542,8 @@ void tag_array::flush() {
     }
 
   m_dirty = 0;
+  for (unsigned i = 0; i < m_config.get_num_lines(); ++i)
+    l2_char_tracking_refresh_line(i);
   is_used = false;
 }
 
@@ -485,6 +555,8 @@ void tag_array::invalidate() {
       m_lines[i]->set_status(INVALID, mem_access_sector_mask_t().set(j));
 
   m_dirty = 0;
+  for (unsigned i = 0; i < m_config.get_num_lines(); ++i)
+    l2_char_tracking_refresh_line(i);
   is_used = false;
 }
 
@@ -637,6 +709,19 @@ unsigned mshr_table::max_targets_on_one_entry() const {
       maximum = it->second.m_list.size();
   }
   return maximum;
+}
+
+void mshr_table::l2_char_states(std::vector<new_addr_type> &addresses,
+                                std::vector<unsigned> &targets,
+                                std::vector<bool> &ready) const {
+  addresses.clear();
+  targets.clear();
+  ready.clear();
+  for (table::const_iterator it = m_data.begin(); it != m_data.end(); ++it) {
+    addresses.push_back(it->first);
+    targets.push_back(it->second.m_list.size());
+    ready.push_back(response_ready(it->first));
+  }
 }
 
 /// Accept a new cache fill response: mark entry ready for processing
@@ -1342,6 +1427,7 @@ void baseline_cache::fill(mem_fetch *mf, unsigned time) {
                                                       // atomic operation
     block->set_byte_mask(mf);
   }
+  m_tag_array->l2_char_tracking_refresh_line(e->second.m_cache_index);
   m_extra_mf_fields.erase(mf);
   m_bandwidth_management.use_fill_port(mf);
 }
@@ -2125,7 +2211,17 @@ enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
 enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events) {
-  return data_cache::access(addr, mf, time, events);
+  const enum cache_request_status result =
+      data_cache::access(addr, mf, time, events);
+  // data_cache policies may modify the selected block after tag_array::access
+  // (for example a write hit).  Refresh only the selected L2 line.
+  unsigned cache_index = (unsigned)-1;
+  const new_addr_type block_addr = m_config.block_addr(addr);
+  const enum cache_request_status status =
+      m_tag_array->probe(block_addr, cache_index, mf, mf->is_write(), true);
+  if (status != RESERVATION_FAIL)
+    m_tag_array->l2_char_tracking_refresh_line(cache_index);
+  return result;
 }
 
 void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,

@@ -40,6 +40,7 @@
 #include "mem_fetch.h"
 
 #include <iostream>
+#include <vector>
 #include "addrdec.h"
 
 #define MAX_DEFAULT_CACHE_SIZE_MULTIBLIER 4
@@ -985,6 +986,16 @@ class tag_array {
   unsigned block_modified_size(unsigned idx) const {
     return m_lines[idx]->get_modified_size();
   }
+  // Timing-neutral storage snapshot.  A sector-cache way is reserved when
+  // any sector is RESERVED, matching the production victim-unavailable test.
+  // Tracking is opt-in and is enabled only by an L2CHARV1 collector.  The
+  // tracker itself is external to tag_array so the common L1/L2 object layout
+  // is unchanged when characterization is compiled in.
+  void l2_char_tracking_enable();
+  void l2_char_tracking_refresh_line(unsigned idx);
+  void l2_char_storage_snapshot(unsigned &reserved, unsigned &dirty,
+                                unsigned &valid,
+                                std::vector<unsigned> &reserved_by_set) const;
 
   void flush();       // flush all written entries
   void invalidate();  // invalidate all entries
@@ -1035,6 +1046,7 @@ class tag_array {
 
   typedef tr1_hash_map<new_addr_type, unsigned> line_table;
   line_table pending_lines;
+
 };
 
 class mshr_table {
@@ -1074,6 +1086,9 @@ class mshr_table {
   }
   unsigned num_response_ready_targets() const;
   unsigned max_targets_on_one_entry() const;
+  void l2_char_states(std::vector<new_addr_type> &addresses,
+                      std::vector<unsigned> &targets,
+                      std::vector<bool> &ready) const;
 
   void check_mshr_parameters(unsigned num_entries, unsigned max_merged) {
     assert(m_num_entries == num_entries &&
@@ -1383,6 +1398,10 @@ class baseline_cache : public cache_t {
     return m_bandwidth_management.fill_port_free();
   }
   unsigned miss_queue_occupancy() const { return m_miss_queue.size(); }
+  bool miss_queue_empty() const { return m_miss_queue.empty(); }
+  unsigned miss_queue_capacity() const { return m_config.m_miss_queue_size; }
+  unsigned mshr_entry_capacity() const { return m_config.m_mshr_entries; }
+  unsigned mshr_merge_capacity() const { return m_config.m_mshr_max_merge; }
   bool miss_queue_has_slots(unsigned n_new_entries) const {
     return m_miss_queue.size() + n_new_entries <= m_config.m_miss_queue_size;
   }
@@ -1404,6 +1423,18 @@ class baseline_cache : public cache_t {
   }
   void miss_queue_class_counts(unsigned &demand, unsigned &writeback,
                                unsigned &other_write) const;
+  void l2_char_storage_snapshot(unsigned &reserved, unsigned &dirty,
+                                unsigned &valid,
+                                std::vector<unsigned> &reserved_by_set) const {
+    m_tag_array->l2_char_storage_snapshot(reserved, dirty, valid,
+                                           reserved_by_set);
+  }
+  void l2_char_tracking_enable() { m_tag_array->l2_char_tracking_enable(); }
+  void l2_char_mshr_states(std::vector<new_addr_type> &addresses,
+                           std::vector<unsigned> &targets,
+                           std::vector<bool> &ready) const {
+    m_mshrs.l2_char_states(addresses, targets, ready);
+  }
   void inc_aggregated_stats(cache_request_status status,
                             cache_request_status cache_status, mem_fetch *mf,
                             enum cache_gpu_level level);

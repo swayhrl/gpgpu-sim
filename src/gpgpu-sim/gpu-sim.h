@@ -339,6 +339,12 @@ class memory_config {
   unsigned gpgpu_l2_char_dram_issue_hold_cycles;
   unsigned gpgpu_l2_char_dram_issue_hold_after_issues;
   unsigned gpgpu_l2_char_returnq_hold_cycles;
+  // Workload-characterization instrumentation.  Disabled by default and
+  // observation-only when enabled.
+  bool gpgpu_l2_char_enable;
+  unsigned gpgpu_l2_char_window;
+  bool gpgpu_l2_char_set_detail;
+  bool gpgpu_l2_char_emit_windows;
   enum dram_ctrl_t scheduler_type;
   bool gpgpu_memlatency_stat;
   unsigned m_n_mem;
