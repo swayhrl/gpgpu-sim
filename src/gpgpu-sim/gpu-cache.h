@@ -1386,6 +1386,12 @@ class baseline_cache : public cache_t {
 
  protected:
   void cycle_port_accounting();
+  // Every physical lower request enters through these two queue insertion
+  // sites.  Derived caches may observe the enqueue without changing it.
+  virtual void on_miss_queue_inserted(mem_fetch *, unsigned) {}
+  // Called exactly when the normal lower port consumes a miss-queue entry.
+  // This is distinct from a C2P admission attempt: the lower port may be full.
+  virtual void on_miss_queue_issued(mem_fetch *, unsigned) {}
   // Constructor that can be used by derived classes with custom tag arrays
   baseline_cache(const char *name, cache_config &config, int core_id,
                  int type_id, mem_fetch_interface *memport,
@@ -1727,6 +1733,8 @@ class l1_cache : public data_cache {
   virtual void fill(mem_fetch *mf, unsigned time);
   virtual void flush();
   virtual void invalidate();
+  virtual void on_miss_queue_inserted(mem_fetch *mf, unsigned time);
+  virtual void on_miss_queue_issued(mem_fetch *mf, unsigned time);
 
   // C2P uses these narrow hooks instead of reaching into the normal L1
   // miss/fill machinery.  The original MSHR and fill bookkeeping remain the

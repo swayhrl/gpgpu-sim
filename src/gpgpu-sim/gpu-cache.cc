@@ -1260,6 +1260,7 @@ void baseline_cache::cycle() {
     if (!m_memport->full(mf->size(), mf->get_is_write())) {
       m_miss_queue.pop_front();
       m_memport->push(mf);
+      on_miss_queue_issued(mf, 0);
     }
   }
   cycle_port_accounting();
@@ -1435,6 +1436,7 @@ void baseline_cache::send_read_request(new_addr_type addr,
     mf->set_data_size(m_config.get_atom_sz());
     mf->set_addr(mshr_addr);
     m_miss_queue.push_back(mf);
+    on_miss_queue_inserted(mf, time);
     mf->set_status(m_miss_queue_status, time);
     if (!wa) events.push_back(cache_event(READ_REQUEST_SENT));
 
@@ -1455,6 +1457,7 @@ void data_cache::send_write_request(mem_fetch *mf, cache_event request,
                                     std::list<cache_event> &events) {
   events.push_back(request);
   m_miss_queue.push_back(mf);
+  on_miss_queue_inserted(mf, time);
   mf->set_status(m_miss_queue_status, time);
 }
 
@@ -2076,10 +2079,19 @@ enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
                                            std::list<cache_event> &events) {
   const enum cache_request_status status = data_cache::access(addr, mf, time, events);
   if (status == MISS)
-    m_gpu->get_c2p_cache()->observe_l1_miss_detect(
-        this, mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle,
-        c2p_miss_queue_contains(mf));
+    m_gpu->get_c2p_cache()->observe_l1_miss_accept(
+        this, mf, c2p_miss_queue_contains(mf));
   return status;
+}
+
+void l1_cache::on_miss_queue_inserted(mem_fetch *mf, unsigned time) {
+  m_gpu->get_c2p_cache()->observe_l1_miss_detect(
+      this, mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+}
+
+void l1_cache::on_miss_queue_issued(mem_fetch *mf, unsigned) {
+  m_gpu->get_c2p_cache()->observe_l1_miss_issue(
+      this, mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
 }
 
 void l1_cache::cycle() {

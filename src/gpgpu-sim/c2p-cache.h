@@ -271,8 +271,8 @@ struct c2p_cache_stats {
   // may be absent.  Keeping both makes the sector-vs-line interpretation
   // explicit without changing the architectural oracle definition.
   unsigned long long peer_locality_detect_records;
-  unsigned long long peer_locality_detect_lower_records;
-  unsigned long long peer_locality_detect_mshr_merge_records;
+  unsigned long long peer_locality_l1_accepted_records;
+  unsigned long long peer_locality_l1_mshr_merge_records;
   unsigned long long peer_locality_issue_records;
   unsigned long long peer_locality_missing_detect_records;
   unsigned long long peer_locality_wait_cycles_total;
@@ -306,8 +306,12 @@ class c2p_cache {
   // Called only after the normal L1 access path has accepted a new MISS.
   // It is diagnostic-only and leaves the original request in the normal miss
   // queue.  `now` is the global simulation cycle.
+  void observe_l1_miss_accept(l1_cache *requester, mem_fetch *mf,
+                              bool queued_for_lower);
   void observe_l1_miss_detect(l1_cache *requester, mem_fetch *mf,
-                              unsigned long long now, bool queued_for_lower);
+                              unsigned long long now);
+  void observe_l1_miss_issue(l1_cache *requester, mem_fetch *mf,
+                             unsigned long long now);
   miss_action accept_miss(l1_cache *requester, mem_fetch *mf,
                           unsigned long long now);
   void on_l1_fill(l1_cache *cache, mem_fetch *mf);
@@ -436,9 +440,6 @@ class c2p_cache {
   void record_peer_locality_snapshot(
       c2p_peer_locality_snapshot_stats &stats, unsigned requester_sid,
       uint64_t peer_mask);
-  void observe_l1_miss_issue(l1_cache *requester, mem_fetch *mf,
-                             unsigned long long now,
-                             const peer_masks &issue_masks);
   bool has_exact_peer(l1_cache *requester, mem_fetch *mf) const;
   std::vector<unsigned> exact_candidates(const transaction &txn,
                                          bool cluster_only) const;

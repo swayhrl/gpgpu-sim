@@ -407,8 +407,8 @@ void c2p_cache_stats::clear() {
   snapshot_rebuilds = 0;
   snapshot_rebuild_transport_tags = 0;
   peer_locality_detect_records = 0;
-  peer_locality_detect_lower_records = 0;
-  peer_locality_detect_mshr_merge_records = 0;
+  peer_locality_l1_accepted_records = 0;
+  peer_locality_l1_mshr_merge_records = 0;
   peer_locality_issue_records = 0;
   peer_locality_missing_detect_records = 0;
   peer_locality_wait_cycles_total = 0;
@@ -698,9 +698,15 @@ void c2p_cache::record_peer_locality_snapshot(
   ++stats.nearest_ring_distance[nearest_ring];
 }
 
-void c2p_cache::observe_l1_miss_detect(l1_cache *requester, mem_fetch *mf,
-                                        unsigned long long now,
+void c2p_cache::observe_l1_miss_accept(l1_cache *, mem_fetch *mf,
                                         bool queued_for_lower) {
+  if (!m_config.peer_locality_diagnostic || !is_eligible_l1_read(mf)) return;
+  ++m_stats.peer_locality_l1_accepted_records;
+  if (!queued_for_lower) ++m_stats.peer_locality_l1_mshr_merge_records;
+}
+
+void c2p_cache::observe_l1_miss_detect(l1_cache *requester, mem_fetch *mf,
+                                        unsigned long long now) {
   if (!m_config.peer_locality_diagnostic || !is_eligible_l1_read(mf)) return;
   const peer_masks masks = collect_peer_masks(requester, mf);
   ++m_stats.peer_locality_detect_records;
@@ -708,10 +714,6 @@ void c2p_cache::observe_l1_miss_detect(l1_cache *requester, mem_fetch *mf,
                                 requester->c2p_sid(), masks.exact_sector);
   record_peer_locality_snapshot(m_stats.peer_locality_detect_line,
                                 requester->c2p_sid(), masks.resident_line);
-  if (!queued_for_lower) {
-    ++m_stats.peer_locality_detect_mshr_merge_records;
-    return;
-  }
   const std::pair<std::map<mem_fetch *, peer_locality_detect_record>::iterator,
                   bool>
       inserted = m_peer_locality_detects.insert(
@@ -720,13 +722,12 @@ void c2p_cache::observe_l1_miss_detect(l1_cache *requester, mem_fetch *mf,
   inserted.first->second.requester_sid = requester->c2p_sid();
   inserted.first->second.cycle = now;
   inserted.first->second.masks = masks;
-  ++m_stats.peer_locality_detect_lower_records;
 }
 
 void c2p_cache::observe_l1_miss_issue(l1_cache *requester, mem_fetch *mf,
-                                       unsigned long long now,
-                                       const peer_masks &issue_masks) {
-  if (!m_config.peer_locality_diagnostic) return;
+                                       unsigned long long now) {
+  if (!m_config.peer_locality_diagnostic || !is_eligible_l1_read(mf)) return;
+  const peer_masks issue_masks = collect_peer_masks(requester, mf);
   ++m_stats.peer_locality_issue_records;
   record_peer_locality_snapshot(m_stats.peer_locality_issue_sector,
                                 requester->c2p_sid(), issue_masks.exact_sector);
@@ -802,10 +803,8 @@ c2p_cache::miss_action c2p_cache::accept_miss(l1_cache *requester,
     return MISS_STALL;
 
   peer_masks issue_masks;
-  if (m_config.peer_locality_diagnostic) {
+  if (m_config.peer_locality_diagnostic)
     issue_masks = collect_peer_masks(requester, mf);
-    observe_l1_miss_issue(requester, mf, now, issue_masks);
-  }
   ++m_stats.l1_misses;
   const bool oracle = m_config.collect_oracle &&
                       (m_config.peer_locality_diagnostic
@@ -1968,10 +1967,10 @@ void c2p_cache::print_stats(FILE *fout) const {
             m_peer_locality_detects.size());
     fprintf(fout, "c2p_peer_locality_detect_records = %llu\n",
             m_stats.peer_locality_detect_records);
-    fprintf(fout, "c2p_peer_locality_detect_lower_records = %llu\n",
-            m_stats.peer_locality_detect_lower_records);
-    fprintf(fout, "c2p_peer_locality_detect_mshr_merge_records = %llu\n",
-            m_stats.peer_locality_detect_mshr_merge_records);
+    fprintf(fout, "c2p_peer_locality_l1_accepted_records = %llu\n",
+            m_stats.peer_locality_l1_accepted_records);
+    fprintf(fout, "c2p_peer_locality_l1_mshr_merge_records = %llu\n",
+            m_stats.peer_locality_l1_mshr_merge_records);
     fprintf(fout, "c2p_peer_locality_issue_records = %llu\n",
             m_stats.peer_locality_issue_records);
     fprintf(fout, "c2p_peer_locality_missing_detect_records = %llu\n",
