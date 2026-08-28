@@ -89,7 +89,7 @@ class l2_char_collector {
                          bool credit_block, bool scheduler_block);
   void record_data_port_accept(unsigned source);
   void record_wb_generated(unsigned bytes);
-  void record_l2dram_push_class(unsigned klass);
+  void record_l2dram_push_class(unsigned klass, unsigned bytes);
   void record_l2dram_pop_class(unsigned klass);
   void observe_queue_classes(unsigned missq_total, unsigned missq_demand,
                              unsigned missq_wb, unsigned missq_other,
@@ -116,6 +116,7 @@ class l2_char_collector {
                               const std::vector<l2_char_mshr_state> &states);
   void close_window(unsigned long long end_cycle);
   std::string occ_fields(const char *prefix, const l2_char_occ_stats &occ) const;
+  std::string hist_record(const char *metric, const l2_char_occ_stats &occ) const;
   std::string block_fields(const char *prefix,
                            const l2_char_block_stats &block) const;
 
@@ -137,7 +138,9 @@ class l2_char_collector {
   unsigned long long m_data_busy, m_fill_busy;
   unsigned long long m_window_data_busy, m_window_fill_busy;
   l2_char_block_stats m_frontend[kFrontendReasons];
+  l2_char_block_stats m_window_frontend[kFrontendReasons];
   l2_char_block_stats m_fill, m_rop_block, m_mshr_response, m_lower_drain;
+  l2_char_block_stats m_window_fill;
   l2_char_block_stats m_dram_return;
   unsigned long long m_dram_issue_eligible, m_dram_issue_returnq;
   unsigned long long m_dram_issue_credit, m_dram_issue_scheduler;
@@ -147,6 +150,8 @@ class l2_char_collector {
   unsigned long long m_wb_requests, m_wb_bytes;
   unsigned long long m_window_wb_requests, m_window_wb_bytes;
   unsigned m_l2dram_class[kQueueClasses];
+  unsigned long long m_l2dram_pushes[kQueueClasses];
+  unsigned long long m_l2dram_push_bytes[kQueueClasses];
   bool m_l2dram_class_error;
   std::map<mem_fetch *, request_state> m_frontend_requests;
   std::map<unsigned long long, lifetime_state> m_lifetimes;

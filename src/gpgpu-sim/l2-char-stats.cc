@@ -100,7 +100,10 @@ l2_char_collector::l2_char_collector(
   m_window_missq_wb.init(missq_capacity); m_window_l2dramq.init(l2dramq_capacity);
   m_window_draml2q.init(draml2q_capacity);
   m_lifetime_pending.init(0); m_lifetime_drain.init(0); m_lifetime_total.init(0);
-  for (unsigned i = 0; i < kQueueClasses; ++i) m_l2dram_class[i] = 0;
+  for (unsigned i = 0; i < kQueueClasses; ++i) {
+    m_l2dram_class[i] = 0;
+    m_l2dram_pushes[i] = m_l2dram_push_bytes[i] = 0;
+  }
 }
 
 void l2_char_collector::sample_occ(l2_char_occ_stats &all,
@@ -176,6 +179,7 @@ void l2_char_collector::record_frontend(mem_fetch *mf, unsigned long long,
     const unsigned bit = 1u << i;
     const bool eligible = eligible_mask & bit, blocked = blocked_mask & bit;
     record_block(m_frontend[i], eligible, blocked);
+    record_block(m_window_frontend[i], eligible, blocked);
     if (blocked && !(state.prev_blocked_mask & bit)) {
       ++m_frontend[i].blocked_requests;
       ++m_frontend[i].blocking_episodes;
@@ -187,7 +191,10 @@ void l2_char_collector::record_frontend(mem_fetch *mf, unsigned long long,
 void l2_char_collector::clear_frontend_request(mem_fetch *mf) {
   m_frontend_requests.erase(mf);
 }
-void l2_char_collector::record_fill(bool e, bool b) { record_block(m_fill, e, b); }
+void l2_char_collector::record_fill(bool e, bool b) {
+  record_block(m_fill, e, b);
+  record_block(m_window_fill, e, b);
+}
 void l2_char_collector::record_rop(bool e, bool b) { record_block(m_rop_block, e, b); }
 void l2_char_collector::record_mshr_response(bool e, bool b) { record_block(m_mshr_response, e, b); }
 void l2_char_collector::record_lower_drain(bool e, bool b) { record_block(m_lower_drain, e, b); }
@@ -209,8 +216,11 @@ void l2_char_collector::record_wb_generated(unsigned bytes) {
   ++m_wb_requests; m_wb_bytes += bytes;
   ++m_window_wb_requests; m_window_wb_bytes += bytes;
 }
-void l2_char_collector::record_l2dram_push_class(unsigned klass) {
-  if (klass >= kQueueClasses) { m_l2dram_class_error = true; return; } ++m_l2dram_class[klass];
+void l2_char_collector::record_l2dram_push_class(unsigned klass, unsigned bytes) {
+  if (klass >= kQueueClasses) { m_l2dram_class_error = true; return; }
+  ++m_l2dram_class[klass];
+  ++m_l2dram_pushes[klass];
+  m_l2dram_push_bytes[klass] += bytes;
 }
 void l2_char_collector::record_l2dram_pop_class(unsigned klass) {
   if (klass >= kQueueClasses || !m_l2dram_class[klass]) { m_l2dram_class_error = true; return; } --m_l2dram_class[klass];
@@ -242,6 +252,18 @@ std::string l2_char_collector::block_fields(const char *prefix, const l2_char_bl
     << '|' << prefix << "_requests=" << b.blocked_requests << '|' << prefix << "_episodes=" << b.blocking_episodes
     << '|' << prefix << "_ratio=" << ratio; return s.str();
 }
+std::string l2_char_collector::hist_record(const char *metric,
+                                            const l2_char_occ_stats &o) const {
+  std::ostringstream s;
+  s << "L2CHARV1|HIST|slice=" << m_slice_id << "|metric=" << metric
+    << "|capacity=" << o.capacity << "|unbounded=" << (o.unbounded ? 1 : 0)
+    << "|samples=" << o.samples << "|bins=";
+  for (unsigned i = 0; i < o.hist.size(); ++i) {
+    if (i) s << ',';
+    s << o.hist[i];
+  }
+  return s.str();
+}
 
 void l2_char_collector::close_window(unsigned long long end_cycle) {
   if (!m_emit_windows || !m_window_samples) return;
@@ -256,10 +278,20 @@ void l2_char_collector::close_window(unsigned long long end_cycle) {
     << "|l2dramq_avg=" << m_window_l2dramq.average() << "|draml2q_avg=" << m_window_draml2q.average()
     << "|fill_port_busy_ratio=" << (static_cast<double>(m_window_fill_busy) / m_window_samples)
     << "|data_port_busy_ratio=" << (static_cast<double>(m_window_data_busy) / m_window_samples)
-    << "|wb_generated=" << m_window_wb_requests << "|wb_bytes=" << m_window_wb_bytes;
+    << "|wb_generated=" << m_window_wb_requests << "|wb_bytes=" << m_window_wb_bytes
+    << block_fields("fill", m_window_fill)
+    << block_fields("block_set", m_window_frontend[0])
+    << block_fields("block_mshr_new", m_window_frontend[1])
+    << block_fields("block_mshr_merge", m_window_frontend[2])
+    << block_fields("block_missq", m_window_frontend[3])
+    << block_fields("block_dataport", m_window_frontend[4])
+    << block_fields("block_respq", m_window_frontend[5]);
   m_windows.push_back(s.str());
   m_window_samples = m_window_data_busy = m_window_fill_busy = 0;
   m_window_wb_requests = m_window_wb_bytes = 0;
+  m_window_fill = l2_char_block_stats();
+  for (unsigned i = 0; i < kFrontendReasons; ++i)
+    m_window_frontend[i] = l2_char_block_stats();
   m_window_reserved.init(m_reserved.capacity); m_window_mshr_entries.init(m_mshr_entries.capacity);
   m_window_mshr_targets.init(m_mshr_targets.capacity); m_window_missq.init(m_missq.capacity);
   m_window_missq_wb.init(m_missq_wb.capacity); m_window_l2dramq.init(m_l2dramq.capacity);
@@ -283,6 +315,14 @@ void l2_char_collector::print(FILE *fp) const {
   l2_char_collector *self = const_cast<l2_char_collector *>(this);
   if (self->m_window_samples) self->close_window(self->m_window_start + self->m_window_samples - 1);
   std::string why; const bool ok = invariants_hold(&why);
+  const l2_char_occ_stats &set_hist = m_set_reserved_distribution;
+  const unsigned half = (m_ways + 1) / 2;
+  unsigned long long set_zero = set_hist.hist.empty() ? 0 : set_hist.hist[0];
+  unsigned long long set_half = 0, set_all = 0;
+  for (unsigned i = 0; i < set_hist.hist.size(); ++i) {
+    if (i >= half) set_half += set_hist.hist[i];
+    if (i >= m_ways) set_all += set_hist.hist[i];
+  }
   std::ostringstream slice;
   slice << "L2CHARV1|SLICE|slice=" << m_slice_id << "|cycles=" << m_cycles
         << occ_fields("reserved", m_reserved) << occ_fields("dirty", m_dirty)
@@ -298,21 +338,33 @@ void l2_char_collector::print(FILE *fp) const {
         << "|sets_all_ways_reserved_avg=" << m_all_reserved_sets.average()
         << "|sets_all_ways_reserved_max=" << m_all_reserved_sets.maximum
         << "|cycles_any_set_all_reserved=" << m_cycles_any_set_all_reserved
+        << "|set_reserved_fraction_0=" << (set_hist.samples ? static_cast<double>(set_zero) / set_hist.samples : 0.0)
+        << "|set_reserved_fraction_1plus=" << (set_hist.samples ? static_cast<double>(set_hist.samples - set_zero) / set_hist.samples : 0.0)
+        << "|set_reserved_fraction_half_or_more=" << (set_hist.samples ? static_cast<double>(set_half) / set_hist.samples : 0.0)
+        << "|set_reserved_fraction_all=" << (set_hist.samples ? static_cast<double>(set_all) / set_hist.samples : 0.0)
         << block_fields("block_set", m_frontend[0]) << block_fields("block_mshr_new", m_frontend[1])
         << block_fields("block_mshr_merge", m_frontend[2]) << block_fields("block_missq", m_frontend[3])
         << block_fields("block_dataport", m_frontend[4]) << block_fields("block_respq", m_frontend[5])
         << block_fields("block_mshr_rw_pending", m_frontend[6]);
   fprintf(fp, "%s\n", slice.str().c_str());
-  fprintf(fp, "L2CHARV1|SLICE_DETAIL|slice=%u|data_busy_ratio=%.6f|fill_busy_ratio=%.6f|data_accept_hit=%llu|data_accept_dirty=%llu|data_accept_other=%llu|wb_requests=%llu|wb_bytes=%llu%s%s%s%s%s|dram_issue_eligible=%llu|dram_issue_returnq=%llu|dram_issue_credit=%llu|dram_issue_scheduler=%llu|dram_read_returnq=%llu|dram_read_credit=%llu|dram_read_scheduler=%llu|dram_wb_credit=%llu|dram_wb_scheduler=%llu%s%s%s\n",
+  fprintf(fp, "L2CHARV1|SLICE_DETAIL|slice=%u|data_busy_ratio=%.6f|fill_busy_ratio=%.6f|data_accept_hit=%llu|data_accept_dirty=%llu|data_accept_other=%llu|wb_requests=%llu|wb_bytes=%llu|l2dram_requests=%llu|l2dram_bytes=%llu|l2dram_wb_requests=%llu|l2dram_wb_bytes=%llu%s%s%s%s%s|dram_issue_eligible=%llu|dram_issue_returnq=%llu|dram_issue_credit=%llu|dram_issue_scheduler=%llu|dram_read_returnq=%llu|dram_read_credit=%llu|dram_read_scheduler=%llu|dram_wb_credit=%llu|dram_wb_scheduler=%llu%s%s%s\n",
           m_slice_id, m_cycles ? static_cast<double>(m_data_busy) / m_cycles : 0.0,
           m_cycles ? static_cast<double>(m_fill_busy) / m_cycles : 0.0, m_data_accept_hit, m_data_accept_dirty,
-          m_data_accept_other, m_wb_requests, m_wb_bytes, block_fields("fill", m_fill).c_str(), block_fields("rop_input", m_rop_block).c_str(),
+          m_data_accept_other, m_wb_requests, m_wb_bytes,
+          m_l2dram_pushes[0] + m_l2dram_pushes[1] + m_l2dram_pushes[2] + m_l2dram_pushes[3],
+          m_l2dram_push_bytes[0] + m_l2dram_push_bytes[1] + m_l2dram_push_bytes[2] + m_l2dram_push_bytes[3],
+          m_l2dram_pushes[1], m_l2dram_push_bytes[1], block_fields("fill", m_fill).c_str(), block_fields("rop_input", m_rop_block).c_str(),
           block_fields("mshr_response", m_mshr_response).c_str(), block_fields("lower_drain", m_lower_drain).c_str(),
           block_fields("dram_return", m_dram_return).c_str(), m_dram_issue_eligible, m_dram_issue_returnq,
           m_dram_issue_credit, m_dram_issue_scheduler, m_dram_read_returnq, m_dram_read_credit,
           m_dram_read_scheduler, m_dram_wb_credit, m_dram_wb_scheduler,
           occ_fields("mshr_lifetime_pending", m_lifetime_pending).c_str(), occ_fields("mshr_lifetime_drain", m_lifetime_drain).c_str(),
           occ_fields("mshr_lifetime_total", m_lifetime_total).c_str());
+  fprintf(fp, "%s\n", hist_record("reserved", m_reserved).c_str());
+  fprintf(fp, "%s\n", hist_record("mshr", m_mshr_entries).c_str());
+  fprintf(fp, "%s\n", hist_record("merge_depth", m_merge_depth).c_str());
+  fprintf(fp, "%s\n", hist_record("missq", m_missq).c_str());
+  fprintf(fp, "%s\n", hist_record("missq_wb", m_missq_wb).c_str());
   for (std::vector<std::string>::const_iterator it = m_windows.begin(); it != m_windows.end(); ++it) fprintf(fp, "%s\n", it->c_str());
   fprintf(fp, "L2CHARV1|INVARIANT|slice=%u|status=%s|reason=%s|l2dram_class_sum=%u\n", m_slice_id, ok ? "PASS" : "FAIL", why.c_str(),
           m_l2dram_class[0] + m_l2dram_class[1] + m_l2dram_class[2] + m_l2dram_class[3]);

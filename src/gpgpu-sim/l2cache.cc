@@ -812,7 +812,7 @@ void memory_sub_partition::l2_char_record_l2dram_push(mem_fetch *mf) {
   if (!m_l2_char_collector) return;
   const unsigned klass = l2_char_queue_class(mf);
   ++m_l2_char_l2dram_class[klass];
-  m_l2_char_collector->record_l2dram_push_class(klass);
+  m_l2_char_collector->record_l2dram_push_class(klass, mf->get_data_size());
 }
 
 void memory_sub_partition::l2_char_record_l2dram_pop(mem_fetch *mf) {
