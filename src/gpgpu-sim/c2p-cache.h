@@ -13,6 +13,7 @@
 
 #include <deque>
 #include <list>
+#include <map>
 #include <utility>
 #include <vector>
 
@@ -30,6 +31,21 @@ enum {
   C2P_PROBE_POLICY_PC_BUCKETS = 64,
   C2P_PROBE_POLICY_CANDIDATE_BINS = 4,
   C2P_PROBE_POLICY_DISTANCE_BINS = C2P_PROBE_POLICY_MAX_ORDINAL + 1
+};
+
+// Peer-locality diagnostics are intentionally limited to the paper's 64-SM
+// machine.  They are observation-only and use logical C2P SIDs; they do not
+// describe simulator NoC distance or change any C2P resource arbitration.
+enum {
+  C2P_PEER_LOCALITY_MAX_SMS = 64,
+  C2P_PEER_LOCALITY_CLUSTER_SIZE = 8,
+  C2P_PEER_LOCALITY_MAX_CLUSTERS =
+      C2P_PEER_LOCALITY_MAX_SMS / C2P_PEER_LOCALITY_CLUSTER_SIZE,
+  C2P_PEER_LOCALITY_RING_DISTANCE_BINS =
+      C2P_PEER_LOCALITY_MAX_SMS / 2 + 1,
+  C2P_PEER_LOCALITY_SIGNED_DELTA_BINS =
+      2 * C2P_PEER_LOCALITY_MAX_SMS - 1,
+  C2P_PEER_LOCALITY_WAIT_BINS = 16
 };
 
 class c2p_cache_config {
@@ -89,6 +105,9 @@ class c2p_cache_config {
   // Diagnostic-only control: bypass just the target-L1 data-port contention
   // for C2P probes.  It is off for every architectural experiment.
   bool diagnostic_target_port_bypass;
+  // Observe exact peer residency at L1 miss detection and lower-request
+  // issue.  This never changes request routing, cache state, or timing.
+  bool peer_locality_diagnostic;
   unsigned snapshot_copies;
   unsigned scheme;
   unsigned comparator_cluster_size;
@@ -98,6 +117,30 @@ class c2p_cache_config {
   unsigned ccd_broadcast_latency;
   unsigned ring_hop_latency;
   unsigned peer_line_latency;
+};
+
+// One semantic snapshot of remote copies.  The caller decides whether the
+// mask means exact requested-sector availability or merely resident line-tag
+// availability.  All histogram bins are request weighted.
+struct c2p_peer_locality_snapshot_stats {
+  unsigned long long events;
+  unsigned long long redundant_events;
+  unsigned long long peer_count[C2P_PEER_LOCALITY_MAX_SMS];
+  unsigned long long local_only;
+  unsigned long long outer_only;
+  unsigned long long both_local_and_outer;
+  unsigned long long local_peer_total;
+  unsigned long long outer_peer_total;
+  unsigned long long peer_cluster_count[C2P_PEER_LOCALITY_MAX_CLUSTERS + 1];
+  unsigned long long nearest_abs_distance[C2P_PEER_LOCALITY_MAX_SMS];
+  unsigned long long all_abs_distance[C2P_PEER_LOCALITY_MAX_SMS];
+  unsigned long long nearest_ring_distance
+      [C2P_PEER_LOCALITY_RING_DISTANCE_BINS];
+  unsigned long long all_ring_distance[C2P_PEER_LOCALITY_RING_DISTANCE_BINS];
+  unsigned long long signed_delta[C2P_PEER_LOCALITY_SIGNED_DELTA_BINS];
+
+  c2p_peer_locality_snapshot_stats();
+  void clear();
 };
 
 struct c2p_cache_stats {
@@ -223,6 +266,25 @@ struct c2p_cache_stats {
   unsigned long long snapshot_rebuilds;
   unsigned long long snapshot_rebuild_transport_tags;
 
+  // Read-only peer-locality diagnosis.  "sector" means an immediately usable
+  // remote sector; "line" means the tag is resident but the requested sector
+  // may be absent.  Keeping both makes the sector-vs-line interpretation
+  // explicit without changing the architectural oracle definition.
+  unsigned long long peer_locality_detect_records;
+  unsigned long long peer_locality_detect_lower_records;
+  unsigned long long peer_locality_detect_mshr_merge_records;
+  unsigned long long peer_locality_issue_records;
+  unsigned long long peer_locality_missing_detect_records;
+  unsigned long long peer_locality_wait_cycles_total;
+  unsigned long long peer_locality_wait_cycles_max;
+  unsigned long long peer_locality_wait_hist[C2P_PEER_LOCALITY_WAIT_BINS];
+  unsigned long long peer_locality_sector_transition[2][2];
+  unsigned long long peer_locality_line_transition[2][2];
+  c2p_peer_locality_snapshot_stats peer_locality_detect_sector;
+  c2p_peer_locality_snapshot_stats peer_locality_issue_sector;
+  c2p_peer_locality_snapshot_stats peer_locality_detect_line;
+  c2p_peer_locality_snapshot_stats peer_locality_issue_line;
+
   c2p_cache_stats();
   void clear();
 };
@@ -241,6 +303,11 @@ class c2p_cache {
   bool enabled() const { return m_config.enabled; }
   void reset();
   void register_l1(l1_cache *cache);
+  // Called only after the normal L1 access path has accepted a new MISS.
+  // It is diagnostic-only and leaves the original request in the normal miss
+  // queue.  `now` is the global simulation cycle.
+  void observe_l1_miss_detect(l1_cache *requester, mem_fetch *mf,
+                              unsigned long long now, bool queued_for_lower);
   miss_action accept_miss(l1_cache *requester, mem_fetch *mf,
                           unsigned long long now);
   void on_l1_fill(l1_cache *cache, mem_fetch *mf);
@@ -315,6 +382,21 @@ class c2p_cache {
     bool rebuild;
   };
 
+  struct peer_masks {
+    peer_masks() : exact_sector(0), resident_line(0), reserved(0) {}
+    uint64_t exact_sector;
+    uint64_t resident_line;
+    uint64_t reserved;
+  };
+
+  struct peer_locality_detect_record {
+    peer_locality_detect_record()
+        : requester_sid(0), cycle(0), masks() {}
+    unsigned requester_sid;
+    unsigned long long cycle;
+    peer_masks masks;
+  };
+
   struct pending_update {
     pending_update(const update_entry &entry_, unsigned long long ready_cycle_)
         : entry(entry_), ready_cycle(ready_cycle_) {}
@@ -349,6 +431,14 @@ class c2p_cache {
   unsigned adaptive_score_index(const transaction &txn, unsigned ordinal) const;
   unsigned adaptive_package_score_index(const transaction &txn) const;
   void record_peer_accesses(bool hit, unsigned accesses);
+  bool is_eligible_l1_read(const mem_fetch *mf) const;
+  peer_masks collect_peer_masks(l1_cache *requester, mem_fetch *mf) const;
+  void record_peer_locality_snapshot(
+      c2p_peer_locality_snapshot_stats &stats, unsigned requester_sid,
+      uint64_t peer_mask);
+  void observe_l1_miss_issue(l1_cache *requester, mem_fetch *mf,
+                             unsigned long long now,
+                             const peer_masks &issue_masks);
   bool has_exact_peer(l1_cache *requester, mem_fetch *mf) const;
   std::vector<unsigned> exact_candidates(const transaction &txn,
                                          bool cluster_only) const;
@@ -395,6 +485,7 @@ class c2p_cache {
   // One 3-bit score for each PC-hash x candidate-count bin package decision.
   std::vector<unsigned char> m_adaptive_package_scores;
   unsigned long long m_adaptive_explore_counter;
+  std::map<mem_fetch *, peer_locality_detect_record> m_peer_locality_detects;
   c2p_cache_stats m_stats;
 };
 

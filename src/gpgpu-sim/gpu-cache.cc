@@ -2074,7 +2074,12 @@ enum cache_request_status data_cache::access(new_addr_type addr, mem_fetch *mf,
 enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events) {
-  return data_cache::access(addr, mf, time, events);
+  const enum cache_request_status status = data_cache::access(addr, mf, time, events);
+  if (status == MISS)
+    m_gpu->get_c2p_cache()->observe_l1_miss_detect(
+        this, mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle,
+        c2p_miss_queue_contains(mf));
+  return status;
 }
 
 void l1_cache::cycle() {
@@ -2113,11 +2118,21 @@ void l1_cache::invalidate() {
   m_gpu->get_c2p_cache()->on_l1_flush(this);
 }
 
-bool l1_cache::c2p_probe(mem_fetch *mf) const {
+enum cache_request_status l1_cache::c2p_probe_status(mem_fetch *mf) const {
   unsigned index = (unsigned)-1;
-  const enum cache_request_status status = m_tag_array->probe(
+  return m_tag_array->probe(
       m_config.block_addr(mf->get_addr()), index, mf, false, true);
-  return status == HIT;
+}
+
+bool l1_cache::c2p_probe(mem_fetch *mf) const {
+  return c2p_probe_status(mf) == HIT;
+}
+
+bool l1_cache::c2p_miss_queue_contains(const mem_fetch *mf) const {
+  for (std::list<mem_fetch *>::const_iterator it = m_miss_queue.begin();
+       it != m_miss_queue.end(); ++it)
+    if (*it == mf) return true;
+  return false;
 }
 
 void l1_cache::c2p_valid_line_tags(std::vector<uint64_t> &tags) const {

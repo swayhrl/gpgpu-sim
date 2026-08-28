@@ -1735,7 +1735,9 @@ class l1_cache : public data_cache {
   uint64_t c2p_line_tag(new_addr_type addr) const {
     return m_config.block_addr(addr) / m_config.get_line_sz();
   }
+  enum cache_request_status c2p_probe_status(mem_fetch *mf) const;
   bool c2p_probe(mem_fetch *mf) const;
+  bool c2p_miss_queue_contains(const mem_fetch *mf) const;
   void c2p_valid_line_tags(std::vector<uint64_t> &tags) const;
   void c2p_fill(mem_fetch *mf, unsigned long long time);
   bool c2p_lower_ready(mem_fetch *mf) const {

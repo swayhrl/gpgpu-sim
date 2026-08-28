@@ -53,6 +53,57 @@ unsigned probe_policy_ordinal_bin(unsigned ordinal) {
   return ordinal <= C2P_PROBE_POLICY_MAX_ORDINAL ? ordinal - 1
                                                   : C2P_PROBE_POLICY_MAX_ORDINAL;
 }
+
+unsigned peer_locality_wait_bin(unsigned long long cycles) {
+  unsigned bin = 0;
+  while (cycles > 1 && bin + 1 < C2P_PEER_LOCALITY_WAIT_BINS) {
+    cycles >>= 1;
+    ++bin;
+  }
+  return bin;
+}
+
+void print_peer_locality_snapshot_stats(
+    FILE *fout, const char *prefix,
+    const c2p_peer_locality_snapshot_stats &stats) {
+  fprintf(fout, "%s_events = %llu\n", prefix, stats.events);
+  fprintf(fout, "%s_redundant_events = %llu\n", prefix,
+          stats.redundant_events);
+  fprintf(fout, "%s_local_only = %llu\n", prefix, stats.local_only);
+  fprintf(fout, "%s_outer_only = %llu\n", prefix, stats.outer_only);
+  fprintf(fout, "%s_both_local_and_outer = %llu\n", prefix,
+          stats.both_local_and_outer);
+  fprintf(fout, "%s_local_peer_total = %llu\n", prefix,
+          stats.local_peer_total);
+  fprintf(fout, "%s_outer_peer_total = %llu\n", prefix,
+          stats.outer_peer_total);
+  for (unsigned count = 0; count < C2P_PEER_LOCALITY_MAX_SMS; ++count)
+    fprintf(fout, "%s_peer_count_%u = %llu\n", prefix, count,
+            stats.peer_count[count]);
+  for (unsigned count = 0; count <= C2P_PEER_LOCALITY_MAX_CLUSTERS; ++count)
+    fprintf(fout, "%s_peer_clusters_%u = %llu\n", prefix, count,
+            stats.peer_cluster_count[count]);
+  for (unsigned distance = 1; distance < C2P_PEER_LOCALITY_MAX_SMS;
+       ++distance) {
+    fprintf(fout, "%s_nearest_abs_distance_%u = %llu\n", prefix, distance,
+            stats.nearest_abs_distance[distance]);
+    fprintf(fout, "%s_all_abs_distance_%u = %llu\n", prefix, distance,
+            stats.all_abs_distance[distance]);
+  }
+  for (unsigned distance = 1;
+       distance < C2P_PEER_LOCALITY_RING_DISTANCE_BINS; ++distance) {
+    fprintf(fout, "%s_nearest_ring_distance_%u = %llu\n", prefix, distance,
+            stats.nearest_ring_distance[distance]);
+    fprintf(fout, "%s_all_ring_distance_%u = %llu\n", prefix, distance,
+            stats.all_ring_distance[distance]);
+  }
+  for (int delta = -(int)C2P_PEER_LOCALITY_MAX_SMS + 1;
+       delta < (int)C2P_PEER_LOCALITY_MAX_SMS; ++delta) {
+    if (!delta) continue;
+    fprintf(fout, "%s_signed_delta_%d = %llu\n", prefix, delta,
+            stats.signed_delta[delta + C2P_PEER_LOCALITY_MAX_SMS - 1]);
+  }
+}
 }  // namespace
 
 c2p_cache_config::c2p_cache_config()
@@ -83,6 +134,7 @@ c2p_cache_config::c2p_cache_config()
       adaptive_probe_observe_tail(false),
       separate_target_tag_port(false),
       diagnostic_target_port_bypass(false),
+      peer_locality_diagnostic(false),
       snapshot_copies(4),
       scheme(C2P_SCHEME),
       comparator_cluster_size(8),
@@ -185,6 +237,10 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
       &diagnostic_target_port_bypass,
       "diagnostic only: remove C2P probe contention for target L1 data port",
       "0");
+  option_parser_register(
+      opp, "-c2p_cache_peer_locality_diagnostic", OPT_BOOL,
+      &peer_locality_diagnostic,
+      "diagnostic only: observe peer locality at L1 miss detect/issue", "0");
   option_parser_register(opp, "-c2p_cache_snapshot_copies", OPT_UINT32,
                          &snapshot_copies, "C2P Snapshot Matrix copies", "4");
   option_parser_register(
@@ -214,6 +270,33 @@ void c2p_cache_config::reg_options(OptionParser *opp) {
                          &peer_line_latency,
                          "ATA/CCD/RING-like remote cache-line access latency",
                          "14");
+}
+
+c2p_peer_locality_snapshot_stats::c2p_peer_locality_snapshot_stats() {
+  clear();
+}
+
+void c2p_peer_locality_snapshot_stats::clear() {
+  events = 0;
+  redundant_events = 0;
+  local_only = 0;
+  outer_only = 0;
+  both_local_and_outer = 0;
+  local_peer_total = 0;
+  outer_peer_total = 0;
+  std::fill(peer_count, peer_count + C2P_PEER_LOCALITY_MAX_SMS, 0);
+  std::fill(peer_cluster_count,
+            peer_cluster_count + C2P_PEER_LOCALITY_MAX_CLUSTERS + 1, 0);
+  std::fill(nearest_abs_distance,
+            nearest_abs_distance + C2P_PEER_LOCALITY_MAX_SMS, 0);
+  std::fill(all_abs_distance, all_abs_distance + C2P_PEER_LOCALITY_MAX_SMS,
+            0);
+  std::fill(nearest_ring_distance,
+            nearest_ring_distance + C2P_PEER_LOCALITY_RING_DISTANCE_BINS, 0);
+  std::fill(all_ring_distance,
+            all_ring_distance + C2P_PEER_LOCALITY_RING_DISTANCE_BINS, 0);
+  std::fill(signed_delta,
+            signed_delta + C2P_PEER_LOCALITY_SIGNED_DELTA_BINS, 0);
 }
 
 c2p_cache_stats::c2p_cache_stats() { clear(); }
@@ -323,6 +406,24 @@ void c2p_cache_stats::clear() {
   snapshot_updates = 0;
   snapshot_rebuilds = 0;
   snapshot_rebuild_transport_tags = 0;
+  peer_locality_detect_records = 0;
+  peer_locality_detect_lower_records = 0;
+  peer_locality_detect_mshr_merge_records = 0;
+  peer_locality_issue_records = 0;
+  peer_locality_missing_detect_records = 0;
+  peer_locality_wait_cycles_total = 0;
+  peer_locality_wait_cycles_max = 0;
+  std::fill(peer_locality_wait_hist,
+            peer_locality_wait_hist + C2P_PEER_LOCALITY_WAIT_BINS, 0);
+  for (unsigned detect_peer = 0; detect_peer != 2; ++detect_peer)
+    for (unsigned issue_peer = 0; issue_peer != 2; ++issue_peer) {
+      peer_locality_sector_transition[detect_peer][issue_peer] = 0;
+      peer_locality_line_transition[detect_peer][issue_peer] = 0;
+    }
+  peer_locality_detect_sector.clear();
+  peer_locality_issue_sector.clear();
+  peer_locality_detect_line.clear();
+  peer_locality_issue_line.clear();
 }
 
 c2p_cache::transaction::transaction(l1_cache *requester_, mem_fetch *mf_,
@@ -412,6 +513,8 @@ c2p_cache::c2p_cache(const c2p_cache_config &config, gpgpu_sim *gpu)
           m_config.max_candidate_probes == 0));
   assert(!(m_config.separate_target_tag_port &&
            m_config.diagnostic_target_port_bypass));
+  assert(!m_config.peer_locality_diagnostic ||
+         m_num_sms <= C2P_PEER_LOCALITY_MAX_SMS);
 }
 
 void c2p_cache::reset() {
@@ -441,6 +544,7 @@ void c2p_cache::reset() {
   std::fill(m_adaptive_package_scores.begin(),
             m_adaptive_package_scores.end(), 4);
   m_adaptive_explore_counter = 0;
+  m_peer_locality_detects.clear();
   m_stats.clear();
 }
 
@@ -493,7 +597,165 @@ bool c2p_cache::snapshot_bit(unsigned row, unsigned sid) const {
   return (m_snapshot[row][sid / 64] >> (sid % 64)) & 1ULL;
 }
 
+bool c2p_cache::is_eligible_l1_read(const mem_fetch *mf) const {
+  return !mf->get_is_write() && !mf->isatomic() &&
+         mf->get_access_type() == GLOBAL_ACC_R;
+}
+
+c2p_cache::peer_masks c2p_cache::collect_peer_masks(
+    l1_cache *requester, mem_fetch *mf) const {
+  peer_masks masks;
+  assert(m_config.peer_locality_diagnostic);
+  assert(m_num_sms <= C2P_PEER_LOCALITY_MAX_SMS);
+  const unsigned requester_sid = requester->c2p_sid();
+  assert(requester_sid < m_num_sms);
+
+  for (unsigned sid = 0; sid < m_num_sms; ++sid) {
+    assert(m_l1s[sid] != NULL);
+    if (sid == requester_sid) continue;
+    const enum cache_request_status status = m_l1s[sid]->c2p_probe_status(mf);
+    const uint64_t bit = 1ULL << sid;
+    if (status == HIT) {
+      masks.exact_sector |= bit;
+      masks.resident_line |= bit;
+    } else if (status == SECTOR_MISS) {
+      masks.resident_line |= bit;
+    } else if (status == HIT_RESERVED) {
+      masks.reserved |= bit;
+    }
+  }
+
+  const uint64_t requester_bit = 1ULL << requester_sid;
+  assert(!(masks.exact_sector & requester_bit));
+  assert(!(masks.resident_line & requester_bit));
+  assert(!(masks.reserved & requester_bit));
+  assert((masks.exact_sector & ~masks.resident_line) == 0);
+  assert((masks.exact_sector & masks.reserved) == 0);
+  return masks;
+}
+
+void c2p_cache::record_peer_locality_snapshot(
+    c2p_peer_locality_snapshot_stats &stats, unsigned requester_sid,
+    uint64_t peer_mask) {
+  assert(requester_sid < m_num_sms);
+  assert(m_num_sms <= C2P_PEER_LOCALITY_MAX_SMS);
+  assert((peer_mask & (1ULL << requester_sid)) == 0);
+
+  ++stats.events;
+  const unsigned peer_count = __builtin_popcountll(peer_mask);
+  assert(peer_count < C2P_PEER_LOCALITY_MAX_SMS);
+  ++stats.peer_count[peer_count];
+  if (!peer_count) return;
+  ++stats.redundant_events;
+
+  const unsigned requester_cluster =
+      requester_sid / C2P_PEER_LOCALITY_CLUSTER_SIZE;
+  const unsigned cluster_first = requester_cluster * C2P_PEER_LOCALITY_CLUSTER_SIZE;
+  const uint64_t local_mask = 0xffULL << cluster_first;
+  const unsigned local_count = __builtin_popcountll(peer_mask & local_mask);
+  const unsigned outer_count = peer_count - local_count;
+  stats.local_peer_total += local_count;
+  stats.outer_peer_total += outer_count;
+  if (local_count && outer_count)
+    ++stats.both_local_and_outer;
+  else if (local_count)
+    ++stats.local_only;
+  else {
+    assert(outer_count);
+    ++stats.outer_only;
+  }
+
+  unsigned distinct_clusters = 0;
+  unsigned nearest_abs = C2P_PEER_LOCALITY_MAX_SMS;
+  unsigned nearest_ring = C2P_PEER_LOCALITY_RING_DISTANCE_BINS;
+  for (unsigned sid = 0; sid < m_num_sms; ++sid) {
+    if (!(peer_mask & (1ULL << sid))) continue;
+    const unsigned peer_cluster = sid / C2P_PEER_LOCALITY_CLUSTER_SIZE;
+    bool first_in_cluster = true;
+    for (unsigned prior = peer_cluster * C2P_PEER_LOCALITY_CLUSTER_SIZE;
+         prior < sid; ++prior)
+      if (peer_mask & (1ULL << prior)) first_in_cluster = false;
+    if (first_in_cluster) ++distinct_clusters;
+
+    const unsigned abs_distance =
+        sid > requester_sid ? sid - requester_sid : requester_sid - sid;
+    assert(abs_distance > 0 && abs_distance < C2P_PEER_LOCALITY_MAX_SMS);
+    const unsigned ring_distance =
+        std::min(abs_distance, m_num_sms - abs_distance);
+    ++stats.all_abs_distance[abs_distance];
+    ++stats.all_ring_distance[ring_distance];
+    const int signed_delta = (int)sid - (int)requester_sid;
+    ++stats.signed_delta[signed_delta + C2P_PEER_LOCALITY_MAX_SMS - 1];
+    nearest_abs = std::min(nearest_abs, abs_distance);
+    nearest_ring = std::min(nearest_ring, ring_distance);
+  }
+  assert(distinct_clusters > 0 &&
+         distinct_clusters <= C2P_PEER_LOCALITY_MAX_CLUSTERS);
+  ++stats.peer_cluster_count[distinct_clusters];
+  assert(nearest_abs < C2P_PEER_LOCALITY_MAX_SMS);
+  assert(nearest_ring < C2P_PEER_LOCALITY_RING_DISTANCE_BINS);
+  ++stats.nearest_abs_distance[nearest_abs];
+  ++stats.nearest_ring_distance[nearest_ring];
+}
+
+void c2p_cache::observe_l1_miss_detect(l1_cache *requester, mem_fetch *mf,
+                                        unsigned long long now,
+                                        bool queued_for_lower) {
+  if (!m_config.peer_locality_diagnostic || !is_eligible_l1_read(mf)) return;
+  const peer_masks masks = collect_peer_masks(requester, mf);
+  ++m_stats.peer_locality_detect_records;
+  record_peer_locality_snapshot(m_stats.peer_locality_detect_sector,
+                                requester->c2p_sid(), masks.exact_sector);
+  record_peer_locality_snapshot(m_stats.peer_locality_detect_line,
+                                requester->c2p_sid(), masks.resident_line);
+  if (!queued_for_lower) {
+    ++m_stats.peer_locality_detect_mshr_merge_records;
+    return;
+  }
+  const std::pair<std::map<mem_fetch *, peer_locality_detect_record>::iterator,
+                  bool>
+      inserted = m_peer_locality_detects.insert(
+          std::make_pair(mf, peer_locality_detect_record()));
+  assert(inserted.second);
+  inserted.first->second.requester_sid = requester->c2p_sid();
+  inserted.first->second.cycle = now;
+  inserted.first->second.masks = masks;
+  ++m_stats.peer_locality_detect_lower_records;
+}
+
+void c2p_cache::observe_l1_miss_issue(l1_cache *requester, mem_fetch *mf,
+                                       unsigned long long now,
+                                       const peer_masks &issue_masks) {
+  if (!m_config.peer_locality_diagnostic) return;
+  ++m_stats.peer_locality_issue_records;
+  record_peer_locality_snapshot(m_stats.peer_locality_issue_sector,
+                                requester->c2p_sid(), issue_masks.exact_sector);
+  record_peer_locality_snapshot(m_stats.peer_locality_issue_line,
+                                requester->c2p_sid(), issue_masks.resident_line);
+
+  std::map<mem_fetch *, peer_locality_detect_record>::iterator it =
+      m_peer_locality_detects.find(mf);
+  if (it == m_peer_locality_detects.end()) {
+    ++m_stats.peer_locality_missing_detect_records;
+    return;
+  }
+  assert(it->second.requester_sid == requester->c2p_sid());
+  assert(now >= it->second.cycle);
+  const unsigned long long wait_cycles = now - it->second.cycle;
+  m_stats.peer_locality_wait_cycles_total += wait_cycles;
+  m_stats.peer_locality_wait_cycles_max =
+      std::max(m_stats.peer_locality_wait_cycles_max, wait_cycles);
+  ++m_stats.peer_locality_wait_hist[peer_locality_wait_bin(wait_cycles)];
+  ++m_stats.peer_locality_sector_transition
+      [it->second.masks.exact_sector != 0][issue_masks.exact_sector != 0];
+  ++m_stats.peer_locality_line_transition
+      [it->second.masks.resident_line != 0][issue_masks.resident_line != 0];
+  m_peer_locality_detects.erase(it);
+}
+
 bool c2p_cache::has_exact_peer(l1_cache *requester, mem_fetch *mf) const {
+  if (m_config.peer_locality_diagnostic)
+    return collect_peer_masks(requester, mf).exact_sector != 0;
   for (unsigned sid = 0; sid < m_l1s.size(); ++sid) {
     if (m_l1s[sid] != NULL && m_l1s[sid] != requester &&
         m_l1s[sid]->c2p_probe(mf))
@@ -528,9 +790,7 @@ std::vector<unsigned> c2p_cache::exact_candidates(
 c2p_cache::miss_action c2p_cache::accept_miss(l1_cache *requester,
                                                mem_fetch *mf,
                                                unsigned long long now) {
-  if ((!m_config.enabled && !m_config.oracle_only) || mf->get_is_write() ||
-      mf->isatomic() ||
-      mf->get_access_type() != GLOBAL_ACC_R)
+  if ((!m_config.enabled && !m_config.oracle_only) || !is_eligible_l1_read(mf))
     return MISS_TO_LOWER;
 
   // ``l1_cache::cycle()`` retries an unconsumed miss queue head each cycle.
@@ -541,8 +801,16 @@ c2p_cache::miss_action c2p_cache::accept_miss(l1_cache *requester,
       m_transactions.size() >= m_config.query_queue_size)
     return MISS_STALL;
 
+  peer_masks issue_masks;
+  if (m_config.peer_locality_diagnostic) {
+    issue_masks = collect_peer_masks(requester, mf);
+    observe_l1_miss_issue(requester, mf, now, issue_masks);
+  }
   ++m_stats.l1_misses;
-  const bool oracle = m_config.collect_oracle && has_exact_peer(requester, mf);
+  const bool oracle = m_config.collect_oracle &&
+                      (m_config.peer_locality_diagnostic
+                           ? issue_masks.exact_sector != 0
+                           : has_exact_peer(requester, mf));
   if (oracle) ++m_stats.oracle_peer_hits;
   if (m_config.oracle_only || !m_config.enabled) return MISS_TO_LOWER;
   if (m_transactions.size() >= m_config.query_queue_size) {
@@ -1462,6 +1730,8 @@ void c2p_cache::display_state(FILE *fout) const {
 
 void c2p_cache::print_stats(FILE *fout) const {
   fprintf(fout, "\nC2P_cache_stats:\n");
+  fprintf(fout, "c2p_peer_locality_diagnostic = %u\n",
+          m_config.peer_locality_diagnostic ? 1U : 0U);
   fprintf(fout, "c2p_l1_misses = %llu\n", m_stats.l1_misses);
   fprintf(fout, "c2p_oracle_peer_hits = %llu\n", m_stats.oracle_peer_hits);
   fprintf(fout, "c2p_queries_accepted = %llu\n", m_stats.queries_accepted);
@@ -1688,5 +1958,53 @@ void c2p_cache::print_stats(FILE *fout) const {
     if (m_peer_access_miss_hist[i])
       fprintf(fout, "c2p_peer_access_miss_count_%u = %llu\n", i,
               m_peer_access_miss_hist[i]);
+  }
+  if (m_config.peer_locality_diagnostic) {
+    unsigned registered_l1s = 0;
+    for (unsigned sid = 0; sid < m_l1s.size(); ++sid)
+      if (m_l1s[sid] != NULL) ++registered_l1s;
+    fprintf(fout, "c2p_peer_locality_registered_l1s = %u\n", registered_l1s);
+    fprintf(fout, "c2p_peer_locality_pending_detect_records = %zu\n",
+            m_peer_locality_detects.size());
+    fprintf(fout, "c2p_peer_locality_detect_records = %llu\n",
+            m_stats.peer_locality_detect_records);
+    fprintf(fout, "c2p_peer_locality_detect_lower_records = %llu\n",
+            m_stats.peer_locality_detect_lower_records);
+    fprintf(fout, "c2p_peer_locality_detect_mshr_merge_records = %llu\n",
+            m_stats.peer_locality_detect_mshr_merge_records);
+    fprintf(fout, "c2p_peer_locality_issue_records = %llu\n",
+            m_stats.peer_locality_issue_records);
+    fprintf(fout, "c2p_peer_locality_missing_detect_records = %llu\n",
+            m_stats.peer_locality_missing_detect_records);
+    fprintf(fout, "c2p_peer_locality_wait_cycles_total = %llu\n",
+            m_stats.peer_locality_wait_cycles_total);
+    fprintf(fout, "c2p_peer_locality_wait_cycles_max = %llu\n",
+            m_stats.peer_locality_wait_cycles_max);
+    for (unsigned bin = 0; bin < C2P_PEER_LOCALITY_WAIT_BINS; ++bin)
+      fprintf(fout, "c2p_peer_locality_wait_log2_bin_%u = %llu\n", bin,
+              m_stats.peer_locality_wait_hist[bin]);
+    for (unsigned detect_peer = 0; detect_peer != 2; ++detect_peer)
+      for (unsigned issue_peer = 0; issue_peer != 2; ++issue_peer) {
+        fprintf(fout,
+                "c2p_peer_locality_sector_detect_%u_issue_%u = %llu\n",
+                detect_peer, issue_peer,
+                m_stats.peer_locality_sector_transition[detect_peer][issue_peer]);
+        fprintf(fout,
+                "c2p_peer_locality_line_detect_%u_issue_%u = %llu\n",
+                detect_peer, issue_peer,
+                m_stats.peer_locality_line_transition[detect_peer][issue_peer]);
+      }
+    print_peer_locality_snapshot_stats(
+        fout, "c2p_peer_locality_detect_sector",
+        m_stats.peer_locality_detect_sector);
+    print_peer_locality_snapshot_stats(
+        fout, "c2p_peer_locality_issue_sector",
+        m_stats.peer_locality_issue_sector);
+    print_peer_locality_snapshot_stats(
+        fout, "c2p_peer_locality_detect_line",
+        m_stats.peer_locality_detect_line);
+    print_peer_locality_snapshot_stats(
+        fout, "c2p_peer_locality_issue_line",
+        m_stats.peer_locality_issue_line);
   }
 }
