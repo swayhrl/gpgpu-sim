@@ -491,7 +491,11 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
   }
 
   // DRAM to L2 (texture) and icnt (not texture)
-  if (!m_dram_L2_queue->empty()) {
+  if (!m_dram_L2_queue->empty() && m_l2_char_returnq_hold_remaining) {
+    // Directed closeout hook only: preserve an actual returned response in
+    // the ReturnQ. Default zero leaves the production path untouched.
+    --m_l2_char_returnq_hold_remaining;
+  } else if (!m_dram_L2_queue->empty()) {
     mem_fetch *mf = m_dram_L2_queue->top();
     if (!m_config->m_L2_config.disabled() && m_L2cache->waiting_for_fill(mf)) {
       if (m_L2cache->fill_port_free()) {
@@ -513,22 +517,160 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
   // prior L2 misses inserted into m_L2_dram_queue here
   if (!m_config->m_L2_config.disabled()) m_L2cache->cycle();
 
-  // new L2 texture accesses and/or non-texture accesses
-  if (!m_L2_dram_queue->full() && !m_icnt_L2_queue->empty()) {
+  // New L2 texture accesses and/or non-texture accesses.  A full L2-to-DRAM
+  // FIFO is not a frontend prerequisite: hits, MSHR merges, and locally
+  // absorbed writes must only wait for resources they actually consume.
+  if (!m_icnt_L2_queue->empty()) {
     mem_fetch *mf = m_icnt_L2_queue->top();
     if (!m_config->m_L2_config.disabled() &&
         ((m_config->m_L2_texure_only && mf->istexture()) ||
          (!m_config->m_L2_texure_only))) {
       // L2 is enabled and access is for L2
-      bool output_full = m_L2_icnt_queue->full();
-      bool port_free = m_L2cache->data_port_free();
-      if (!output_full && port_free) {
+      l2_access_plan plan;
+      m_L2cache->preview_access(mf->get_addr(), mf, plan);
+      if (plan.exact && plan.victim_dirty)
+        m_l2_char_stats.dirty_victim_preview_count++;
+      const unsigned missq_occupancy_before = m_L2cache->miss_queue_occupancy();
+      const unsigned mshr_entries_before = m_L2cache->mshr_entries_used();
+      const bool missq_full_before =
+          !m_L2cache->miss_queue_has_slots(1);
+      const bool missq_one_slot_before =
+          m_L2cache->miss_queue_has_slots(1) &&
+          !m_L2cache->miss_queue_has_slots(2);
+      bool admit = false;
+      l2_admission_inputs admission;
+      if (plan.exact) {
+        admission.line_available = plan.probe_status != RESERVATION_FAIL;
+        admission.needs_new_mshr = plan.needs_new_mshr;
+        admission.new_mshr_available = plan.mshr_entry_available;
+        admission.needs_mshr_merge = plan.needs_mshr_merge;
+        admission.mshr_merge_available = plan.mshr_merge_available;
+        admission.missq_available =
+            m_L2cache->miss_queue_has_slots(plan.new_missq_entries);
+        admission.needs_data_port = plan.needs_data_port;
+        admission.data_port_available = m_L2cache->data_port_free();
+        admission.needs_response_slot = plan.needs_immediate_response_slot;
+        admission.response_slot_available = !m_L2_icnt_queue->full();
+        admit = l2_admission_allowed(admission);
+      } else {
+        // Preserve the historical shared controller behavior for non-QV100
+        // policies until they receive their own reviewed exact plan.
+        admit = !m_L2_dram_queue->full() && !m_L2_icnt_queue->full() &&
+                m_L2cache->data_port_free();
+      }
+      // An exact preview that is not admissible is a real controller stall,
+      // even though access() is intentionally not called.  Record it here so
+      // blocker accounting describes the production admission decision rather
+      // than only an unexpected reservation failure after admission.
+      if (plan.exact && !admit) {
+        unsigned long long blockers = l2_admission_blockers(admission);
+        if (!blockers) blockers = 1ULL << L2_BLOCK_OTHER;
+        m_l2_char_stats.record_blockers(
+            mf, blockers, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle,
+            m_l2_block_state);
+
+        if (plan.needs_data_port && !admission.data_port_available &&
+            plan.is_read && plan.probe_status == HIT)
+          m_l2_char_stats.dataport_hit_block_cycles++;
+
+        // A dirty victim consumes two MissQ entries (writeback plus demand).
+        // When precisely one entry remains, refusal must be completely
+        // side-effect free: previewing again must see the same cache and
+        // queue state because access() was never called.
+        if (plan.victim_dirty && plan.new_missq_entries == 2 &&
+            missq_one_slot_before) {
+          m_l2_char_stats.missq_dirty_miss_block_one_slot++;
+          l2_access_plan retry_plan;
+          m_L2cache->preview_access(mf->get_addr(), mf, retry_plan);
+          const bool unchanged =
+              m_L2cache->miss_queue_occupancy() == missq_occupancy_before &&
+              m_L2cache->mshr_entries_used() == mshr_entries_before &&
+              retry_plan.probe_status == plan.probe_status &&
+              retry_plan.cache_index == plan.cache_index &&
+              retry_plan.victim_valid == plan.victim_valid &&
+              retry_plan.victim_dirty == plan.victim_dirty &&
+              retry_plan.needs_new_mshr == plan.needs_new_mshr &&
+              retry_plan.needs_mshr_merge == plan.needs_mshr_merge &&
+              retry_plan.new_missq_entries == plan.new_missq_entries &&
+              retry_plan.will_send_lower_read == plan.will_send_lower_read &&
+              retry_plan.will_send_writeback == plan.will_send_writeback;
+          if (unchanged)
+            m_l2_char_stats.missq_dirty_block_no_mutation++;
+          else
+            m_l2_char_stats.missq_dirty_block_partial_mutation++;
+#ifndef NDEBUG
+          assert(unchanged);
+#endif
+        }
+      }
+      if (admit) {
+        const bool lowerq_full_before = m_L2_dram_queue->full();
+        const bool respq_full_before = m_L2_icnt_queue->full();
+        const bool dataport_busy_before = !m_L2cache->data_port_free();
+        if (plan.exact &&
+            (lowerq_full_before || respq_full_before ||
+             dataport_busy_before)) {
+          // Count only admissions that the official coarse gate would have
+          // rejected; this is the low-pressure equivalence activation signal.
+          m_l2_char_stats.corrected_path_activation_count++;
+          if (lowerq_full_before)
+            m_l2_char_stats.corrected_path_lowerq_activation_count++;
+          if (respq_full_before)
+            m_l2_char_stats.corrected_path_respq_activation_count++;
+          if (dataport_busy_before)
+            m_l2_char_stats.corrected_path_dataport_activation_count++;
+        }
+        if (plan.exact && dataport_busy_before) {
+          if (plan.is_read && plan.needs_new_mshr &&
+              plan.will_send_lower_read && !plan.victim_dirty)
+            m_l2_char_stats.dataport_clean_miss_admit_while_busy++;
+          if (plan.is_read && plan.needs_mshr_merge)
+            m_l2_char_stats.dataport_mshr_merge_admit_while_busy++;
+        }
+        if (plan.exact && plan.is_read && plan.needs_mshr_merge &&
+            missq_full_before)
+          m_l2_char_stats.missq_merge_admit_while_full++;
+        if (plan.exact && plan.is_read && plan.needs_new_mshr &&
+            plan.new_missq_entries == 1 && missq_one_slot_before)
+          m_l2_char_stats.missq_clean_miss_admit_one_slot++;
+        if (plan.exact && plan.is_read && plan.needs_new_mshr &&
+            plan.victim_dirty && plan.new_missq_entries == 2)
+          m_l2_char_stats.missq_dirty_miss_admit_two_slots++;
+
+        unsigned missq_before = missq_occupancy_before;
         std::list<cache_event> events;
         enum cache_request_status status =
             m_L2cache->access(mf->get_addr(), mf,
                               m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
                                   m_memcpy_cycle_offset,
                               events);
+        m_l2_block_state.erase(mf);
+        if (plan.exact) {
+          cache_event writeback_event(WRITE_BACK_REQUEST_SENT);
+          bool preview_matches = l2_preview_commit_matches(
+              plan.will_send_lower_read, plan.will_send_lower_write,
+              plan.will_send_writeback, plan.new_missq_entries,
+              status == RESERVATION_FAIL, was_read_sent(events),
+              was_write_sent(events),
+              was_writeback_sent(events, writeback_event),
+              m_L2cache->miss_queue_occupancy() - missq_before);
+          if (!preview_matches) m_l2_char_stats.preview_commit_mismatch++;
+#ifndef NDEBUG
+          if (!preview_matches) {
+            fprintf(stderr,
+                    "L2 preview/commit mismatch: status=%d expected "
+                    "read=%d write=%d wb=%d missq=%u actual "
+                    "read=%d write=%d wb=%d missq=%u\n",
+                    status, plan.will_send_lower_read,
+                    plan.will_send_lower_write, plan.will_send_writeback,
+                    plan.new_missq_entries, was_read_sent(events),
+                    was_write_sent(events),
+                    was_writeback_sent(events, writeback_event),
+                    m_L2cache->miss_queue_occupancy() - missq_before);
+          }
+          assert(preview_matches);
+#endif
+        }
         bool write_sent = was_write_sent(events);
         bool read_sent = was_read_sent(events);
         MEM_SUBPART_DPRINTF("Probing L2 cache Address=%llx, status=%u\n",
@@ -573,7 +715,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         } else {
           assert(!write_sent);
           assert(!read_sent);
-          // L2 cache lock-up: will try again next cycle
+          // L2 cache lock-up: will try again next cycle.
         }
       }
     } else {
@@ -581,6 +723,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       mf->set_status(IN_PARTITION_L2_TO_DRAM_QUEUE,
                      m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
       m_L2_dram_queue->push(mf);
+      m_l2_block_state.erase(mf);
       m_icnt_L2_queue->pop();
     }
   }

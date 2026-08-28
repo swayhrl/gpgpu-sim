@@ -34,11 +34,74 @@
 
 #include "../abstract_hardware_model.h"
 #include "dram.h"
+#include "l2_admission_rules.h"
 
 #include <list>
+#include <map>
 #include <queue>
+#include <set>
 
 class mem_fetch;
+
+struct l2_block_episode_state {
+  l2_block_episode_state()
+      : ever_blocked_mask(0), prev_blocked_mask(0), first_block_cycle(0),
+        total_block_cycles(0) {}
+  unsigned long long ever_blocked_mask;
+  unsigned long long prev_blocked_mask;
+  unsigned long long first_block_cycle;
+  unsigned long long total_block_cycles;
+};
+
+struct l2_char_stats {
+  l2_char_stats() { clear(); }
+  void clear();
+  void sample(unsigned mshr_entries, unsigned mshr_targets,
+              unsigned mshr_ready_entries, unsigned mshr_ready_targets,
+              unsigned missq, unsigned missq_demand, unsigned missq_wb,
+              unsigned l2_dramq, unsigned dram_l2q, unsigned l2_icntq,
+              unsigned icnt_l2q, unsigned rop, bool data_busy, bool fill_busy,
+              bool missq_full, bool dram_l2_full, bool l2_icnt_full,
+              bool icnt_l2_full);
+  void record_blockers(mem_fetch *mf, unsigned long long blocker_mask,
+                       unsigned long long cycle,
+                       std::map<mem_fetch *, l2_block_episode_state> &state);
+  void print(FILE *fp, unsigned subpartition_id) const;
+
+  unsigned long long sample_cycles;
+  unsigned long long corrected_path_activation_count;
+  unsigned long long corrected_path_lowerq_activation_count;
+  unsigned long long corrected_path_respq_activation_count;
+  unsigned long long corrected_path_dataport_activation_count;
+  // Typed proof counters for the directed integrated-pressure fixtures.
+  unsigned long long dataport_clean_miss_admit_while_busy;
+  unsigned long long dataport_mshr_merge_admit_while_busy;
+  unsigned long long dataport_hit_block_cycles;
+  unsigned long long missq_merge_admit_while_full;
+  unsigned long long missq_clean_miss_admit_one_slot;
+  unsigned long long missq_dirty_miss_block_one_slot;
+  unsigned long long missq_dirty_miss_admit_two_slots;
+  unsigned long long missq_dirty_block_no_mutation;
+  unsigned long long missq_dirty_block_partial_mutation;
+  unsigned long long dirty_victim_preview_count;
+  unsigned long long preview_commit_mismatch;
+  unsigned long long mshr_entries_sum, mshr_entries_max;
+  unsigned long long mshr_targets_sum, mshr_targets_max;
+  unsigned long long mshr_ready_entries_sum, mshr_ready_entries_max;
+  unsigned long long mshr_ready_targets_sum, mshr_ready_targets_max;
+  unsigned long long missq_sum, missq_max, missq_demand_sum, missq_wb_sum;
+  unsigned long long l2_dramq_sum, l2_dramq_max;
+  unsigned long long dram_l2q_sum, dram_l2q_max;
+  unsigned long long l2_icntq_sum, l2_icntq_max;
+  unsigned long long icnt_l2q_sum, icnt_l2q_max;
+  unsigned long long rop_sum, rop_max;
+  unsigned long long data_port_busy_cycles, fill_port_busy_cycles;
+  unsigned long long missq_full_cycles, dram_l2_full_cycles;
+  unsigned long long l2_icnt_full_cycles, icnt_l2_full_cycles;
+  unsigned long long blocker_cycles[NUM_L2_BLOCK_REASONS];
+  unsigned long long blocker_requests[NUM_L2_BLOCK_REASONS];
+  unsigned long long blocker_episodes[NUM_L2_BLOCK_REASONS];
+};
 
 class partition_mf_allocator : public mem_fetch_allocator {
  public:
@@ -228,6 +291,7 @@ class memory_sub_partition {
   fifo_pipeline<mem_fetch> *m_L2_dram_queue;
   fifo_pipeline<mem_fetch> *m_dram_L2_queue;
   fifo_pipeline<mem_fetch> *m_L2_icnt_queue;  // L2 cache hit response queue
+  unsigned m_l2_char_returnq_hold_remaining;
 
   class mem_fetch *L2dramout;
   unsigned long long int wb_addr;
@@ -235,6 +299,8 @@ class memory_sub_partition {
   class memory_stats_t *m_stats;
 
   std::set<mem_fetch *> m_request_tracker;
+  std::map<mem_fetch *, l2_block_episode_state> m_l2_block_state;
+  l2_char_stats m_l2_char_stats;
 
   friend class L2interface;
 
