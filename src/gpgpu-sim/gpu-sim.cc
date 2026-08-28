@@ -277,6 +277,22 @@ void memory_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_dram_return_queue_size", OPT_INT32,
                          &gpgpu_dram_return_queue_size,
                          "0 = unlimited (default); # entries per chip", "0");
+  option_parser_register(
+      opp, "-gpgpu_l2_wb_progress_credit", OPT_UINT32,
+      &gpgpu_l2_wb_progress_credit,
+      "reserved no-return writeback credits per memory channel", "1");
+  option_parser_register(
+      opp, "-gpgpu_l2_char_dram_issue_hold_cycles", OPT_UINT32,
+      &gpgpu_l2_char_dram_issue_hold_cycles,
+      "directed test hook: hold initial L2-to-DRAM issues", "0");
+  option_parser_register(
+      opp, "-gpgpu_l2_char_dram_issue_hold_after_issues", OPT_UINT32,
+      &gpgpu_l2_char_dram_issue_hold_after_issues,
+      "directed test hook: arm hold after this many L2-to-DRAM issues", "0");
+  option_parser_register(
+      opp, "-gpgpu_l2_char_returnq_hold_cycles", OPT_UINT32,
+      &gpgpu_l2_char_returnq_hold_cycles,
+      "directed test hook: hold an occupied DRAM-to-L2 return queue", "0");
   option_parser_register(opp, "-gpgpu_dram_buswidth", OPT_UINT32, &busW,
                          "default = 4 bytes (8 bytes per cycle at DDR)", "4");
   option_parser_register(
@@ -1183,6 +1199,12 @@ bool sst_gpgpu_sim::active() {
   if (m_config.gpu_deadlock_detect && gpu_deadlock) return false;
   for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++)
     if (m_cluster[i]->get_not_completed() > 0) return true;
+  // Trace-driven execution must drain the same memory/interconnect work as
+  // the native front end.  In particular, an L2 writeback can outlive its
+  // source CTA while it owns a DRAM credit.
+  for (unsigned i = 0; i < m_memory_config->m_n_mem; i++)
+    if (m_memory_partition_unit[i]->busy()) return true;
+  if (icnt_busy()) return true;
   if (get_more_cta_left()) return true;
   return false;
 }
@@ -1191,7 +1213,8 @@ void gpgpu_sim::init() {
   // run a CUDA grid on the GPU microarchitecture simulator
   gpu_sim_cycle = 0;
   gpu_sim_insn = 0;
-  last_gpu_sim_insn = 0;
+  gpu_sim_insn_last_update = 0;
+  gpu_sim_insn_last_update_sid = 0;
   m_total_cta_launched = 0;
   gpu_completed_cta = 0;
   partiton_reqs_in_parallel = 0;
@@ -2197,11 +2220,11 @@ void gpgpu_sim::cycle() {
     }
 
     if (!(gpu_sim_cycle % 50000)) {
-      // deadlock detection
-      if (m_config.gpu_deadlock_detect && gpu_sim_insn == last_gpu_sim_insn) {
+      // Completion/writeback time is the architectural progress signal.  A
+      // warp may make real progress without changing the active-lane count.
+      if (m_config.gpu_deadlock_detect &&
+          gpu_sim_cycle - gpu_sim_insn_last_update >= 50000) {
         gpu_deadlock = true;
-      } else {
-        last_gpu_sim_insn = gpu_sim_insn;
       }
     }
     try_snap_shot(gpu_sim_cycle);
@@ -2390,11 +2413,10 @@ void sst_gpgpu_sim::SST_cycle() {
   }
 
   if (!(gpu_sim_cycle % 20000)) {
-    // deadlock detection
-    if (m_config.gpu_deadlock_detect && gpu_sim_insn == last_gpu_sim_insn) {
+    // See the non-SST path above: use the actual completion timestamp.
+    if (m_config.gpu_deadlock_detect &&
+        gpu_sim_cycle - gpu_sim_insn_last_update >= 20000) {
       gpu_deadlock = true;
-    } else {
-      last_gpu_sim_insn = gpu_sim_insn;
     }
   }
   try_snap_shot(gpu_sim_cycle);

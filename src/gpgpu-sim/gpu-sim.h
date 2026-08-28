@@ -332,6 +332,13 @@ class memory_config {
   bool l2_ideal;
   unsigned gpgpu_frfcfs_dram_sched_queue_size;
   unsigned gpgpu_dram_return_queue_size;
+  unsigned gpgpu_l2_wb_progress_credit;
+  // Directed-characterization hook: hold the first lower request(s) at the
+  // real L2-to-DRAM arbitration point to create deterministic backpressure.
+  // Zero preserves normal simulation behavior.
+  unsigned gpgpu_l2_char_dram_issue_hold_cycles;
+  unsigned gpgpu_l2_char_dram_issue_hold_after_issues;
+  unsigned gpgpu_l2_char_returnq_hold_cycles;
   enum dram_ctrl_t scheduler_type;
   bool gpgpu_memlatency_stat;
   unsigned m_n_mem;
@@ -725,8 +732,6 @@ class gpgpu_sim : public gpgpu_t {
   class memory_stats_t *m_memory_stats;
   class power_stat_t *m_power_stats;
   class gpgpu_sim_wrapper *m_gpgpusim_wrapper;
-  unsigned long long last_gpu_sim_insn;
-
   unsigned long long last_liveness_message_time;
 
   std::map<std::string, FuncCache> m_special_cache_config;

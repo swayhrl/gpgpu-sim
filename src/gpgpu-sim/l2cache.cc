@@ -81,6 +81,13 @@ memory_partition_unit::memory_partition_unit(unsigned partition_id,
       m_config(config),
       m_stats(stats),
       m_arbitration_metadata(config),
+      m_wb_issued_while_returnq_full(0),
+      m_wb_head_while_returnq_full(0),
+      m_read_head_while_returnq_full(0),
+      m_read_issue_blocked_while_returnq_full(0),
+      m_l2_char_dram_issue_hold_remaining(
+          config->gpgpu_l2_char_dram_issue_hold_cycles),
+      m_l2_char_dram_issue_count(0),
       m_gpu(gpu) {
   m_dram = new dram_t(m_id, m_config, m_stats, this, gpu);
 
@@ -121,7 +128,11 @@ memory_partition_unit::arbitration_metadata::arbitration_metadata(
     const memory_config *config)
     : m_last_borrower(config->m_n_sub_partition_per_memory_channel - 1),
       m_private_credit(config->m_n_sub_partition_per_memory_channel, 0),
-      m_shared_credit(0) {
+      m_shared_credit(0),
+      m_wb_progress_credit_limit(config->gpgpu_l2_wb_progress_credit),
+      m_wb_progress_credit(0),
+      m_wb_progress_credit_max(0),
+      m_wb_progress_credit_use_count(0) {
   // each sub partition get at least 1 credit for forward progress
   // the rest is shared among with other partitions
   m_private_credit_limit = 1;
@@ -139,12 +150,15 @@ memory_partition_unit::arbitration_metadata::arbitration_metadata(
 }
 
 bool memory_partition_unit::arbitration_metadata::has_credits(
-    int inner_sub_partition_id) const {
+    int inner_sub_partition_id, bool no_return) const {
   int spid = inner_sub_partition_id;
   if (m_private_credit[spid] < m_private_credit_limit) {
     return true;
   } else if (m_shared_credit_limit == 0 ||
              m_shared_credit < m_shared_credit_limit) {
+    return true;
+  } else if (no_return &&
+             m_wb_progress_credit < m_wb_progress_credit_limit) {
     return true;
   } else {
     return false;
@@ -152,13 +166,21 @@ bool memory_partition_unit::arbitration_metadata::has_credits(
 }
 
 void memory_partition_unit::arbitration_metadata::borrow_credit(
-    int inner_sub_partition_id) {
+    int inner_sub_partition_id, mem_fetch *mf, bool no_return) {
   int spid = inner_sub_partition_id;
   if (m_private_credit[spid] < m_private_credit_limit) {
     m_private_credit[spid] += 1;
   } else if (m_shared_credit_limit == 0 ||
              m_shared_credit < m_shared_credit_limit) {
     m_shared_credit += 1;
+  } else if (no_return &&
+             m_wb_progress_credit < m_wb_progress_credit_limit) {
+    m_wb_progress_credit++;
+    m_wb_progress_credit_max =
+        std::max(m_wb_progress_credit_max, m_wb_progress_credit);
+    m_wb_progress_credit_use_count++;
+    bool inserted = m_wb_progress_requests.insert(mf).second;
+    assert(inserted);
   } else {
     assert(0 && "DRAM arbitration error: Borrowing from depleted credit!");
   }
@@ -166,8 +188,13 @@ void memory_partition_unit::arbitration_metadata::borrow_credit(
 }
 
 void memory_partition_unit::arbitration_metadata::return_credit(
-    int inner_sub_partition_id) {
+    int inner_sub_partition_id, mem_fetch *mf) {
   int spid = inner_sub_partition_id;
+  if (m_wb_progress_requests.erase(mf)) {
+    assert(m_wb_progress_credit > 0);
+    m_wb_progress_credit--;
+    return;
+  }
   if (m_private_credit[spid] > 0) {
     m_private_credit[spid] -= 1;
   } else {
@@ -185,9 +212,32 @@ void memory_partition_unit::arbitration_metadata::print(FILE *fp) const {
   fprintf(fp, "(limit = %d)\n", m_private_credit_limit);
   fprintf(fp, "shared_credit = %d (limit = %d)\n", m_shared_credit,
           m_shared_credit_limit);
+  fprintf(fp, "wb_progress_credit = %u (limit = %u)\n",
+          m_wb_progress_credit, m_wb_progress_credit_limit);
+  fprintf(fp, "L2_char_wb_progress_credit_max = %u\n",
+          m_wb_progress_credit_max);
+  fprintf(fp, "L2_char_wb_progress_credit_use_count = %llu\n",
+          m_wb_progress_credit_use_count);
+}
+
+bool memory_partition_unit::arbitration_metadata::no_credit_leak() const {
+  if (m_shared_credit != 0 || m_wb_progress_credit != 0 ||
+      !m_wb_progress_requests.empty())
+    return false;
+  for (unsigned p = 0; p < m_private_credit.size(); ++p) {
+    if (m_private_credit[p] != 0) return false;
+  }
+  return true;
 }
 
 bool memory_partition_unit::busy() const {
+  // A request can leave its subpartition queue while still traversing the
+  // partition's DRAM-latency/DRAM path.  Its borrowed credit is the durable
+  // ownership record for that interval (in particular for no-return L2
+  // writebacks), so termination must keep cycling until it is returned.
+  if (!m_dram_latency_queue.empty() || !m_arbitration_metadata.no_credit_leak())
+    return true;
+
   bool busy = false;
   for (unsigned p = 0; p < m_config->m_n_sub_partition_per_memory_channel;
        p++) {
@@ -213,18 +263,39 @@ void memory_partition_unit::visualizer_print(gzFile visualizer_file) const {
   }
 }
 
-// determine whether a given subpartition can issue to DRAM
-bool memory_partition_unit::can_issue_to_dram(int inner_sub_partition_id) {
+bool memory_partition_unit::requires_dram_to_l2_return(
+    const mem_fetch *mf) const {
+  return mf->get_access_type() != L1_WRBK_ACC &&
+         mf->get_access_type() != L2_WRBK_ACC;
+}
+
+// Determine whether this particular request can issue to DRAM.  Writebacks
+// complete at DRAM and therefore do not consume the destination return FIFO.
+bool memory_partition_unit::can_issue_to_dram(int inner_sub_partition_id,
+                                               const mem_fetch *mf) {
   int spid = inner_sub_partition_id;
-  bool sub_partition_contention = m_sub_partition[spid]->dram_L2_queue_full();
-  bool has_dram_resource = m_arbitration_metadata.has_credits(spid);
+  bool needs_return = requires_dram_to_l2_return(mf);
+  bool returnq_full = m_sub_partition[spid]->dram_L2_queue_full();
+  bool return_path_full = needs_return && returnq_full;
+  bool has_dram_resource =
+      m_arbitration_metadata.has_credits(spid, !needs_return);
+  bool has_general_credit = m_arbitration_metadata.has_credits(spid, false);
+
+  if (returnq_full && needs_return) {
+    m_read_head_while_returnq_full++;
+    if (has_general_credit) m_read_issue_blocked_while_returnq_full++;
+  } else if (returnq_full) {
+    m_wb_head_while_returnq_full++;
+  }
 
   MEMPART_DPRINTF(
-      "sub partition %d sub_partition_contention=%c has_dram_resource=%c\n",
-      spid, (sub_partition_contention) ? 'T' : 'F',
+      "sub partition %d return_path_full=%c has_dram_resource=%c\n", spid,
+      return_path_full ? 'T' : 'F',
       (has_dram_resource) ? 'T' : 'F');
 
-  return (has_dram_resource && !sub_partition_contention);
+  return dram_issue_allowed(needs_return, return_path_full,
+                            has_general_credit,
+                            !needs_return && has_dram_resource);
 }
 
 int memory_partition_unit::global_sub_partition_id_to_local_id(
@@ -256,7 +327,7 @@ void memory_partition_unit::simple_dram_model_cycle() {
           mf_return->set_status(
               IN_PARTITION_DRAM_TO_L2_QUEUE,
               m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
-          m_arbitration_metadata.return_credit(dest_spid);
+          m_arbitration_metadata.return_credit(dest_spid, mf_return);
           MEMPART_DPRINTF(
               "mem_fetch request %p return from dram to sub partition %d\n",
               mf_return, dest_spid);
@@ -280,11 +351,20 @@ void memory_partition_unit::simple_dram_model_cycle() {
        p++) {
     int spid = (p + last_issued_partition + 1) %
                m_config->m_n_sub_partition_per_memory_channel;
-    if (!m_sub_partition[spid]->L2_dram_queue_empty() &&
-        can_issue_to_dram(spid)) {
+    if (!m_sub_partition[spid]->L2_dram_queue_empty()) {
       mem_fetch *mf = m_sub_partition[spid]->L2_dram_queue_top();
-      if (m_dram->full(mf->is_write())) break;
+      if (m_l2_char_dram_issue_count >=
+              m_config->gpgpu_l2_char_dram_issue_hold_after_issues &&
+          m_l2_char_dram_issue_hold_remaining) {
+        --m_l2_char_dram_issue_hold_remaining;
+        continue;
+      }
+      if (!can_issue_to_dram(spid, mf)) continue;
+      if (m_dram->full(mf->is_write())) continue;
 
+      if (!requires_dram_to_l2_return(mf) &&
+          m_sub_partition[spid]->dram_L2_queue_full())
+        m_wb_issued_while_returnq_full++;
       m_sub_partition[spid]->L2_dram_queue_pop();
       MEMPART_DPRINTF(
           "Issue mem_fetch request %p from sub partition %d to dram\n", mf,
@@ -296,7 +376,9 @@ void memory_partition_unit::simple_dram_model_cycle() {
       m_dram_latency_queue.push_back(d);
       mf->set_status(IN_PARTITION_DRAM_LATENCY_QUEUE,
                      m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
-      m_arbitration_metadata.borrow_credit(spid);
+      m_arbitration_metadata.borrow_credit(
+          spid, mf, !requires_dram_to_l2_return(mf));
+      ++m_l2_char_dram_issue_count;
       break;  // the DRAM should only accept one request per cycle
     }
   }
@@ -319,7 +401,7 @@ void memory_partition_unit::dram_cycle() {
         m_sub_partition[dest_spid]->dram_L2_queue_push(mf_return);
         mf_return->set_status(IN_PARTITION_DRAM_TO_L2_QUEUE,
                               m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
-        m_arbitration_metadata.return_credit(dest_spid);
+        m_arbitration_metadata.return_credit(dest_spid, mf_return);
         MEMPART_DPRINTF(
             "mem_fetch request %p return from dram to sub partition %d\n",
             mf_return, dest_spid);
@@ -342,10 +424,20 @@ void memory_partition_unit::dram_cycle() {
        p++) {
     int spid = (p + last_issued_partition + 1) %
                m_config->m_n_sub_partition_per_memory_channel;
-    if (!m_sub_partition[spid]->L2_dram_queue_empty() &&
-        can_issue_to_dram(spid)) {
+    if (!m_sub_partition[spid]->L2_dram_queue_empty()) {
       mem_fetch *mf = m_sub_partition[spid]->L2_dram_queue_top();
-      if (m_dram->full(mf->is_write())) break;
+      if (m_l2_char_dram_issue_count >=
+              m_config->gpgpu_l2_char_dram_issue_hold_after_issues &&
+          m_l2_char_dram_issue_hold_remaining) {
+        --m_l2_char_dram_issue_hold_remaining;
+        continue;
+      }
+      if (!can_issue_to_dram(spid, mf)) continue;
+      if (m_dram->full(mf->is_write())) continue;
+
+      if (!requires_dram_to_l2_return(mf) &&
+          m_sub_partition[spid]->dram_L2_queue_full())
+        m_wb_issued_while_returnq_full++;
 
       m_sub_partition[spid]->L2_dram_queue_pop();
       MEMPART_DPRINTF(
@@ -358,7 +450,9 @@ void memory_partition_unit::dram_cycle() {
       m_dram_latency_queue.push_back(d);
       mf->set_status(IN_PARTITION_DRAM_LATENCY_QUEUE,
                      m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
-      m_arbitration_metadata.borrow_credit(spid);
+      m_arbitration_metadata.borrow_credit(
+          spid, mf, !requires_dram_to_l2_return(mf));
+      ++m_l2_char_dram_issue_count;
       break;  // the DRAM should only accept one request per cycle
     }
   }
@@ -381,7 +475,7 @@ void memory_partition_unit::set_done(mem_fetch *mf) {
   assert(m_sub_partition[spid]->get_id() == global_spid);
   if (mf->get_access_type() == L1_WRBK_ACC ||
       mf->get_access_type() == L2_WRBK_ACC) {
-    m_arbitration_metadata.return_credit(spid);
+    m_arbitration_metadata.return_credit(spid, mf);
     MEMPART_DPRINTF(
         "mem_fetch request %p return from dram to sub partition %d\n", mf,
         spid);
@@ -399,6 +493,24 @@ void memory_partition_unit::set_dram_power_stats(
 
 void memory_partition_unit::print(FILE *fp) const {
   fprintf(fp, "Memory Partition %u: \n", m_id);
+  fprintf(fp, "L2_char_credit_leak_free = %u\n",
+          m_arbitration_metadata.no_credit_leak() ? 1 : 0);
+  fprintf(fp, "L2_char_wb_progress_credit_use_count = %llu\n",
+          m_arbitration_metadata.wb_progress_credit_use_count());
+  fprintf(fp, "L2_char_wb_progress_credit_current = %u\n",
+          m_arbitration_metadata.wb_progress_credit_current());
+  fprintf(fp, "L2_char_wb_progress_credit_max = %u\n",
+          m_arbitration_metadata.wb_progress_credit_max());
+  fprintf(fp, "L2_char_wb_progress_credit_limit = %u\n",
+          m_arbitration_metadata.wb_progress_credit_limit());
+  fprintf(fp, "L2_char_wb_issued_while_returnq_full = %llu\n",
+          m_wb_issued_while_returnq_full);
+  fprintf(fp, "L2_char_wb_head_while_returnq_full = %llu\n",
+          m_wb_head_while_returnq_full);
+  fprintf(fp, "L2_char_read_head_while_returnq_full = %llu\n",
+          m_read_head_while_returnq_full);
+  fprintf(fp, "L2_char_read_issue_blocked_while_returnq_full = %llu\n",
+          m_read_issue_blocked_while_returnq_full);
   for (unsigned p = 0; p < m_config->m_n_sub_partition_per_memory_channel;
        p++) {
     m_sub_partition[p]->print(fp);
@@ -450,6 +562,8 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
   m_L2_dram_queue = new fifo_pipeline<mem_fetch>("L2-to-dram", 0, L2_dram);
   m_dram_L2_queue = new fifo_pipeline<mem_fetch>("dram-to-L2", 0, dram_L2);
   m_L2_icnt_queue = new fifo_pipeline<mem_fetch>("L2-to-icnt", 0, L2_icnt);
+  m_l2_char_returnq_hold_remaining =
+      config->gpgpu_l2_char_returnq_hold_cycles;
   wb_addr = -1;
 }
 
@@ -737,6 +851,22 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
     mf->set_status(IN_PARTITION_ICNT_TO_L2_QUEUE,
                    m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
   }
+
+  if (!m_config->m_L2_config.disabled()) {
+    unsigned missq_demand, missq_wb, missq_other_write;
+    m_L2cache->miss_queue_class_counts(missq_demand, missq_wb,
+                                        missq_other_write);
+    m_l2_char_stats.sample(
+        m_L2cache->mshr_entries_used(), m_L2cache->mshr_targets_used(),
+        m_L2cache->mshr_ready_entries(), m_L2cache->mshr_ready_targets(),
+        m_L2cache->miss_queue_occupancy(), missq_demand, missq_wb,
+        m_L2_dram_queue->get_n_element(), m_dram_L2_queue->get_n_element(),
+        m_L2_icnt_queue->get_n_element(), m_icnt_L2_queue->get_n_element(),
+        m_rop.size(), !m_L2cache->data_port_free(),
+        !m_L2cache->fill_port_free(),
+        !m_L2cache->miss_queue_has_slots(1), m_dram_L2_queue->full(),
+        m_L2_icnt_queue->full(), m_icnt_L2_queue->full());
+  }
 }
 
 bool memory_sub_partition::full() const { return m_icnt_L2_queue->full(); }
@@ -759,8 +889,17 @@ bool memory_sub_partition::dram_L2_queue_full() const {
   return m_dram_L2_queue->full();
 }
 
+bool memory_sub_partition::dram_L2_queue_empty() const {
+  return m_dram_L2_queue->empty();
+}
+
 void memory_sub_partition::dram_L2_queue_push(class mem_fetch *mf) {
   m_dram_L2_queue->push(mf);
+}
+
+void memory_sub_partition::l2_char_hold_returnq(unsigned cycles) {
+  assert(!m_dram_L2_queue->empty());
+  m_l2_char_returnq_hold_remaining = cycles;
 }
 
 void memory_sub_partition::print_cache_stat(unsigned &accesses,
@@ -782,6 +921,20 @@ void memory_sub_partition::print(FILE *fp) const {
     }
   }
   if (!m_config->m_L2_config.disabled()) m_L2cache->display_state(fp);
+  if (!m_config->m_L2_config.disabled()) print_l2_char_stats(fp);
+}
+
+void memory_sub_partition::print_l2_char_stats(FILE *fp) const {
+  m_l2_char_stats.print(fp, m_id);
+  fprintf(fp, "L2_char_resource_leak_free = %u\n",
+          l2_char_no_resource_leak() ? 1 : 0);
+}
+
+bool memory_sub_partition::l2_char_no_resource_leak() const {
+  return m_request_tracker.empty() && m_icnt_L2_queue->empty() &&
+         m_L2_dram_queue->empty() && m_dram_L2_queue->empty() &&
+         m_L2_icnt_queue->empty() && m_rop.empty() &&
+         m_l2_block_state.empty() && m_L2cache->l2_char_no_pending_resources();
 }
 
 void memory_stats_t::visualizer_print(gzFile visualizer_file) {

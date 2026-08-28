@@ -167,6 +167,23 @@ class memory_partition_unit {
 
   int global_sub_partition_id_to_local_id(int global_sub_partition_id) const;
 
+  // Directed-test observations of the production L2-to-DRAM arbiter.
+  bool l2_char_no_credit_leak() const {
+    return m_arbitration_metadata.no_credit_leak();
+  }
+  unsigned long long l2_char_wb_issued_while_returnq_full() const {
+    return m_wb_issued_while_returnq_full;
+  }
+  unsigned long long l2_char_wb_head_while_returnq_full() const {
+    return m_wb_head_while_returnq_full;
+  }
+  unsigned long long l2_char_read_head_while_returnq_full() const {
+    return m_read_head_while_returnq_full;
+  }
+  unsigned long long l2_char_read_issue_blocked_while_returnq_full() const {
+    return m_read_issue_blocked_while_returnq_full;
+  }
+
   unsigned get_mpid() const { return m_id; }
 
   class gpgpu_sim *get_mgpu() const {
@@ -184,17 +201,30 @@ class memory_partition_unit {
    public:
     arbitration_metadata(const memory_config *config);
 
-    // check if a subpartition still has credit
-    bool has_credits(int inner_sub_partition_id) const;
+    // Check general credits and, for no-return traffic, the explicit
+    // writeback forward-progress reservation.
+    bool has_credits(int inner_sub_partition_id, bool no_return) const;
     // borrow a credit for a subpartition
-    void borrow_credit(int inner_sub_partition_id);
+    void borrow_credit(int inner_sub_partition_id, mem_fetch *mf,
+                       bool no_return);
     // return a credit from a subpartition
-    void return_credit(int inner_sub_partition_id);
+    void return_credit(int inner_sub_partition_id, mem_fetch *mf);
 
     // return the last subpartition that borrowed credit
     int last_borrower() const { return m_last_borrower; }
 
     void print(FILE *fp) const;
+    bool no_credit_leak() const;
+    unsigned long long wb_progress_credit_use_count() const {
+      return m_wb_progress_credit_use_count;
+    }
+    unsigned wb_progress_credit_current() const {
+      return m_wb_progress_credit;
+    }
+    unsigned wb_progress_credit_max() const { return m_wb_progress_credit_max; }
+    unsigned wb_progress_credit_limit() const {
+      return m_wb_progress_credit_limit;
+    }
 
    private:
     // id of the last subpartition that borrowed credit
@@ -206,11 +236,23 @@ class memory_partition_unit {
     // credits borrowed by the subpartitions
     std::vector<int> m_private_credit;
     int m_shared_credit;
+    unsigned m_wb_progress_credit_limit;
+    unsigned m_wb_progress_credit;
+    unsigned m_wb_progress_credit_max;
+    unsigned long long m_wb_progress_credit_use_count;
+    std::set<mem_fetch *> m_wb_progress_requests;
   };
   arbitration_metadata m_arbitration_metadata;
+  unsigned long long m_wb_issued_while_returnq_full;
+  unsigned long long m_wb_head_while_returnq_full;
+  unsigned long long m_read_head_while_returnq_full;
+  unsigned long long m_read_issue_blocked_while_returnq_full;
+  unsigned m_l2_char_dram_issue_hold_remaining;
+  unsigned m_l2_char_dram_issue_count;
 
-  // determine wheither a given subpartition can issue to DRAM
-  bool can_issue_to_dram(int inner_sub_partition_id);
+  bool requires_dram_to_l2_return(const mem_fetch *mf) const;
+  // Determine whether this particular request can issue to DRAM.
+  bool can_issue_to_dram(int inner_sub_partition_id, const mem_fetch *mf);
 
   // model DRAM access scheduler latency (fixed latency between L2 and DRAM)
   struct dram_delay_t {
@@ -250,8 +292,11 @@ class memory_sub_partition {
   void L2_dram_queue_pop();
 
   // interface to dram_L2_queue
+  bool dram_L2_queue_empty() const;
   bool dram_L2_queue_full() const;
   void dram_L2_queue_push(class mem_fetch *mf);
+  // Directed-test hook. May only arm after a real response enters ReturnQ.
+  void l2_char_hold_returnq(unsigned cycles);
 
   void visualizer_print(gzFile visualizer_file);
   void print_cache_stat(unsigned &accesses, unsigned &misses) const;
@@ -263,6 +308,8 @@ class memory_sub_partition {
   // Support for getting per-window L2 stats for AerialVision
   void get_L2cache_sub_stats_pw(struct cache_sub_stats_pw &css) const;
   void clear_L2cache_stats_pw();
+  void print_l2_char_stats(FILE *fp) const;
+  bool l2_char_no_resource_leak() const;
 
   void force_l2_tag_update(new_addr_type addr, unsigned time,
                            mem_access_sector_mask_t mask) {
