@@ -19,3 +19,19 @@ Run:
 ```bash
 tests/l2_char/run_synthetic.sh
 ```
+
+The Instrumentation v1 production fixtures use the real
+`memory_partition_unit`/`memory_sub_partition` path and are intentionally
+small enough for closeout use:
+
+```bash
+tests/l2_char/run_set_all_reserved.sh       # C5: all ways reserved -> LINE_ALLOC_FAIL
+tests/l2_char/run_mshr_lifetime.sh          # C6: new miss + merge + held response drain
+tests/l2_char/run_fill_port_contention.sh   # C8: DRAM->L2 fill-port contention
+tests/l2_char/run_rop_input_full.sh         # C9: ready ROP blocked by ICNT->L2
+tests/l2_char/run_memory_partition_returnq.sh # C10/P5A: ReturnQ issue causality
+```
+
+They are verification fixtures only: all directed holds are default-off and
+operate at an existing production boundary.  They neither alter normal
+admission nor authorize workload characterization sweeps.
