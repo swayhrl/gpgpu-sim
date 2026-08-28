@@ -31,6 +31,7 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 #include "gpu-cache.h"
+#include "l2_admission_rules.h"
 #include <assert.h>
 #include "gpu-sim.h"
 #include "hashing.h"
@@ -254,6 +255,8 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
   unsigned invalid_line = (unsigned)-1;
   unsigned valid_line = (unsigned)-1;
   unsigned long long valid_timestamp = (unsigned)-1;
+  unsigned dirty_line = (unsigned)-1;
+  unsigned long long dirty_timestamp = (unsigned)-1;
 
   bool all_reserved = true;
   // check for hit or pending hit
@@ -284,6 +287,7 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
       }
     }
     if (!line->is_reserved_line()) {
+      all_reserved = false;
       // percentage of dirty lines in the cache
       // number of dirty lines / total lines in the cache
       float dirty_line_percentage =
@@ -295,7 +299,6 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
       // reach the limit.
       if (!line->is_modified_line() ||
           dirty_line_percentage >= m_config.m_wr_percent) {
-        all_reserved = false;
         if (line->is_invalid_line()) {
           invalid_line = index;
         } else {
@@ -312,6 +315,17 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
             }
           }
         }
+      } else if ((m_config.m_replacement_policy == LRU &&
+                  line->get_last_access_time() < dirty_timestamp) ||
+                 (m_config.m_replacement_policy == FIFO &&
+                  line->get_alloc_time() < dirty_timestamp)) {
+        // Dirty-ratio selection is a preference, never an availability rule.
+        // If this set has no clean candidate, retain its oldest dirty line as
+        // the conventional replacement fallback.
+        dirty_timestamp = (m_config.m_replacement_policy == LRU)
+                              ? line->get_last_access_time()
+                              : line->get_alloc_time();
+        dirty_line = index;
       }
     }
   }
@@ -325,6 +339,8 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
     idx = invalid_line;
   } else if (valid_line != (unsigned)-1) {
     idx = valid_line;
+  } else if (dirty_line != (unsigned)-1) {
+    idx = dirty_line;
   } else
     abort();  // if an unreserved block exists, it is either invalid or
               // replaceable
@@ -473,18 +489,12 @@ void tag_array::invalidate() {
 }
 
 float tag_array::windowed_miss_rate() const {
-  unsigned n_access = m_access - m_prev_snapshot_access;
-  unsigned n_miss = (m_miss + m_sector_miss) - m_prev_snapshot_miss;
-  // unsigned n_pending_hit = m_pending_hit - m_prev_snapshot_pending_hit;
-
-  float missrate = 0.0f;
-  if (n_access != 0) missrate = (float)(n_miss + m_sector_miss) / n_access;
-  return missrate;
+  return l2_windowed_miss_rate(m_access, m_prev_snapshot_access, m_miss,
+                               m_sector_miss, m_prev_snapshot_miss);
 }
 
 void tag_array::new_window() {
   m_prev_snapshot_access = m_access;
-  m_prev_snapshot_miss = m_miss;
   m_prev_snapshot_miss = m_miss + m_sector_miss;
   m_prev_snapshot_pending_hit = m_pending_hit;
 }
@@ -589,6 +599,44 @@ bool mshr_table::is_read_after_write_pending(new_addr_type block_addr) {
   }
 
   return false;
+}
+
+unsigned mshr_table::num_targets_used() const {
+  unsigned total = 0;
+  for (table::const_iterator it = m_data.begin(); it != m_data.end(); ++it) {
+    total += it->second.m_list.size();
+  }
+  return total;
+}
+
+bool mshr_table::response_ready(new_addr_type block_addr) const {
+  for (std::list<new_addr_type>::const_iterator it =
+           m_current_response.begin();
+       it != m_current_response.end(); ++it) {
+    if (*it == block_addr) return true;
+  }
+  return false;
+}
+
+unsigned mshr_table::num_response_ready_targets() const {
+  unsigned total = 0;
+  for (std::list<new_addr_type>::const_iterator ready =
+           m_current_response.begin();
+       ready != m_current_response.end(); ++ready) {
+    table::const_iterator entry = m_data.find(*ready);
+    assert(entry != m_data.end());
+    total += entry->second.m_list.size();
+  }
+  return total;
+}
+
+unsigned mshr_table::max_targets_on_one_entry() const {
+  unsigned maximum = 0;
+  for (table::const_iterator it = m_data.begin(); it != m_data.end(); ++it) {
+    if (it->second.m_list.size() > maximum)
+      maximum = it->second.m_list.size();
+  }
+  return maximum;
 }
 
 /// Accept a new cache fill response: mark entry ready for processing
@@ -1229,6 +1277,26 @@ void baseline_cache::cycle() {
   m_bandwidth_management.replenish_port_bandwidth();
 }
 
+void baseline_cache::miss_queue_class_counts(unsigned &demand,
+                                             unsigned &writeback,
+                                             unsigned &other_write) const {
+  demand = 0;
+  writeback = 0;
+  other_write = 0;
+  for (std::list<mem_fetch *>::const_iterator it = m_miss_queue.begin();
+       it != m_miss_queue.end(); ++it) {
+    mem_fetch *mf = *it;
+    if (mf->get_access_type() == L1_WRBK_ACC ||
+        mf->get_access_type() == L2_WRBK_ACC) {
+      writeback++;
+    } else if (mf->get_is_write()) {
+      other_write++;
+    } else {
+      demand++;
+    }
+  }
+}
+
 /// Interface for response from lower memory level (model bandwidth restictions
 /// in caller)
 void baseline_cache::fill(mem_fetch *mf, unsigned time) {
@@ -1740,7 +1808,18 @@ enum cache_request_status data_cache::wr_miss_wa_lazy_fetch_on_read(
   // cache line Modified. and no need to send read request to memory or reserve
   // mshr
 
-  if (miss_queue_full(0)) {
+  if (exact_l2_admission()) {
+    // QV100 lazy-fetch writes are locally absorbed.  They require shared
+    // lower-queue space only for a real dirty victim writeback, not merely
+    // because the queue happens to be full.
+    unsigned n_new_entries =
+        (status == MISS && m_tag_array->block_is_modified(cache_index)) ? 1 : 0;
+    if (!miss_queue_has_slots(n_new_entries)) {
+      m_stats.inc_fail_stats(mf->get_access_type(), MISS_QUEUE_FULL,
+                             mf->get_streamID());
+      return RESERVATION_FAIL;
+    }
+  } else if (miss_queue_full(0)) {
     m_stats.inc_fail_stats(mf->get_access_type(), MISS_QUEUE_FULL,
                            mf->get_streamID());
     return RESERVATION_FAIL;  // cannot handle request this cycle
@@ -1846,9 +1925,30 @@ enum cache_request_status data_cache::rd_hit_base(
 enum cache_request_status data_cache::rd_miss_base(
     new_addr_type addr, unsigned cache_index, mem_fetch *mf, unsigned time,
     std::list<cache_event> &events, enum cache_request_status status) {
-  if (miss_queue_full(1)) {
-    // cannot handle request this cycle
-    // (might need to generate two requests)
+  if (exact_l2_admission()) {
+    new_addr_type mshr_addr = m_config.mshr_addr(mf->get_addr());
+    bool mshr_hit = m_mshrs.probe(mshr_addr);
+    bool mshr_avail = !m_mshrs.full(mshr_addr);
+    if (!mshr_avail) {
+      m_stats.inc_fail_stats(
+          mf->get_access_type(),
+          mshr_hit ? MSHR_MERGE_ENRTY_FAIL : MSHR_ENRTY_FAIL,
+          mf->get_streamID());
+      return RESERVATION_FAIL;
+    }
+    unsigned n_new_entries = mshr_hit ? 0 : 1;
+    if (!mshr_hit && status == MISS &&
+        m_tag_array->block_is_modified(cache_index)) {
+      // The allocation will emit demand-read plus victim writeback.
+      n_new_entries++;
+    }
+    if (!miss_queue_has_slots(n_new_entries)) {
+      m_stats.inc_fail_stats(mf->get_access_type(), MISS_QUEUE_FULL,
+                             mf->get_streamID());
+      return RESERVATION_FAIL;
+    }
+  } else if (miss_queue_full(1)) {
+    // Historical shared-cache behavior for non-characterization policies.
     m_stats.inc_fail_stats(mf->get_access_type(), MISS_QUEUE_FULL,
                            mf->get_streamID());
     return RESERVATION_FAIL;
@@ -2026,6 +2126,67 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events) {
   return data_cache::access(addr, mf, time, events);
+}
+
+void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
+                              l2_access_plan &plan) const {
+  plan = l2_access_plan();
+  if (!exact_l2_admission()) return;
+
+  plan.exact = true;
+  plan.is_write = mf->get_is_write();
+  plan.is_read = !plan.is_write;
+  plan.l1_writeback_absorbed = mf->get_access_type() == L1_WRBK_ACC;
+
+  new_addr_type block_addr = m_config.block_addr(addr);
+  unsigned cache_index = (unsigned)-1;
+  plan.probe_status =
+      m_tag_array->probe(block_addr, cache_index, mf, mf->is_write(), true);
+  plan.cache_index = cache_index;
+  if (plan.probe_status == RESERVATION_FAIL) return;
+
+  if (plan.probe_status == MISS) {
+    plan.victim_valid = m_tag_array->block_is_valid(cache_index);
+    plan.victim_dirty = m_tag_array->block_is_modified(cache_index);
+    if (plan.victim_dirty) {
+      plan.victim_modified_bytes =
+          m_tag_array->block_modified_size(cache_index);
+      plan.will_send_writeback = true;
+      plan.new_missq_entries++;
+      plan.needs_data_port = true;
+    }
+  }
+
+  if (plan.is_read) {
+    if (plan.probe_status == HIT) {
+      plan.needs_data_port = true;
+      plan.needs_immediate_response_slot = !plan.l1_writeback_absorbed;
+      return;
+    }
+
+    // Only non-hit reads consult or allocate an MSHR.  In particular, a
+    // normal hit must not be burdened with a fictitious lower read or MissQ
+    // requirement; doing so makes preview disagree with the real commit.
+    new_addr_type mshr_addr = m_config.mshr_addr(mf->get_addr());
+    plan.mshr_hit = m_mshrs.probe(mshr_addr);
+    plan.mshr_entry_available =
+        !plan.mshr_hit && !m_mshrs.full(mshr_addr);
+    plan.mshr_merge_available =
+        plan.mshr_hit && !m_mshrs.full(mshr_addr);
+    plan.needs_new_mshr = !plan.mshr_hit;
+    plan.needs_mshr_merge = plan.mshr_hit;
+    if (!plan.mshr_hit) {
+      plan.will_send_lower_read = true;
+      plan.new_missq_entries++;
+    }
+    return;
+  }
+
+  // The QV100 L2 uses write-back plus lazy-fetch-on-read.  A write miss is
+  // locally absorbed; it only creates lower traffic when replacing a dirty
+  // victim, which was accounted for above.
+  plan.needs_immediate_response_slot = !plan.l1_writeback_absorbed;
+  if (plan.probe_status == HIT) plan.needs_data_port = true;
 }
 
 /// Access function for tex_cache

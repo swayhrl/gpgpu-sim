@@ -976,6 +976,15 @@ class tag_array {
 
   unsigned size() const { return m_config.get_num_lines(); }
   cache_block_t *get_block(unsigned idx) { return m_lines[idx]; }
+  // Read-only inspection helpers used by L2 admission planning.  Keep the
+  // cache-block implementation private so planning cannot mutate tag state.
+  bool block_is_modified(unsigned idx) const {
+    return m_lines[idx]->is_modified_line();
+  }
+  bool block_is_valid(unsigned idx) const { return m_lines[idx]->is_valid_line(); }
+  unsigned block_modified_size(unsigned idx) const {
+    return m_lines[idx]->get_modified_size();
+  }
 
   void flush();       // flush all written entries
   void invalidate();  // invalidate all entries
@@ -1057,6 +1066,14 @@ class mshr_table {
   void display(FILE *fp) const;
   // Returns true if there is a pending read after write
   bool is_read_after_write_pending(new_addr_type block_addr);
+  unsigned num_entries_used() const { return m_data.size(); }
+  unsigned num_targets_used() const;
+  bool response_ready(new_addr_type block_addr) const;
+  unsigned num_response_ready_entries() const {
+    return m_current_response.size();
+  }
+  unsigned num_response_ready_targets() const;
+  unsigned max_targets_on_one_entry() const;
 
   void check_mshr_parameters(unsigned num_entries, unsigned max_merged) {
     assert(m_num_entries == num_entries &&
@@ -1280,6 +1297,8 @@ class cache_t {
 bool was_write_sent(const std::list<cache_event> &events);
 bool was_read_sent(const std::list<cache_event> &events);
 bool was_writeallocate_sent(const std::list<cache_event> &events);
+bool was_writeback_sent(const std::list<cache_event> &events,
+                        cache_event &wb_event);
 
 /// Baseline cache
 /// Implements common functions for read_only_cache and data_cache
@@ -1363,6 +1382,28 @@ class baseline_cache : public cache_t {
   bool fill_port_free() const {
     return m_bandwidth_management.fill_port_free();
   }
+  unsigned miss_queue_occupancy() const { return m_miss_queue.size(); }
+  bool miss_queue_has_slots(unsigned n_new_entries) const {
+    return m_miss_queue.size() + n_new_entries <= m_config.m_miss_queue_size;
+  }
+  unsigned mshr_entries_used() const { return m_mshrs.num_entries_used(); }
+  unsigned mshr_targets_used() const { return m_mshrs.num_targets_used(); }
+  unsigned mshr_ready_entries() const {
+    return m_mshrs.num_response_ready_entries();
+  }
+  unsigned mshr_ready_targets() const {
+    return m_mshrs.num_response_ready_targets();
+  }
+  bool l2_char_no_pending_resources() const {
+    return m_mshrs.num_entries_used() == 0 &&
+           m_mshrs.num_response_ready_entries() == 0 &&
+           m_miss_queue.empty();
+  }
+  unsigned mshr_max_targets_on_one_entry() const {
+    return m_mshrs.max_targets_on_one_entry();
+  }
+  void miss_queue_class_counts(unsigned &demand, unsigned &writeback,
+                               unsigned &other_write) const;
   void inc_aggregated_stats(cache_request_status status,
                             cache_request_status cache_status, mem_fetch *mf,
                             enum cache_gpu_level level);
@@ -1440,6 +1481,11 @@ class baseline_cache : public cache_t {
   /// max # of misses to be handled on this cycle
   bool miss_queue_full(unsigned num_miss) {
     return ((m_miss_queue.size() + num_miss) >= m_config.m_miss_queue_size);
+  }
+  bool exact_l2_admission() const {
+    return m_level == L2_GPU_CACHE &&
+           m_config.get_write_policy() == WRITE_BACK &&
+           m_config.get_write_allocate_policy() == LAZY_FETCH_ON_READ;
   }
   /// Read miss handler without writeback
   void send_read_request(new_addr_type addr, new_addr_type block_addr,
@@ -1730,6 +1776,56 @@ class l1_cache : public data_cache {
                    new_tag_array, L1_WR_ALLOC_R, L1_WRBK_ACC, gpu) {}
 };
 
+// Non-mutating description of the conventional QV100 L2 action selected by a
+// tag/MSHR probe.  It deliberately contains resource requirements, not a copy
+// of the cache state transition.
+struct l2_access_plan {
+  l2_access_plan()
+      : exact(false),
+        probe_status(RESERVATION_FAIL),
+        cache_index((unsigned)-1),
+        is_read(false),
+        is_write(false),
+        mshr_hit(false),
+        mshr_entry_available(false),
+        mshr_merge_available(false),
+        victim_valid(false),
+        victim_dirty(false),
+        victim_modified_bytes(0),
+        new_missq_entries(0),
+        needs_data_port(false),
+        needs_fill_port(false),
+        needs_immediate_response_slot(false),
+        needs_new_mshr(false),
+        needs_mshr_merge(false),
+        will_send_lower_read(false),
+        will_send_lower_write(false),
+        will_send_writeback(false),
+        l1_writeback_absorbed(false) {}
+
+  bool exact;
+  cache_request_status probe_status;
+  unsigned cache_index;
+  bool is_read;
+  bool is_write;
+  bool mshr_hit;
+  bool mshr_entry_available;
+  bool mshr_merge_available;
+  bool victim_valid;
+  bool victim_dirty;
+  unsigned victim_modified_bytes;
+  unsigned new_missq_entries;
+  bool needs_data_port;
+  bool needs_fill_port;
+  bool needs_immediate_response_slot;
+  bool needs_new_mshr;
+  bool needs_mshr_merge;
+  bool will_send_lower_read;
+  bool will_send_lower_write;
+  bool will_send_writeback;
+  bool l1_writeback_absorbed;
+};
+
 /// Models second level shared cache with global write-back
 /// and write-allocate policies
 class l2_cache : public data_cache {
@@ -1746,6 +1842,11 @@ class l2_cache : public data_cache {
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events);
+
+  // Inspect only: no LRU update, tag/sector allocation, MSHR change, queue
+  // insertion, cache event, or normal cache statistic is permitted here.
+  void preview_access(new_addr_type addr, mem_fetch *mf,
+                      l2_access_plan &plan) const;
 };
 
 /*****************************************************************************/
