@@ -17,3 +17,10 @@ state transition (access, fill, atomic completion, flush, or invalidate).
 Per-cycle sampling reads only the maintained totals and per-set reservation
 counts; it does not scan all sets or ways.  This preserves the sampling point
 while keeping host overhead bounded.
+
+`SLICE` additionally reports `max_reserved_ways_any_set`, the average and
+maximum number of all-reserved sets, and
+`cycles_any_set_all_reserved`.  These fields are observations of the same
+production way states.  In particular, a `RESERVATION_FAIL` retry is counted
+in the `block_set` denominator because it is the production all-reserved
+form of a line-allocation attempt.
