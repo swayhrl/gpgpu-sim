@@ -89,7 +89,10 @@ l2_char_collector::l2_char_collector(
   m_missq_wb.init(missq_capacity); m_missq_other.init(missq_capacity);
   m_l2dramq.init(l2dramq_capacity); m_draml2q.init(draml2q_capacity);
   m_l2icntq.init(l2icntq_capacity); m_icntl2q.init(icntl2q_capacity);
-  m_rop.init(icntl2q_capacity); m_set_reserved_distribution.init(ways);
+  // ROP delay is modeled as an unbounded production queue.  It is causal
+  // context, not a finite-capacity resource, so report occupancy but never a
+  // fabricated utilization/full ratio derived from the ICNT input depth.
+  m_rop.init(0); m_set_reserved_distribution.init(ways);
   m_window_reserved.init(sets * ways); m_window_mshr_entries.init(mshr_entries);
   m_window_mshr_targets.init(mshr_entries * merge_limit); m_window_missq.init(missq_capacity);
   m_window_missq_wb.init(missq_capacity); m_window_l2dramq.init(l2dramq_capacity);

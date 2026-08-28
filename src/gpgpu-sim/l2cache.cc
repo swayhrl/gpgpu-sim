@@ -978,8 +978,12 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
           if (plan.new_missq_entries) eligible |= 1u << L2_BLOCK_MISSQ;
           if (plan.needs_data_port) eligible |= 1u << L2_BLOCK_DATA_PORT;
           if (plan.needs_immediate_response_slot) eligible |= 1u << L2_BLOCK_RESPQ;
-          const unsigned blocked = admit ? 0 :
-              static_cast<unsigned>(l2_admission_blockers(admission));
+          // l2_admission_inputs carries availability values for every
+          // resource.  A resource contributes to its characterization
+          // denominator only when this request actually needs it.
+          const unsigned blocked = (admit ? 0 :
+              static_cast<unsigned>(l2_admission_blockers(admission))) &
+              eligible;
           m_l2_char_collector->record_frontend(
               mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, eligible,
               blocked);
