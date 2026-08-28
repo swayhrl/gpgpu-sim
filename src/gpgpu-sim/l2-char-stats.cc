@@ -7,15 +7,20 @@
 
 l2_char_occ_stats::l2_char_occ_stats() { init(0); }
 
-void l2_char_occ_stats::init(unsigned c) {
+void l2_char_occ_stats::init(unsigned c, bool sparse) {
   capacity = c;
   unbounded = c == 0;
+  sparse_histogram = sparse;
   samples = sum = maximum = nonzero_cycles = full_cycles = 0;
-  hist.assign(unbounded ? 1 : c + 1, 0);
+  hist.clear();
+  sparse_hist.clear();
+  if (!sparse_histogram) hist.assign(unbounded ? 1 : c + 1, 0);
 }
 
 void l2_char_occ_stats::sample(unsigned value) {
-  if (unbounded) {
+  if (sparse_histogram) {
+    ++sparse_hist[value];
+  } else if (unbounded) {
     if (value >= hist.size()) hist.resize(value + 1, 0);
   } else {
     assert(value <= capacity);
@@ -25,7 +30,7 @@ void l2_char_occ_stats::sample(unsigned value) {
   maximum = std::max<unsigned long long>(maximum, value);
   if (value) ++nonzero_cycles;
   if (!unbounded && capacity && value == capacity) ++full_cycles;
-  ++hist[value];
+  if (!sparse_histogram) ++hist[value];
 }
 
 unsigned l2_char_occ_stats::percentile(unsigned numerator,
@@ -34,6 +39,14 @@ unsigned l2_char_occ_stats::percentile(unsigned numerator,
   const unsigned long long rank =
       (samples * numerator + denominator - 1) / denominator;
   unsigned long long seen = 0;
+  if (sparse_histogram) {
+    for (std::map<unsigned, unsigned long long>::const_iterator it =
+             sparse_hist.begin(); it != sparse_hist.end(); ++it) {
+      seen += it->second;
+      if (seen >= rank) return it->first;
+    }
+    return sparse_hist.empty() ? 0 : sparse_hist.rbegin()->first;
+  }
   for (unsigned i = 0; i < hist.size(); ++i) {
     seen += hist[i];
     if (seen >= rank) return i;
@@ -93,7 +106,7 @@ l2_char_collector::l2_char_collector(
   // ROP delay is modeled as an unbounded production queue.  It is causal
   // context, not a finite-capacity resource, so report occupancy but never a
   // fabricated utilization/full ratio derived from the ICNT input depth.
-  m_rop.init(0); m_set_reserved_distribution.init(ways);
+  m_rop.init(0, true); m_set_reserved_distribution.init(ways);
   m_all_reserved_sets.init(sets);
   m_window_reserved.init(sets * ways); m_window_mshr_entries.init(mshr_entries);
   m_window_mshr_targets.init(mshr_entries * merge_limit); m_window_missq.init(missq_capacity);
@@ -257,7 +270,16 @@ std::string l2_char_collector::hist_record(const char *metric,
   std::ostringstream s;
   s << "L2CHARV1|HIST|slice=" << m_slice_id << "|metric=" << metric
     << "|capacity=" << o.capacity << "|unbounded=" << (o.unbounded ? 1 : 0)
+    << "|encoding=" << (o.sparse_histogram ? "sparse" : "dense")
     << "|samples=" << o.samples << "|bins=";
+  if (o.sparse_histogram) {
+    for (std::map<unsigned, unsigned long long>::const_iterator it =
+             o.sparse_hist.begin(); it != o.sparse_hist.end(); ++it) {
+      if (it != o.sparse_hist.begin()) s << ',';
+      s << it->first << ':' << it->second;
+    }
+    return s.str();
+  }
   for (unsigned i = 0; i < o.hist.size(); ++i) {
     if (i) s << ',';
     s << o.hist[i];
@@ -298,7 +320,10 @@ void l2_char_collector::close_window(unsigned long long end_cycle) {
   m_window_draml2q.init(m_draml2q.capacity); m_window_start = end_cycle + 1;
 }
 
-bool l2_char_collector::invariants_hold(std::string *why) const {
+bool l2_char_collector::invariants_hold(
+    std::string *why, unsigned long long native_data_busy,
+    unsigned long long native_fill_busy,
+    unsigned long long native_port_samples) const {
   if (m_l2dram_class_error) { if (why) *why = "l2dram_class_accounting"; return false; }
   for (unsigned i = 0; i < kFrontendReasons; ++i)
     if (m_frontend[i].blocked_cycles > m_frontend[i].eligible_cycles) { if (why) *why = "frontend_block_denominator"; return false; }
@@ -307,14 +332,30 @@ bool l2_char_collector::invariants_hold(std::string *why) const {
       m_lower_drain.blocked_cycles > m_lower_drain.eligible_cycles ||
       m_dram_return.blocked_cycles > m_dram_return.eligible_cycles) { if (why) *why = "causal_block_denominator"; return false; }
   if (!m_lifetimes.empty()) { if (why) *why = "mshr_lifetime_tracker"; return false; }
+  if (m_data_busy != native_data_busy) {
+    if (why) *why = "data_port_busy_snapshot";
+    return false;
+  }
+  if (m_fill_busy != native_fill_busy) {
+    if (why) *why = "fill_port_busy_snapshot";
+    return false;
+  }
+  if (m_cycles != native_port_samples) {
+    if (why) *why = "port_sample_count";
+    return false;
+  }
   if (why) *why = "ok";
   return true;
 }
 
-void l2_char_collector::print(FILE *fp) const {
+void l2_char_collector::print(FILE *fp, unsigned long long native_data_busy,
+                              unsigned long long native_fill_busy,
+                              unsigned long long native_port_samples) const {
   l2_char_collector *self = const_cast<l2_char_collector *>(this);
   if (self->m_window_samples) self->close_window(self->m_window_start + self->m_window_samples - 1);
-  std::string why; const bool ok = invariants_hold(&why);
+  std::string why;
+  const bool ok = invariants_hold(&why, native_data_busy, native_fill_busy,
+                                  native_port_samples);
   const l2_char_occ_stats &set_hist = m_set_reserved_distribution;
   const unsigned half = (m_ways + 1) / 2;
   unsigned long long set_zero = set_hist.hist.empty() ? 0 : set_hist.hist[0];
@@ -347,9 +388,11 @@ void l2_char_collector::print(FILE *fp) const {
         << block_fields("block_dataport", m_frontend[4]) << block_fields("block_respq", m_frontend[5])
         << block_fields("block_mshr_rw_pending", m_frontend[6]);
   fprintf(fp, "%s\n", slice.str().c_str());
-  fprintf(fp, "L2CHARV1|SLICE_DETAIL|slice=%u|data_busy_ratio=%.6f|fill_busy_ratio=%.6f|data_accept_hit=%llu|data_accept_dirty=%llu|data_accept_other=%llu|wb_requests=%llu|wb_bytes=%llu|l2dram_requests=%llu|l2dram_bytes=%llu|l2dram_wb_requests=%llu|l2dram_wb_bytes=%llu%s%s%s%s%s|dram_issue_eligible=%llu|dram_issue_returnq=%llu|dram_issue_credit=%llu|dram_issue_scheduler=%llu|dram_read_returnq=%llu|dram_read_credit=%llu|dram_read_scheduler=%llu|dram_wb_credit=%llu|dram_wb_scheduler=%llu%s%s%s\n",
+  fprintf(fp, "L2CHARV1|SLICE_DETAIL|slice=%u|data_busy_ratio=%.6f|fill_busy_ratio=%.6f|char_data_busy_cycles=%llu|native_data_busy_cycles=%llu|char_fill_busy_cycles=%llu|native_fill_busy_cycles=%llu|char_port_samples=%llu|native_port_samples=%llu|data_accept_hit=%llu|data_accept_dirty=%llu|data_accept_other=%llu|wb_requests=%llu|wb_bytes=%llu|l2dram_requests=%llu|l2dram_bytes=%llu|l2dram_wb_requests=%llu|l2dram_wb_bytes=%llu%s%s%s%s%s|dram_issue_eligible=%llu|dram_issue_returnq=%llu|dram_issue_credit=%llu|dram_issue_scheduler=%llu|dram_read_returnq=%llu|dram_read_credit=%llu|dram_read_scheduler=%llu|dram_wb_credit=%llu|dram_wb_scheduler=%llu%s%s%s\n",
           m_slice_id, m_cycles ? static_cast<double>(m_data_busy) / m_cycles : 0.0,
-          m_cycles ? static_cast<double>(m_fill_busy) / m_cycles : 0.0, m_data_accept_hit, m_data_accept_dirty,
+          m_cycles ? static_cast<double>(m_fill_busy) / m_cycles : 0.0,
+          m_data_busy, native_data_busy, m_fill_busy, native_fill_busy,
+          m_cycles, native_port_samples, m_data_accept_hit, m_data_accept_dirty,
           m_data_accept_other, m_wb_requests, m_wb_bytes,
           m_l2dram_pushes[0] + m_l2dram_pushes[1] + m_l2dram_pushes[2] + m_l2dram_pushes[3],
           m_l2dram_push_bytes[0] + m_l2dram_push_bytes[1] + m_l2dram_push_bytes[2] + m_l2dram_push_bytes[3],
@@ -362,10 +405,19 @@ void l2_char_collector::print(FILE *fp) const {
           occ_fields("mshr_lifetime_total", m_lifetime_total).c_str());
   fprintf(fp, "%s\n", hist_record("reserved", m_reserved).c_str());
   fprintf(fp, "%s\n", hist_record("mshr", m_mshr_entries).c_str());
+  fprintf(fp, "%s\n", hist_record("mshr_target", m_mshr_targets).c_str());
   fprintf(fp, "%s\n", hist_record("merge_depth", m_merge_depth).c_str());
   fprintf(fp, "%s\n", hist_record("missq", m_missq).c_str());
   fprintf(fp, "%s\n", hist_record("missq_wb", m_missq_wb).c_str());
+  fprintf(fp, "%s\n", hist_record("icntl2q", m_icntl2q).c_str());
+  fprintf(fp, "%s\n", hist_record("l2dramq", m_l2dramq).c_str());
+  fprintf(fp, "%s\n", hist_record("draml2q", m_draml2q).c_str());
+  fprintf(fp, "%s\n", hist_record("l2icntq", m_l2icntq).c_str());
+  fprintf(fp, "%s\n", hist_record("rop", m_rop).c_str());
   for (std::vector<std::string>::const_iterator it = m_windows.begin(); it != m_windows.end(); ++it) fprintf(fp, "%s\n", it->c_str());
-  fprintf(fp, "L2CHARV1|INVARIANT|slice=%u|status=%s|reason=%s|l2dram_class_sum=%u\n", m_slice_id, ok ? "PASS" : "FAIL", why.c_str(),
-          m_l2dram_class[0] + m_l2dram_class[1] + m_l2dram_class[2] + m_l2dram_class[3]);
+  fprintf(fp, "L2CHARV1|INVARIANT|slice=%u|status=%s|reason=%s|l2dram_class_sum=%u|char_data_busy_cycles=%llu|native_data_busy_cycles=%llu|char_fill_busy_cycles=%llu|native_fill_busy_cycles=%llu|char_port_samples=%llu|native_port_samples=%llu\n",
+          m_slice_id, ok ? "PASS" : "FAIL", why.c_str(),
+          m_l2dram_class[0] + m_l2dram_class[1] + m_l2dram_class[2] + m_l2dram_class[3],
+          m_data_busy, native_data_busy, m_fill_busy, native_fill_busy,
+          m_cycles, native_port_samples);
 }

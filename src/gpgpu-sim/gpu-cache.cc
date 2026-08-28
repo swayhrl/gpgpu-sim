@@ -1358,6 +1358,11 @@ void baseline_cache::cycle() {
   }
   bool data_port_busy = !m_bandwidth_management.data_port_free();
   bool fill_port_busy = !m_bandwidth_management.fill_port_free();
+  // Keep the characterization observation aligned with the native statistics.
+  // This is intentionally before replenish_port_bandwidth(); it must not affect
+  // availability, admission, or fill semantics later in this cache cycle.
+  m_l2_char_data_port_busy_snapshot = data_port_busy;
+  m_l2_char_fill_port_busy_snapshot = fill_port_busy;
   m_stats.sample_cache_port_utility(data_port_busy, fill_port_busy);
   m_bandwidth_management.replenish_port_bandwidth();
 }

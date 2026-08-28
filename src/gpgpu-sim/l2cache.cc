@@ -855,8 +855,11 @@ void memory_sub_partition::l2_char_sample(unsigned long long cycle) {
   s.l2icntq = m_L2_icnt_queue->get_n_element();
   s.icntl2q = m_icnt_L2_queue->get_n_element();
   s.rop = m_rop.size();
-  s.data_port_busy = !m_L2cache->data_port_free();
-  s.fill_port_busy = !m_L2cache->fill_port_free();
+  // The overall sampling point remains here.  Port utilization itself is a
+  // pre-replenish cache-cycle observation, latched by baseline_cache::cycle()
+  // alongside the native cache_stats sample.
+  s.data_port_busy = m_L2cache->l2_char_data_port_busy_snapshot();
+  s.fill_port_busy = m_L2cache->l2_char_fill_port_busy_snapshot();
   m_l2_char_collector->observe_queue_classes(
       s.missq, s.missq_demand, s.missq_wb, s.missq_other_write, s.l2dramq);
   m_l2_char_collector->sample_cycle(cycle, s);
@@ -1285,7 +1288,11 @@ void memory_sub_partition::print(FILE *fp) const {
 
 void memory_sub_partition::print_l2_char_stats(FILE *fp) const {
   m_l2_char_stats.print(fp, m_id);
-  if (m_l2_char_collector) m_l2_char_collector->print(fp);
+  if (m_l2_char_collector)
+    m_l2_char_collector->print(
+        fp, m_L2cache->l2_char_native_data_busy_cycles(),
+        m_L2cache->l2_char_native_fill_busy_cycles(),
+        m_L2cache->l2_char_native_port_samples());
   fprintf(fp, "L2_char_resource_leak_free = %u\n",
           l2_char_no_resource_leak() ? 1 : 0);
 }

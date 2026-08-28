@@ -10,7 +10,7 @@ class mem_fetch;
 
 struct l2_char_occ_stats {
   l2_char_occ_stats();
-  void init(unsigned capacity);
+  void init(unsigned capacity, bool sparse_histogram = false);
   void sample(unsigned value);
   unsigned percentile(unsigned numerator, unsigned denominator) const;
   double average() const;
@@ -19,12 +19,14 @@ struct l2_char_occ_stats {
 
   unsigned capacity;
   bool unbounded;
+  bool sparse_histogram;
   unsigned long long samples;
   unsigned long long sum;
   unsigned long long maximum;
   unsigned long long nonzero_cycles;
   unsigned long long full_cycles;
   std::vector<unsigned long long> hist;
+  std::map<unsigned, unsigned long long> sparse_hist;
 };
 
 struct l2_char_block_stats {
@@ -94,8 +96,12 @@ class l2_char_collector {
   void observe_queue_classes(unsigned missq_total, unsigned missq_demand,
                              unsigned missq_wb, unsigned missq_other,
                              unsigned l2dram_total);
-  void print(FILE *fp) const;
-  bool invariants_hold(std::string *why) const;
+  void print(FILE *fp, unsigned long long native_data_busy,
+             unsigned long long native_fill_busy,
+             unsigned long long native_port_samples) const;
+  bool invariants_hold(std::string *why, unsigned long long native_data_busy,
+                       unsigned long long native_fill_busy,
+                       unsigned long long native_port_samples) const;
 
  private:
   enum { kFrontendReasons = 7, kQueueClasses = 4 };

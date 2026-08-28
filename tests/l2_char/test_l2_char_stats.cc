@@ -13,5 +13,18 @@ int main() {
   assert(stats.percentile(50, 100) == 2);
   assert(stats.percentile(95, 100) == 4);
   assert(stats.maximum == 4);
+
+  // ROP uses a compact sparse histogram; percentile semantics must remain
+  // identical without allocating every value below a transient high watermark.
+  l2_char_occ_stats sparse;
+  sparse.init(0, true);
+  sparse.sample(0);
+  sparse.sample(2);
+  sparse.sample(2);
+  sparse.sample(1000000);
+  assert(sparse.samples == 4);
+  assert(sparse.percentile(50, 100) == 2);
+  assert(sparse.percentile(95, 100) == 1000000);
+  assert(sparse.maximum == 1000000);
   return 0;
 }

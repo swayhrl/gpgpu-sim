@@ -22,3 +22,16 @@ mapfile -d '' intersim_objs < <(find "$build/intersim2" -name '*.o' -print0)
 grep -q '^L2CHARV1|INVARIANT|slice=0|status=PASS' "$out.log"
 grep -Eq 'fill_eligible=[1-9][0-9]*' "$out.log"
 grep -Eq 'fill_blocked=[1-9][0-9]*' "$out.log"
+python3 - "$out.log" <<'PY'
+import re
+import sys
+
+rows = re.findall(r'^L2CHARV1\|SLICE_DETAIL\|.*$', open(sys.argv[1]).read(), re.M)
+assert rows, "missing L2CHARV1 SLICE_DETAIL"
+fields = dict(item.split("=", 1) for item in rows[-1].split("|")[2:])
+for char, native in (("char_data_busy_cycles", "native_data_busy_cycles"),
+                     ("char_fill_busy_cycles", "native_fill_busy_cycles"),
+                     ("char_port_samples", "native_port_samples")):
+    assert fields[char] == fields[native], "%s != %s" % (char, native)
+print("C8 native/L2CHAR port snapshot crosscheck PASS")
+PY

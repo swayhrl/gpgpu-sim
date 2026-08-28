@@ -1278,6 +1278,15 @@ class cache_stats {
   void get_sub_stats_pw(struct cache_sub_stats_pw &css) const;
 
   void sample_cache_port_utility(bool data_port_busy, bool fill_port_busy);
+  unsigned long long cache_port_available_cycles() const {
+    return m_cache_port_available_cycles;
+  }
+  unsigned long long cache_data_port_busy_cycles() const {
+    return m_cache_data_port_busy_cycles;
+  }
+  unsigned long long cache_fill_port_busy_cycles() const {
+    return m_cache_fill_port_busy_cycles;
+  }
 
  private:
   bool check_valid(int type, int status) const;
@@ -1397,6 +1406,23 @@ class baseline_cache : public cache_t {
   bool fill_port_free() const {
     return m_bandwidth_management.fill_port_free();
   }
+  // Latched at the native pre-replenish utility sampling point in cycle().
+  // These expose observation only; admission continues to query *_port_free().
+  bool l2_char_data_port_busy_snapshot() const {
+    return m_l2_char_data_port_busy_snapshot;
+  }
+  bool l2_char_fill_port_busy_snapshot() const {
+    return m_l2_char_fill_port_busy_snapshot;
+  }
+  unsigned long long l2_char_native_port_samples() const {
+    return m_stats.cache_port_available_cycles();
+  }
+  unsigned long long l2_char_native_data_busy_cycles() const {
+    return m_stats.cache_data_port_busy_cycles();
+  }
+  unsigned long long l2_char_native_fill_busy_cycles() const {
+    return m_stats.cache_fill_port_busy_cycles();
+  }
   unsigned miss_queue_occupancy() const { return m_miss_queue.size(); }
   bool miss_queue_empty() const { return m_miss_queue.empty(); }
   unsigned miss_queue_capacity() const { return m_config.m_miss_queue_size; }
@@ -1477,6 +1503,8 @@ class baseline_cache : public cache_t {
   mem_fetch_interface *m_memport;
   cache_gpu_level m_level;
   gpgpu_sim *m_gpu;
+  bool m_l2_char_data_port_busy_snapshot = false;
+  bool m_l2_char_fill_port_busy_snapshot = false;
 
   struct extra_mf_fields {
     extra_mf_fields() { m_valid = false; }
