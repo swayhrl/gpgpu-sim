@@ -2014,7 +2014,8 @@ class ep_l2_payload_store {
   };
   ep_l2_payload_store(unsigned mode = 0)
       : m_mode(mode), m_cycle((unsigned long long)-1), m_legacy_reads(0),
-        m_legacy_writes(0) { m_resident.resize(1024); m_bypass.resize(128); }
+        m_legacy_writes(0), m_bank_requests(0), m_bank_grants(0),
+        m_bank_conflicts(0) { m_resident.resize(1024); m_bypass.resize(128); }
   bool enabled() const { return m_mode != 0; }
   bool banked() const { return m_mode == 2; }
   unsigned resident_used() const { return used(m_resident); }
@@ -2030,6 +2031,9 @@ class ep_l2_payload_store {
     assert(id < 128); assign(m_bypass[id], 1024 + id, owner, mf);
   }
   void release_bypass(unsigned id) { assert(id < 128); m_bypass[id].valid = false; }
+  unsigned long long bank_requests() const { return m_bank_requests; }
+  unsigned long long bank_grants() const { return m_bank_grants; }
+  unsigned long long bank_conflicts() const { return m_bank_conflicts; }
   bool request(role r, unsigned id, bool write, unsigned long long cycle) {
     if (!enabled()) return true;
     if (m_cycle != cycle) { m_cycle = cycle; m_legacy_reads = m_legacy_writes = 0; m_bank_granted.reset(); }
@@ -2041,8 +2045,9 @@ class ep_l2_payload_store {
     const unsigned global_id = r == RESIDENT ? id : 1024 + id;
     assert(global_id < 1152);
     const unsigned bank = global_id % 4;
-    if (m_bank_granted.test(bank)) return false;
-    m_bank_granted.set(bank); return true;
+    ++m_bank_requests;
+    if (m_bank_granted.test(bank)) { ++m_bank_conflicts; return false; }
+    m_bank_granted.set(bank); ++m_bank_grants; return true;
   }
  private:
   static unsigned used(const std::vector<slot> &slots) {
@@ -2053,6 +2058,7 @@ class ep_l2_payload_store {
     if (mf) mf->set_ep_l2_payload_identity(payload_id, s.generation);
   }
   unsigned m_mode; unsigned long long m_cycle; unsigned m_legacy_reads, m_legacy_writes;
+  unsigned long long m_bank_requests, m_bank_grants, m_bank_conflicts;
   std::bitset<4> m_bank_granted; std::vector<slot> m_resident, m_bypass;
 };
 
