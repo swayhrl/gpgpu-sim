@@ -1852,6 +1852,10 @@ void ldst_unit::get_cache_stats(cache_stats &cs) {
   if (m_L1T) cs += m_L1T->get_stats();
 }
 
+void ldst_unit::get_L1D_cache_stats(cache_stats &cs) const {
+  if (m_L1D) cs += m_L1D->get_stats();
+}
+
 void ldst_unit::get_L1D_sub_stats(struct cache_sub_stats &css) const {
   if (m_L1D) m_L1D->get_sub_stats(css);
 }
@@ -3145,6 +3149,25 @@ void gpgpu_sim::shader_print_cache_stats(FILE *fout) const {
     fprintf(fout, "\tL1D_total_cache_reservation_fails = %llu\n",
             total_css.res_fails);
     total_css.print_port_stats(fout, "\tL1D_cache");
+
+    // C7e keeps this GPU-scope record separate from per-slice EPL2B0V1.
+    // It is emitted from L1D-only native stats; L1I/C/T never contribute.
+    cache_stats l1d_stats;
+    l1d_stats.clear();
+    for (unsigned i = 0; i < m_shader_config->n_simt_clusters; ++i)
+      m_cluster[i]->get_L1D_cache_stats(l1d_stats);
+    fprintf(fout,
+            "EPL2L1V1|scope=application|kernel_uid=18446744073709551615|"
+            "accesses=%llu|misses=%llu|line_alloc_fail=%llu|miss_queue_full=%llu|"
+            "mshr_entry_fail=%llu|mshr_merge_fail=%llu|mshr_rw_pending=%llu|"
+            "bank_latency_queue_conflict=%u\n",
+            total_css.accesses, total_css.misses,
+            l1d_stats.total_fail_reason(LINE_ALLOC_FAIL),
+            l1d_stats.total_fail_reason(MISS_QUEUE_FULL),
+            l1d_stats.total_fail_reason(MSHR_ENRTY_FAIL),
+            l1d_stats.total_fail_reason(MSHR_MERGE_ENRTY_FAIL),
+            l1d_stats.total_fail_reason(MSHR_RW_PENDING),
+            m_shader_stats->gpgpu_n_l1cache_bkconflict);
   }
 
   // L1C
@@ -4066,6 +4089,10 @@ void shader_core_ctx::get_cache_stats(cache_stats &cs) {
   m_ldst_unit->get_cache_stats(cs);  // Get L1D, L1C, L1T stats
 }
 
+void shader_core_ctx::get_L1D_cache_stats(cache_stats &cs) const {
+  m_ldst_unit->get_L1D_cache_stats(cs);
+}
+
 void shader_core_ctx::get_L1I_sub_stats(struct cache_sub_stats &css) const {
   if (m_L1I) m_L1I->get_sub_stats(css);
 }
@@ -4849,6 +4876,11 @@ void simt_core_cluster::get_cache_stats(cache_stats &cs) const {
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i) {
     m_core[i]->get_cache_stats(cs);
   }
+}
+
+void simt_core_cluster::get_L1D_cache_stats(cache_stats &cs) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i)
+    m_core[i]->get_L1D_cache_stats(cs);
 }
 
 void simt_core_cluster::get_L1I_sub_stats(struct cache_sub_stats &css) const {

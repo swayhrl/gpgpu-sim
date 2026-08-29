@@ -1403,6 +1403,7 @@ class ldst_unit : public pipelined_simd_unit {
                        unsigned &read_misses, unsigned &write_misses,
                        unsigned cache_type);
   void get_cache_stats(cache_stats &cs);
+  void get_L1D_cache_stats(cache_stats &cs) const;
 
   void get_L1D_sub_stats(struct cache_sub_stats &css) const;
   void get_L1C_sub_stats(struct cache_sub_stats &css) const;
@@ -2142,6 +2143,7 @@ class shader_core_ctx : public core_t {
                          unsigned &dl1_misses);
 
   void get_cache_stats(cache_stats &cs);
+  void get_L1D_cache_stats(cache_stats &cs) const;
   void get_L1I_sub_stats(struct cache_sub_stats &css) const;
   void get_L1D_sub_stats(struct cache_sub_stats &css) const;
   void get_L1C_sub_stats(struct cache_sub_stats &css) const;
@@ -2659,6 +2661,7 @@ class simt_core_cluster {
                          unsigned &dl1_misses) const;
 
   void get_cache_stats(cache_stats &cs) const;
+  void get_L1D_cache_stats(cache_stats &cs) const;
   void get_L1I_sub_stats(struct cache_sub_stats &css) const;
   void get_L1D_sub_stats(struct cache_sub_stats &css) const;
   void get_L1C_sub_stats(struct cache_sub_stats &css) const;
