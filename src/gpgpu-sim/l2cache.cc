@@ -1444,7 +1444,10 @@ void memory_sub_partition::ep_l2_b0_accum::sample(
     unsigned line, unsigned desc, unsigned wad, unsigned resident,
     unsigned bypass, unsigned missq, unsigned lowerq, unsigned reserved,
     unsigned resident_valid, unsigned resident_dirty, unsigned resident_pending,
-    unsigned bypass_pending, unsigned bypass_ready, unsigned reserved_set_max) {
+    unsigned bypass_pending, unsigned bypass_ready, unsigned reserved_set_max,
+    unsigned descriptor_chain_active, unsigned descriptor_chain_sum,
+    unsigned descriptor_chain_max,
+    const unsigned long long *descriptor_chain_histogram) {
   ++samples;
   line_sum += line; desc_sum += desc; wad_sum += wad;
   resident_sum += resident; bypass_sum += bypass; missq_sum += missq;
@@ -1452,6 +1455,8 @@ void memory_sub_partition::ep_l2_b0_accum::sample(
   reserved_sum += reserved; resident_valid_sum += resident_valid;
   resident_dirty_sum += resident_dirty; resident_pending_sum += resident_pending;
   bypass_pending_sum += bypass_pending; bypass_ready_sum += bypass_ready;
+  this->descriptor_chain_sum += descriptor_chain_sum;
+  descriptor_chain_samples += descriptor_chain_active;
   line_max = std::max(line_max, line); desc_max = std::max(desc_max, desc);
   wad_max = std::max(wad_max, wad); resident_max = std::max(resident_max, resident);
   bypass_max = std::max(bypass_max, bypass); missq_max = std::max(missq_max, missq);
@@ -1463,6 +1468,8 @@ void memory_sub_partition::ep_l2_b0_accum::sample(
   bypass_pending_max = std::max(bypass_pending_max, bypass_pending);
   bypass_ready_max = std::max(bypass_ready_max, bypass_ready);
   this->reserved_set_max = std::max(this->reserved_set_max, reserved_set_max);
+  this->descriptor_chain_max =
+      std::max(this->descriptor_chain_max, descriptor_chain_max);
   ++line_hist[std::min<unsigned>(line, line_hist.size() - 1)];
   ++desc_hist[std::min<unsigned>(desc, desc_hist.size() - 1)];
   ++wad_hist[std::min<unsigned>(wad, wad_hist.size() - 1)];
@@ -1475,6 +1482,8 @@ void memory_sub_partition::ep_l2_b0_accum::sample(
   ++bypass_pending_hist[std::min<unsigned>(bypass_pending, bypass_pending_hist.size() - 1)];
   ++bypass_ready_hist[std::min<unsigned>(bypass_ready, bypass_ready_hist.size() - 1)];
   ++reserved_set_hist[std::min<unsigned>(reserved_set_max, reserved_set_hist.size() - 1)];
+  for (unsigned i = 0; i < descriptor_chain_hist.size(); ++i)
+    descriptor_chain_hist[i] += descriptor_chain_histogram[i];
 }
 
 unsigned memory_sub_partition::ep_l2_b0_accum::p95(
@@ -1501,6 +1510,8 @@ memory_sub_partition::ep_l2_b0_accum::delta(const ep_l2_b0_accum &start) const {
   d.resident_pending_sum -= start.resident_pending_sum;
   d.bypass_pending_sum -= start.bypass_pending_sum;
   d.bypass_ready_sum -= start.bypass_ready_sum;
+  d.descriptor_chain_sum -= start.descriptor_chain_sum;
+  d.descriptor_chain_samples -= start.descriptor_chain_samples;
   d.wad_block -= start.wad_block; d.payload_block -= start.payload_block;
   d.bank_block -= start.bank_block; d.l1_block -= start.l1_block;
   d.lower_block -= start.lower_block;
@@ -1542,6 +1553,8 @@ memory_sub_partition::ep_l2_b0_accum::delta(const ep_l2_b0_accum &start) const {
   for (unsigned i = 0; i < d.bypass_pending_hist.size(); ++i) d.bypass_pending_hist[i] -= start.bypass_pending_hist[i];
   for (unsigned i = 0; i < d.bypass_ready_hist.size(); ++i) d.bypass_ready_hist[i] -= start.bypass_ready_hist[i];
   for (unsigned i = 0; i < d.reserved_set_hist.size(); ++i) d.reserved_set_hist[i] -= start.reserved_set_hist[i];
+  for (unsigned i = 0; i < d.descriptor_chain_hist.size(); ++i)
+    d.descriptor_chain_hist[i] -= start.descriptor_chain_hist[i];
   for (unsigned i = 0; i < d.dram_scheduler_occ_hist.size(); ++i)
     d.dram_scheduler_occ_hist[i] -= start.dram_scheduler_occ_hist[i];
   // Maxima are interval values for kernel snapshots, not cumulative maxima
@@ -1551,12 +1564,14 @@ memory_sub_partition::ep_l2_b0_accum::delta(const ep_l2_b0_accum &start) const {
       &d.bypass_hist, &d.reserved_hist, &d.resident_valid_hist,
       &d.resident_dirty_hist, &d.resident_pending_hist,
       &d.bypass_pending_hist, &d.bypass_ready_hist, &d.reserved_set_hist,
+      &d.descriptor_chain_hist,
       &d.dram_scheduler_occ_hist};
   unsigned *maxes[] = {&d.line_max, &d.desc_max, &d.wad_max, &d.resident_max,
                        &d.bypass_max, &d.reserved_max, &d.resident_valid_max,
                        &d.resident_dirty_max, &d.resident_pending_max,
                        &d.bypass_pending_max, &d.bypass_ready_max,
-                       &d.reserved_set_max, &d.dram_scheduler_occ_max};
+                       &d.reserved_set_max, &d.descriptor_chain_max,
+                       &d.dram_scheduler_occ_max};
   for (unsigned h = 0; h < sizeof(hists) / sizeof(hists[0]); ++h) {
     *maxes[h] = 0;
     for (unsigned i = 0; i < hists[h]->size(); ++i)
@@ -1570,6 +1585,12 @@ void memory_sub_partition::ep_l2_b0_sample(unsigned long long cycle) {
   unsigned reserved = 0, dirty = 0, valid = 0, reserved_set_max = 0;
   m_L2cache->l2_char_storage_snapshot_compact(
       reserved, dirty, valid, reserved_set_max);
+  unsigned descriptor_chain_active = 0, descriptor_chain_sum = 0,
+           descriptor_chain_max = 0;
+  unsigned long long descriptor_chain_hist[33];
+  m_L2cache->descriptor_chain_snapshot(
+      descriptor_chain_active, descriptor_chain_sum, descriptor_chain_max,
+      descriptor_chain_hist, 33);
   m_ep_l2_b0_accum.sample(
       m_L2cache->mshr_entries_used(), m_L2cache->ep_l2_descriptor_count_used(),
       m_L2cache->ep_l2_wad_occupancy(),
@@ -1579,7 +1600,8 @@ void memory_sub_partition::ep_l2_b0_sample(unsigned long long cycle) {
       reserved, m_L2cache->ep_l2_resident_valid(),
       m_L2cache->ep_l2_resident_dirty(), m_L2cache->ep_l2_resident_pending(),
       m_L2cache->ep_l2_bypass_pending(), m_L2cache->ep_l2_bypass_ready(),
-      reserved_set_max);
+      reserved_set_max, descriptor_chain_active, descriptor_chain_sum,
+      descriptor_chain_max, descriptor_chain_hist);
   if (!m_ep_l2_b0_window_started) {
     m_ep_l2_b0_window_start = m_ep_l2_b0_accum;
     m_ep_l2_b0_window_bank_start = ep_l2_b0_bank_snapshot();
@@ -1726,6 +1748,8 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
           "c7d_line_mshr_alloc_eligible=%llu|c7d_line_mshr_full_block=%llu|"
           "c7d_descriptor_alloc_eligible=%llu|c7d_descriptor_pool_full_block=%llu|"
           "c7d_per_address_cap_eligible=%llu|c7d_per_address_cap_block=%llu|"
+          "c7d_descriptor_chain_depth_avg=%llu|c7d_descriptor_chain_depth_p95=%u|"
+          "c7d_descriptor_chain_depth_max=%u|"
           "c7d_wad_full_events=%llu|c7d_wad_hazard_events=%llu|c7d_wad_hazard_wait_cycles=%llu|"
           "c7d_wad_lifetime_avg=%llu|c7d_wad_lifetime_p95=%llu|c7d_wad_lifetime_max=%llu|"
           "c7d_reserved_avg=%llu|c7d_reserved_p95=%u|c7d_reserved_max=%u|c7d_reserved_set_max=%u|"
@@ -1764,7 +1788,12 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
           stats.tag_set_all_reserved_block, stats.line_mshr_alloc_eligible,
           stats.line_mshr_full_block, stats.descriptor_alloc_eligible,
           stats.descriptor_pool_full_block, stats.per_address_cap_eligible,
-          stats.per_address_cap_block, stats.wad_full_events,
+          stats.per_address_cap_block,
+          stats.descriptor_chain_samples ?
+              stats.descriptor_chain_sum / stats.descriptor_chain_samples : 0,
+          ep_l2_b0_accum::p95(stats.descriptor_chain_hist,
+                               stats.descriptor_chain_samples),
+          stats.descriptor_chain_max, stats.wad_full_events,
           stats.wad_hazard_events, stats.wad_hazard_wait_cycles,
           m_L2cache->ep_l2_wad_lifetime_count() ?
               m_L2cache->ep_l2_wad_lifetime_sum() / m_L2cache->ep_l2_wad_lifetime_count() : 0,

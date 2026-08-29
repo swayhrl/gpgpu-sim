@@ -435,10 +435,11 @@ class memory_sub_partition {
       resident_sum(0), bypass_sum(0), missq_sum(0), lowerq_sum(0),
       reserved_sum(0), resident_valid_sum(0), resident_dirty_sum(0),
       resident_pending_sum(0), bypass_pending_sum(0), bypass_ready_sum(0),
+      descriptor_chain_sum(0), descriptor_chain_samples(0),
       line_max(0), desc_max(0), wad_max(0), resident_max(0), bypass_max(0),
       missq_max(0), lowerq_max(0), reserved_max(0), resident_valid_max(0),
       resident_dirty_max(0), resident_pending_max(0), bypass_pending_max(0),
-      bypass_ready_max(0), reserved_set_max(0), descriptor_block(0), wad_block(0), payload_block(0),
+      bypass_ready_max(0), reserved_set_max(0), descriptor_chain_max(0), descriptor_block(0), wad_block(0), payload_block(0),
       bank_block(0), l1_block(0), lower_block(0), line_alloc_eligible(0),
       line_alloc_block(0), tag_set_all_reserved_block(0),
       line_mshr_alloc_eligible(0), line_mshr_full_block(0),
@@ -456,15 +457,16 @@ class memory_sub_partition {
       reserved_hist.assign(1025, 0); resident_valid_hist.assign(1025, 0);
       resident_dirty_hist.assign(1025, 0); resident_pending_hist.assign(1025, 0);
       bypass_pending_hist.assign(129, 0); bypass_ready_hist.assign(129, 0);
-      reserved_set_hist.assign(17, 0); dram_scheduler_occ_hist.assign(1025, 0);
+      reserved_set_hist.assign(17, 0); descriptor_chain_hist.assign(33, 0); dram_scheduler_occ_hist.assign(1025, 0);
     }
     unsigned long long samples, line_sum, desc_sum, wad_sum, resident_sum,
         bypass_sum, missq_sum, lowerq_sum, reserved_sum, resident_valid_sum,
         resident_dirty_sum, resident_pending_sum, bypass_pending_sum,
-        bypass_ready_sum;
+        bypass_ready_sum, descriptor_chain_sum, descriptor_chain_samples;
     unsigned line_max, desc_max, wad_max, resident_max, bypass_max, missq_max,
         lowerq_max, reserved_max, resident_valid_max, resident_dirty_max,
-        resident_pending_max, bypass_pending_max, bypass_ready_max, reserved_set_max;
+        resident_pending_max, bypass_pending_max, bypass_ready_max, reserved_set_max,
+        descriptor_chain_max;
     unsigned long long descriptor_block, wad_block, payload_block, bank_block,
         l1_block, lower_block, line_alloc_eligible, line_alloc_block,
         tag_set_all_reserved_block, line_mshr_alloc_eligible,
@@ -481,13 +483,17 @@ class memory_sub_partition {
     std::vector<unsigned long long> line_hist, desc_hist, wad_hist,
         resident_hist, bypass_hist, reserved_hist, resident_valid_hist,
         resident_dirty_hist, resident_pending_hist, bypass_pending_hist,
-        bypass_ready_hist, reserved_set_hist, dram_scheduler_occ_hist;
+        bypass_ready_hist, reserved_set_hist, descriptor_chain_hist,
+        dram_scheduler_occ_hist;
     void sample(unsigned line, unsigned desc, unsigned wad, unsigned resident,
                 unsigned bypass, unsigned missq, unsigned lowerq,
                 unsigned reserved, unsigned resident_valid,
                 unsigned resident_dirty, unsigned resident_pending,
                 unsigned bypass_pending, unsigned bypass_ready,
-                unsigned reserved_set_max);
+                unsigned reserved_set_max, unsigned descriptor_chain_active,
+                unsigned descriptor_chain_sum,
+                unsigned descriptor_chain_max,
+                const unsigned long long *descriptor_chain_histogram);
     static unsigned p95(const std::vector<unsigned long long> &hist,
                         unsigned long long n);
     ep_l2_b0_accum delta(const ep_l2_b0_accum &start) const;

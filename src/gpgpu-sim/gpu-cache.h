@@ -1167,6 +1167,13 @@ class mshr_table {
   void l2_char_states(std::vector<new_addr_type> &addresses,
                       std::vector<unsigned> &targets,
                       std::vector<bool> &ready) const;
+  // Constant-space view of descriptor-chain depth. The caller supplies a
+  // fixed histogram buffer, avoiding allocation in C7d's cache-cycle path.
+  void descriptor_chain_snapshot(unsigned &active_entries,
+                                 unsigned &target_sum,
+                                 unsigned &maximum,
+                                 unsigned long long *histogram,
+                                 unsigned histogram_size) const;
 
   void check_mshr_parameters(unsigned num_entries, unsigned max_merged,
                              unsigned descriptor_pool_size = 0,
@@ -1589,6 +1596,13 @@ class baseline_cache : public cache_t {
                            std::vector<unsigned> &targets,
                            std::vector<bool> &ready) const {
     m_mshrs.l2_char_states(addresses, targets, ready);
+  }
+  void descriptor_chain_snapshot(unsigned &active_entries,
+                                 unsigned &target_sum, unsigned &maximum,
+                                 unsigned long long *histogram,
+                                 unsigned histogram_size) const {
+    m_mshrs.descriptor_chain_snapshot(active_entries, target_sum, maximum,
+                                      histogram, histogram_size);
   }
   void inc_aggregated_stats(cache_request_status status,
                             cache_request_status cache_status, mem_fetch *mf,

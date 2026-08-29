@@ -805,6 +805,22 @@ void mshr_table::l2_char_states(std::vector<new_addr_type> &addresses,
   }
 }
 
+void mshr_table::descriptor_chain_snapshot(
+    unsigned &active_entries, unsigned &target_sum, unsigned &maximum,
+    unsigned long long *histogram, unsigned histogram_size) const {
+  assert(histogram && histogram_size);
+  active_entries = target_sum = maximum = 0;
+  for (unsigned i = 0; i < histogram_size; ++i) histogram[i] = 0;
+  for (table::const_iterator it = m_data.begin(); it != m_data.end(); ++it) {
+    const unsigned depth = it->second.m_list.size();
+    if (!depth) continue;
+    ++active_entries;
+    target_sum += depth;
+    maximum = std::max(maximum, depth);
+    ++histogram[std::min<unsigned>(depth, histogram_size - 1)];
+  }
+}
+
 /// Accept a new cache fill response: mark entry ready for processing
 void mshr_table::mark_ready(new_addr_type block_addr, bool &has_atomic,
                             const mem_access_sector_mask_t &sectors) {
