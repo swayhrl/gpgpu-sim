@@ -2142,7 +2142,12 @@ class ep_l2_payload_store {
       m_bank_granted.reset();
       if (banked()) {
         for (unsigned b = 0; b < 4; ++b) {
-          m_granted[b].clear();
+          // A production retry need not return in the single cycle after it
+          // was selected.  Retain an unconsumed oldest grant until its owner
+          // actually retries; clearing it here loses the request.  Two
+          // interleaved same-bank retries would otherwise select-and-discard
+          // each other forever, eventually deadlocking the memory system.
+          if (!m_granted[b].empty()) continue;
           if (m_pending[b].empty()) continue;
           unsigned best = 0;
           for (unsigned i = 1; i < m_pending[b].size(); ++i)
