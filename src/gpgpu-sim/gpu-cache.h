@@ -576,6 +576,7 @@ class cache_config {
     m_ep_l2_descriptor_pool_size = 0;
     m_ep_l2_descriptor_per_line_cap = 0;
     m_ep_l2_wad_entries = 0;
+    m_ep_l2_payload_mode = 0;
   }
   void init(char *config, FuncCache status) {
     cache_status = status;
@@ -919,6 +920,8 @@ class cache_config {
   unsigned m_ep_l2_descriptor_per_line_cap;
   // EP-L2 write-address descriptors. Zero preserves the conventional path.
   unsigned m_ep_l2_wad_entries;
+  // 0=off, 1=B0-Legacy dual 1R1W RAMs, 2=B0-Banked 4x288 RAMs.
+  unsigned m_ep_l2_payload_mode;
   enum set_index_function
       m_set_index_function;  // Hash, linear, or custom set index function
 
@@ -1469,7 +1472,7 @@ class baseline_cache : public cache_t {
   void cycle();
   /// Interface for response from lower memory level (model bandwidth
   /// restictions in caller)
-  void fill(mem_fetch *mf, unsigned time);
+  virtual void fill(mem_fetch *mf, unsigned time);
   /// Checks if mf is waiting to be filled by lower memory level
   bool waiting_for_fill(mem_fetch *mf);
   /// Are any (accepted) accesses that had to wait for memory now ready? (does
@@ -2000,6 +2003,59 @@ struct l2_access_plan {
   bool ep_l2_needs_lower_read;
 };
 
+// C5/C6 metadata-only payload model. mem_fetch remains the functional data
+// carrier; this state models ownership, generation, capacity and RAM grants.
+class ep_l2_payload_store {
+ public:
+  enum role { RESIDENT, BYPASS };
+  struct slot {
+    bool valid; new_addr_type owner; unsigned generation;
+    slot() : valid(false), owner(0), generation(0) {}
+  };
+  ep_l2_payload_store(unsigned mode = 0)
+      : m_mode(mode), m_cycle((unsigned long long)-1), m_legacy_reads(0),
+        m_legacy_writes(0) { m_resident.resize(1024); m_bypass.resize(128); }
+  bool enabled() const { return m_mode != 0; }
+  bool banked() const { return m_mode == 2; }
+  unsigned resident_used() const { return used(m_resident); }
+  unsigned bypass_used() const { return used(m_bypass); }
+  unsigned resident_free() const { return 1024 - resident_used(); }
+  unsigned bypass_free() const { return 128 - bypass_used(); }
+  const slot &resident(unsigned id) const { assert(id < 1024); return m_resident[id]; }
+  const slot &bypass(unsigned id) const { assert(id < 128); return m_bypass[id]; }
+  void assign_resident(unsigned id, new_addr_type owner, mem_fetch *mf) {
+    assert(id < 1024); assign(m_resident[id], id, owner, mf);
+  }
+  void assign_bypass(unsigned id, new_addr_type owner, mem_fetch *mf) {
+    assert(id < 128); assign(m_bypass[id], 1024 + id, owner, mf);
+  }
+  void release_bypass(unsigned id) { assert(id < 128); m_bypass[id].valid = false; }
+  bool request(role r, unsigned id, bool write, unsigned long long cycle) {
+    if (!enabled()) return true;
+    if (m_cycle != cycle) { m_cycle = cycle; m_legacy_reads = m_legacy_writes = 0; m_bank_granted.reset(); }
+    if (m_mode == 1) {
+      unsigned &used_port = write ? m_legacy_writes : m_legacy_reads;
+      if (used_port) return false;
+      ++used_port; return true;
+    }
+    const unsigned global_id = r == RESIDENT ? id : 1024 + id;
+    assert(global_id < 1152);
+    const unsigned bank = global_id % 4;
+    if (m_bank_granted.test(bank)) return false;
+    m_bank_granted.set(bank); return true;
+  }
+ private:
+  static unsigned used(const std::vector<slot> &slots) {
+    unsigned n = 0; for (std::vector<slot>::const_iterator i = slots.begin(); i != slots.end(); ++i) if (i->valid) ++n; return n;
+  }
+  static void assign(slot &s, unsigned payload_id, new_addr_type owner, mem_fetch *mf) {
+    s.valid = true; s.owner = owner; ++s.generation;
+    if (mf) mf->set_ep_l2_payload_identity(payload_id, s.generation);
+  }
+  unsigned m_mode; unsigned long long m_cycle; unsigned m_legacy_reads, m_legacy_writes;
+  std::bitset<4> m_bank_granted; std::vector<slot> m_resident, m_bypass;
+};
+
 /// Models second level shared cache with global write-back
 /// and write-allocate policies
 class l2_cache : public data_cache {
@@ -2010,6 +2066,7 @@ class l2_cache : public data_cache {
            enum cache_gpu_level level)
       : data_cache(name, config, core_id, type_id, memport, mfcreator, status,
                    L2_WR_ALLOC_R, L2_WRBK_ACC, gpu, level),
+        m_ep_l2_payload(config.m_ep_l2_payload_mode),
         m_ep_l2_wad_full_block_count(0),
         m_ep_l2_wad_same_address_wait_count(0) {}
 
@@ -2018,6 +2075,14 @@ class l2_cache : public data_cache {
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events);
+  virtual void fill(mem_fetch *mf, unsigned time);
+  bool ep_l2_payload_fill_port_free(unsigned long long cycle) {
+    return !m_ep_l2_payload.enabled() ||
+           m_ep_l2_payload.request(ep_l2_payload_store::RESIDENT, 0, true, cycle);
+  }
+  unsigned ep_l2_resident_payload_occupancy() const { return m_ep_l2_payload.resident_used(); }
+  unsigned ep_l2_bypass_payload_occupancy() const { return m_ep_l2_payload.bypass_used(); }
+  ep_l2_payload_store &ep_l2_payload_for_test() { return m_ep_l2_payload; }
 
   // C4 WAD ownership is intentionally address-indexed. A reservation must
   // exist before tag_array::access can evict a dirty victim; release happens
@@ -2045,6 +2110,7 @@ class l2_cache : public data_cache {
   std::set<new_addr_type> m_ep_l2_wad_entries_live;
   unsigned long long m_ep_l2_wad_full_block_count;
   unsigned long long m_ep_l2_wad_same_address_wait_count;
+  ep_l2_payload_store m_ep_l2_payload;
 };
 
 /*****************************************************************************/

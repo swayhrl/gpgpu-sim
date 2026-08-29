@@ -266,6 +266,9 @@ void memory_config::reg_options(class OptionParser *opp) {
                          &m_L2_config.m_ep_l2_wad_entries,
                          "EP-L2 B0 dirty write-address descriptor capacity (0 disables)",
                          "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_payload_mode", OPT_UINT32,
+                         &m_L2_config.m_ep_l2_payload_mode,
+                         "EP-L2 payload mode: 0=off, 1=Legacy, 2=Banked", "0");
   option_parser_register(opp, "-gpgpu_cache:dl2_texture_only", OPT_BOOL,
                          &m_L2_texure_only, "L2 cache used for texture only",
                          "1");

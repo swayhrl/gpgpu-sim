@@ -2421,6 +2421,23 @@ void l2_cache::ep_l2_wad_complete(new_addr_type block_addr) {
   assert(erased == 1);
 }
 
+void l2_cache::fill(mem_fetch *mf, unsigned time) {
+  unsigned cache_index = (unsigned)-1;
+  new_addr_type owner = 0;
+  if (m_ep_l2_payload.enabled()) {
+    extra_mf_fields_lookup::iterator e = m_extra_mf_fields.find(mf);
+    if (e != m_extra_mf_fields.end()) {
+      cache_index = e->second.m_cache_index;
+      owner = e->second.m_block_addr;
+    }
+  }
+  baseline_cache::fill(mf, time);
+  if (cache_index != (unsigned)-1) {
+    assert(cache_index < 1024);
+    m_ep_l2_payload.assign_resident(cache_index, owner, mf);
+  }
+}
+
 void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
                               l2_access_plan &plan) const {
   plan = l2_access_plan();
