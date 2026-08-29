@@ -3518,6 +3518,12 @@ void shader_core_ctx::display_pipeline(FILE *fout, int print_mem,
 }
 
 unsigned int shader_core_config::max_cta(const kernel_info_t &k) const {
+  if (m_ep_l2_assert_fixed_l1_assoc) {
+    assert(!adaptive_cache_config &&
+           "EP-L2 Target Baseline requires adaptive L1 configuration off");
+    assert(m_L1D_config.get_assoc() == m_ep_l2_initial_l1_assoc &&
+           "EP-L2 Target Baseline L1D associativity changed across kernels");
+  }
   unsigned threads_per_cta = k.threads_per_cta();
   const class function_info *kernel = k.entry();
   unsigned int padded_cta_size = threads_per_cta;

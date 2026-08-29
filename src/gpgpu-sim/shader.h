@@ -1565,6 +1565,13 @@ class shader_core_config : public core_config {
     m_L1T_config.init(m_L1T_config.m_config_string, FuncCachePreferNone);
     m_L1C_config.init(m_L1C_config.m_config_string, FuncCachePreferNone);
     m_L1D_config.init(m_L1D_config.m_config_string, FuncCachePreferNone);
+    m_ep_l2_initial_l1_assoc = m_L1D_config.get_assoc();
+    if (m_ep_l2_assert_fixed_l1_assoc) {
+      assert(m_L1D_config.get_nset() == 4 &&
+             m_ep_l2_initial_l1_assoc == 128 &&
+             m_L1D_config.get_line_sz() == 128 &&
+             "EP-L2 Target Baseline L1D must be 4 x 128 x 128B");
+    }
     gpgpu_cache_texl1_linesize = m_L1T_config.get_line_sz();
     gpgpu_cache_constl1_linesize = m_L1C_config.get_line_sz();
     m_valid = true;
@@ -1638,6 +1645,8 @@ class shader_core_config : public core_config {
   mutable cache_config m_L1T_config;
   mutable cache_config m_L1C_config;
   mutable l1d_cache_config m_L1D_config;
+  bool m_ep_l2_assert_fixed_l1_assoc;
+  mutable unsigned m_ep_l2_initial_l1_assoc;
 
   bool gpgpu_dwf_reg_bankconflict;
 
