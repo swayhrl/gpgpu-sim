@@ -130,6 +130,20 @@ class mem_fetch {
   mem_fetch *get_original_mf() { return original_mf; }
   mem_fetch *get_original_wr_mf() { return original_wr_mf; }
 
+  // EP-L2 B0 response identity carrier. C3 only carries the pair; C5 will
+  // assign/reclaim payload slots for resident and bypass responses.
+  void set_ep_l2_payload_identity(unsigned payload_id, unsigned generation) {
+    m_ep_l2_payload_id = payload_id;
+    m_ep_l2_payload_generation = generation;
+  }
+  bool has_ep_l2_payload_identity() const {
+    return m_ep_l2_payload_id != (unsigned)-1;
+  }
+  unsigned get_ep_l2_payload_id() const { return m_ep_l2_payload_id; }
+  unsigned get_ep_l2_payload_generation() const {
+    return m_ep_l2_payload_generation;
+  }
+
  private:
   // request source information
   unsigned m_request_uid;
@@ -171,6 +185,8 @@ class mem_fetch {
 
   const memory_config *m_mem_config;
   unsigned icnt_flit_size;
+  unsigned m_ep_l2_payload_id;
+  unsigned m_ep_l2_payload_generation;
 
   mem_fetch
       *original_mf;  // this pointer is set up when a request is divided into

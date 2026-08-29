@@ -32,6 +32,7 @@
 
 #include "gpu-cache.h"
 #include "l2_admission_rules.h"
+#include <algorithm>
 #include <assert.h>
 #include "gpu-sim.h"
 #include "hashing.h"
@@ -640,22 +641,74 @@ bool mshr_table::probe(new_addr_type block_addr) const {
 
 /// Checks if there is space for tracking a new memory access
 bool mshr_table::full(new_addr_type block_addr) const {
+  return full_reason(block_addr) != EP_L2_BLOCK_NONE;
+}
+
+mshr_table::ep_l2_block_reason mshr_table::full_reason(
+    new_addr_type block_addr) const {
   table::const_iterator i = m_data.find(block_addr);
-  if (i != m_data.end())
-    return i->second.m_list.size() >= m_max_merged;
-  else
-    return m_data.size() >= m_num_entries;
+  if (i != m_data.end()) {
+    const unsigned per_line_limit =
+        m_descriptor_pool_size ? m_descriptor_per_line_cap : m_max_merged;
+    if (i->second.m_list.size() >= per_line_limit)
+      return m_descriptor_pool_size ? EP_L2_BLOCK_PER_ADDRESS_CAP
+                                    : EP_L2_BLOCK_LINE_MSHR_FULL;
+  } else if (m_data.size() >= m_num_entries) {
+    return EP_L2_BLOCK_LINE_MSHR_FULL;
+  }
+  if (m_descriptor_pool_size && m_free_descriptor_ids.empty())
+    return EP_L2_BLOCK_DESCRIPTOR_POOL_FULL;
+  return EP_L2_BLOCK_NONE;
+}
+
+bool mshr_table::needs_lower_read(
+    new_addr_type block_addr, const mem_access_sector_mask_t &sectors) const {
+  if (!m_descriptor_pool_size) return !probe(block_addr);
+  table::const_iterator entry = m_data.find(block_addr);
+  if (entry == m_data.end()) return true;
+  return (sectors & ~entry->second.m_issued_sectors).any();
 }
 
 /// Add or merge this access
 void mshr_table::add(new_addr_type block_addr, mem_fetch *mf) {
-  m_data[block_addr].m_list.push_back(mf);
+  mshr_entry &entry = m_data[block_addr];
+  entry.m_list.push_back(mf);
+  if (m_descriptor_pool_size) {
+    assert(!m_free_descriptor_ids.empty());
+    unsigned id = m_free_descriptor_ids.back();
+    m_free_descriptor_ids.pop_back();
+    ep_l2_descriptor &descriptor = m_descriptor_pool[id];
+    descriptor.m_mf = mf;
+    descriptor.m_sectors = mf->get_access_sector_mask();
+    descriptor.m_response_queued = false;
+    entry.m_descriptor_ids.push_back(id);
+    entry.m_pending_sectors |= descriptor.m_sectors;
+    entry.m_issued_sectors |= descriptor.m_sectors;
+  }
   assert(m_data.size() <= m_num_entries);
-  assert(m_data[block_addr].m_list.size() <= m_max_merged);
+  assert(entry.m_list.size() <=
+         (m_descriptor_pool_size ? m_descriptor_per_line_cap : m_max_merged));
   // indicate that this MSHR entry contains an atomic operation
   if (mf->isatomic()) {
-    m_data[block_addr].m_has_atomic = true;
+    entry.m_has_atomic = true;
   }
+}
+
+void mshr_table::add_for_test(new_addr_type block_addr, mem_fetch *mf,
+                              const mem_access_sector_mask_t &sectors) {
+  assert(m_descriptor_pool_size != 0);
+  assert(full_reason(block_addr) == EP_L2_BLOCK_NONE);
+  mshr_entry &entry = m_data[block_addr];
+  entry.m_list.push_back(mf);
+  unsigned id = m_free_descriptor_ids.back();
+  m_free_descriptor_ids.pop_back();
+  ep_l2_descriptor &descriptor = m_descriptor_pool[id];
+  descriptor.m_mf = mf;
+  descriptor.m_sectors = sectors;
+  descriptor.m_response_queued = false;
+  entry.m_descriptor_ids.push_back(id);
+  entry.m_pending_sectors |= sectors;
+  entry.m_issued_sectors |= sectors;
 }
 
 /// check is_read_after_write_pending
@@ -687,6 +740,11 @@ bool mshr_table::response_ready(new_addr_type block_addr) const {
        it != m_current_response.end(); ++it) {
     if (*it == block_addr) return true;
   }
+  for (std::list<ready_descriptor>::const_iterator it =
+           m_current_descriptor_response.begin();
+       it != m_current_descriptor_response.end(); ++it) {
+    if (it->m_block_addr == block_addr) return true;
+  }
   return false;
 }
 
@@ -699,6 +757,7 @@ unsigned mshr_table::num_response_ready_targets() const {
     assert(entry != m_data.end());
     total += entry->second.m_list.size();
   }
+  total += m_current_descriptor_response.size();
   return total;
 }
 
@@ -725,28 +784,94 @@ void mshr_table::l2_char_states(std::vector<new_addr_type> &addresses,
 }
 
 /// Accept a new cache fill response: mark entry ready for processing
-void mshr_table::mark_ready(new_addr_type block_addr, bool &has_atomic) {
+void mshr_table::mark_ready(new_addr_type block_addr, bool &has_atomic,
+                            const mem_access_sector_mask_t &sectors) {
   assert(!busy());
   table::iterator a = m_data.find(block_addr);
   assert(a != m_data.end());
-  m_current_response.push_back(block_addr);
   has_atomic = a->second.m_has_atomic;
-  assert(m_current_response.size() <= m_data.size());
+  if (!m_descriptor_pool_size) {
+    m_current_response.push_back(block_addr);
+    assert(m_current_response.size() <= m_data.size());
+    return;
+  }
+
+  mshr_entry &entry = a->second;
+  entry.m_ready_sectors |= sectors;
+  entry.m_pending_sectors &= ~sectors;
+  for (std::list<unsigned>::const_iterator id = entry.m_descriptor_ids.begin();
+       id != entry.m_descriptor_ids.end(); ++id) {
+    ep_l2_descriptor &descriptor = m_descriptor_pool[*id];
+    if (!descriptor.m_response_queued &&
+        (descriptor.m_sectors & ~entry.m_ready_sectors).none()) {
+      descriptor.m_response_queued = true;
+      m_current_descriptor_response.push_back(ready_descriptor(block_addr, *id));
+    }
+  }
+}
+
+mem_fetch *mshr_table::peek_next_access() const {
+  assert(access_ready());
+  if (!m_current_descriptor_response.empty()) {
+    return m_descriptor_pool[m_current_descriptor_response.front().m_descriptor_id]
+        .m_mf;
+  }
+  new_addr_type block_addr = m_current_response.front();
+  table::const_iterator entry = m_data.find(block_addr);
+  assert(entry != m_data.end() && !entry->second.m_list.empty());
+  return entry->second.m_list.front();
+}
+
+void mshr_table::commit_next_access() {
+  assert(access_ready());
+  if (!m_current_descriptor_response.empty()) {
+    ready_descriptor ready = m_current_descriptor_response.front();
+    table::iterator entry = m_data.find(ready.m_block_addr);
+    assert(entry != m_data.end());
+    ep_l2_descriptor &descriptor = m_descriptor_pool[ready.m_descriptor_id];
+    std::list<unsigned>::iterator id = std::find(
+        entry->second.m_descriptor_ids.begin(), entry->second.m_descriptor_ids.end(),
+        ready.m_descriptor_id);
+    assert(id != entry->second.m_descriptor_ids.end());
+    std::list<mem_fetch *>::iterator mf = std::find(
+        entry->second.m_list.begin(), entry->second.m_list.end(), descriptor.m_mf);
+    assert(mf != entry->second.m_list.end());
+    entry->second.m_descriptor_ids.erase(id);
+    entry->second.m_list.erase(mf);
+    descriptor = ep_l2_descriptor();
+    m_free_descriptor_ids.push_back(ready.m_descriptor_id);
+    m_current_descriptor_response.pop_front();
+    if (entry->second.m_list.empty()) m_data.erase(entry);
+    return;
+  }
+
+  new_addr_type block_addr = m_current_response.front();
+  table::iterator entry = m_data.find(block_addr);
+  assert(entry != m_data.end() && !entry->second.m_list.empty());
+  entry->second.m_list.pop_front();
+  if (entry->second.m_list.empty()) {
+    // release entry
+    m_data.erase(entry);
+    m_current_response.pop_front();
+  }
 }
 
 /// Returns next ready access
 mem_fetch *mshr_table::next_access() {
-  assert(access_ready());
-  new_addr_type block_addr = m_current_response.front();
-  assert(!m_data[block_addr].m_list.empty());
-  mem_fetch *result = m_data[block_addr].m_list.front();
-  m_data[block_addr].m_list.pop_front();
-  if (m_data[block_addr].m_list.empty()) {
-    // release entry
-    m_data.erase(block_addr);
-    m_current_response.pop_front();
-  }
+  mem_fetch *result = peek_next_access();
+  commit_next_access();
   return result;
+}
+
+void mshr_table::sector_masks(new_addr_type block_addr,
+                              mem_access_sector_mask_t &pending,
+                              mem_access_sector_mask_t &issued,
+                              mem_access_sector_mask_t &ready) const {
+  table::const_iterator entry = m_data.find(block_addr);
+  assert(entry != m_data.end());
+  pending = entry->second.m_pending_sectors;
+  issued = entry->second.m_issued_sectors;
+  ready = entry->second.m_ready_sectors;
 }
 
 void mshr_table::display(FILE *fp) const {
@@ -1420,7 +1545,8 @@ void baseline_cache::fill(mem_fetch *mf, unsigned time) {
   } else
     abort();
   bool has_atomic = false;
-  m_mshrs.mark_ready(e->second.m_block_addr, has_atomic);
+  m_mshrs.mark_ready(e->second.m_block_addr, has_atomic,
+                      mf->get_access_sector_mask());
   if (has_atomic) {
     assert(m_config.m_alloc_policy == ON_MISS);
     cache_block_t *block = m_tag_array->get_block(e->second.m_cache_index);
@@ -1523,18 +1649,31 @@ void baseline_cache::send_read_request(new_addr_type addr,
   new_addr_type mshr_addr = m_config.mshr_addr(mf->get_addr());
   bool mshr_hit = m_mshrs.probe(mshr_addr);
   bool mshr_avail = !m_mshrs.full(mshr_addr);
-  if (mshr_hit && mshr_avail) {
+  bool needs_lower_read =
+      m_mshrs.needs_lower_read(mshr_addr, mf->get_access_sector_mask());
+  bool lower_issue_slot = m_miss_queue.size() < m_config.m_miss_queue_size;
+  if (mshr_hit && mshr_avail && (!needs_lower_read || lower_issue_slot)) {
     if (read_only)
       m_tag_array->access(block_addr, time, cache_index, mf);
     else
       m_tag_array->access(block_addr, time, cache_index, wb, evicted, mf);
 
     m_mshrs.add(mshr_addr, mf);
+    if (needs_lower_read) {
+      m_extra_mf_fields[mf] = extra_mf_fields(
+          mshr_addr, mf->get_addr(), cache_index, mf->get_data_size(), m_config);
+      mf->set_data_size(m_config.get_atom_sz());
+      // In EP-L2 descriptor mode, the MSHR key is the line but each lower
+      // transaction remains a 32-byte sector request.
+      if (!m_config.ep_l2_descriptor_mode()) mf->set_addr(mshr_addr);
+      m_miss_queue.push_back(mf);
+      mf->set_status(m_miss_queue_status, time);
+      if (!wa) events.push_back(cache_event(READ_REQUEST_SENT));
+    }
     m_stats.inc_stats(mf->get_access_type(), MSHR_HIT, mf->get_streamID());
     do_miss = true;
 
-  } else if (!mshr_hit && mshr_avail &&
-             (m_miss_queue.size() < m_config.m_miss_queue_size)) {
+  } else if (!mshr_hit && mshr_avail && lower_issue_slot) {
     if (read_only)
       m_tag_array->access(block_addr, time, cache_index, mf);
     else
@@ -1544,13 +1683,17 @@ void baseline_cache::send_read_request(new_addr_type addr,
     m_extra_mf_fields[mf] = extra_mf_fields(
         mshr_addr, mf->get_addr(), cache_index, mf->get_data_size(), m_config);
     mf->set_data_size(m_config.get_atom_sz());
-    mf->set_addr(mshr_addr);
+    if (!m_config.ep_l2_descriptor_mode()) mf->set_addr(mshr_addr);
     m_miss_queue.push_back(mf);
     mf->set_status(m_miss_queue_status, time);
     if (!wa) events.push_back(cache_event(READ_REQUEST_SENT));
 
     do_miss = true;
-  } else if (mshr_hit && !mshr_avail)
+  } else if ((mshr_hit && needs_lower_read && !lower_issue_slot) ||
+             (!mshr_hit && !lower_issue_slot))
+    m_stats.inc_fail_stats(mf->get_access_type(), MISS_QUEUE_FULL,
+                           mf->get_streamID());
+  else if (mshr_hit && !mshr_avail)
     m_stats.inc_fail_stats(mf->get_access_type(), MSHR_MERGE_ENRTY_FAIL,
                            mf->get_streamID());
   else if (!mshr_hit && !mshr_avail)
@@ -2027,7 +2170,9 @@ enum cache_request_status data_cache::rd_miss_base(
           mf->get_streamID());
       return RESERVATION_FAIL;
     }
-    unsigned n_new_entries = mshr_hit ? 0 : 1;
+    bool needs_lower_read =
+        m_mshrs.needs_lower_read(mshr_addr, mf->get_access_sector_mask());
+    unsigned n_new_entries = needs_lower_read ? 1 : 0;
     if (!mshr_hit && status == MISS &&
         m_tag_array->block_is_modified(cache_index)) {
       // The allocation will emit demand-read plus victim writeback.
@@ -2270,13 +2415,21 @@ void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
     // requirement; doing so makes preview disagree with the real commit.
     new_addr_type mshr_addr = m_config.mshr_addr(mf->get_addr());
     plan.mshr_hit = m_mshrs.probe(mshr_addr);
+    if (m_config.ep_l2_descriptor_mode())
+      plan.ep_l2_mshr_block_reason = m_mshrs.full_reason(mshr_addr);
     plan.mshr_entry_available =
         !plan.mshr_hit && !m_mshrs.full(mshr_addr);
     plan.mshr_merge_available =
         plan.mshr_hit && !m_mshrs.full(mshr_addr);
     plan.needs_new_mshr = !plan.mshr_hit;
     plan.needs_mshr_merge = plan.mshr_hit;
-    if (!plan.mshr_hit) {
+    // Target mode retains one line MSHR but sends one lower request for every
+    // previously unissued sector.  This keeps preview faithful to the real
+    // send_read_request() path without changing the admission contract.
+    plan.ep_l2_needs_lower_read =
+        m_config.ep_l2_descriptor_mode() &&
+        m_mshrs.needs_lower_read(mshr_addr, mf->get_access_sector_mask());
+    if (!plan.mshr_hit || plan.ep_l2_needs_lower_read) {
       plan.will_send_lower_read = true;
       plan.new_missq_entries++;
     }

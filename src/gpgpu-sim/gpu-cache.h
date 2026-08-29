@@ -573,6 +573,8 @@ class cache_config {
     m_set_index_function = LINEAR_SET_FUNCTION;
     m_is_streaming = false;
     m_wr_percent = 0;
+    m_ep_l2_descriptor_pool_size = 0;
+    m_ep_l2_descriptor_per_line_cap = 0;
   }
   void init(char *config, FuncCache status) {
     cache_status = status;
@@ -825,7 +827,14 @@ class cache_config {
     return addr & ~(new_addr_type)(m_line_sz - 1);
   }
   new_addr_type mshr_addr(new_addr_type addr) const {
+    // EP-L2 B0 keeps sector tags but aggregates outstanding work at a
+    // 128-byte line. The feature is opt-in, so legacy configurations retain
+    // sector-granular MSHRs.
+    if (m_ep_l2_descriptor_pool_size != 0) return block_addr(addr);
     return addr & ~(new_addr_type)(m_atom_sz - 1);
+  }
+  bool ep_l2_descriptor_mode() const {
+    return m_ep_l2_descriptor_pool_size != 0;
   }
   enum mshr_config_t get_mshr_type() const { return m_mshr_type; }
   void set_assoc(unsigned n) {
@@ -835,6 +844,10 @@ class cache_config {
   unsigned get_nset() const {
     assert(m_valid);
     return m_nset;
+  }
+  unsigned get_assoc() const {
+    assert(m_valid);
+    return m_assoc;
   }
   unsigned get_total_size_inKB() const {
     assert(m_valid);
@@ -899,6 +912,10 @@ class cache_config {
   };
   unsigned m_result_fifo_entries;
   unsigned m_data_port_width;  //< number of byte the cache can access per cycle
+  // EP-L2 B0 long-lived response descriptors. These deliberately do not
+  // reuse m_miss_queue, which remains the short lower-issue queue.
+  unsigned m_ep_l2_descriptor_pool_size;
+  unsigned m_ep_l2_descriptor_per_line_cap;
   enum set_index_function
       m_set_index_function;  // Hash, linear, or custom set index function
 
@@ -910,6 +927,7 @@ class cache_config {
   friend class l1_cache;
   friend class l2_cache;
   friend class memory_sub_partition;
+  friend class memory_config;
 };
 
 class l1d_cache_config : public cache_config {
@@ -1051,30 +1069,66 @@ class tag_array {
 
 class mshr_table {
  public:
-  mshr_table(unsigned num_entries, unsigned max_merged)
+  enum ep_l2_block_reason {
+    EP_L2_BLOCK_NONE = 0,
+    EP_L2_BLOCK_LINE_MSHR_FULL,
+    EP_L2_BLOCK_DESCRIPTOR_POOL_FULL,
+    EP_L2_BLOCK_PER_ADDRESS_CAP
+  };
+
+  mshr_table(unsigned num_entries, unsigned max_merged,
+             unsigned descriptor_pool_size = 0,
+             unsigned descriptor_per_line_cap = 0)
       : m_num_entries(num_entries),
-        m_max_merged(max_merged)
+        m_max_merged(max_merged),
+        m_descriptor_pool_size(descriptor_pool_size),
+        m_descriptor_per_line_cap(descriptor_per_line_cap)
 #if (tr1_hash_map_ismap == 0)
         ,
         m_data(2 * num_entries)
 #endif
   {
+    assert((m_descriptor_pool_size == 0 && m_descriptor_per_line_cap == 0) ||
+           (m_descriptor_pool_size != 0 &&
+            m_descriptor_per_line_cap != 0));
+    for (unsigned i = 0; i < m_descriptor_pool_size; ++i) {
+      m_descriptor_pool.push_back(ep_l2_descriptor());
+      m_free_descriptor_ids.push_back(m_descriptor_pool_size - i - 1);
+    }
   }
 
   /// Checks if there is a pending request to the lower memory level already
   bool probe(new_addr_type block_addr) const;
   /// Checks if there is space for tracking a new memory access
   bool full(new_addr_type block_addr) const;
+  ep_l2_block_reason full_reason(new_addr_type block_addr) const;
+  bool needs_lower_read(new_addr_type block_addr,
+                        const mem_access_sector_mask_t &sectors) const;
   /// Add or merge this access
   void add(new_addr_type block_addr, mem_fetch *mf);
+  // Directed-test entry point: exercises the production descriptor allocator
+  // without constructing the simulator's full CUDA runtime object graph.
+  void add_for_test(new_addr_type block_addr, mem_fetch *mf,
+                    const mem_access_sector_mask_t &sectors);
   /// Returns true if cannot accept new fill responses
   bool busy() const { return false; }
   /// Accept a new cache fill response: mark entry ready for processing
-  void mark_ready(new_addr_type block_addr, bool &has_atomic);
+  void mark_ready(new_addr_type block_addr, bool &has_atomic,
+                  const mem_access_sector_mask_t &sectors);
+  void mark_ready(new_addr_type block_addr, bool &has_atomic) {
+    mem_access_sector_mask_t all_sectors;
+    all_sectors.set();
+    mark_ready(block_addr, has_atomic, all_sectors);
+  }
   /// Returns true if ready accesses exist
-  bool access_ready() const { return !m_current_response.empty(); }
+  bool access_ready() const {
+    return !m_current_response.empty() || !m_current_descriptor_response.empty();
+  }
   /// Returns next ready access
   mem_fetch *next_access();
+  // EP-L2 reclaims a descriptor only after the response has entered L2->ICNT.
+  mem_fetch *peek_next_access() const;
+  void commit_next_access();
   void display(FILE *fp) const;
   // Returns true if there is a pending read after write
   bool is_read_after_write_pending(new_addr_type block_addr);
@@ -1082,19 +1136,33 @@ class mshr_table {
   unsigned num_targets_used() const;
   bool response_ready(new_addr_type block_addr) const;
   unsigned num_response_ready_entries() const {
-    return m_current_response.size();
+    return m_current_response.size() + m_current_descriptor_response.size();
   }
   unsigned num_response_ready_targets() const;
   unsigned max_targets_on_one_entry() const;
+  unsigned descriptor_count_used() const {
+    return m_descriptor_pool_size == 0
+               ? num_targets_used()
+               : m_descriptor_pool_size - m_free_descriptor_ids.size();
+  }
+  unsigned descriptor_pool_capacity() const { return m_descriptor_pool_size; }
+  void sector_masks(new_addr_type block_addr, mem_access_sector_mask_t &pending,
+                    mem_access_sector_mask_t &issued,
+                    mem_access_sector_mask_t &ready) const;
   void l2_char_states(std::vector<new_addr_type> &addresses,
                       std::vector<unsigned> &targets,
                       std::vector<bool> &ready) const;
 
-  void check_mshr_parameters(unsigned num_entries, unsigned max_merged) {
+  void check_mshr_parameters(unsigned num_entries, unsigned max_merged,
+                             unsigned descriptor_pool_size = 0,
+                             unsigned descriptor_per_line_cap = 0) {
     assert(m_num_entries == num_entries &&
            "Change of MSHR parameters between kernels is not allowed");
     assert(m_max_merged == max_merged &&
            "Change of MSHR parameters between kernels is not allowed");
+    assert(m_descriptor_pool_size == descriptor_pool_size &&
+           m_descriptor_per_line_cap == descriptor_per_line_cap &&
+           "Change of EP-L2 descriptor parameters between kernels is not allowed");
   }
 
  private:
@@ -1102,11 +1170,30 @@ class mshr_table {
   // merged requests
   const unsigned m_num_entries;
   const unsigned m_max_merged;
+  const unsigned m_descriptor_pool_size;
+  const unsigned m_descriptor_per_line_cap;
+
+  struct ep_l2_descriptor {
+    mem_fetch *m_mf;
+    mem_access_sector_mask_t m_sectors;
+    bool m_response_queued;
+    ep_l2_descriptor() : m_mf(NULL), m_response_queued(false) {
+      m_sectors.reset();
+    }
+  };
 
   struct mshr_entry {
     std::list<mem_fetch *> m_list;
+    std::list<unsigned> m_descriptor_ids;
     bool m_has_atomic;
-    mshr_entry() : m_has_atomic(false) {}
+    mem_access_sector_mask_t m_pending_sectors;
+    mem_access_sector_mask_t m_issued_sectors;
+    mem_access_sector_mask_t m_ready_sectors;
+    mshr_entry() : m_has_atomic(false) {
+      m_pending_sectors.reset();
+      m_issued_sectors.reset();
+      m_ready_sectors.reset();
+    }
   };
   typedef tr1_hash_map<new_addr_type, mshr_entry> table;
   typedef tr1_hash_map<new_addr_type, mshr_entry> line_table;
@@ -1116,6 +1203,15 @@ class mshr_table {
   // it may take several cycles to process the merged requests
   bool m_current_response_ready;
   std::list<new_addr_type> m_current_response;
+  struct ready_descriptor {
+    new_addr_type m_block_addr;
+    unsigned m_descriptor_id;
+    ready_descriptor(new_addr_type block_addr, unsigned descriptor_id)
+        : m_block_addr(block_addr), m_descriptor_id(descriptor_id) {}
+  };
+  std::list<ready_descriptor> m_current_descriptor_response;
+  std::vector<ep_l2_descriptor> m_descriptor_pool;
+  std::vector<unsigned> m_free_descriptor_ids;
 };
 
 /***************************************************************** Caches
@@ -1335,7 +1431,9 @@ class baseline_cache : public cache_t {
                  gpgpu_sim *gpu)
       : m_config(config),
         m_tag_array(new tag_array(config, core_id, type_id)),
-        m_mshrs(config.m_mshr_entries, config.m_mshr_max_merge),
+        m_mshrs(config.m_mshr_entries, config.m_mshr_max_merge,
+                config.m_ep_l2_descriptor_pool_size,
+                config.m_ep_l2_descriptor_per_line_cap),
         m_bandwidth_management(config),
         m_level(level),
         m_gpu(gpu) {
@@ -1356,7 +1454,9 @@ class baseline_cache : public cache_t {
     m_config = config;
     m_tag_array->update_cache_parameters(config);
     m_mshrs.check_mshr_parameters(config.m_mshr_entries,
-                                  config.m_mshr_max_merge);
+                                  config.m_mshr_max_merge,
+                                  config.m_ep_l2_descriptor_pool_size,
+                                  config.m_ep_l2_descriptor_per_line_cap);
   }
 
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
@@ -1374,6 +1474,8 @@ class baseline_cache : public cache_t {
   bool access_ready() const { return m_mshrs.access_ready(); }
   /// Pop next ready access (does not include accesses that "HIT")
   mem_fetch *next_access() { return m_mshrs.next_access(); }
+  mem_fetch *peek_next_access() const { return m_mshrs.peek_next_access(); }
+  void commit_next_access() { m_mshrs.commit_next_access(); }
   // flash invalidate all entries in cache
   void flush() { m_tag_array->flush(); }
   void invalidate() { m_tag_array->invalidate(); }
@@ -1433,6 +1535,9 @@ class baseline_cache : public cache_t {
   }
   unsigned mshr_entries_used() const { return m_mshrs.num_entries_used(); }
   unsigned mshr_targets_used() const { return m_mshrs.num_targets_used(); }
+  unsigned ep_l2_descriptor_count_used() const {
+    return m_mshrs.descriptor_count_used();
+  }
   unsigned mshr_ready_entries() const {
     return m_mshrs.num_response_ready_entries();
   }
@@ -1860,7 +1965,9 @@ struct l2_access_plan {
         will_send_lower_read(false),
         will_send_lower_write(false),
         will_send_writeback(false),
-        l1_writeback_absorbed(false) {}
+        l1_writeback_absorbed(false),
+        ep_l2_mshr_block_reason(mshr_table::EP_L2_BLOCK_NONE),
+        ep_l2_needs_lower_read(false) {}
 
   bool exact;
   cache_request_status probe_status;
@@ -1883,6 +1990,11 @@ struct l2_access_plan {
   bool will_send_lower_write;
   bool will_send_writeback;
   bool l1_writeback_absorbed;
+  // EP-L2-only debug observation.  This reports the descriptor-aware MSHR
+  // rejection reason selected by the non-mutating preview; it is not an
+  // additional admission input.
+  mshr_table::ep_l2_block_reason ep_l2_mshr_block_reason;
+  bool ep_l2_needs_lower_read;
 };
 
 /// Models second level shared cache with global write-back

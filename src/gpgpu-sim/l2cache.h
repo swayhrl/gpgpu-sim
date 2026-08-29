@@ -184,6 +184,11 @@ class memory_partition_unit {
   unsigned long long l2_char_read_issue_blocked_while_returnq_full() const {
     return m_read_issue_blocked_while_returnq_full;
   }
+  // Directed C3b cleanup hook.  It only releases the existing test-only
+  // simple-DRAM hold; default production configurations never arm it.
+  void l2_char_release_dram_issue_hold() {
+    m_l2_char_dram_issue_hold_remaining = 0;
+  }
 
   unsigned get_mpid() const { return m_id; }
 
@@ -318,6 +323,36 @@ class memory_sub_partition {
   void print_l2_char_stats(FILE *fp) const;
   bool l2_char_no_resource_leak() const;
 
+  // EP-L2 C3b observation hooks.  They expose production state for directed
+  // regressions and instrumentation only; none participate in admission.
+  unsigned ep_l2_descriptor_count_used() const {
+    return m_L2cache->ep_l2_descriptor_count_used();
+  }
+  unsigned ep_l2_line_mshr_entries() const {
+    return m_L2cache->mshr_entries_used();
+  }
+  unsigned ep_l2_ready_requesters() const {
+    return m_L2cache->mshr_ready_targets();
+  }
+  unsigned ep_l2_missq_occupancy() const {
+    return m_L2cache->miss_queue_occupancy();
+  }
+  unsigned ep_l2_l2dram_occupancy() const {
+    return m_L2_dram_queue->get_n_element();
+  }
+  unsigned ep_l2_draml2_occupancy() const {
+    return m_dram_L2_queue->get_n_element();
+  }
+  unsigned ep_l2_l2icnt_occupancy() const {
+    return m_L2_icnt_queue->get_n_element();
+  }
+  unsigned long long ep_l2_lower_read_issue_count() const {
+    return m_ep_l2_lower_read_issue_count;
+  }
+  mshr_table::ep_l2_block_reason ep_l2_last_preview_block_reason() const {
+    return m_ep_l2_last_preview_block_reason;
+  }
+
   void force_l2_tag_update(new_addr_type addr, unsigned time,
                            mem_access_sector_mask_t mask) {
     m_L2cache->force_tag_access(addr, m_memcpy_cycle_offset + time, mask);
@@ -357,8 +392,11 @@ class memory_sub_partition {
   l2_char_stats m_l2_char_stats;
   l2_char_collector *m_l2_char_collector;
   unsigned m_l2_char_l2dram_class[4];
+  unsigned long long m_ep_l2_lower_read_issue_count;
+  mshr_table::ep_l2_block_reason m_ep_l2_last_preview_block_reason;
 
   void l2_char_record_l2dram_push(mem_fetch *mf);
+  void ep_l2_record_lower_issue(mem_fetch *mf);
   void l2_char_record_l2dram_pop(mem_fetch *mf);
   void l2_char_sample(unsigned long long cycle);
   static unsigned l2_char_queue_class(const mem_fetch *mf);
@@ -388,6 +426,7 @@ class L2interface : public mem_fetch_interface {
     mf->set_status(IN_PARTITION_L2_TO_DRAM_QUEUE, 0 /*FIXME*/);
     m_unit->m_L2_dram_queue->push(mf);
     m_unit->l2_char_record_l2dram_push(mf);
+    m_unit->ep_l2_record_lower_issue(mf);
   }
 
  private:

@@ -778,6 +778,8 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
       config->gpgpu_l2_char_returnq_hold_cycles;
   m_l2_char_collector = 0;
   for (unsigned i = 0; i < 4; ++i) m_l2_char_l2dram_class[i] = 0;
+  m_ep_l2_lower_read_issue_count = 0;
+  m_ep_l2_last_preview_block_reason = mshr_table::EP_L2_BLOCK_NONE;
   if (!m_config->m_L2_config.disabled() && config->gpgpu_l2_char_enable) {
     m_L2cache->l2_char_tracking_enable();
     m_l2_char_collector = new l2_char_collector(
@@ -813,6 +815,11 @@ void memory_sub_partition::l2_char_record_l2dram_push(mem_fetch *mf) {
   const unsigned klass = l2_char_queue_class(mf);
   ++m_l2_char_l2dram_class[klass];
   m_l2_char_collector->record_l2dram_push_class(klass, mf->get_data_size());
+}
+
+void memory_sub_partition::ep_l2_record_lower_issue(mem_fetch *mf) {
+  if (m_config->m_L2_config.ep_l2_descriptor_mode() && !mf->get_is_write())
+    ++m_ep_l2_lower_read_issue_count;
 }
 
 void memory_sub_partition::l2_char_record_l2dram_pop(mem_fetch *mf) {
@@ -873,7 +880,9 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
           m_L2cache->access_ready(),
           m_L2cache->access_ready() && m_L2_icnt_queue->full());
     if (m_L2cache->access_ready() && !m_L2_icnt_queue->full()) {
-      mem_fetch *mf = m_L2cache->next_access();
+      // Keep the EP-L2 descriptor live until this response has actually been
+      // accepted by the L2->ICNT queue below.
+      mem_fetch *mf = m_L2cache->peek_next_access();
       if (mf->get_access_type() !=
           L2_WR_ALLOC_R) {  // Don't pass write allocate read request back to
                             // upper level cache
@@ -894,6 +903,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         m_request_tracker.erase(mf);
         delete mf;
       }
+      m_L2cache->commit_next_access();
     }
   }
 
@@ -948,6 +958,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       // L2 is enabled and access is for L2
       l2_access_plan plan;
       m_L2cache->preview_access(mf->get_addr(), mf, plan);
+      if (plan.exact)
+        m_ep_l2_last_preview_block_reason = plan.ep_l2_mshr_block_reason;
       if (plan.exact && plan.victim_dirty)
         m_l2_char_stats.dirty_victim_preview_count++;
       const unsigned missq_occupancy_before = m_L2cache->miss_queue_occupancy();
@@ -1036,6 +1048,9 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
               retry_plan.needs_mshr_merge == plan.needs_mshr_merge &&
               retry_plan.new_missq_entries == plan.new_missq_entries &&
               retry_plan.will_send_lower_read == plan.will_send_lower_read &&
+              retry_plan.ep_l2_mshr_block_reason ==
+                  plan.ep_l2_mshr_block_reason &&
+              retry_plan.ep_l2_needs_lower_read == plan.ep_l2_needs_lower_read &&
               retry_plan.will_send_writeback == plan.will_send_writeback;
           if (unchanged)
             m_l2_char_stats.missq_dirty_block_no_mutation++;
