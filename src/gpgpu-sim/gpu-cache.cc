@@ -1070,6 +1070,17 @@ unsigned long long cache_stats::operator()(int access_type, int access_outcome,
   }
 }
 
+unsigned long long cache_stats::total_fail_reason(
+    enum cache_reservation_fail_reason reason) const {
+  unsigned long long total = 0;
+  for (std::map<unsigned long long,
+                std::vector<std::vector<unsigned long long>>>::const_iterator
+           stream = m_fail_stats.begin(); stream != m_fail_stats.end(); ++stream)
+    for (unsigned type = 0; type < NUM_MEM_ACCESS_TYPE; ++type)
+      total += stream->second[type][reason];
+  return total;
+}
+
 cache_stats cache_stats::operator+(const cache_stats &cs) {
   ///
   /// Overloaded + operator to allow for simple stat accumulation

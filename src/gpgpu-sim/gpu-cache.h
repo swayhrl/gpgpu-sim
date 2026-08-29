@@ -1379,6 +1379,10 @@ class cache_stats {
   unsigned long long operator()(int access_type, int access_outcome,
                                 bool fail_outcome,
                                 unsigned long long streamID) const;
+  // Sum one native reservation-fail class across all access types and
+  // streams. This is observation-only and supports C7d L1 snapshots.
+  unsigned long long total_fail_reason(
+      enum cache_reservation_fail_reason reason) const;
   cache_stats operator+(const cache_stats &cs);
   cache_stats &operator+=(const cache_stats &cs);
   void print_stats(FILE *fout, unsigned long long streamID,
