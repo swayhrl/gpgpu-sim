@@ -77,6 +77,16 @@ static void exercise(unsigned mode) {
   assert(!payload.resident_fill_expected(6, 0x1600, g6, sector(2)));
   assert(payload.resident_pending_sectors(6) == sector(1));
   payload.complete_resident_fill(6, 0x1600, g6, sector(1), false);
+
+  // T8: a later static landing for the same line retires a stale, completed
+  // resident identity.  This models a tag invalidation/replacement boundary
+  // without permitting a duplicated payload owner to survive into a later
+  // kernel.
+  payload.assign_resident(7, 0x1700, NULL);
+  payload.reserve_resident(8, 0x1700, NULL);
+  assert(payload.resident(7).status == ep_l2_payload_store::FREE);
+  assert(payload.resident_owner_matches(8, 0x1700,
+                                        payload.resident(8).generation));
   assert(payload.ownership_consistent());
 }
 

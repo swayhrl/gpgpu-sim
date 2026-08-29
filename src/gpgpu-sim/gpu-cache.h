@@ -2080,7 +2080,24 @@ class ep_l2_payload_store {
     m_resident[id].pending_sector_mask |= sectors;
   }
   void reserve_resident(unsigned id, new_addr_type owner, mem_fetch *mf) {
-    assert(id < 1024); assign(m_resident[id], id, owner, mf, RESIDENT_FILL_PENDING);
+    assert(id < 1024);
+    // The tag array's selected static line is the authoritative landing for
+    // this owner.  A previous incarnation can remain in another payload slot
+    // after a line has been invalidated/replaced between kernel boundaries.
+    // It has no fill in flight, so retire that stale identity before assigning
+    // the new landing.  Retiring a pending identity would lose its response;
+    // that is a real lifetime violation and must remain visible as an assert.
+    for (unsigned prior = 0; prior < m_resident.size(); ++prior) {
+      if (prior == id || !m_resident[prior].occupied() ||
+          m_resident[prior].owner != owner)
+        continue;
+      assert(m_resident[prior].pending_sector_mask.none());
+      m_resident[prior].status = FREE;
+      m_resident[prior].owner = 0;
+      m_resident[prior].pending_sector_mask.reset();
+      ++m_resident[prior].generation;
+    }
+    assign(m_resident[id], id, owner, mf, RESIDENT_FILL_PENDING);
   }
   void attach_resident_identity(unsigned id, mem_fetch *mf) const {
     assert(id < 1024 && m_resident[id].occupied() && mf);
