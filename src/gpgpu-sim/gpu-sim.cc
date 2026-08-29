@@ -269,6 +269,9 @@ void memory_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_ep_l2_payload_mode", OPT_UINT32,
                          &m_L2_config.m_ep_l2_payload_mode,
                          "EP-L2 payload mode: 0=off, 1=Legacy, 2=Banked", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_b0_stats", OPT_BOOL,
+                         &m_L2_config.m_ep_l2_b0_stats,
+                         "emit timing-neutral EPL2B0V1 target instrumentation", "1");
   option_parser_register(opp, "-gpgpu_cache:dl2_texture_only", OPT_BOOL,
                          &m_L2_texure_only, "L2 cache used for texture only",
                          "1");
@@ -845,11 +848,11 @@ void gpgpu_sim::launch(kernel_info_t *kinfo) {
   unsigned kernelID = kinfo->get_uid();
   unsigned long long streamID = kinfo->get_streamID();
 
-  // C7 boundary snapshot: do not flush/reset any architectural state.  This
-  // records the precise shared-L2 state observed at each kernel-launch UID.
+  // C7 interval start: do not flush/reset architectural state. Completion
+  // emits a shared-L2 delta for this kernel's launch-to-done interval.
   if (m_memory_partition_unit)
     for (unsigned i = 0; i < m_memory_config->m_n_mem; ++i)
-      m_memory_partition_unit[i]->print_ep_l2_b0_snapshot(stdout, kernelID);
+      m_memory_partition_unit[i]->begin_ep_l2_b0_kernel(kernelID);
 
   kernel_time_t kernel_time = {gpu_tot_sim_cycle + gpu_sim_cycle, 0};
   if (gpu_kernel_time.find(streamID) == gpu_kernel_time.end()) {
@@ -986,6 +989,9 @@ void gpgpu_sim::set_kernel_done(kernel_info_t *kernel) {
   gpu_kernel_time.at(streamID).at(uid).end_cycle =
       gpu_tot_sim_cycle + gpu_sim_cycle;
   m_finished_kernel.push_back(uid);
+  if (m_memory_partition_unit)
+    for (unsigned i = 0; i < m_memory_config->m_n_mem; ++i)
+      m_memory_partition_unit[i]->end_ep_l2_b0_kernel(stdout, uid);
   std::vector<kernel_info_t *>::iterator k;
   for (k = m_running_kernels.begin(); k != m_running_kernels.end(); k++) {
     if (*k == kernel) {

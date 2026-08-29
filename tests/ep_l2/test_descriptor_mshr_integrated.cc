@@ -190,6 +190,26 @@ static void same_sector(const char *base, const char *fixture) {
   assert(s.replies == 2);
 }
 
+// C5 production path: the static resident landing is owned before the lower
+// request leaves L2, and the exact identity is carried by that transaction.
+static void payload_landing(const char *base, const char *fixture) {
+  scenario s(base, fixture);
+  s.push(0x6800);
+  for (unsigned i = 0; i < 200; ++i) {
+    s.cycle(true);
+    if (s.subpartition->ep_l2_payload_identity_lower_issue_count() == 1) break;
+  }
+  fprintf(stderr, "payload lower=%llu pending=%u valid=%u\n",
+          s.subpartition->ep_l2_payload_identity_lower_issue_count(),
+          s.subpartition->ep_l2_resident_payload_pending(),
+          s.subpartition->ep_l2_resident_payload_valid());
+  assert(s.subpartition->ep_l2_payload_identity_lower_issue_count() == 1);
+  assert(s.subpartition->ep_l2_resident_payload_pending() == 1);
+  s.drain(5000);
+  assert(s.subpartition->ep_l2_resident_payload_pending() == 0);
+  assert(s.subpartition->ep_l2_resident_payload_valid() == 1);
+}
+
 static void descriptor_exhaustion(const char *base, const char *fixture) {
   scenario s(base, fixture);
   for (unsigned line = 0; line < 64; ++line)
@@ -212,12 +232,35 @@ static void descriptor_exhaustion(const char *base, const char *fixture) {
   assert(s.replies == 257);
 }
 
+// C7 instrumentation must be observational. The exact same production
+// request/drain sequence therefore has identical simulated cycles with the
+// EPL2B0V1 collector enabled and disabled.
+static void timing_neutral(const char *base, const char *on, const char *off) {
+  scenario enabled(base, on), disabled(base, off);
+  enabled.push(0x7000); disabled.push(0x7000);
+  enabled.drain(5000); disabled.drain(5000);
+  assert(enabled.replies == disabled.replies);
+  assert(enabled.gpu->gpu_sim_cycle == disabled.gpu->gpu_sim_cycle);
+}
+
+static void banked_production_no_loss(const char *base, const char *fixture) {
+  scenario s(base, fixture);
+  // Five ways of one set include payload IDs 0 and 4, which target bank 0.
+  // The production retry path must drain all requests without duplication.
+  for (unsigned i = 0; i < 5; ++i) s.push(0x10000 + i * 8192);
+  s.drain(20000);
+  assert(s.replies == 5);
+}
+
 int main(int argc, char **argv) {
-  assert(argc == 4);
+  assert(argc == 6);
   lifecycle(argv[1], argv[2]);
   different_sector(argv[1], argv[2]);
   same_sector(argv[1], argv[2]);
+  payload_landing(argv[1], argv[2]);
   descriptor_exhaustion(argv[1], argv[3]);
+  timing_neutral(argv[1], argv[2], argv[4]);
+  banked_production_no_loss(argv[1], argv[5]);
   puts("EP-L2 C3b production descriptor/MSHR regressions: PASS");
   return 0;
 }

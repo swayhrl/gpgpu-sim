@@ -17,4 +17,6 @@ ${CXX:-g++} -std=c++11 -O2 -I"$CUDA_INSTALL_PATH/include" -I"$root/src" -I"$root
   -Wl,--end-group -lz -lpthread -ldl -lssl -lcrypto -lGL -o "$out"
 "$out" "$root/configs/tested-cfgs/SM7_QV100/gpgpusim.config" \
   "$root/tests/ep_l2/integrated.config" \
-  "$root/tests/ep_l2/integrated_exhaustion.config"
+  "$root/tests/ep_l2/integrated_exhaustion.config" \
+  "$root/tests/ep_l2/integrated_stats_off.config" \
+  "$root/tests/ep_l2/integrated_banked.config"

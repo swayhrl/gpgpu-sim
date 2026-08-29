@@ -3,15 +3,20 @@
 #include "../../src/gpgpu-sim/gpu-cache.h"
 int main() {
   ep_l2_payload_store banked(2);
-  // IDs 0,1,2,3 map to four independent banks; ID 4 collides with oldest ID 0.
-  for (unsigned id = 0; id < 4; ++id)
-    assert(banked.request(ep_l2_payload_store::RESIDENT, id, false, 9));
-  assert(!banked.request(ep_l2_payload_store::RESIDENT, 4, true, 9));
-  assert(banked.bank_requests() == 5 && banked.bank_grants() == 4 &&
-         banked.bank_conflicts() == 1);
-  // The retried loser receives the next cycle's bank grant; no request is lost.
-  assert(banked.request(ep_l2_payload_store::RESIDENT, 4, true, 10));
-  assert(banked.bank_grants() == 5);
+  // Same-bank ready operations use their sequence numbers, not enqueue/call
+  // order: ID4 was enqueued first but ID0 is older and must win bank 0.
+  banked.enqueue(ep_l2_payload_store::RESIDENT, 4, true, 20);
+  banked.enqueue(ep_l2_payload_store::RESIDENT, 0, false, 10);
+  banked.enqueue(ep_l2_payload_store::RESIDENT, 1, false, 30);
+  unsigned long long granted = 0;
+  assert(banked.grant_oldest(ep_l2_payload_store::RESIDENT, 0, false, 9, &granted));
+  assert(granted == 10);
+  // Bank 1 proceeds in the same cycle; different banks are independent.
+  assert(banked.grant_oldest(ep_l2_payload_store::RESIDENT, 1, false, 9, &granted));
+  assert(granted == 30);
+  // The bank-0 loser remains pending and wins only on retry next cycle.
+  assert(banked.grant_oldest(ep_l2_payload_store::RESIDENT, 4, true, 10, &granted));
+  assert(granted == 20 && banked.pending_operations() == 0);
   for (unsigned i = 0; i < 1024; ++i) banked.assign_resident(i, i, NULL);
   for (unsigned i = 0; i < 128; ++i) banked.assign_bypass(i, 1024 + i, NULL);
   assert(banked.resident_used() == 1024 && banked.bypass_used() == 128);

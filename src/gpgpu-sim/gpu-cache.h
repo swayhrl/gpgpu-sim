@@ -577,6 +577,7 @@ class cache_config {
     m_ep_l2_descriptor_per_line_cap = 0;
     m_ep_l2_wad_entries = 0;
     m_ep_l2_payload_mode = 0;
+    m_ep_l2_b0_stats = true;
   }
   void init(char *config, FuncCache status) {
     cache_status = status;
@@ -838,6 +839,7 @@ class cache_config {
   bool ep_l2_descriptor_mode() const {
     return m_ep_l2_descriptor_pool_size != 0;
   }
+  bool ep_l2_b0_stats_enabled() const { return m_ep_l2_b0_stats; }
   enum mshr_config_t get_mshr_type() const { return m_mshr_type; }
   void set_assoc(unsigned n) {
     // set new assoc. L1 cache dynamically resized in Volta
@@ -922,6 +924,8 @@ class cache_config {
   unsigned m_ep_l2_wad_entries;
   // 0=off, 1=B0-Legacy dual 1R1W RAMs, 2=B0-Banked 4x288 RAMs.
   unsigned m_ep_l2_payload_mode;
+  // Observational only. Disabling it must not change simulator timing.
+  bool m_ep_l2_b0_stats;
   enum set_index_function
       m_set_index_function;  // Hash, linear, or custom set index function
 
@@ -1544,6 +1548,9 @@ class baseline_cache : public cache_t {
   unsigned ep_l2_descriptor_count_used() const {
     return m_mshrs.descriptor_count_used();
   }
+  unsigned ep_l2_descriptor_pool_capacity() const {
+    return m_mshrs.descriptor_pool_capacity();
+  }
   unsigned mshr_ready_entries() const {
     return m_mshrs.num_response_ready_entries();
   }
@@ -2008,14 +2015,26 @@ struct l2_access_plan {
 class ep_l2_payload_store {
  public:
   enum role { RESIDENT, BYPASS };
+  enum state {
+    FREE,
+    RESIDENT_FILL_PENDING,
+    RESIDENT_VALID,
+    RESIDENT_DIRTY,
+    BYPASS_FILL_PENDING,
+    BYPASS_READY
+  };
   struct slot {
-    bool valid; new_addr_type owner; unsigned generation;
-    slot() : valid(false), owner(0), generation(0) {}
+    state status; new_addr_type owner; unsigned generation; unsigned pending_fills;
+    slot() : status(FREE), owner(0), generation(0), pending_fills(0) {}
+    bool occupied() const { return status != FREE; }
   };
   ep_l2_payload_store(unsigned mode = 0)
-      : m_mode(mode), m_cycle((unsigned long long)-1), m_legacy_reads(0),
-        m_legacy_writes(0), m_bank_requests(0), m_bank_grants(0),
-        m_bank_conflicts(0) { m_resident.resize(1024); m_bypass.resize(128); }
+      : m_mode(mode), m_cycle((unsigned long long)-1),
+        m_resident_reads(0), m_resident_writes(0), m_bypass_reads(0),
+        m_bypass_writes(0), m_bank_requests(0), m_bank_grants(0),
+        m_bank_conflicts(0), m_next_sequence(0) {
+    m_resident.resize(1024); m_bypass.resize(128);
+  }
   bool enabled() const { return m_mode != 0; }
   bool banked() const { return m_mode == 2; }
   unsigned resident_used() const { return used(m_resident); }
@@ -2024,21 +2043,93 @@ class ep_l2_payload_store {
   unsigned bypass_free() const { return 128 - bypass_used(); }
   const slot &resident(unsigned id) const { assert(id < 1024); return m_resident[id]; }
   const slot &bypass(unsigned id) const { assert(id < 128); return m_bypass[id]; }
+  void restore_resident(unsigned id, const slot &saved) {
+    assert(id < 1024); m_resident[id] = saved;
+  }
+  unsigned resident_pending() const { return count_state(m_resident, RESIDENT_FILL_PENDING); }
+  unsigned resident_valid() const { return count_state(m_resident, RESIDENT_VALID) + count_state(m_resident, RESIDENT_DIRTY); }
+  unsigned bypass_pending() const { return count_state(m_bypass, BYPASS_FILL_PENDING); }
+  unsigned bypass_ready() const { return count_state(m_bypass, BYPASS_READY); }
+  bool resident_identity_matches(unsigned id, new_addr_type owner,
+                                 unsigned generation) const {
+    return id < 1024 && m_resident[id].status == RESIDENT_FILL_PENDING &&
+           m_resident[id].owner == owner && m_resident[id].generation == generation;
+  }
+  void note_resident_lower_read(unsigned id, unsigned generation) {
+    assert(id < 1024 && m_resident[id].status == RESIDENT_FILL_PENDING &&
+           m_resident[id].generation == generation);
+    ++m_resident[id].pending_fills;
+  }
+  void reserve_resident(unsigned id, new_addr_type owner, mem_fetch *mf) {
+    assert(id < 1024); assign(m_resident[id], id, owner, mf, RESIDENT_FILL_PENDING);
+  }
+  void attach_resident_identity(unsigned id, mem_fetch *mf) const {
+    assert(id < 1024 && m_resident[id].occupied() && mf);
+    mf->set_ep_l2_payload_identity(id, m_resident[id].generation);
+  }
+  void complete_resident_fill(unsigned id, new_addr_type owner,
+                              unsigned generation, bool dirty) {
+    assert(resident_identity_matches(id, owner, generation));
+    assert(m_resident[id].pending_fills);
+    if (--m_resident[id].pending_fills == 0)
+      m_resident[id].status = dirty ? RESIDENT_DIRTY : RESIDENT_VALID;
+  }
+  void complete_resident_no_fill(unsigned id, new_addr_type owner,
+                                 unsigned generation, bool dirty) {
+    assert(resident_identity_matches(id, owner, generation));
+    assert(m_resident[id].pending_fills == 0);
+    m_resident[id].status = dirty ? RESIDENT_DIRTY : RESIDENT_VALID;
+  }
+  void mark_resident_dirty(unsigned id) {
+    assert(id < 1024 && m_resident[id].occupied());
+    m_resident[id].status = RESIDENT_DIRTY;
+  }
   void assign_resident(unsigned id, new_addr_type owner, mem_fetch *mf) {
-    assert(id < 1024); assign(m_resident[id], id, owner, mf);
+    reserve_resident(id, owner, mf);
+    complete_resident_no_fill(id, owner, m_resident[id].generation, false);
+  }
+  void reserve_bypass(unsigned id, new_addr_type owner, mem_fetch *mf) {
+    assert(id < 128); assign(m_bypass[id], 1024 + id, owner, mf, BYPASS_FILL_PENDING);
+  }
+  void complete_bypass(unsigned id, new_addr_type owner, unsigned generation) {
+    assert(id < 128 && m_bypass[id].status == BYPASS_FILL_PENDING &&
+           m_bypass[id].owner == owner && m_bypass[id].generation == generation);
+    m_bypass[id].status = BYPASS_READY;
   }
   void assign_bypass(unsigned id, new_addr_type owner, mem_fetch *mf) {
-    assert(id < 128); assign(m_bypass[id], 1024 + id, owner, mf);
+    reserve_bypass(id, owner, mf);
+    complete_bypass(id, owner, m_bypass[id].generation);
   }
-  void release_bypass(unsigned id) { assert(id < 128); m_bypass[id].valid = false; }
+  void release_bypass(unsigned id) { assert(id < 128); m_bypass[id].status = FREE; }
   unsigned long long bank_requests() const { return m_bank_requests; }
   unsigned long long bank_grants() const { return m_bank_grants; }
   unsigned long long bank_conflicts() const { return m_bank_conflicts; }
-  bool request(role r, unsigned id, bool write, unsigned long long cycle) {
+  // `sequence` is explicit for deterministic directed arbitration. Production
+  // callers use their arrival order; a denied operation keeps that sequence
+  // through its retry token in the per-bank pending list.
+  bool request(role r, unsigned id, bool write, unsigned long long cycle,
+               unsigned long long sequence = (unsigned long long)-1) {
     if (!enabled()) return true;
-    if (m_cycle != cycle) { m_cycle = cycle; m_legacy_reads = m_legacy_writes = 0; m_bank_granted.reset(); }
+    if (m_cycle != cycle) {
+      m_cycle = cycle;
+      m_resident_reads = m_resident_writes = m_bypass_reads = m_bypass_writes = 0;
+      m_bank_granted.reset();
+      if (banked()) {
+        for (unsigned b = 0; b < 4; ++b) {
+          m_granted[b].clear();
+          if (m_pending[b].empty()) continue;
+          unsigned best = 0;
+          for (unsigned i = 1; i < m_pending[b].size(); ++i)
+            if (m_pending[b][i].sequence < m_pending[b][best].sequence) best = i;
+          m_granted[b].push_back(m_pending[b][best]);
+          m_pending[b].erase(m_pending[b].begin() + best);
+        }
+      }
+    }
     if (m_mode == 1) {
-      unsigned &used_port = write ? m_legacy_writes : m_legacy_reads;
+      unsigned &used_port = r == RESIDENT ?
+          (write ? m_resident_writes : m_resident_reads) :
+          (write ? m_bypass_writes : m_bypass_reads);
       if (used_port) return false;
       ++used_port; return true;
     }
@@ -2046,20 +2137,96 @@ class ep_l2_payload_store {
     assert(global_id < 1152);
     const unsigned bank = global_id % 4;
     ++m_bank_requests;
-    if (m_bank_granted.test(bank)) { ++m_bank_conflicts; return false; }
-    m_bank_granted.set(bank); ++m_bank_grants; return true;
+    if (!m_granted[bank].empty()) {
+      const pending_op op = m_granted[bank].front();
+      if (op.r == r && op.id == id && op.write == write) {
+        m_granted[bank].clear(); m_bank_granted.set(bank); ++m_bank_grants;
+        return true;
+      }
+    }
+    // A request denied today remains ready with its original sequence. The
+    // next cycle chooses the oldest queued request for that bank, rather than
+    // allowing call-site order to decide the winner.
+    bool already_pending = false;
+    for (unsigned i = 0; i < m_pending[bank].size(); ++i)
+      if (m_pending[bank][i].r == r && m_pending[bank][i].id == id &&
+          m_pending[bank][i].write == write) already_pending = true;
+    if (!already_pending && !m_bank_granted.test(bank))
+      m_pending[bank].push_back(pending_op(r, id, write,
+          sequence == (unsigned long long)-1 ? m_next_sequence++ : sequence));
+    ++m_bank_conflicts;
+    return false;
+  }
+  // A compact oldest-ready arbiter used by directed regressions. Production
+  // directed regressions. All candidates are made ready before `grant_oldest`;
+  // the smallest monotonically assigned sequence wins, independent of call
+  // order at the grant site.
+  void enqueue(role r, unsigned id, bool write, unsigned long long sequence) {
+    assert(banked());
+    const unsigned global_id = r == RESIDENT ? id : 1024 + id;
+    assert(global_id < 1152);
+    m_pending[global_id % 4].push_back(pending_op(r, id, write,
+                                                   sequence == (unsigned long long)-1 ? m_next_sequence++ : sequence));
+  }
+  bool grant_oldest(role r, unsigned id, bool write, unsigned long long cycle,
+                    unsigned long long *granted_sequence = NULL) {
+    if (!enabled() || !banked()) return request(r, id, write, cycle);
+    if (m_cycle != cycle) { m_cycle = cycle; m_bank_granted.reset(); }
+    const unsigned global_id = r == RESIDENT ? id : 1024 + id;
+    const unsigned bank = global_id % 4;
+    if (m_bank_granted.test(bank) || m_pending[bank].empty()) return false;
+    std::vector<pending_op> &q = m_pending[bank];
+    unsigned best = 0;
+    for (unsigned i = 1; i < q.size(); ++i)
+      if (q[i].sequence < q[best].sequence) best = i;
+    pending_op op = q[best]; q.erase(q.begin() + best);
+    m_bank_granted.set(bank); ++m_bank_grants;
+    if (granted_sequence) *granted_sequence = op.sequence;
+    return op.r == r && op.id == id && op.write == write;
+  }
+  unsigned pending_operations() const {
+    unsigned n = 0; for (unsigned b = 0; b < 4; ++b) n += m_pending[b].size(); return n;
+  }
+  bool ownership_consistent() const {
+    std::set<new_addr_type> owners;
+    for (unsigned i = 0; i < m_resident.size(); ++i) {
+      const slot &s = m_resident[i];
+      if (!s.occupied()) continue;
+      if (s.status != RESIDENT_FILL_PENDING && s.status != RESIDENT_VALID &&
+          s.status != RESIDENT_DIRTY) return false;
+      if (!owners.insert(s.owner).second) return false;
+    }
+    for (unsigned i = 0; i < m_bypass.size(); ++i) {
+      const slot &s = m_bypass[i];
+      if (!s.occupied()) continue;
+      if (s.status != BYPASS_FILL_PENDING && s.status != BYPASS_READY) return false;
+    }
+    return true;
   }
  private:
   static unsigned used(const std::vector<slot> &slots) {
-    unsigned n = 0; for (std::vector<slot>::const_iterator i = slots.begin(); i != slots.end(); ++i) if (i->valid) ++n; return n;
+    unsigned n = 0; for (std::vector<slot>::const_iterator i = slots.begin(); i != slots.end(); ++i) if (i->occupied()) ++n; return n;
   }
-  static void assign(slot &s, unsigned payload_id, new_addr_type owner, mem_fetch *mf) {
-    s.valid = true; s.owner = owner; ++s.generation;
+  static unsigned count_state(const std::vector<slot> &slots, state wanted) {
+    unsigned n = 0; for (std::vector<slot>::const_iterator i = slots.begin(); i != slots.end(); ++i) if (i->status == wanted) ++n; return n;
+  }
+  static void assign(slot &s, unsigned payload_id, new_addr_type owner, mem_fetch *mf,
+                     state new_state) {
+    s.status = new_state; s.owner = owner; s.pending_fills = 0; ++s.generation;
     if (mf) mf->set_ep_l2_payload_identity(payload_id, s.generation);
   }
-  unsigned m_mode; unsigned long long m_cycle; unsigned m_legacy_reads, m_legacy_writes;
+  struct pending_op {
+    pending_op(role role_value, unsigned id_value, bool write_value,
+               unsigned long long sequence_value)
+        : r(role_value), id(id_value), write(write_value), sequence(sequence_value) {}
+    role r; unsigned id; bool write; unsigned long long sequence;
+  };
+  unsigned m_mode; unsigned long long m_cycle;
+  unsigned m_resident_reads, m_resident_writes, m_bypass_reads, m_bypass_writes;
   unsigned long long m_bank_requests, m_bank_grants, m_bank_conflicts;
+  unsigned long long m_next_sequence;
   std::bitset<4> m_bank_granted; std::vector<slot> m_resident, m_bypass;
+  std::vector<pending_op> m_pending[4], m_granted[4];
 };
 
 /// Models second level shared cache with global write-back
@@ -2082,12 +2249,32 @@ class l2_cache : public data_cache {
                                            unsigned time,
                                            std::list<cache_event> &events);
   virtual void fill(mem_fetch *mf, unsigned time);
-  bool ep_l2_payload_fill_port_free(unsigned long long cycle) {
-    return !m_ep_l2_payload.enabled() ||
-           m_ep_l2_payload.request(ep_l2_payload_store::RESIDENT, 0, true, cycle);
+  bool data_port_free() const {
+    return !m_ep_l2_payload.enabled() && data_cache::data_port_free();
+  }
+  bool fill_port_free() const {
+    return !m_ep_l2_payload.enabled() && data_cache::fill_port_free();
+  }
+  bool ep_l2_payload_fill_ready(mem_fetch *mf, unsigned long long cycle) {
+    if (!m_ep_l2_payload.enabled()) return data_cache::fill_port_free();
+    if (!mf->has_ep_l2_payload_identity()) return false;
+    const unsigned id = mf->get_ep_l2_payload_id();
+    return id < 1024 && m_ep_l2_payload.request(ep_l2_payload_store::RESIDENT,
+                                                  id, true, cycle);
   }
   unsigned ep_l2_resident_payload_occupancy() const { return m_ep_l2_payload.resident_used(); }
   unsigned ep_l2_bypass_payload_occupancy() const { return m_ep_l2_payload.bypass_used(); }
+  unsigned ep_l2_resident_pending() const { return m_ep_l2_payload.resident_pending(); }
+  unsigned ep_l2_resident_valid() const { return m_ep_l2_payload.resident_valid(); }
+  unsigned ep_l2_bypass_pending() const { return m_ep_l2_payload.bypass_pending(); }
+  unsigned ep_l2_bypass_ready() const { return m_ep_l2_payload.bypass_ready(); }
+  unsigned ep_l2_payload_pending_operations() const { return m_ep_l2_payload.pending_operations(); }
+  unsigned long long ep_l2_payload_bank_requests() const { return m_ep_l2_payload.bank_requests(); }
+  unsigned long long ep_l2_payload_bank_grants() const { return m_ep_l2_payload.bank_grants(); }
+  unsigned long long ep_l2_payload_bank_conflicts() const { return m_ep_l2_payload.bank_conflicts(); }
+  bool ep_l2_payload_ownership_consistent() const {
+    return m_ep_l2_payload.ownership_consistent();
+  }
   ep_l2_payload_store &ep_l2_payload_for_test() { return m_ep_l2_payload; }
 
   // C4 WAD ownership is intentionally address-indexed. A reservation must

@@ -748,6 +748,19 @@ void memory_partition_unit::print_ep_l2_b0_snapshot(FILE *fp,
     m_sub_partition[p]->print_ep_l2_b0_snapshot(fp, uid);
 }
 
+void memory_partition_unit::begin_ep_l2_b0_kernel(unsigned long long uid) {
+  if (!m_config->m_L2_config.ep_l2_b0_stats_enabled()) return;
+  for (unsigned p = 0; p < m_config->m_n_sub_partition_per_memory_channel; ++p)
+    m_sub_partition[p]->begin_ep_l2_b0_kernel(uid);
+}
+
+void memory_partition_unit::end_ep_l2_b0_kernel(FILE *fp,
+                                                 unsigned long long uid) {
+  if (!m_config->m_L2_config.ep_l2_b0_stats_enabled()) return;
+  for (unsigned p = 0; p < m_config->m_n_sub_partition_per_memory_channel; ++p)
+    m_sub_partition[p]->end_ep_l2_b0_kernel(fp, uid);
+}
+
 memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
                                            const memory_config *config,
                                            class memory_stats_t *stats,
@@ -785,6 +798,7 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
   m_l2_char_collector = 0;
   for (unsigned i = 0; i < 4; ++i) m_l2_char_l2dram_class[i] = 0;
   m_ep_l2_lower_read_issue_count = 0;
+  m_ep_l2_payload_identity_lower_issue_count = 0;
   m_ep_l2_last_preview_block_reason = mshr_table::EP_L2_BLOCK_NONE;
   if (!m_config->m_L2_config.disabled() && config->gpgpu_l2_char_enable) {
     m_L2cache->l2_char_tracking_enable();
@@ -826,6 +840,9 @@ void memory_sub_partition::l2_char_record_l2dram_push(mem_fetch *mf) {
 void memory_sub_partition::ep_l2_record_lower_issue(mem_fetch *mf) {
   if (m_config->m_L2_config.ep_l2_descriptor_mode() && !mf->get_is_write())
     ++m_ep_l2_lower_read_issue_count;
+  if (m_config->m_L2_config.m_ep_l2_payload_mode &&
+      mf->has_ep_l2_payload_identity())
+    ++m_ep_l2_payload_identity_lower_issue_count;
 }
 
 void memory_sub_partition::l2_char_record_l2dram_pop(mem_fetch *mf) {
@@ -921,9 +938,19 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
   } else if (!m_dram_L2_queue->empty()) {
     mem_fetch *mf = m_dram_L2_queue->top();
     if (!m_config->m_L2_config.disabled() && m_L2cache->waiting_for_fill(mf)) {
+      // Target payload modes replace the legacy FillPort with the resident
+      // payload RAM write port. The returned transaction's landing identity
+      // selects the physical target slot; no hard-coded slot may be used.
+      const bool fill_ready = m_L2cache->ep_l2_payload_fill_ready(
+          mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
       if (m_l2_char_collector)
-        m_l2_char_collector->record_fill(true, !m_L2cache->fill_port_free());
-      if (m_L2cache->fill_port_free()) {
+        m_l2_char_collector->record_fill(true, !fill_ready);
+      if (!fill_ready && m_config->m_L2_config.m_ep_l2_payload_mode) {
+        ++m_ep_l2_b0_accum.payload_block;
+        if (m_config->m_L2_config.m_ep_l2_payload_mode == 2)
+          ++m_ep_l2_b0_accum.bank_block;
+      }
+      if (fill_ready) {
         mf->set_status(IN_PARTITION_L2_FILL_QUEUE,
                        m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
         m_L2cache->fill(mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
@@ -1029,6 +1056,13 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         m_l2_char_stats.record_blockers(
             mf, blockers, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle,
             m_l2_block_state);
+        if (plan.ep_l2_mshr_block_reason != mshr_table::EP_L2_BLOCK_NONE)
+          ++m_ep_l2_b0_accum.descriptor_block;
+        if (m_config->m_L2_config.m_ep_l2_wad_entries && plan.is_read &&
+            m_L2cache->ep_l2_wad_occupancy())
+          ++m_ep_l2_b0_accum.wad_block;
+        if (plan.will_send_lower_read && m_L2_dram_queue->full())
+          ++m_ep_l2_b0_accum.lower_block;
 
         if (plan.needs_data_port && !admission.data_port_available &&
             plan.is_read && plan.probe_status == HIT)
@@ -1108,6 +1142,12 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
                               m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
                                   m_memcpy_cycle_offset,
                               events);
+        if (status == RESERVATION_FAIL &&
+            m_config->m_L2_config.m_ep_l2_payload_mode) {
+          ++m_ep_l2_b0_accum.payload_block;
+          if (m_config->m_L2_config.m_ep_l2_payload_mode == 2)
+            ++m_ep_l2_b0_accum.bank_block;
+        }
         m_l2_block_state.erase(mf);
         if (m_l2_char_collector) {
           m_l2_char_collector->clear_frontend_request(mf);
@@ -1121,7 +1161,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
             m_l2_char_collector->record_wb_generated(plan.victim_modified_bytes);
           }
         }
-        if (plan.exact) {
+        if (plan.exact && !(status == RESERVATION_FAIL &&
+                            m_config->m_L2_config.m_ep_l2_payload_mode == 2)) {
           cache_event writeback_event(WRITE_BACK_REQUEST_SENT);
           bool preview_matches = l2_preview_commit_matches(
               plan.will_send_lower_read, plan.will_send_lower_write,
@@ -1232,6 +1273,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         !m_L2cache->fill_port_free(),
         !m_L2cache->miss_queue_has_slots(1), m_dram_L2_queue->full(),
         m_L2_icnt_queue->full(), m_icnt_L2_queue->full());
+    ep_l2_b0_sample();
   }
 }
 
@@ -1319,25 +1361,149 @@ void memory_sub_partition::print_l2_char_stats(FILE *fp) const {
   print_ep_l2_b0_snapshot(fp, (unsigned long long)-1);
 }
 
+void memory_sub_partition::ep_l2_b0_accum::sample(
+    unsigned line, unsigned desc, unsigned wad, unsigned resident,
+    unsigned bypass, unsigned missq, unsigned lowerq) {
+  ++samples;
+  line_sum += line; desc_sum += desc; wad_sum += wad;
+  resident_sum += resident; bypass_sum += bypass; missq_sum += missq;
+  lowerq_sum += lowerq;
+  line_max = std::max(line_max, line); desc_max = std::max(desc_max, desc);
+  wad_max = std::max(wad_max, wad); resident_max = std::max(resident_max, resident);
+  bypass_max = std::max(bypass_max, bypass); missq_max = std::max(missq_max, missq);
+  lowerq_max = std::max(lowerq_max, lowerq);
+  ++line_hist[std::min<unsigned>(line, line_hist.size() - 1)];
+  ++desc_hist[std::min<unsigned>(desc, desc_hist.size() - 1)];
+  ++wad_hist[std::min<unsigned>(wad, wad_hist.size() - 1)];
+  ++resident_hist[std::min<unsigned>(resident, resident_hist.size() - 1)];
+  ++bypass_hist[std::min<unsigned>(bypass, bypass_hist.size() - 1)];
+}
+
+unsigned memory_sub_partition::ep_l2_b0_accum::p95(
+    const std::vector<unsigned long long> &hist, unsigned long long n) {
+  if (!n) return 0;
+  const unsigned long long target = (95 * n + 99) / 100;
+  unsigned long long seen = 0;
+  for (unsigned i = 0; i < hist.size(); ++i) {
+    seen += hist[i];
+    if (seen >= target) return i;
+  }
+  return hist.empty() ? 0 : hist.size() - 1;
+}
+
+memory_sub_partition::ep_l2_b0_accum
+memory_sub_partition::ep_l2_b0_accum::delta(const ep_l2_b0_accum &start) const {
+  ep_l2_b0_accum d(*this);
+  d.samples -= start.samples; d.line_sum -= start.line_sum; d.desc_sum -= start.desc_sum;
+  d.wad_sum -= start.wad_sum; d.resident_sum -= start.resident_sum;
+  d.bypass_sum -= start.bypass_sum; d.missq_sum -= start.missq_sum;
+  d.lowerq_sum -= start.lowerq_sum; d.descriptor_block -= start.descriptor_block;
+  d.wad_block -= start.wad_block; d.payload_block -= start.payload_block;
+  d.bank_block -= start.bank_block; d.l1_block -= start.l1_block;
+  d.lower_block -= start.lower_block;
+  for (unsigned i = 0; i < d.line_hist.size(); ++i) d.line_hist[i] -= start.line_hist[i];
+  for (unsigned i = 0; i < d.desc_hist.size(); ++i) d.desc_hist[i] -= start.desc_hist[i];
+  for (unsigned i = 0; i < d.wad_hist.size(); ++i) d.wad_hist[i] -= start.wad_hist[i];
+  for (unsigned i = 0; i < d.resident_hist.size(); ++i) d.resident_hist[i] -= start.resident_hist[i];
+  for (unsigned i = 0; i < d.bypass_hist.size(); ++i) d.bypass_hist[i] -= start.bypass_hist[i];
+  return d;
+}
+
+void memory_sub_partition::ep_l2_b0_sample() {
+  if (!m_config->m_L2_config.ep_l2_b0_stats_enabled()) return;
+  m_ep_l2_b0_accum.sample(
+      m_L2cache->mshr_entries_used(), m_L2cache->ep_l2_descriptor_count_used(),
+      m_L2cache->ep_l2_wad_occupancy(),
+      m_L2cache->ep_l2_resident_payload_occupancy(),
+      m_L2cache->ep_l2_bypass_payload_occupancy(),
+      m_L2cache->miss_queue_occupancy(), m_L2_dram_queue->get_n_element());
+}
+
+void memory_sub_partition::begin_ep_l2_b0_kernel(unsigned long long uid) {
+  const bool overlap = !m_ep_l2_b0_kernel_start.empty();
+  if (overlap)
+    for (std::map<unsigned long long, bool>::iterator it =
+             m_ep_l2_b0_kernel_overlap.begin();
+         it != m_ep_l2_b0_kernel_overlap.end(); ++it)
+      it->second = true;
+  m_ep_l2_b0_kernel_start[uid] = m_ep_l2_b0_accum;
+  m_ep_l2_b0_kernel_start_cycle[uid] = m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
+  m_ep_l2_b0_kernel_overlap[uid] = overlap;
+}
+
+void memory_sub_partition::end_ep_l2_b0_kernel(FILE *fp,
+                                                unsigned long long uid) {
+  print_ep_l2_b0_snapshot(fp, uid);
+  m_ep_l2_b0_kernel_start.erase(uid);
+  m_ep_l2_b0_kernel_start_cycle.erase(uid);
+  m_ep_l2_b0_kernel_overlap.erase(uid);
+}
+
 void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
                                                     unsigned long long uid) const {
+  if (!m_config->m_L2_config.ep_l2_b0_stats_enabled()) return;
+  ep_l2_b0_accum stats = m_ep_l2_b0_accum;
+  if (uid != (unsigned long long)-1) {
+    std::map<unsigned long long, ep_l2_b0_accum>::const_iterator start =
+        m_ep_l2_b0_kernel_start.find(uid);
+    if (start != m_ep_l2_b0_kernel_start.end()) stats = stats.delta(start->second);
+  }
+  const unsigned long long n = stats.samples;
+  unsigned long long start_cycle = 0;
+  bool overlap = false;
+  if (uid != (unsigned long long)-1) {
+    std::map<unsigned long long, unsigned long long>::const_iterator start =
+        m_ep_l2_b0_kernel_start_cycle.find(uid);
+    if (start != m_ep_l2_b0_kernel_start_cycle.end()) start_cycle = start->second;
+    std::map<unsigned long long, bool>::const_iterator overlap_it =
+        m_ep_l2_b0_kernel_overlap.find(uid);
+    if (overlap_it != m_ep_l2_b0_kernel_overlap.end()) overlap = overlap_it->second;
+  }
   fprintf(fp,
-          "EPL2B0V1|scope=%s|slice=%u|kernel_uid=%llu|line_mshr=%u|"
-          "descriptor=%u|wad=%u|wad_full=%llu|wad_same_addr_wait=%llu|"
-          "resident_payload=%u|bypass_payload=%u|missq=%u|l2dram=%u|"
-          "draml2=%u|l2icnt=%u|lower_reads=%llu|resource_leak_free=%u\n",
+          "EPL2B0V1|scope=%s|interval=%s|slice=%u|kernel_uid=%llu|start_cycle=%llu|completion_cycle=%llu|overlap_detected=%u|samples=%llu|"
+          "line_mshr_avg=%llu|line_mshr_p95=%u|line_mshr_max=%u|"
+          "descriptor_avg=%llu|descriptor_p95=%u|descriptor_max=%u|"
+          "wad_avg=%llu|wad_p95=%u|wad_max=%u|resident_payload_avg=%llu|"
+          "resident_payload_p95=%u|resident_payload_max=%u|bypass_payload_avg=%llu|"
+          "bypass_payload_p95=%u|bypass_payload_max=%u|missq_avg=%llu|missq_max=%u|"
+          "lowerq_avg=%llu|lowerq_max=%u|block_descriptor=%llu|block_wad=%llu|"
+          "block_payload=%llu|block_bank=%llu|block_l1=%llu|block_lower=%llu|"
+          "bank_requests=%llu|bank_grants=%llu|bank_conflicts=%llu\n",
           uid == (unsigned long long)-1 ? "application" : "kernel",
+          uid == (unsigned long long)-1 ? "application_cumulative" : "kernel_shared_delta",
+          m_id, uid, start_cycle, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle,
+          overlap ? 1 : 0, n, n ? stats.line_sum / n : 0,
+          ep_l2_b0_accum::p95(stats.line_hist, n), stats.line_max,
+          n ? stats.desc_sum / n : 0, ep_l2_b0_accum::p95(stats.desc_hist, n), stats.desc_max,
+          n ? stats.wad_sum / n : 0, ep_l2_b0_accum::p95(stats.wad_hist, n), stats.wad_max,
+          n ? stats.resident_sum / n : 0, ep_l2_b0_accum::p95(stats.resident_hist, n), stats.resident_max,
+          n ? stats.bypass_sum / n : 0, ep_l2_b0_accum::p95(stats.bypass_hist, n), stats.bypass_max,
+          n ? stats.missq_sum / n : 0, stats.missq_max, n ? stats.lowerq_sum / n : 0,
+          stats.lowerq_max, stats.descriptor_block, stats.wad_block,
+          stats.payload_block, stats.bank_block, stats.l1_block, stats.lower_block,
+          m_L2cache->ep_l2_payload_bank_requests(),
+          m_L2cache->ep_l2_payload_bank_grants(),
+          m_L2cache->ep_l2_payload_bank_conflicts());
+  fprintf(fp,
+          "EPL2B0V1|INVARIANT|slice=%u|kernel_uid=%llu|line_mshr_used=%u|"
+          "line_mshr_capacity=%u|descriptor_used=%u|descriptor_free=%u|"
+          "descriptor_capacity=%u|wad_live=%u|wad_capacity=%u|resident_live=%u|"
+          "resident_capacity=1024|bypass_live=%u|bypass_capacity=128|bank_pending=%u|"
+          "resident_tag_payload_consistent=%u|payload_double_owner=%u|terminal_clean=%u\n",
           m_id, uid, m_L2cache->mshr_entries_used(),
-          m_L2cache->ep_l2_descriptor_count_used(),
-          m_L2cache->ep_l2_wad_occupancy(),
-          m_L2cache->ep_l2_wad_full_blocks(),
-          m_L2cache->ep_l2_wad_same_address_waits(),
+          m_L2cache->mshr_entry_capacity(), m_L2cache->ep_l2_descriptor_count_used(),
+          m_L2cache->ep_l2_descriptor_pool_capacity() - m_L2cache->ep_l2_descriptor_count_used(),
+          m_L2cache->ep_l2_descriptor_pool_capacity(),
+          m_L2cache->ep_l2_wad_occupancy(), m_L2cache->ep_l2_wad_capacity(),
           m_L2cache->ep_l2_resident_payload_occupancy(),
           m_L2cache->ep_l2_bypass_payload_occupancy(),
-          m_L2cache->miss_queue_occupancy(), m_L2_dram_queue->get_n_element(),
-          m_dram_L2_queue->get_n_element(), m_L2_icnt_queue->get_n_element(),
-          m_ep_l2_lower_read_issue_count,
-          l2_char_no_resource_leak() ? 1 : 0);
+          m_L2cache->ep_l2_payload_pending_operations(),
+          m_L2cache->ep_l2_payload_ownership_consistent() ? 1 : 0,
+          m_L2cache->ep_l2_payload_ownership_consistent() ? 0 : 1,
+          (m_L2cache->ep_l2_descriptor_count_used() == 0 &&
+           m_L2cache->ep_l2_wad_occupancy() == 0 &&
+           m_L2cache->ep_l2_bypass_payload_occupancy() == 0 &&
+           m_L2cache->ep_l2_payload_pending_operations() == 0) ? 1 : 0);
 }
 
 bool memory_sub_partition::l2_char_no_resource_leak() const {

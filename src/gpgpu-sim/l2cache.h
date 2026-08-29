@@ -154,6 +154,8 @@ class memory_partition_unit {
   void visualize() const { m_dram->visualize(); }
   void print(FILE *fp) const;
   void print_ep_l2_b0_snapshot(FILE *fp, unsigned long long uid) const;
+  void begin_ep_l2_b0_kernel(unsigned long long uid);
+  void end_ep_l2_b0_kernel(FILE *fp, unsigned long long uid);
   void handle_memcpy_to_gpu(size_t dst_start_addr, unsigned subpart_id,
                             mem_access_sector_mask_t mask);
 
@@ -325,6 +327,8 @@ class memory_sub_partition {
   // C7: a separate target schema. uid is a kernel-launch UID for boundary
   // snapshots; this is statistics-only and never resets cache resources.
   void print_ep_l2_b0_snapshot(FILE *fp, unsigned long long uid) const;
+  void begin_ep_l2_b0_kernel(unsigned long long uid);
+  void end_ep_l2_b0_kernel(FILE *fp, unsigned long long uid);
   bool l2_char_no_resource_leak() const;
 
   // EP-L2 C3b observation hooks.  They expose production state for directed
@@ -362,6 +366,18 @@ class memory_sub_partition {
   }
   unsigned long long ep_l2_lower_read_issue_count() const {
     return m_ep_l2_lower_read_issue_count;
+  }
+  unsigned long long ep_l2_payload_identity_lower_issue_count() const {
+    return m_ep_l2_payload_identity_lower_issue_count;
+  }
+  unsigned ep_l2_resident_payload_occupancy() const {
+    return m_L2cache->ep_l2_resident_payload_occupancy();
+  }
+  unsigned ep_l2_resident_payload_pending() const {
+    return m_L2cache->ep_l2_resident_pending();
+  }
+  unsigned ep_l2_resident_payload_valid() const {
+    return m_L2cache->ep_l2_resident_valid();
   }
   mshr_table::ep_l2_block_reason ep_l2_last_preview_block_reason() const {
     return m_ep_l2_last_preview_block_reason;
@@ -407,12 +423,45 @@ class memory_sub_partition {
   l2_char_collector *m_l2_char_collector;
   unsigned m_l2_char_l2dram_class[4];
   unsigned long long m_ep_l2_lower_read_issue_count;
+  unsigned long long m_ep_l2_payload_identity_lower_issue_count;
   mshr_table::ep_l2_block_reason m_ep_l2_last_preview_block_reason;
+
+  // EPL2B0V1 is independent of the legacy L2CHARV1 collector. It samples
+  // target resources at the real cache-cycle boundary and snapshots those
+  // cumulative observations at kernel launch/completion.
+  struct ep_l2_b0_accum {
+    ep_l2_b0_accum() : samples(0), line_sum(0), desc_sum(0), wad_sum(0),
+      resident_sum(0), bypass_sum(0), missq_sum(0), lowerq_sum(0),
+      line_max(0), desc_max(0), wad_max(0), resident_max(0), bypass_max(0),
+      missq_max(0), lowerq_max(0), descriptor_block(0), wad_block(0),
+      payload_block(0), bank_block(0), l1_block(0), lower_block(0) {
+      line_hist.assign(1025, 0); desc_hist.assign(257, 0); wad_hist.assign(1025, 0);
+      resident_hist.assign(1025, 0); bypass_hist.assign(129, 0);
+    }
+    unsigned long long samples, line_sum, desc_sum, wad_sum, resident_sum,
+        bypass_sum, missq_sum, lowerq_sum;
+    unsigned line_max, desc_max, wad_max, resident_max, bypass_max, missq_max,
+        lowerq_max;
+    unsigned long long descriptor_block, wad_block, payload_block, bank_block,
+        l1_block, lower_block;
+    std::vector<unsigned long long> line_hist, desc_hist, wad_hist,
+        resident_hist, bypass_hist;
+    void sample(unsigned line, unsigned desc, unsigned wad, unsigned resident,
+                unsigned bypass, unsigned missq, unsigned lowerq);
+    static unsigned p95(const std::vector<unsigned long long> &hist,
+                        unsigned long long n);
+    ep_l2_b0_accum delta(const ep_l2_b0_accum &start) const;
+  };
+  ep_l2_b0_accum m_ep_l2_b0_accum;
+  std::map<unsigned long long, ep_l2_b0_accum> m_ep_l2_b0_kernel_start;
+  std::map<unsigned long long, unsigned long long> m_ep_l2_b0_kernel_start_cycle;
+  std::map<unsigned long long, bool> m_ep_l2_b0_kernel_overlap;
 
   void l2_char_record_l2dram_push(mem_fetch *mf);
   void ep_l2_record_lower_issue(mem_fetch *mf);
   void l2_char_record_l2dram_pop(mem_fetch *mf);
   void l2_char_sample(unsigned long long cycle);
+  void ep_l2_b0_sample();
   static unsigned l2_char_queue_class(const mem_fetch *mf);
 
   friend class L2interface;

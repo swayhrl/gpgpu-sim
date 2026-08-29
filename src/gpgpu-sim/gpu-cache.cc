@@ -1560,7 +1560,10 @@ void baseline_cache::fill(mem_fetch *mf, unsigned time) {
   }
   m_tag_array->l2_char_tracking_refresh_line(e->second.m_cache_index);
   m_extra_mf_fields.erase(mf);
-  m_bandwidth_management.use_fill_port(mf);
+  // EP-L2 payload modes admit returned data through l2_cache's target RAM.
+  // Do not create a second legacy FillPort bottleneck for the same fill.
+  if (!m_config.m_ep_l2_payload_mode)
+    m_bandwidth_management.use_fill_port(mf);
 }
 
 /// Checks if mf is waiting to be filled by lower memory level
@@ -2316,7 +2319,10 @@ enum cache_request_status data_cache::process_tag_probe(
     }
   }
 
-  m_bandwidth_management.use_data_port(mf, access_status, events);
+  // In EP-L2 payload modes the target payload RAM, rather than the historical
+  // DataPort, is the authoritative data-operation timing resource.
+  if (!m_config.m_ep_l2_payload_mode)
+    m_bandwidth_management.use_data_port(mf, access_status, events);
   return access_status;
 }
 
@@ -2361,6 +2367,36 @@ enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
 enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events) {
+  unsigned payload_index = (unsigned)-1;
+  bool payload_reserved = false;
+  ep_l2_payload_store::slot payload_saved;
+  const new_addr_type payload_owner = m_config.block_addr(addr);
+  if (m_ep_l2_payload.enabled()) {
+    const enum cache_request_status payload_probe = m_tag_array->probe(
+        payload_owner, payload_index, mf, mf->is_write(), true);
+    // Hits consume a target-RAM operation. A miss only reserves its static
+    // landing; the physical 128B write occurs when its lower response lands.
+    if (payload_probe == HIT) {
+      assert(payload_index < 1024);
+      if (!m_ep_l2_payload.request(ep_l2_payload_store::RESIDENT,
+                                   payload_index, mf->get_is_write(), time))
+        return RESERVATION_FAIL;
+    } else if (payload_probe == MISS) {
+      assert(payload_index < 1024);
+      payload_saved = m_ep_l2_payload.resident(payload_index);
+      // Identity exists before data_cache::access can enqueue the lower read.
+      m_ep_l2_payload.reserve_resident(payload_index, payload_owner, mf);
+      payload_reserved = true;
+    } else if (payload_probe != RESERVATION_FAIL) {
+      // Sector/MSHR requests to a reserved line share the original static
+      // landing. The status is HIT_RESERVED in some cache organizations and
+      // SECTOR_MISS in others, so state—not the status spelling—defines this.
+      assert(payload_index < 1024);
+      if (m_ep_l2_payload.resident(payload_index).status ==
+          ep_l2_payload_store::RESIDENT_FILL_PENDING)
+        m_ep_l2_payload.attach_resident_identity(payload_index, mf);
+    }
+  }
   bool wad_reserved = false;
   new_addr_type wad_addr = 0;
   if (ep_l2_wad_enabled()) {
@@ -2370,6 +2406,8 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
     // checked independently of the normal tag probe.
     if (!mf->get_is_write() && ep_l2_wad_contains(requested_block)) {
       ++m_ep_l2_wad_same_address_wait_count;
+      if (payload_reserved)
+        m_ep_l2_payload.restore_resident(payload_index, payload_saved);
       return RESERVATION_FAIL;
     }
 
@@ -2381,6 +2419,8 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
       wad_addr = m_tag_array->get_block(victim_index)->m_block_addr;
       if (m_ep_l2_wad_entries_live.size() >= m_config.m_ep_l2_wad_entries) {
         ++m_ep_l2_wad_full_block_count;
+        if (payload_reserved)
+          m_ep_l2_payload.restore_resident(payload_index, payload_saved);
         return RESERVATION_FAIL;
       }
       const bool inserted = m_ep_l2_wad_entries_live.insert(wad_addr).second;
@@ -2403,6 +2443,22 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
       assert(was_writeback_sent(events, writeback));
     }
   }
+  if (payload_reserved && result == RESERVATION_FAIL) {
+    m_ep_l2_payload.restore_resident(payload_index, payload_saved);
+  } else if (m_ep_l2_payload.enabled() && result == HIT &&
+             mf->get_is_write() && payload_index != (unsigned)-1) {
+    m_ep_l2_payload.mark_resident_dirty(payload_index);
+  } else if (payload_reserved && result == HIT) {
+    // A locally absorbed write allocation has no return fill, but still owns
+    // its resident payload immediately.
+    m_ep_l2_payload.complete_resident_no_fill(
+        payload_index, payload_owner, mf->get_ep_l2_payload_generation(),
+        mf->get_is_write());
+  }
+  if (m_ep_l2_payload.enabled() && payload_index != (unsigned)-1 &&
+      was_read_sent(events))
+    m_ep_l2_payload.note_resident_lower_read(
+        payload_index, mf->get_ep_l2_payload_generation());
   // data_cache policies may modify the selected block after tag_array::access
   // (for example a write hit).  Refresh only the selected L2 line.
   unsigned cache_index = (unsigned)-1;
@@ -2422,20 +2478,20 @@ void l2_cache::ep_l2_wad_complete(new_addr_type block_addr) {
 }
 
 void l2_cache::fill(mem_fetch *mf, unsigned time) {
-  unsigned cache_index = (unsigned)-1;
-  new_addr_type owner = 0;
   if (m_ep_l2_payload.enabled()) {
+    assert(mf->has_ep_l2_payload_identity());
+    const unsigned id = mf->get_ep_l2_payload_id();
+    assert(id < 1024);
     extra_mf_fields_lookup::iterator e = m_extra_mf_fields.find(mf);
-    if (e != m_extra_mf_fields.end()) {
-      cache_index = e->second.m_cache_index;
-      owner = e->second.m_block_addr;
-    }
+    assert(e != m_extra_mf_fields.end());
+    // A stale response must never land into a reused static payload slot.
+    assert(m_ep_l2_payload.resident_identity_matches(
+        id, e->second.m_block_addr, mf->get_ep_l2_payload_generation()));
+    m_ep_l2_payload.complete_resident_fill(
+        id, e->second.m_block_addr, mf->get_ep_l2_payload_generation(),
+        mf->is_write());
   }
   baseline_cache::fill(mf, time);
-  if (cache_index != (unsigned)-1) {
-    assert(cache_index < 1024);
-    m_ep_l2_payload.assign_resident(cache_index, owner, mf);
-  }
 }
 
 void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
@@ -2476,13 +2532,13 @@ void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
           m_tag_array->block_modified_size(cache_index);
       plan.will_send_writeback = true;
       plan.new_missq_entries++;
-      plan.needs_data_port = true;
+      plan.needs_data_port = !m_ep_l2_payload.enabled();
     }
   }
 
   if (plan.is_read) {
     if (plan.probe_status == HIT) {
-      plan.needs_data_port = true;
+      plan.needs_data_port = !m_ep_l2_payload.enabled();
       plan.needs_immediate_response_slot = !plan.l1_writeback_absorbed;
       return;
     }
@@ -2517,7 +2573,8 @@ void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
   // locally absorbed; it only creates lower traffic when replacing a dirty
   // victim, which was accounted for above.
   plan.needs_immediate_response_slot = !plan.l1_writeback_absorbed;
-  if (plan.probe_status == HIT) plan.needs_data_port = true;
+  if (plan.probe_status == HIT)
+    plan.needs_data_port = !m_ep_l2_payload.enabled();
 }
 
 /// Access function for tex_cache
