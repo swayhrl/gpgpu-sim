@@ -2367,6 +2367,7 @@ enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
 enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events) {
+  m_ep_l2_last_payload_request_result = ep_l2_payload_store::GRANTED;
   unsigned payload_index = (unsigned)-1;
   bool payload_reserved = false;
   ep_l2_payload_store::slot payload_saved;
@@ -2378,8 +2379,10 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
     // landing; the physical 128B write occurs when its lower response lands.
     if (payload_probe == HIT) {
       assert(payload_index < 1024);
-      if (!m_ep_l2_payload.request(ep_l2_payload_store::RESIDENT,
-                                   payload_index, mf->get_is_write(), time))
+      m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(
+          ep_l2_payload_store::RESIDENT, payload_index,
+          mf->get_is_write(), time);
+      if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED)
         return RESERVATION_FAIL;
     } else if (payload_probe == MISS) {
       assert(payload_index < 1024);

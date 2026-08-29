@@ -8,7 +8,10 @@ int main() {
                        "start_cycle=|completion_cycle=|overlap_detected=|"
                        "line_mshr_avg=|line_mshr_p95=|line_mshr_max=|"
                        "descriptor_avg=|wad_avg=|resident_payload_avg=|"
-                       "bank_requests=|bank_grants=|bank_conflicts=|";
+                       "bank_requests=|bank_grants=|bank_conflicts=|"
+                       "bank_logical_ops=|bank_attempts=|bank_retry_attempts=|"
+                       "bank_true_conflict_ops=|bank_true_conflict_events=|"
+                       "bank_wait_cycles=|";
   const char *invariant = "EPL2B0V1|INVARIANT|descriptor_used=|"
                           "descriptor_free=|wad_live=|resident_capacity=1024|"
                           "resident_pending=|bypass_capacity=128|bank_pending=|terminal_clean=";

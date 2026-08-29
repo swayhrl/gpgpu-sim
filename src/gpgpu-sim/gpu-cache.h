@@ -2015,6 +2015,10 @@ struct l2_access_plan {
 class ep_l2_payload_store {
  public:
   enum role { RESIDENT, BYPASS };
+  // A boolean cannot distinguish an ordinary target-payload retry from a
+  // physical same-bank denial.  C6c needs that distinction both for correct
+  // same-cycle admission and for meaningful B0-Banked telemetry.
+  enum request_result { GRANTED, LEGACY_PORT_BUSY, BANK_TRUE_CONTENTION };
   enum state {
     FREE,
     RESIDENT_FILL_PENDING,
@@ -2035,8 +2039,10 @@ class ep_l2_payload_store {
   ep_l2_payload_store(unsigned mode = 0)
       : m_mode(mode), m_cycle((unsigned long long)-1),
         m_resident_reads(0), m_resident_writes(0), m_bypass_reads(0),
-        m_bypass_writes(0), m_bank_requests(0), m_bank_grants(0),
-        m_bank_conflicts(0), m_next_sequence(0) {
+        m_bypass_writes(0), m_bank_logical_ops(0), m_bank_attempts(0),
+        m_bank_grants(0), m_bank_retry_attempts(0),
+        m_bank_true_conflict_ops(0), m_bank_true_conflict_events(0),
+        m_bank_wait_cycles(0), m_next_sequence(0) {
     m_resident.resize(1024); m_bypass.resize(128);
   }
   bool enabled() const { return m_mode != 0; }
@@ -2144,15 +2150,23 @@ class ep_l2_payload_store {
     complete_bypass(id, owner, m_bypass[id].generation);
   }
   void release_bypass(unsigned id) { assert(id < 128); m_bypass[id].status = FREE; }
-  unsigned long long bank_requests() const { return m_bank_requests; }
+  // Compatibility names retain attempt/event semantics.  New callers and
+  // EPL2B0V1 consumers must use the explicitly named C6c counters below.
+  unsigned long long bank_requests() const { return m_bank_attempts; }
   unsigned long long bank_grants() const { return m_bank_grants; }
-  unsigned long long bank_conflicts() const { return m_bank_conflicts; }
+  unsigned long long bank_conflicts() const { return m_bank_true_conflict_events; }
+  unsigned long long bank_logical_ops() const { return m_bank_logical_ops; }
+  unsigned long long bank_attempts() const { return m_bank_attempts; }
+  unsigned long long bank_retry_attempts() const { return m_bank_retry_attempts; }
+  unsigned long long bank_true_conflict_ops() const { return m_bank_true_conflict_ops; }
+  unsigned long long bank_true_conflict_events() const { return m_bank_true_conflict_events; }
+  unsigned long long bank_wait_cycles() const { return m_bank_wait_cycles; }
   // `sequence` is explicit for deterministic directed arbitration. Production
   // callers use their arrival order; a denied operation keeps that sequence
   // through its retry token in the per-bank pending list.
-  bool request(role r, unsigned id, bool write, unsigned long long cycle,
-               unsigned long long sequence = (unsigned long long)-1) {
-    if (!enabled()) return true;
+  request_result request(role r, unsigned id, bool write, unsigned long long cycle,
+                         unsigned long long sequence = (unsigned long long)-1) {
+    if (!enabled()) return GRANTED;
     if (m_cycle != cycle) {
       m_cycle = cycle;
       m_resident_reads = m_resident_writes = m_bypass_reads = m_bypass_writes = 0;
@@ -2178,32 +2192,64 @@ class ep_l2_payload_store {
       unsigned &used_port = r == RESIDENT ?
           (write ? m_resident_writes : m_resident_reads) :
           (write ? m_bypass_writes : m_bypass_reads);
-      if (used_port) return false;
-      ++used_port; return true;
+      if (used_port) return LEGACY_PORT_BUSY;
+      ++used_port; return GRANTED;
     }
     const unsigned global_id = r == RESIDENT ? id : 1024 + id;
     assert(global_id < 1152);
     const unsigned bank = global_id % 4;
-    ++m_bank_requests;
+    ++m_bank_attempts;
     if (!m_granted[bank].empty()) {
       const pending_op op = m_granted[bank].front();
       if (op.r == r && op.id == id && op.write == write) {
+        // Its first call was accounted as the logical operation.  This call
+        // is the retry that finally consumes an oldest-ready grant.
+        ++m_bank_retry_attempts;
         m_granted[bank].clear(); m_bank_granted.set(bank); ++m_bank_grants;
-        return true;
+        if (op.true_conflict)
+          m_bank_wait_cycles += cycle - op.first_conflict_cycle;
+        return GRANTED;
       }
     }
-    // A request denied today remains ready with its original sequence. The
-    // next cycle chooses the oldest queued request for that bank, rather than
-    // allowing call-site order to decide the winner.
-    bool already_pending = false;
+    // A matching queued op is a retry. A new op is a new logical payload RAM
+    // operation, even if it must wait behind older work or this cycle's grant.
+    int pending_index = -1;
     for (unsigned i = 0; i < m_pending[bank].size(); ++i)
       if (m_pending[bank][i].r == r && m_pending[bank][i].id == id &&
-          m_pending[bank][i].write == write) already_pending = true;
-    if (!already_pending && !m_bank_granted.test(bank))
-      m_pending[bank].push_back(pending_op(r, id, write,
-          sequence == (unsigned long long)-1 ? m_next_sequence++ : sequence));
-    ++m_bank_conflicts;
-    return false;
+          m_pending[bank][i].write == write) pending_index = i;
+    if (pending_index >= 0) ++m_bank_retry_attempts;
+
+    // No selected older op, no queued older op, and no operation consumed on
+    // this bank this cycle: the first ready op uses an idle bank immediately.
+    // There is no reason to stage it until N+1 merely to wait for hypothetical
+    // later arrivals in the same cycle.
+    if (m_granted[bank].empty() && m_pending[bank].empty() &&
+        !m_bank_granted.test(bank)) {
+      assert(pending_index < 0);
+      ++m_bank_logical_ops;
+      m_bank_granted.set(bank); ++m_bank_grants;
+      return GRANTED;
+    }
+
+    if (pending_index < 0) {
+      ++m_bank_logical_ops;
+      m_pending[bank].push_back(pending_op(
+          r, id, write,
+          sequence == (unsigned long long)-1 ? m_next_sequence++ : sequence,
+          cycle));
+      pending_index = m_pending[bank].size() - 1;
+    }
+    // This denial has a real physical reason: an older selected/pending op,
+    // or an operation already consumed this cycle.  It is no longer used for
+    // first-idle-op staging bookkeeping.
+    pending_op &denied = m_pending[bank][pending_index];
+    if (!denied.true_conflict) {
+      denied.true_conflict = true;
+      denied.first_conflict_cycle = cycle;
+      ++m_bank_true_conflict_ops;
+    }
+    ++m_bank_true_conflict_events;
+    return BANK_TRUE_CONTENTION;
   }
   // A compact oldest-ready arbiter used by directed regressions. Production
   // directed regressions. All candidates are made ready before `grant_oldest`;
@@ -2218,7 +2264,7 @@ class ep_l2_payload_store {
   }
   bool grant_oldest(role r, unsigned id, bool write, unsigned long long cycle,
                     unsigned long long *granted_sequence = NULL) {
-    if (!enabled() || !banked()) return request(r, id, write, cycle);
+    if (!enabled() || !banked()) return request(r, id, write, cycle) == GRANTED;
     if (m_cycle != cycle) { m_cycle = cycle; m_bank_granted.reset(); }
     const unsigned global_id = r == RESIDENT ? id : 1024 + id;
     const unsigned bank = global_id % 4;
@@ -2271,13 +2317,18 @@ class ep_l2_payload_store {
   }
   struct pending_op {
     pending_op(role role_value, unsigned id_value, bool write_value,
-               unsigned long long sequence_value)
-        : r(role_value), id(id_value), write(write_value), sequence(sequence_value) {}
+               unsigned long long sequence_value,
+               unsigned long long arrival_cycle_value = 0)
+        : r(role_value), id(id_value), write(write_value), sequence(sequence_value),
+          true_conflict(false), first_conflict_cycle(arrival_cycle_value) {}
     role r; unsigned id; bool write; unsigned long long sequence;
+    bool true_conflict; unsigned long long first_conflict_cycle;
   };
   unsigned m_mode; unsigned long long m_cycle;
   unsigned m_resident_reads, m_resident_writes, m_bypass_reads, m_bypass_writes;
-  unsigned long long m_bank_requests, m_bank_grants, m_bank_conflicts;
+  unsigned long long m_bank_logical_ops, m_bank_attempts, m_bank_grants,
+      m_bank_retry_attempts, m_bank_true_conflict_ops,
+      m_bank_true_conflict_events, m_bank_wait_cycles;
   unsigned long long m_next_sequence;
   std::bitset<4> m_bank_granted; std::vector<slot> m_resident, m_bypass;
   std::vector<pending_op> m_pending[4], m_granted[4];
@@ -2293,9 +2344,10 @@ class l2_cache : public data_cache {
            enum cache_gpu_level level)
       : data_cache(name, config, core_id, type_id, memport, mfcreator, status,
                    L2_WR_ALLOC_R, L2_WRBK_ACC, gpu, level),
-        m_ep_l2_payload(config.m_ep_l2_payload_mode),
         m_ep_l2_wad_full_block_count(0),
-        m_ep_l2_wad_same_address_wait_count(0) {}
+        m_ep_l2_wad_same_address_wait_count(0),
+        m_ep_l2_payload(config.m_ep_l2_payload_mode),
+        m_ep_l2_last_payload_request_result(ep_l2_payload_store::GRANTED) {}
 
   virtual ~l2_cache() {}
 
@@ -2309,12 +2361,21 @@ class l2_cache : public data_cache {
   bool fill_port_free() const {
     return !m_ep_l2_payload.enabled() && data_cache::fill_port_free();
   }
-  bool ep_l2_payload_fill_ready(mem_fetch *mf, unsigned long long cycle) {
-    if (!m_ep_l2_payload.enabled()) return data_cache::fill_port_free();
-    if (!mf->has_ep_l2_payload_identity()) return false;
+  ep_l2_payload_store::request_result ep_l2_payload_fill_request(
+      mem_fetch *mf, unsigned long long cycle) {
+    if (!m_ep_l2_payload.enabled())
+      return data_cache::fill_port_free() ? ep_l2_payload_store::GRANTED
+                                          : ep_l2_payload_store::LEGACY_PORT_BUSY;
+    if (!mf->has_ep_l2_payload_identity())
+      return ep_l2_payload_store::LEGACY_PORT_BUSY;
     const unsigned id = mf->get_ep_l2_payload_id();
-    return id < 1024 && m_ep_l2_payload.request(ep_l2_payload_store::RESIDENT,
-                                                  id, true, cycle);
+    return id < 1024 ? m_ep_l2_payload.request(ep_l2_payload_store::RESIDENT,
+                                                id, true, cycle)
+                     : ep_l2_payload_store::LEGACY_PORT_BUSY;
+  }
+  bool ep_l2_last_payload_bank_contention() const {
+    return m_ep_l2_last_payload_request_result ==
+           ep_l2_payload_store::BANK_TRUE_CONTENTION;
   }
   unsigned ep_l2_resident_payload_occupancy() const { return m_ep_l2_payload.resident_used(); }
   unsigned ep_l2_bypass_payload_occupancy() const { return m_ep_l2_payload.bypass_used(); }
@@ -2326,6 +2387,12 @@ class l2_cache : public data_cache {
   unsigned long long ep_l2_payload_bank_requests() const { return m_ep_l2_payload.bank_requests(); }
   unsigned long long ep_l2_payload_bank_grants() const { return m_ep_l2_payload.bank_grants(); }
   unsigned long long ep_l2_payload_bank_conflicts() const { return m_ep_l2_payload.bank_conflicts(); }
+  unsigned long long ep_l2_payload_bank_logical_ops() const { return m_ep_l2_payload.bank_logical_ops(); }
+  unsigned long long ep_l2_payload_bank_attempts() const { return m_ep_l2_payload.bank_attempts(); }
+  unsigned long long ep_l2_payload_bank_retry_attempts() const { return m_ep_l2_payload.bank_retry_attempts(); }
+  unsigned long long ep_l2_payload_bank_true_conflict_ops() const { return m_ep_l2_payload.bank_true_conflict_ops(); }
+  unsigned long long ep_l2_payload_bank_true_conflict_events() const { return m_ep_l2_payload.bank_true_conflict_events(); }
+  unsigned long long ep_l2_payload_bank_wait_cycles() const { return m_ep_l2_payload.bank_wait_cycles(); }
   bool ep_l2_payload_ownership_consistent() const {
     return m_ep_l2_payload.ownership_consistent();
   }
@@ -2358,6 +2425,7 @@ class l2_cache : public data_cache {
   unsigned long long m_ep_l2_wad_full_block_count;
   unsigned long long m_ep_l2_wad_same_address_wait_count;
   ep_l2_payload_store m_ep_l2_payload;
+  ep_l2_payload_store::request_result m_ep_l2_last_payload_request_result;
 };
 
 /*****************************************************************************/

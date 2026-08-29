@@ -941,13 +941,15 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       // Target payload modes replace the legacy FillPort with the resident
       // payload RAM write port. The returned transaction's landing identity
       // selects the physical target slot; no hard-coded slot may be used.
-      const bool fill_ready = m_L2cache->ep_l2_payload_fill_ready(
-          mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+      const ep_l2_payload_store::request_result fill_result =
+          m_L2cache->ep_l2_payload_fill_request(
+              mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+      const bool fill_ready = fill_result == ep_l2_payload_store::GRANTED;
       if (m_l2_char_collector)
         m_l2_char_collector->record_fill(true, !fill_ready);
       if (!fill_ready && m_config->m_L2_config.m_ep_l2_payload_mode) {
         ++m_ep_l2_b0_accum.payload_block;
-        if (m_config->m_L2_config.m_ep_l2_payload_mode == 2)
+        if (fill_result == ep_l2_payload_store::BANK_TRUE_CONTENTION)
           ++m_ep_l2_b0_accum.bank_block;
       }
       if (fill_ready) {
@@ -1145,7 +1147,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         if (status == RESERVATION_FAIL &&
             m_config->m_L2_config.m_ep_l2_payload_mode) {
           ++m_ep_l2_b0_accum.payload_block;
-          if (m_config->m_L2_config.m_ep_l2_payload_mode == 2)
+          if (m_L2cache->ep_l2_last_payload_bank_contention())
             ++m_ep_l2_b0_accum.bank_block;
         }
         m_l2_block_state.erase(mf);
@@ -1471,7 +1473,10 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
           "bypass_payload_p95=%u|bypass_payload_max=%u|missq_avg=%llu|missq_max=%u|"
           "lowerq_avg=%llu|lowerq_max=%u|block_descriptor=%llu|block_wad=%llu|"
           "block_payload=%llu|block_bank=%llu|block_l1=%llu|block_lower=%llu|"
-          "bank_requests=%llu|bank_grants=%llu|bank_conflicts=%llu\n",
+          "bank_requests=%llu|bank_grants=%llu|bank_conflicts=%llu|"
+          "bank_logical_ops=%llu|bank_attempts=%llu|bank_retry_attempts=%llu|"
+          "bank_true_conflict_ops=%llu|bank_true_conflict_events=%llu|"
+          "bank_wait_cycles=%llu\n",
           uid == (unsigned long long)-1 ? "application" : "kernel",
           uid == (unsigned long long)-1 ? "application_cumulative" : "kernel_shared_delta",
           m_id, uid, start_cycle, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle,
@@ -1486,7 +1491,13 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
           stats.payload_block, stats.bank_block, stats.l1_block, stats.lower_block,
           m_L2cache->ep_l2_payload_bank_requests(),
           m_L2cache->ep_l2_payload_bank_grants(),
-          m_L2cache->ep_l2_payload_bank_conflicts());
+          m_L2cache->ep_l2_payload_bank_conflicts(),
+          m_L2cache->ep_l2_payload_bank_logical_ops(),
+          m_L2cache->ep_l2_payload_bank_attempts(),
+          m_L2cache->ep_l2_payload_bank_retry_attempts(),
+          m_L2cache->ep_l2_payload_bank_true_conflict_ops(),
+          m_L2cache->ep_l2_payload_bank_true_conflict_events(),
+          m_L2cache->ep_l2_payload_bank_wait_cycles());
   fprintf(fp,
           "EPL2B0V1|INVARIANT|slice=%u|kernel_uid=%llu|line_mshr_used=%u|"
           "line_mshr_capacity=%u|descriptor_used=%u|descriptor_free=%u|"
