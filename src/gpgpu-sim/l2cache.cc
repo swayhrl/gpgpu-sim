@@ -277,6 +277,19 @@ memory_partition_unit::memory_partition_unit(unsigned partition_id,
       m_c7e_successful_write_bytes(0),
       m_c7e_scheduler_occ_max(0),
       m_c7e_returnq_occ_max(0),
+      m_c7e_window_initialized(false),
+      m_c7e_window_start_cycle(0),
+      m_c7e_window_dram_cycles(0),
+      m_c7e_window_scheduler_occ_sum(0),
+      m_c7e_window_scheduler_full_cycles(0),
+      m_c7e_window_returnq_occ_sum(0),
+      m_c7e_window_returnq_full_cycles(0),
+      m_c7e_window_successful_read_issues(0),
+      m_c7e_window_successful_write_issues(0),
+      m_c7e_window_successful_read_bytes(0),
+      m_c7e_window_successful_write_bytes(0),
+      m_c7e_window_scheduler_occ_max(0),
+      m_c7e_window_returnq_occ_max(0),
       m_gpu(gpu) {
   m_dram = new dram_t(m_id, m_config, m_stats, this, gpu);
 
@@ -302,6 +315,84 @@ void memory_partition_unit::c7e_sample_dram_cycle() {
   m_c7e_returnq_occ_max = std::max(m_c7e_returnq_occ_max, returnq);
   if (m_dram->full(false)) ++m_c7e_scheduler_full_cycles;
   if (m_dram->returnq_full()) ++m_c7e_returnq_full_cycles;
+
+  const unsigned long long cycle =
+      m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
+  if (!m_c7e_window_initialized) {
+    m_c7e_window_initialized = true;
+    m_c7e_window_start_cycle = cycle;
+    m_c7e_window_dram_cycles = m_c7e_dram_cycles;
+    m_c7e_window_scheduler_occ_sum = m_c7e_scheduler_occ_sum;
+    m_c7e_window_scheduler_full_cycles = m_c7e_scheduler_full_cycles;
+    m_c7e_window_returnq_occ_sum = m_c7e_returnq_occ_sum;
+    m_c7e_window_returnq_full_cycles = m_c7e_returnq_full_cycles;
+    m_c7e_window_successful_read_issues = m_c7e_successful_read_issues;
+    m_c7e_window_successful_write_issues = m_c7e_successful_write_issues;
+    m_c7e_window_successful_read_bytes = m_c7e_successful_read_bytes;
+    m_c7e_window_successful_write_bytes = m_c7e_successful_write_bytes;
+    m_c7e_window_scheduler_occ_max = scheduler;
+    m_c7e_window_returnq_occ_max = returnq;
+    return;
+  }
+
+  if (cycle - m_c7e_window_start_cycle < 5000) {
+    m_c7e_window_scheduler_occ_max =
+        std::max(m_c7e_window_scheduler_occ_max, scheduler);
+    m_c7e_window_returnq_occ_max =
+        std::max(m_c7e_window_returnq_occ_max, returnq);
+    return;
+  }
+
+  const unsigned long long window_cycles =
+      m_c7e_dram_cycles - m_c7e_window_dram_cycles;
+  const unsigned long long scheduler_sum =
+      m_c7e_scheduler_occ_sum - m_c7e_window_scheduler_occ_sum;
+  const unsigned long long returnq_sum =
+      m_c7e_returnq_occ_sum - m_c7e_window_returnq_occ_sum;
+  const unsigned long long scheduler_full =
+      m_c7e_scheduler_full_cycles - m_c7e_window_scheduler_full_cycles;
+  const unsigned long long returnq_full =
+      m_c7e_returnq_full_cycles - m_c7e_window_returnq_full_cycles;
+  const unsigned long long read_issues =
+      m_c7e_successful_read_issues - m_c7e_window_successful_read_issues;
+  const unsigned long long write_issues =
+      m_c7e_successful_write_issues - m_c7e_window_successful_write_issues;
+  const unsigned long long read_bytes =
+      m_c7e_successful_read_bytes - m_c7e_window_successful_read_bytes;
+  const unsigned long long write_bytes =
+      m_c7e_successful_write_bytes - m_c7e_window_successful_write_bytes;
+  const unsigned long long bytes = read_bytes + write_bytes;
+  const unsigned long long capacity =
+      window_cycles * (unsigned long long)m_config->dram_atom_size;
+  printf(
+      "EPL2DRAMV1|scope=window|interval=5000_cycle|channel=%u|"
+      "window_start_cycle=%llu|window_end_cycle=%llu|dram_cycles=%llu|"
+      "scheduler_occ_avg=%llu|scheduler_occ_max=%u|scheduler_full_cycles=%llu|"
+      "returnq_occ_avg=%llu|returnq_occ_max=%u|returnq_full_cycles=%llu|"
+      "successful_read_issues=%llu|successful_write_issues=%llu|"
+      "successful_read_bytes=%llu|successful_write_bytes=%llu|"
+      "bandwidth_util_numerator_bytes=%llu|bandwidth_util_denominator_bytes=%llu|"
+      "bandwidth_util=%0.9f\n",
+      m_id, m_c7e_window_start_cycle, cycle, window_cycles,
+      window_cycles ? scheduler_sum / window_cycles : 0,
+      m_c7e_window_scheduler_occ_max, scheduler_full,
+      window_cycles ? returnq_sum / window_cycles : 0,
+      m_c7e_window_returnq_occ_max, returnq_full, read_issues, write_issues,
+      read_bytes, write_bytes, bytes, capacity,
+      capacity ? (double)bytes / capacity : 0.0);
+
+  m_c7e_window_start_cycle = cycle;
+  m_c7e_window_dram_cycles = m_c7e_dram_cycles;
+  m_c7e_window_scheduler_occ_sum = m_c7e_scheduler_occ_sum;
+  m_c7e_window_scheduler_full_cycles = m_c7e_scheduler_full_cycles;
+  m_c7e_window_returnq_occ_sum = m_c7e_returnq_occ_sum;
+  m_c7e_window_returnq_full_cycles = m_c7e_returnq_full_cycles;
+  m_c7e_window_successful_read_issues = m_c7e_successful_read_issues;
+  m_c7e_window_successful_write_issues = m_c7e_successful_write_issues;
+  m_c7e_window_successful_read_bytes = m_c7e_successful_read_bytes;
+  m_c7e_window_successful_write_bytes = m_c7e_successful_write_bytes;
+  m_c7e_window_scheduler_occ_max = scheduler;
+  m_c7e_window_returnq_occ_max = returnq;
 }
 
 void memory_partition_unit::c7e_record_dram_success(bool read, bool write,

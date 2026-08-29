@@ -265,6 +265,18 @@ class memory_partition_unit {
       m_c7e_successful_write_issues, m_c7e_successful_read_bytes,
       m_c7e_successful_write_bytes;
   unsigned m_c7e_scheduler_occ_max, m_c7e_returnq_occ_max;
+  // Per-channel 5K-cycle observation window baselines. These are only
+  // snapshots of the application counters above; no scheduling state is
+  // derived from them.
+  bool m_c7e_window_initialized;
+  unsigned long long m_c7e_window_start_cycle, m_c7e_window_dram_cycles,
+      m_c7e_window_scheduler_occ_sum, m_c7e_window_scheduler_full_cycles,
+      m_c7e_window_returnq_occ_sum, m_c7e_window_returnq_full_cycles,
+      m_c7e_window_successful_read_issues,
+      m_c7e_window_successful_write_issues,
+      m_c7e_window_successful_read_bytes,
+      m_c7e_window_successful_write_bytes;
+  unsigned m_c7e_window_scheduler_occ_max, m_c7e_window_returnq_occ_max;
   void c7e_sample_dram_cycle();
 
   bool requires_dram_to_l2_return(const mem_fetch *mf) const;
