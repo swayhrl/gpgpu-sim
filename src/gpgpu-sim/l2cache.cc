@@ -266,6 +266,17 @@ memory_partition_unit::memory_partition_unit(unsigned partition_id,
       m_l2_char_dram_issue_hold_remaining(
           config->gpgpu_l2_char_dram_issue_hold_cycles),
       m_l2_char_dram_issue_count(0),
+      m_c7e_dram_cycles(0),
+      m_c7e_scheduler_occ_sum(0),
+      m_c7e_scheduler_full_cycles(0),
+      m_c7e_returnq_occ_sum(0),
+      m_c7e_returnq_full_cycles(0),
+      m_c7e_successful_read_issues(0),
+      m_c7e_successful_write_issues(0),
+      m_c7e_successful_read_bytes(0),
+      m_c7e_successful_write_bytes(0),
+      m_c7e_scheduler_occ_max(0),
+      m_c7e_returnq_occ_max(0),
       m_gpu(gpu) {
   m_dram = new dram_t(m_id, m_config, m_stats, this, gpu);
 
@@ -277,6 +288,32 @@ memory_partition_unit::memory_partition_unit(unsigned partition_id,
         m_id * m_config->m_n_sub_partition_per_memory_channel + p;
     m_sub_partition[p] =
         new memory_sub_partition(sub_partition_id, m_config, stats, gpu);
+  }
+}
+
+void memory_partition_unit::c7e_sample_dram_cycle() {
+  if (!m_config->m_L2_config.ep_l2_b0_stats_enabled()) return;
+  const unsigned scheduler = m_dram->que_length();
+  const unsigned returnq = m_dram->returnq_length();
+  ++m_c7e_dram_cycles;
+  m_c7e_scheduler_occ_sum += scheduler;
+  m_c7e_returnq_occ_sum += returnq;
+  m_c7e_scheduler_occ_max = std::max(m_c7e_scheduler_occ_max, scheduler);
+  m_c7e_returnq_occ_max = std::max(m_c7e_returnq_occ_max, returnq);
+  if (m_dram->full(false)) ++m_c7e_scheduler_full_cycles;
+  if (m_dram->returnq_full()) ++m_c7e_returnq_full_cycles;
+}
+
+void memory_partition_unit::c7e_record_dram_success(bool read, bool write,
+                                                      unsigned bytes) {
+  if (!m_config->m_L2_config.ep_l2_b0_stats_enabled()) return;
+  if (read) {
+    ++m_c7e_successful_read_issues;
+    m_c7e_successful_read_bytes += bytes;
+  }
+  if (write) {
+    ++m_c7e_successful_write_issues;
+    m_c7e_successful_write_bytes += bytes;
   }
 }
 
@@ -562,6 +599,8 @@ void memory_partition_unit::simple_dram_model_cycle() {
       m_sub_partition[spid]->L2_dram_queue_pop();
       m_sub_partition[spid]->l2_char_record_dram_success(
           char_needs_return, !char_needs_return, mf->get_data_size());
+      c7e_record_dram_success(char_needs_return, !char_needs_return,
+                              mf->get_data_size());
       MEMPART_DPRINTF(
           "Issue mem_fetch request %p from sub partition %d to dram\n", mf,
           spid);
@@ -582,6 +621,7 @@ void memory_partition_unit::simple_dram_model_cycle() {
 }
 
 void memory_partition_unit::dram_cycle() {
+  c7e_sample_dram_cycle();
   // pop completed memory request from dram and push it to dram-to-L2 queue
   // of the original sub partition
   mem_fetch *mf_return = m_dram->return_queue_top();
@@ -656,6 +696,8 @@ void memory_partition_unit::dram_cycle() {
       m_sub_partition[spid]->L2_dram_queue_pop();
       m_sub_partition[spid]->l2_char_record_dram_success(
           char_needs_return, !char_needs_return, mf->get_data_size());
+      c7e_record_dram_success(char_needs_return, !char_needs_return,
+                              mf->get_data_size());
       MEMPART_DPRINTF(
           "Issue mem_fetch request %p from sub partition %d to dram\n", mf,
           spid);
@@ -727,6 +769,28 @@ void memory_partition_unit::print(FILE *fp) const {
           m_read_head_while_returnq_full);
   fprintf(fp, "L2_char_read_issue_blocked_while_returnq_full = %llu\n",
           m_read_issue_blocked_while_returnq_full);
+  if (m_config->m_L2_config.ep_l2_b0_stats_enabled()) {
+    const unsigned long long bytes = m_c7e_successful_read_bytes +
+                                     m_c7e_successful_write_bytes;
+    const unsigned long long capacity =
+        m_c7e_dram_cycles * (unsigned long long)m_config->dram_atom_size;
+    fprintf(fp,
+            "EPL2DRAMV1|scope=application|channel=%u|dram_cycles=%llu|"
+            "scheduler_occ_avg=%llu|scheduler_occ_max=%u|scheduler_full_cycles=%llu|"
+            "returnq_occ_avg=%llu|returnq_occ_max=%u|returnq_full_cycles=%llu|"
+            "successful_read_issues=%llu|successful_write_issues=%llu|"
+            "successful_read_bytes=%llu|successful_write_bytes=%llu|"
+            "bandwidth_util_numerator_bytes=%llu|bandwidth_util_denominator_bytes=%llu|"
+            "bandwidth_util=%0.9f\n",
+            m_id, m_c7e_dram_cycles,
+            m_c7e_dram_cycles ? m_c7e_scheduler_occ_sum / m_c7e_dram_cycles : 0,
+            m_c7e_scheduler_occ_max, m_c7e_scheduler_full_cycles,
+            m_c7e_dram_cycles ? m_c7e_returnq_occ_sum / m_c7e_dram_cycles : 0,
+            m_c7e_returnq_occ_max, m_c7e_returnq_full_cycles,
+            m_c7e_successful_read_issues, m_c7e_successful_write_issues,
+            m_c7e_successful_read_bytes, m_c7e_successful_write_bytes,
+            bytes, capacity, capacity ? (double)bytes / capacity : 0.0);
+  }
   for (unsigned p = 0; p < m_config->m_n_sub_partition_per_memory_channel;
        p++) {
     m_sub_partition[p]->print(fp);

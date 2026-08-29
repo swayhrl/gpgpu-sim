@@ -190,6 +190,10 @@ unsigned dram_t::que_length() const {
 
 bool dram_t::returnq_full() const { return returnq->full(); }
 
+unsigned dram_t::returnq_length() const { return returnq->get_n_element(); }
+
+unsigned dram_t::returnq_capacity() const { return returnq->get_max_len(); }
+
 unsigned int dram_t::queue_limit() const {
   return m_config->gpgpu_frfcfs_dram_sched_queue_size;
 }

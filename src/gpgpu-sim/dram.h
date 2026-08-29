@@ -121,6 +121,8 @@ class dram_t {
   void print_stat(FILE *simFile);
   unsigned que_length() const;
   bool returnq_full() const;
+  unsigned returnq_length() const;
+  unsigned returnq_capacity() const;
   unsigned int queue_limit() const;
   void visualizer_print(gzFile visualizer_file);
 

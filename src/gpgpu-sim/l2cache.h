@@ -156,6 +156,7 @@ class memory_partition_unit {
   void print_ep_l2_b0_snapshot(FILE *fp, unsigned long long uid) const;
   void begin_ep_l2_b0_kernel(unsigned long long uid);
   void end_ep_l2_b0_kernel(FILE *fp, unsigned long long uid);
+  void c7e_record_dram_success(bool read, bool write, unsigned bytes);
   void handle_memcpy_to_gpu(size_t dst_start_addr, unsigned subpart_id,
                             mem_access_sector_mask_t mask);
 
@@ -258,6 +259,13 @@ class memory_partition_unit {
   unsigned long long m_read_issue_blocked_while_returnq_full;
   unsigned m_l2_char_dram_issue_hold_remaining;
   unsigned m_l2_char_dram_issue_count;
+  unsigned long long m_c7e_dram_cycles, m_c7e_scheduler_occ_sum,
+      m_c7e_scheduler_full_cycles, m_c7e_returnq_occ_sum,
+      m_c7e_returnq_full_cycles, m_c7e_successful_read_issues,
+      m_c7e_successful_write_issues, m_c7e_successful_read_bytes,
+      m_c7e_successful_write_bytes;
+  unsigned m_c7e_scheduler_occ_max, m_c7e_returnq_occ_max;
+  void c7e_sample_dram_cycle();
 
   bool requires_dram_to_l2_return(const mem_fetch *mf) const;
   // Determine whether this particular request can issue to DRAM.
