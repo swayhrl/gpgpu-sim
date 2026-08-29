@@ -800,6 +800,8 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
   m_ep_l2_lower_read_issue_count = 0;
   m_ep_l2_payload_identity_lower_issue_count = 0;
   m_ep_l2_last_preview_block_reason = mshr_table::EP_L2_BLOCK_NONE;
+  m_ep_l2_b0_window_start_cycle = 0;
+  m_ep_l2_b0_window_started = false;
   // C7d samples the maintained tag-state counters too. Enabling that
   // sidecar is observational and avoids a per-cycle tag-array scan; it is
   // independent of whether legacy L2CHARV1 output is requested.
@@ -1333,7 +1335,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         !m_L2cache->fill_port_free(),
         !m_L2cache->miss_queue_has_slots(1), m_dram_L2_queue->full(),
         m_L2_icnt_queue->full(), m_icnt_L2_queue->full());
-    ep_l2_b0_sample();
+    ep_l2_b0_sample(m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
   }
 }
 
@@ -1533,7 +1535,7 @@ memory_sub_partition::ep_l2_b0_accum::delta(const ep_l2_b0_accum &start) const {
   return d;
 }
 
-void memory_sub_partition::ep_l2_b0_sample() {
+void memory_sub_partition::ep_l2_b0_sample(unsigned long long cycle) {
   if (!m_config->m_L2_config.ep_l2_b0_stats_enabled()) return;
   unsigned reserved = 0, dirty = 0, valid = 0, reserved_set_max = 0;
   m_L2cache->l2_char_storage_snapshot_compact(
@@ -1548,6 +1550,34 @@ void memory_sub_partition::ep_l2_b0_sample() {
       m_L2cache->ep_l2_resident_dirty(), m_L2cache->ep_l2_resident_pending(),
       m_L2cache->ep_l2_bypass_pending(), m_L2cache->ep_l2_bypass_ready(),
       reserved_set_max);
+  if (!m_ep_l2_b0_window_started) {
+    m_ep_l2_b0_window_start = m_ep_l2_b0_accum;
+    m_ep_l2_b0_window_bank_start = ep_l2_b0_bank_snapshot();
+    m_ep_l2_b0_window_start_cycle = cycle;
+    m_ep_l2_b0_window_started = true;
+    return;
+  }
+  if (cycle - m_ep_l2_b0_window_start_cycle < 5000) return;
+  const ep_l2_b0_accum window =
+      m_ep_l2_b0_accum.delta(m_ep_l2_b0_window_start);
+  const ep_l2_b0_bank_accum bank =
+      ep_l2_b0_bank_snapshot().delta(m_ep_l2_b0_window_bank_start);
+  const unsigned long long n = window.samples;
+  fprintf(stdout,
+          "EPL2B0V1|scope=window|interval=5000_cycle|slice=%u|"
+          "start_cycle=%llu|completion_cycle=%llu|samples=%llu|"
+          "line_mshr_avg=%llu|descriptor_avg=%llu|wad_avg=%llu|"
+          "resident_payload_avg=%llu|missq_avg=%llu|lowerq_avg=%llu|"
+          "bank_logical_ops=%llu|bank_true_conflict_ops=%llu|"
+          "bank_wait_cycles=%llu\n",
+          m_id, m_ep_l2_b0_window_start_cycle, cycle, n,
+          n ? window.line_sum / n : 0, n ? window.desc_sum / n : 0,
+          n ? window.wad_sum / n : 0, n ? window.resident_sum / n : 0,
+          n ? window.missq_sum / n : 0, n ? window.lowerq_sum / n : 0,
+          bank.logical, bank.true_ops, bank.wait);
+  m_ep_l2_b0_window_start = m_ep_l2_b0_accum;
+  m_ep_l2_b0_window_bank_start = ep_l2_b0_bank_snapshot();
+  m_ep_l2_b0_window_start_cycle = cycle;
 }
 
 memory_sub_partition::ep_l2_b0_bank_accum

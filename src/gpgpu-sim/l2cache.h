@@ -503,6 +503,13 @@ class memory_sub_partition {
   };
   ep_l2_b0_bank_accum ep_l2_b0_bank_snapshot() const;
   std::map<unsigned long long, ep_l2_b0_bank_accum> m_ep_l2_b0_kernel_bank_start;
+  // Small C7d temporal view: one retained baseline per physical slice and
+  // one emitted record per 5K simulated cycles.  It is deliberately not the
+  // legacy L2CHAR collector.
+  ep_l2_b0_accum m_ep_l2_b0_window_start;
+  ep_l2_b0_bank_accum m_ep_l2_b0_window_bank_start;
+  unsigned long long m_ep_l2_b0_window_start_cycle;
+  bool m_ep_l2_b0_window_started;
   std::map<unsigned long long, unsigned long long> m_ep_l2_b0_kernel_start_cycle;
   std::map<unsigned long long, bool> m_ep_l2_b0_kernel_overlap;
 
@@ -510,7 +517,7 @@ class memory_sub_partition {
   void ep_l2_record_lower_issue(mem_fetch *mf);
   void l2_char_record_l2dram_pop(mem_fetch *mf);
   void l2_char_sample(unsigned long long cycle);
-  void ep_l2_b0_sample();
+  void ep_l2_b0_sample(unsigned long long cycle);
   static unsigned l2_char_queue_class(const mem_fetch *mf);
 
   friend class L2interface;
