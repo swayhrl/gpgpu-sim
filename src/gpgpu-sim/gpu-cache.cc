@@ -2392,9 +2392,13 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
       // landing. The status is HIT_RESERVED in some cache organizations and
       // SECTOR_MISS in others, so state—not the status spelling—defines this.
       assert(payload_index < 1024);
-      if (m_ep_l2_payload.resident(payload_index).status ==
-          ep_l2_payload_store::RESIDENT_FILL_PENDING)
-        m_ep_l2_payload.attach_resident_identity(payload_index, mf);
+      // A sector miss may target a payload that is already valid/dirty for
+      // another sector.  Identity is line-scoped and must be carried in that
+      // case too; only the pending-sector mask is fill-scoped.
+      assert(m_ep_l2_payload.resident_owner_matches(
+          payload_index, payload_owner,
+          m_ep_l2_payload.resident(payload_index).generation));
+      m_ep_l2_payload.attach_resident_identity(payload_index, mf);
     }
   }
   bool wad_reserved = false;
@@ -2443,22 +2447,26 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
       assert(was_writeback_sent(events, writeback));
     }
   }
+  const bool lower_read = was_read_sent(events);
   if (payload_reserved && result == RESERVATION_FAIL) {
     m_ep_l2_payload.restore_resident(payload_index, payload_saved);
   } else if (m_ep_l2_payload.enabled() && result == HIT &&
              mf->get_is_write() && payload_index != (unsigned)-1) {
     m_ep_l2_payload.mark_resident_dirty(payload_index);
-  } else if (payload_reserved && result == HIT) {
-    // A locally absorbed write allocation has no return fill, but still owns
-    // its resident payload immediately.
+  }
+  // Lower-read generation, not the cache API's HIT/MISS spelling, determines
+  // whether the static landing remains pending.  This also covers a sector
+  // miss on an otherwise valid/dirty 128B line.
+  if (m_ep_l2_payload.enabled() && payload_index != (unsigned)-1 && lower_read)
+    m_ep_l2_payload.note_resident_lower_read(
+        payload_index, payload_owner, mf->get_ep_l2_payload_generation(),
+        mf->get_access_sector_mask());
+  else if (payload_reserved && result != RESERVATION_FAIL) {
+    // A newly allocated, locally absorbed lazy-fetch write has no lower fill.
     m_ep_l2_payload.complete_resident_no_fill(
         payload_index, payload_owner, mf->get_ep_l2_payload_generation(),
         mf->get_is_write());
   }
-  if (m_ep_l2_payload.enabled() && payload_index != (unsigned)-1 &&
-      was_read_sent(events))
-    m_ep_l2_payload.note_resident_lower_read(
-        payload_index, mf->get_ep_l2_payload_generation());
   // data_cache policies may modify the selected block after tag_array::access
   // (for example a write hit).  Refresh only the selected L2 line.
   unsigned cache_index = (unsigned)-1;
@@ -2485,11 +2493,9 @@ void l2_cache::fill(mem_fetch *mf, unsigned time) {
     extra_mf_fields_lookup::iterator e = m_extra_mf_fields.find(mf);
     assert(e != m_extra_mf_fields.end());
     // A stale response must never land into a reused static payload slot.
-    assert(m_ep_l2_payload.resident_identity_matches(
-        id, e->second.m_block_addr, mf->get_ep_l2_payload_generation()));
     m_ep_l2_payload.complete_resident_fill(
         id, e->second.m_block_addr, mf->get_ep_l2_payload_generation(),
-        mf->is_write());
+        mf->get_access_sector_mask(), mf->is_write());
   }
   baseline_cache::fill(mf, time);
 }

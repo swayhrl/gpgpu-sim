@@ -23,6 +23,19 @@ static mem_fetch *make_read(partition_mf_allocator &allocator,
                          SECTOR_SIZE, false, cycle, 0, 0, 0, NULL, 0);
 }
 
+static mem_fetch *make_write(partition_mf_allocator &allocator,
+                             new_addr_type address,
+                             unsigned long long cycle) {
+  active_mask_t active;
+  active.set(0);
+  mem_access_byte_mask_t bytes;
+  for (unsigned i = 0; i < SECTOR_SIZE; ++i) bytes.set(i);
+  mem_access_sector_mask_t sectors;
+  sectors.set((address >> 5) & 3);
+  return allocator.alloc(address, GLOBAL_ACC_W, active, bytes, sectors,
+                         SECTOR_SIZE, true, cycle, 0, 0, 0, NULL, 0);
+}
+
 struct scenario {
   gpgpu_context context;
   option_parser_t options;
@@ -74,6 +87,11 @@ struct scenario {
 
   void push(new_addr_type address) {
     subpartition->push(make_read(*allocator, address, gpu->gpu_sim_cycle),
+                       gpu->gpu_sim_cycle);
+  }
+
+  void push_write(new_addr_type address) {
+    subpartition->push(make_write(*allocator, address, gpu->gpu_sim_cycle),
                        gpu->gpu_sim_cycle);
   }
 
@@ -169,6 +187,9 @@ static void different_sector(const char *base, const char *fixture) {
   assert(s.subpartition->ep_l2_line_mshr_entries() == 1);
   assert(s.subpartition->ep_l2_descriptor_count_used() == 2);
   assert(s.subpartition->ep_l2_lower_read_issue_count() == 2);
+  // T3 production path: both sectors share one static resident payload while
+  // their lower responses are independently pending.
+  assert(s.subpartition->ep_l2_resident_payload_pending() == 1);
   s.drain(5000);
   assert(s.replies == 2);
 }
@@ -186,6 +207,9 @@ static void same_sector(const char *base, const char *fixture) {
   assert(s.subpartition->ep_l2_line_mshr_entries() == 1);
   assert(s.subpartition->ep_l2_descriptor_count_used() == 2);
   assert(s.subpartition->ep_l2_lower_read_issue_count() == 1);
+  // T6 production path: two requesters to one sector create exactly one
+  // lower fill / pending bit and both complete from that response.
+  assert(s.subpartition->ep_l2_resident_payload_pending() == 1);
   s.drain(5000);
   assert(s.replies == 2);
 }
@@ -208,6 +232,53 @@ static void payload_landing(const char *base, const char *fixture) {
   s.drain(5000);
   assert(s.subpartition->ep_l2_resident_payload_pending() == 0);
   assert(s.subpartition->ep_l2_resident_payload_valid() == 1);
+}
+
+static void valid_or_dirty_sector_miss(const char *base, const char *fixture) {
+  // T4: once sector 0 has filled, a sector-1 miss must retain the same
+  // resident landing as valid while its new lower fill is pending.
+  scenario s(base, fixture);
+  s.push(0x6900);
+  s.drain(5000);
+  const unsigned long long reads_after_first =
+      s.subpartition->ep_l2_payload_identity_lower_issue_count();
+  assert(reads_after_first == 1);
+  assert(s.subpartition->ep_l2_resident_payload_valid() == 1);
+  s.push(0x6920);
+  for (unsigned i = 0; i < 200; ++i) {
+    s.cycle(true);
+    if (s.subpartition->ep_l2_payload_identity_lower_issue_count() ==
+        reads_after_first + 1) break;
+  }
+  assert(s.subpartition->ep_l2_payload_identity_lower_issue_count() ==
+         reads_after_first + 1);
+  assert(s.subpartition->ep_l2_resident_payload_valid() == 1);
+  assert(s.subpartition->ep_l2_resident_payload_pending() == 1);
+  s.drain(5000);
+  assert(s.replies == 2);
+  assert(s.subpartition->ep_l2_resident_payload_pending() == 0);
+
+  // T2/T5: lazy-fetch write allocation is locally complete with no lower
+  // pending sector; a later missing-sector read retains its dirty ownership
+  // while that read is in flight.
+  scenario dirty(base, fixture);
+  dirty.push_write(0x6a00);
+  dirty.drain(5000);
+  assert(dirty.subpartition->ep_l2_payload_identity_lower_issue_count() == 0);
+  assert(dirty.subpartition->ep_l2_resident_payload_pending() == 0);
+  assert(dirty.subpartition->ep_l2_resident_payload_valid() == 1);
+  dirty.push(0x6a20);
+  for (unsigned i = 0; i < 200; ++i) {
+    dirty.cycle(true);
+    if (dirty.subpartition->ep_l2_payload_identity_lower_issue_count() == 1)
+      break;
+  }
+  assert(dirty.subpartition->ep_l2_payload_identity_lower_issue_count() == 1);
+  assert(dirty.subpartition->ep_l2_resident_payload_valid() == 1);
+  assert(dirty.subpartition->ep_l2_resident_payload_pending() == 1);
+  dirty.drain(5000);
+  assert(dirty.replies == 2);
+  assert(dirty.subpartition->ep_l2_resident_payload_pending() == 0);
 }
 
 static void descriptor_exhaustion(const char *base, const char *fixture) {
@@ -258,9 +329,12 @@ int main(int argc, char **argv) {
   different_sector(argv[1], argv[2]);
   same_sector(argv[1], argv[2]);
   payload_landing(argv[1], argv[2]);
+  valid_or_dirty_sector_miss(argv[1], argv[2]);
   descriptor_exhaustion(argv[1], argv[3]);
   timing_neutral(argv[1], argv[2], argv[4]);
   banked_production_no_loss(argv[1], argv[5]);
+  payload_landing(argv[1], argv[5]);
+  valid_or_dirty_sector_miss(argv[1], argv[5]);
   puts("EP-L2 C3b production descriptor/MSHR regressions: PASS");
   return 0;
 }

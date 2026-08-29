@@ -5,3 +5,6 @@ set +u; source "$root/setup_environment" >/dev/null; set -u
 ${CXX:-g++} -std=c++11 -O2 -ffunction-sections -fdata-sections -I"$CUDA_INSTALL_PATH/include" -I"$root/src" -I"$root" \
   "$root/tests/ep_l2/test_payload_store.cc" "$root/src/gpgpu-sim/gpu-cache.cc" -Wl,--gc-sections -o "$out"
 "$out"
+${CXX:-g++} -std=c++11 -O2 -ffunction-sections -fdata-sections -I"$CUDA_INSTALL_PATH/include" -I"$root/src" -I"$root" \
+  "$root/tests/ep_l2/test_payload_sector_lifetime.cc" "$root/src/gpgpu-sim/gpu-cache.cc" -Wl,--gc-sections -o "${out}_sector"
+"${out}_sector"

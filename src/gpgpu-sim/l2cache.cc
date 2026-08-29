@@ -1488,7 +1488,7 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
           "EPL2B0V1|INVARIANT|slice=%u|kernel_uid=%llu|line_mshr_used=%u|"
           "line_mshr_capacity=%u|descriptor_used=%u|descriptor_free=%u|"
           "descriptor_capacity=%u|wad_live=%u|wad_capacity=%u|resident_live=%u|"
-          "resident_capacity=1024|bypass_live=%u|bypass_capacity=128|bank_pending=%u|"
+          "resident_capacity=1024|resident_pending=%u|bypass_live=%u|bypass_capacity=128|bank_pending=%u|"
           "resident_tag_payload_consistent=%u|payload_double_owner=%u|terminal_clean=%u\n",
           m_id, uid, m_L2cache->mshr_entries_used(),
           m_L2cache->mshr_entry_capacity(), m_L2cache->ep_l2_descriptor_count_used(),
@@ -1496,12 +1496,14 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
           m_L2cache->ep_l2_descriptor_pool_capacity(),
           m_L2cache->ep_l2_wad_occupancy(), m_L2cache->ep_l2_wad_capacity(),
           m_L2cache->ep_l2_resident_payload_occupancy(),
+          m_L2cache->ep_l2_resident_pending(),
           m_L2cache->ep_l2_bypass_payload_occupancy(),
           m_L2cache->ep_l2_payload_pending_operations(),
           m_L2cache->ep_l2_payload_ownership_consistent() ? 1 : 0,
           m_L2cache->ep_l2_payload_ownership_consistent() ? 0 : 1,
           (m_L2cache->ep_l2_descriptor_count_used() == 0 &&
            m_L2cache->ep_l2_wad_occupancy() == 0 &&
+           m_L2cache->ep_l2_resident_pending() == 0 &&
            m_L2cache->ep_l2_bypass_payload_occupancy() == 0 &&
            m_L2cache->ep_l2_payload_pending_operations() == 0) ? 1 : 0);
 }
@@ -1510,7 +1512,9 @@ bool memory_sub_partition::l2_char_no_resource_leak() const {
   return m_request_tracker.empty() && m_icnt_L2_queue->empty() &&
          m_L2_dram_queue->empty() && m_dram_L2_queue->empty() &&
          m_L2_icnt_queue->empty() && m_rop.empty() &&
-         m_l2_block_state.empty() && m_L2cache->l2_char_no_pending_resources();
+         m_l2_block_state.empty() && m_L2cache->l2_char_no_pending_resources() &&
+         m_L2cache->ep_l2_resident_pending() == 0 &&
+         m_L2cache->ep_l2_payload_pending_operations() == 0;
 }
 
 void memory_stats_t::visualizer_print(gzFile visualizer_file) {

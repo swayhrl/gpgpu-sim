@@ -11,7 +11,7 @@ int main() {
                        "bank_requests=|bank_grants=|bank_conflicts=|";
   const char *invariant = "EPL2B0V1|INVARIANT|descriptor_used=|"
                           "descriptor_free=|wad_live=|resident_capacity=1024|"
-                          "bypass_capacity=128|bank_pending=|terminal_clean=";
+                          "resident_pending=|bypass_capacity=128|bank_pending=|terminal_clean=";
   assert(strstr(schema, "EPL2B0V1") && !strstr(schema, "L2CHARV1"));
   assert(strstr(invariant, "terminal_clean"));
   puts("EP-L2 C7 EPL2B0V1 schema regression: PASS"); return 0;

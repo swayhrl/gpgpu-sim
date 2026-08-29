@@ -2024,8 +2024,12 @@ class ep_l2_payload_store {
     BYPASS_READY
   };
   struct slot {
-    state status; new_addr_type owner; unsigned generation; unsigned pending_fills;
-    slot() : status(FREE), owner(0), generation(0), pending_fills(0) {}
+    state status; new_addr_type owner; unsigned generation;
+    // A payload is line-owned, while fills are independently 32B-sector
+    // scoped.  A valid/dirty resident can therefore legitimately retain one
+    // or more lower fills in flight for other sectors of its 128B line.
+    mem_access_sector_mask_t pending_sector_mask;
+    slot() : status(FREE), owner(0), generation(0) { pending_sector_mask.reset(); }
     bool occupied() const { return status != FREE; }
   };
   ep_l2_payload_store(unsigned mode = 0)
@@ -2046,19 +2050,34 @@ class ep_l2_payload_store {
   void restore_resident(unsigned id, const slot &saved) {
     assert(id < 1024); m_resident[id] = saved;
   }
-  unsigned resident_pending() const { return count_state(m_resident, RESIDENT_FILL_PENDING); }
+  unsigned resident_pending() const { return count_pending_sectors(m_resident); }
   unsigned resident_valid() const { return count_state(m_resident, RESIDENT_VALID) + count_state(m_resident, RESIDENT_DIRTY); }
   unsigned bypass_pending() const { return count_state(m_bypass, BYPASS_FILL_PENDING); }
   unsigned bypass_ready() const { return count_state(m_bypass, BYPASS_READY); }
-  bool resident_identity_matches(unsigned id, new_addr_type owner,
-                                 unsigned generation) const {
-    return id < 1024 && m_resident[id].status == RESIDENT_FILL_PENDING &&
-           m_resident[id].owner == owner && m_resident[id].generation == generation;
+  bool resident_owner_matches(unsigned id, new_addr_type owner,
+                              unsigned generation) const {
+    return id < 1024 && m_resident[id].occupied() &&
+           m_resident[id].owner == owner &&
+           m_resident[id].generation == generation;
   }
-  void note_resident_lower_read(unsigned id, unsigned generation) {
-    assert(id < 1024 && m_resident[id].status == RESIDENT_FILL_PENDING &&
-           m_resident[id].generation == generation);
-    ++m_resident[id].pending_fills;
+  bool resident_fill_expected(unsigned id, new_addr_type owner,
+                              unsigned generation,
+                              const mem_access_sector_mask_t &sectors) const {
+    return resident_owner_matches(id, owner, generation) && sectors.any() &&
+           (sectors & ~m_resident[id].pending_sector_mask).none();
+  }
+  const mem_access_sector_mask_t &resident_pending_sectors(unsigned id) const {
+    assert(id < 1024); return m_resident[id].pending_sector_mask;
+  }
+  void note_resident_lower_read(unsigned id, new_addr_type owner,
+                                unsigned generation,
+                                const mem_access_sector_mask_t &sectors) {
+    assert(resident_owner_matches(id, owner, generation));
+    assert(sectors.any());
+    // A same-sector merged requester produces no second lower transaction;
+    // duplicate lower issue is a production correctness failure.
+    assert((m_resident[id].pending_sector_mask & sectors).none());
+    m_resident[id].pending_sector_mask |= sectors;
   }
   void reserve_resident(unsigned id, new_addr_type owner, mem_fetch *mf) {
     assert(id < 1024); assign(m_resident[id], id, owner, mf, RESIDENT_FILL_PENDING);
@@ -2068,16 +2087,23 @@ class ep_l2_payload_store {
     mf->set_ep_l2_payload_identity(id, m_resident[id].generation);
   }
   void complete_resident_fill(unsigned id, new_addr_type owner,
-                              unsigned generation, bool dirty) {
-    assert(resident_identity_matches(id, owner, generation));
-    assert(m_resident[id].pending_fills);
-    if (--m_resident[id].pending_fills == 0)
-      m_resident[id].status = dirty ? RESIDENT_DIRTY : RESIDENT_VALID;
+                              unsigned generation,
+                              const mem_access_sector_mask_t &sectors,
+                              bool dirty) {
+    assert(resident_fill_expected(id, owner, generation, sectors));
+    m_resident[id].pending_sector_mask &= ~sectors;
+    // This is a coarse payload-RAM state, not a duplicate sector-validity
+    // state machine: tag_array remains authoritative for sector validity.
+    // Preserve DIRTY ownership while another sector response is outstanding.
+    if (dirty || m_resident[id].status == RESIDENT_DIRTY)
+      m_resident[id].status = RESIDENT_DIRTY;
+    else
+      m_resident[id].status = RESIDENT_VALID;
   }
   void complete_resident_no_fill(unsigned id, new_addr_type owner,
                                  unsigned generation, bool dirty) {
-    assert(resident_identity_matches(id, owner, generation));
-    assert(m_resident[id].pending_fills == 0);
+    assert(resident_owner_matches(id, owner, generation));
+    assert(m_resident[id].pending_sector_mask.none());
     m_resident[id].status = dirty ? RESIDENT_DIRTY : RESIDENT_VALID;
   }
   void mark_resident_dirty(unsigned id) {
@@ -2210,9 +2236,15 @@ class ep_l2_payload_store {
   static unsigned count_state(const std::vector<slot> &slots, state wanted) {
     unsigned n = 0; for (std::vector<slot>::const_iterator i = slots.begin(); i != slots.end(); ++i) if (i->status == wanted) ++n; return n;
   }
+  static unsigned count_pending_sectors(const std::vector<slot> &slots) {
+    unsigned n = 0;
+    for (std::vector<slot>::const_iterator i = slots.begin(); i != slots.end(); ++i)
+      if (i->pending_sector_mask.any()) ++n;
+    return n;
+  }
   static void assign(slot &s, unsigned payload_id, new_addr_type owner, mem_fetch *mf,
                      state new_state) {
-    s.status = new_state; s.owner = owner; s.pending_fills = 0; ++s.generation;
+    s.status = new_state; s.owner = owner; s.pending_sector_mask.reset(); ++s.generation;
     if (mf) mf->set_ep_l2_payload_identity(payload_id, s.generation);
   }
   struct pending_op {
