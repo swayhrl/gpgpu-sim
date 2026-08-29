@@ -18,11 +18,24 @@ int main() {
                        "c7d_per_address_cap_block=|"
                        "c7d_wad_hazard_wait_cycles=|"
                        "c7d_payload_service_port_denial=|"
-                       "c7d_bank0_logical_ops=|c7d_bank_resident_hit_read=|";
+                       "c7d_bank0_logical_ops=|c7d_bank_resident_hit_read=|"
+                       "c7e_tag_way_alloc_need=|c7e_tag_way_alloc_block=|"
+                       "c7e_line_mshr_need=|c7e_descriptor_need=|"
+                       "c7e_per_address_cap_check=|"
+                       "c7e_dram_issue_attempt=|c7e_dram_successful_read_bytes=|"
+                       "c7e_dram_scheduler_causal_block=|";
+  const char *l1 = "EPL2L1V1|scope=application|accesses=|misses=|"
+                   "line_alloc_fail=|miss_queue_full=|mshr_entry_fail=|"
+                   "mshr_merge_fail=|mshr_rw_pending=|"
+                   "bank_latency_queue_conflict=";
+  const char *dram = "EPL2DRAMV1|scope=window|interval=5000_cycle|channel=|"
+                     "scheduler_occ_avg=|returnq_occ_avg=|"
+                     "successful_read_bytes=|bandwidth_util=";
   const char *invariant = "EPL2B0V1|INVARIANT|descriptor_used=|"
                           "descriptor_free=|wad_live=|resident_capacity=1024|"
                           "resident_pending=|bypass_capacity=128|bank_pending=|terminal_clean=";
   assert(strstr(schema, "EPL2B0V1") && !strstr(schema, "L2CHARV1"));
+  assert(strstr(l1, "EPL2L1V1") && strstr(dram, "EPL2DRAMV1"));
   assert(strstr(invariant, "terminal_clean"));
   puts("EP-L2 C7 EPL2B0V1 schema regression: PASS"); return 0;
 }
