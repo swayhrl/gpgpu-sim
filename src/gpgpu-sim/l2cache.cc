@@ -1161,8 +1161,11 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
             m_l2_char_collector->record_wb_generated(plan.victim_modified_bytes);
           }
         }
-        if (plan.exact && !(status == RESERVATION_FAIL &&
-                            m_config->m_L2_config.m_ep_l2_payload_mode == 2)) {
+        // A reservation failure is deliberately not an accepted commit: the
+        // preview/commit predicate encodes that contract and must therefore
+        // only be checked after a non-reservation-fail access.  This applies
+        // to both legacy and banked payload modes.
+        if (plan.exact && status != RESERVATION_FAIL) {
           cache_event writeback_event(WRITE_BACK_REQUEST_SENT);
           bool preview_matches = l2_preview_commit_matches(
               plan.will_send_lower_read, plan.will_send_lower_write,
