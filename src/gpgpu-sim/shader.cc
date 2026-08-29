@@ -3095,6 +3095,52 @@ void gpgpu_sim::shader_print_scheduler_stat(FILE *fout,
   fprintf(fout, "\n");
 }
 
+gpgpu_sim::ep_l1d_snapshot gpgpu_sim::ep_l1d_snapshot_now() const {
+  cache_stats l1d_stats;
+  l1d_stats.clear();
+  cache_sub_stats css;
+  css.clear();
+  for (unsigned i = 0; i < m_shader_config->n_simt_clusters; ++i) {
+    m_cluster[i]->get_L1D_cache_stats(l1d_stats);
+    cache_sub_stats cluster_css;
+    cluster_css.clear();
+    m_cluster[i]->get_L1D_sub_stats(cluster_css);
+    css += cluster_css;
+  }
+  ep_l1d_snapshot s = {css.accesses, css.misses,
+      l1d_stats.total_fail_reason(LINE_ALLOC_FAIL),
+      l1d_stats.total_fail_reason(MISS_QUEUE_FULL),
+      l1d_stats.total_fail_reason(MSHR_ENRTY_FAIL),
+      l1d_stats.total_fail_reason(MSHR_MERGE_ENRTY_FAIL),
+      l1d_stats.total_fail_reason(MSHR_RW_PENDING),
+      m_shader_stats->gpgpu_n_l1cache_bkconflict};
+  return s;
+}
+
+void gpgpu_sim::print_ep_l1d_kernel_snapshot(FILE *fout,
+                                               unsigned long long uid) {
+  const ep_l1d_snapshot now = ep_l1d_snapshot_now();
+  const std::map<unsigned long long, ep_l1d_snapshot>::iterator start =
+      m_ep_l1d_kernel_start.find(uid);
+  if (start == m_ep_l1d_kernel_start.end()) return;
+  const ep_l1d_snapshot &s = start->second;
+  fprintf(fout,
+          "EPL2L1V1|scope=kernel|interval=kernel_shared_delta|kernel_uid=%llu|"
+          "overlap_detected=%u|accesses=%llu|misses=%llu|line_alloc_fail=%llu|"
+          "miss_queue_full=%llu|mshr_entry_fail=%llu|mshr_merge_fail=%llu|"
+          "mshr_rw_pending=%llu|bank_latency_queue_conflict=%llu\n",
+          uid, m_ep_l1d_kernel_overlap[uid] ? 1 : 0,
+          now.accesses - s.accesses, now.misses - s.misses,
+          now.line_alloc_fail - s.line_alloc_fail,
+          now.miss_queue_full - s.miss_queue_full,
+          now.mshr_entry_fail - s.mshr_entry_fail,
+          now.mshr_merge_fail - s.mshr_merge_fail,
+          now.mshr_rw_pending - s.mshr_rw_pending,
+          now.bank_conflict - s.bank_conflict);
+  m_ep_l1d_kernel_start.erase(uid);
+  m_ep_l1d_kernel_overlap.erase(uid);
+}
+
 void gpgpu_sim::shader_print_cache_stats(FILE *fout) const {
   // L1I
   struct cache_sub_stats total_css;

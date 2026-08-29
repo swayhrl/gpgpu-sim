@@ -692,6 +692,12 @@ class gpgpu_sim : public gpgpu_t {
   void shader_print_runtime_stat(FILE *fout);
   void shader_print_l1_miss_stat(FILE *fout) const;
   void shader_print_cache_stats(FILE *fout) const;
+  struct ep_l1d_snapshot {
+    unsigned long long accesses, misses, line_alloc_fail, miss_queue_full,
+        mshr_entry_fail, mshr_merge_fail, mshr_rw_pending, bank_conflict;
+  };
+  ep_l1d_snapshot ep_l1d_snapshot_now() const;
+  void print_ep_l1d_kernel_snapshot(FILE *fout, unsigned long long uid);
   void shader_print_scheduler_stat(FILE *fout, bool print_dynamic_info) const;
   void visualizer_printstat();
   void print_shader_cycle_distro(FILE *fout) const;
@@ -705,6 +711,8 @@ class gpgpu_sim : public gpgpu_t {
   class memory_sub_partition **m_memory_sub_partition;
 
   std::vector<kernel_info_t *> m_running_kernels;
+  std::map<unsigned long long, ep_l1d_snapshot> m_ep_l1d_kernel_start;
+  std::map<unsigned long long, bool> m_ep_l1d_kernel_overlap;
   unsigned m_last_issued_kernel;
 
   std::list<unsigned> m_finished_kernel;
