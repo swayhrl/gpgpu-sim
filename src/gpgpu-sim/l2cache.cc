@@ -546,7 +546,7 @@ void memory_partition_unit::simple_dram_model_cycle() {
       const bool char_scheduler_block = m_dram->full(mf->is_write());
       m_sub_partition[spid]->l2_char_record_dram_issue(
           char_needs_return, !char_needs_return, char_return_block,
-          char_credit_block, char_scheduler_block);
+          char_credit_block, char_scheduler_block, m_dram->que_length());
       if (m_l2_char_dram_issue_count >=
               m_config->gpgpu_l2_char_dram_issue_hold_after_issues &&
           m_l2_char_dram_issue_hold_remaining) {
@@ -637,7 +637,7 @@ void memory_partition_unit::dram_cycle() {
       const bool char_scheduler_block = m_dram->full(mf->is_write());
       m_sub_partition[spid]->l2_char_record_dram_issue(
           char_needs_return, !char_needs_return, char_return_block,
-          char_credit_block, char_scheduler_block);
+          char_credit_block, char_scheduler_block, m_dram->que_length());
       if (m_l2_char_dram_issue_count >=
               m_config->gpgpu_l2_char_dram_issue_hold_after_issues &&
           m_l2_char_dram_issue_hold_remaining) {
@@ -1361,15 +1361,32 @@ void memory_sub_partition::L2_dram_queue_pop() {
 
 void memory_sub_partition::l2_char_record_dram_issue(
     bool is_read, bool is_wb, bool return_block, bool credit_block,
-    bool scheduler_block) {
+    bool scheduler_block, unsigned scheduler_occupancy) {
   if (m_l2_char_collector)
     m_l2_char_collector->record_dram_issue(is_read, is_wb, return_block,
                                             credit_block, scheduler_block);
+  if (!m_config->m_L2_config.ep_l2_b0_stats_enabled()) return;
+  ++m_ep_l2_b0_accum.dram_issue_eligible;
+  if (is_read) ++m_ep_l2_b0_accum.dram_read_issues;
+  if (is_wb) ++m_ep_l2_b0_accum.dram_write_issues;
+  if (return_block) ++m_ep_l2_b0_accum.dram_returnq_block;
+  if (credit_block) ++m_ep_l2_b0_accum.dram_credit_block;
+  if (scheduler_block) ++m_ep_l2_b0_accum.dram_scheduler_full_block;
+  m_ep_l2_b0_accum.dram_scheduler_occ_sum += scheduler_occupancy;
+  ++m_ep_l2_b0_accum.dram_scheduler_occ_samples;
+  m_ep_l2_b0_accum.dram_scheduler_occ_max =
+      std::max(m_ep_l2_b0_accum.dram_scheduler_occ_max, scheduler_occupancy);
+  ++m_ep_l2_b0_accum.dram_scheduler_occ_hist[
+      std::min<unsigned>(scheduler_occupancy,
+                         m_ep_l2_b0_accum.dram_scheduler_occ_hist.size() - 1)];
 }
 
 void memory_sub_partition::l2_char_record_dram_return(bool eligible,
                                                        bool blocked) {
   if (m_l2_char_collector) m_l2_char_collector->record_dram_return(eligible, blocked);
+  if (!m_config->m_L2_config.ep_l2_b0_stats_enabled()) return;
+  if (eligible) ++m_ep_l2_b0_accum.dram_return_eligible;
+  if (blocked) ++m_ep_l2_b0_accum.dram_to_l2_full_block;
 }
 
 bool memory_sub_partition::dram_L2_queue_full() const {
@@ -1503,6 +1520,16 @@ memory_sub_partition::ep_l2_b0_accum::delta(const ep_l2_b0_accum &start) const {
   d.payload_capacity_allocation_denial -= start.payload_capacity_allocation_denial;
   d.missq_full_block -= start.missq_full_block;
   d.l2_to_dram_full_block -= start.l2_to_dram_full_block;
+  d.dram_issue_eligible -= start.dram_issue_eligible;
+  d.dram_read_issues -= start.dram_read_issues;
+  d.dram_write_issues -= start.dram_write_issues;
+  d.dram_scheduler_full_block -= start.dram_scheduler_full_block;
+  d.dram_returnq_block -= start.dram_returnq_block;
+  d.dram_credit_block -= start.dram_credit_block;
+  d.dram_return_eligible -= start.dram_return_eligible;
+  d.dram_to_l2_full_block -= start.dram_to_l2_full_block;
+  d.dram_scheduler_occ_sum -= start.dram_scheduler_occ_sum;
+  d.dram_scheduler_occ_samples -= start.dram_scheduler_occ_samples;
   for (unsigned i = 0; i < d.line_hist.size(); ++i) d.line_hist[i] -= start.line_hist[i];
   for (unsigned i = 0; i < d.desc_hist.size(); ++i) d.desc_hist[i] -= start.desc_hist[i];
   for (unsigned i = 0; i < d.wad_hist.size(); ++i) d.wad_hist[i] -= start.wad_hist[i];
@@ -1515,18 +1542,21 @@ memory_sub_partition::ep_l2_b0_accum::delta(const ep_l2_b0_accum &start) const {
   for (unsigned i = 0; i < d.bypass_pending_hist.size(); ++i) d.bypass_pending_hist[i] -= start.bypass_pending_hist[i];
   for (unsigned i = 0; i < d.bypass_ready_hist.size(); ++i) d.bypass_ready_hist[i] -= start.bypass_ready_hist[i];
   for (unsigned i = 0; i < d.reserved_set_hist.size(); ++i) d.reserved_set_hist[i] -= start.reserved_set_hist[i];
+  for (unsigned i = 0; i < d.dram_scheduler_occ_hist.size(); ++i)
+    d.dram_scheduler_occ_hist[i] -= start.dram_scheduler_occ_hist[i];
   // Maxima are interval values for kernel snapshots, not cumulative maxima
   // inherited from the application accumulator.
   const std::vector<unsigned long long> *hists[] = {
       &d.line_hist, &d.desc_hist, &d.wad_hist, &d.resident_hist,
       &d.bypass_hist, &d.reserved_hist, &d.resident_valid_hist,
       &d.resident_dirty_hist, &d.resident_pending_hist,
-      &d.bypass_pending_hist, &d.bypass_ready_hist, &d.reserved_set_hist};
+      &d.bypass_pending_hist, &d.bypass_ready_hist, &d.reserved_set_hist,
+      &d.dram_scheduler_occ_hist};
   unsigned *maxes[] = {&d.line_max, &d.desc_max, &d.wad_max, &d.resident_max,
                        &d.bypass_max, &d.reserved_max, &d.resident_valid_max,
                        &d.resident_dirty_max, &d.resident_pending_max,
                        &d.bypass_pending_max, &d.bypass_ready_max,
-                       &d.reserved_set_max};
+                       &d.reserved_set_max, &d.dram_scheduler_occ_max};
   for (unsigned h = 0; h < sizeof(hists) / sizeof(hists[0]); ++h) {
     *maxes[h] = 0;
     for (unsigned i = 0; i < hists[h]->size(); ++i)
@@ -1706,6 +1736,11 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
           "c7d_bypass_ready_avg=%llu|c7d_bypass_ready_p95=%u|c7d_bypass_ready_max=%u|"
           "c7d_payload_service_port_denial=%llu|c7d_payload_capacity_allocation_denial=%llu|"
           "c7d_missq_full_block=%llu|c7d_l2_to_dram_full_block=%llu|"
+          "c7d_dram_issue_eligible=%llu|c7d_dram_read_issues=%llu|c7d_dram_write_issues=%llu|"
+          "c7d_dram_scheduler_full_block=%llu|c7d_dram_returnq_block=%llu|"
+          "c7d_dram_credit_block=%llu|c7d_dram_return_eligible=%llu|"
+          "c7d_dram_to_l2_full_block=%llu|c7d_dram_scheduler_occ_avg=%llu|"
+          "c7d_dram_scheduler_occ_max=%u|"
           "c7d_bank0_logical_ops=%llu|c7d_bank1_logical_ops=%llu|c7d_bank2_logical_ops=%llu|c7d_bank3_logical_ops=%llu|"
           "c7d_bank0_grants=%llu|c7d_bank1_grants=%llu|c7d_bank2_grants=%llu|c7d_bank3_grants=%llu|"
           "c7d_bank0_true_conflict_ops=%llu|c7d_bank1_true_conflict_ops=%llu|c7d_bank2_true_conflict_ops=%llu|c7d_bank3_true_conflict_ops=%llu|"
@@ -1743,6 +1778,13 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
           n ? stats.bypass_ready_sum / n : 0, ep_l2_b0_accum::p95(stats.bypass_ready_hist, n), stats.bypass_ready_max,
           stats.payload_service_port_denial, stats.payload_capacity_allocation_denial,
           stats.missq_full_block, stats.l2_to_dram_full_block,
+          stats.dram_issue_eligible, stats.dram_read_issues, stats.dram_write_issues,
+          stats.dram_scheduler_full_block, stats.dram_returnq_block,
+          stats.dram_credit_block, stats.dram_return_eligible,
+          stats.dram_to_l2_full_block,
+          stats.dram_scheduler_occ_samples ?
+              stats.dram_scheduler_occ_sum / stats.dram_scheduler_occ_samples : 0,
+          stats.dram_scheduler_occ_max,
           bank.logical_by_bank[0], bank.logical_by_bank[1], bank.logical_by_bank[2], bank.logical_by_bank[3],
           bank.grants_by_bank[0], bank.grants_by_bank[1], bank.grants_by_bank[2], bank.grants_by_bank[3],
           bank.true_ops_by_bank[0], bank.true_ops_by_bank[1], bank.true_ops_by_bank[2], bank.true_ops_by_bank[3],

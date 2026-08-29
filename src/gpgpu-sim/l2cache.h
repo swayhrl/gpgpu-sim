@@ -303,7 +303,8 @@ class memory_sub_partition {
   // Observation-only hooks used by memory_partition_unit at real DRAM
   // decision points.  They do not influence arbitration or queue state.
   void l2_char_record_dram_issue(bool is_read, bool is_wb, bool return_block,
-                                 bool credit_block, bool scheduler_block);
+                                 bool credit_block, bool scheduler_block,
+                                 unsigned scheduler_occupancy);
   void l2_char_record_dram_return(bool eligible, bool blocked);
 
   // interface to dram_L2_queue
@@ -445,13 +446,17 @@ class memory_sub_partition {
       per_address_cap_eligible(0), per_address_cap_block(0), wad_full_events(0),
       wad_hazard_events(0), wad_hazard_wait_cycles(0),
       payload_service_port_denial(0), payload_capacity_allocation_denial(0),
-      missq_full_block(0), l2_to_dram_full_block(0) {
+      missq_full_block(0), l2_to_dram_full_block(0), dram_issue_eligible(0),
+      dram_read_issues(0), dram_write_issues(0), dram_scheduler_full_block(0),
+      dram_returnq_block(0), dram_credit_block(0), dram_return_eligible(0),
+      dram_to_l2_full_block(0), dram_scheduler_occ_sum(0),
+      dram_scheduler_occ_samples(0), dram_scheduler_occ_max(0) {
       line_hist.assign(1025, 0); desc_hist.assign(257, 0); wad_hist.assign(1025, 0);
       resident_hist.assign(1025, 0); bypass_hist.assign(129, 0);
       reserved_hist.assign(1025, 0); resident_valid_hist.assign(1025, 0);
       resident_dirty_hist.assign(1025, 0); resident_pending_hist.assign(1025, 0);
       bypass_pending_hist.assign(129, 0); bypass_ready_hist.assign(129, 0);
-      reserved_set_hist.assign(17, 0);
+      reserved_set_hist.assign(17, 0); dram_scheduler_occ_hist.assign(1025, 0);
     }
     unsigned long long samples, line_sum, desc_sum, wad_sum, resident_sum,
         bypass_sum, missq_sum, lowerq_sum, reserved_sum, resident_valid_sum,
@@ -468,11 +473,15 @@ class memory_sub_partition {
         per_address_cap_block, wad_full_events, wad_hazard_events,
         wad_hazard_wait_cycles, payload_service_port_denial,
         payload_capacity_allocation_denial, missq_full_block,
-        l2_to_dram_full_block;
+        l2_to_dram_full_block, dram_issue_eligible, dram_read_issues,
+        dram_write_issues, dram_scheduler_full_block, dram_returnq_block,
+        dram_credit_block, dram_return_eligible, dram_to_l2_full_block,
+        dram_scheduler_occ_sum, dram_scheduler_occ_samples;
+    unsigned dram_scheduler_occ_max;
     std::vector<unsigned long long> line_hist, desc_hist, wad_hist,
         resident_hist, bypass_hist, reserved_hist, resident_valid_hist,
         resident_dirty_hist, resident_pending_hist, bypass_pending_hist,
-        bypass_ready_hist, reserved_set_hist;
+        bypass_ready_hist, reserved_set_hist, dram_scheduler_occ_hist;
     void sample(unsigned line, unsigned desc, unsigned wad, unsigned resident,
                 unsigned bypass, unsigned missq, unsigned lowerq,
                 unsigned reserved, unsigned resident_valid,
