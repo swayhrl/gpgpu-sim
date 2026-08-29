@@ -305,6 +305,7 @@ class memory_sub_partition {
   void l2_char_record_dram_issue(bool is_read, bool is_wb, bool return_block,
                                  bool credit_block, bool scheduler_block,
                                  unsigned scheduler_occupancy);
+  void l2_char_record_dram_success(bool is_read, bool is_wb, unsigned bytes);
   void l2_char_record_dram_return(bool eligible, bool blocked);
 
   // interface to dram_L2_queue
@@ -450,7 +451,14 @@ class memory_sub_partition {
       missq_full_block(0), l2_to_dram_full_block(0), dram_issue_eligible(0),
       dram_read_issues(0), dram_write_issues(0), dram_scheduler_full_block(0),
       dram_returnq_block(0), dram_credit_block(0), dram_return_eligible(0),
-      dram_to_l2_full_block(0), dram_scheduler_occ_sum(0),
+      dram_to_l2_full_block(0), c7e_tag_way_alloc_need(0),
+      c7e_tag_way_alloc_block(0), c7e_line_mshr_need(0),
+      c7e_descriptor_need(0), c7e_per_address_cap_check(0),
+      c7e_dram_issue_attempt(0), c7e_dram_successful_read_issues(0),
+      c7e_dram_successful_write_issues(0), c7e_dram_successful_read_bytes(0),
+      c7e_dram_successful_write_bytes(0), c7e_dram_scheduler_full_observed(0),
+      c7e_dram_scheduler_causal_block(0), c7e_dram_to_l2_return_path_block(0),
+      dram_scheduler_occ_sum(0),
       dram_scheduler_occ_samples(0), dram_scheduler_occ_max(0) {
       line_hist.assign(1025, 0); desc_hist.assign(257, 0); wad_hist.assign(1025, 0);
       resident_hist.assign(1025, 0); bypass_hist.assign(129, 0);
@@ -478,7 +486,13 @@ class memory_sub_partition {
         l2_to_dram_full_block, dram_issue_eligible, dram_read_issues,
         dram_write_issues, dram_scheduler_full_block, dram_returnq_block,
         dram_credit_block, dram_return_eligible, dram_to_l2_full_block,
-        dram_scheduler_occ_sum, dram_scheduler_occ_samples;
+        c7e_tag_way_alloc_need, c7e_tag_way_alloc_block, c7e_line_mshr_need,
+        c7e_descriptor_need, c7e_per_address_cap_check, c7e_dram_issue_attempt,
+        c7e_dram_successful_read_issues, c7e_dram_successful_write_issues,
+        c7e_dram_successful_read_bytes, c7e_dram_successful_write_bytes,
+        c7e_dram_scheduler_full_observed, c7e_dram_scheduler_causal_block,
+        c7e_dram_to_l2_return_path_block, dram_scheduler_occ_sum,
+        dram_scheduler_occ_samples;
     unsigned dram_scheduler_occ_max;
     std::vector<unsigned long long> line_hist, desc_hist, wad_hist,
         resident_hist, bypass_hist, reserved_hist, resident_valid_hist,

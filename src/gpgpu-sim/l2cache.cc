@@ -560,6 +560,8 @@ void memory_partition_unit::simple_dram_model_cycle() {
           m_sub_partition[spid]->dram_L2_queue_full())
         m_wb_issued_while_returnq_full++;
       m_sub_partition[spid]->L2_dram_queue_pop();
+      m_sub_partition[spid]->l2_char_record_dram_success(
+          char_needs_return, !char_needs_return, mf->get_data_size());
       MEMPART_DPRINTF(
           "Issue mem_fetch request %p from sub partition %d to dram\n", mf,
           spid);
@@ -652,6 +654,8 @@ void memory_partition_unit::dram_cycle() {
         m_wb_issued_while_returnq_full++;
 
       m_sub_partition[spid]->L2_dram_queue_pop();
+      m_sub_partition[spid]->l2_char_record_dram_success(
+          char_needs_return, !char_needs_return, mf->get_data_size());
       MEMPART_DPRINTF(
           "Issue mem_fetch request %p from sub partition %d to dram\n", mf,
           spid);
@@ -1024,10 +1028,21 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
             plan.probe_status == MISS || plan.probe_status == SECTOR_MISS ||
             plan.ep_l2_tag_set_all_reserved || plan.ep_l2_wad_full;
         if (line_alloc) ++m_ep_l2_b0_accum.line_alloc_eligible;
+        // C7e denominator: only a true new tag-way allocation, never a
+        // sector miss that lands in an already-resident line.
+        if (plan.probe_status == MISS) ++m_ep_l2_b0_accum.c7e_tag_way_alloc_need;
         if (plan.ep_l2_tag_set_all_reserved) {
           ++m_ep_l2_b0_accum.line_alloc_block;
           ++m_ep_l2_b0_accum.tag_set_all_reserved_block;
+          ++m_ep_l2_b0_accum.c7e_tag_way_alloc_block;
         }
+        // These semantic demands deliberately do not depend on the selected
+        // full_reason priority below.
+        if (plan.needs_new_mshr) ++m_ep_l2_b0_accum.c7e_line_mshr_need;
+        if (plan.needs_new_mshr || plan.needs_mshr_merge)
+          ++m_ep_l2_b0_accum.c7e_descriptor_need;
+        if (plan.needs_mshr_merge)
+          ++m_ep_l2_b0_accum.c7e_per_address_cap_check;
         if (plan.needs_new_mshr || plan.needs_mshr_merge) {
           switch (plan.ep_l2_mshr_block_reason) {
             case mshr_table::EP_L2_BLOCK_LINE_MSHR_FULL:
@@ -1367,11 +1382,16 @@ void memory_sub_partition::l2_char_record_dram_issue(
                                             credit_block, scheduler_block);
   if (!m_config->m_L2_config.ep_l2_b0_stats_enabled()) return;
   ++m_ep_l2_b0_accum.dram_issue_eligible;
+  ++m_ep_l2_b0_accum.c7e_dram_issue_attempt;
   if (is_read) ++m_ep_l2_b0_accum.dram_read_issues;
   if (is_wb) ++m_ep_l2_b0_accum.dram_write_issues;
   if (return_block) ++m_ep_l2_b0_accum.dram_returnq_block;
+  if (return_block) ++m_ep_l2_b0_accum.c7e_dram_to_l2_return_path_block;
   if (credit_block) ++m_ep_l2_b0_accum.dram_credit_block;
   if (scheduler_block) ++m_ep_l2_b0_accum.dram_scheduler_full_block;
+  if (scheduler_block) ++m_ep_l2_b0_accum.c7e_dram_scheduler_full_observed;
+  if (scheduler_block && !return_block && !credit_block)
+    ++m_ep_l2_b0_accum.c7e_dram_scheduler_causal_block;
   m_ep_l2_b0_accum.dram_scheduler_occ_sum += scheduler_occupancy;
   ++m_ep_l2_b0_accum.dram_scheduler_occ_samples;
   m_ep_l2_b0_accum.dram_scheduler_occ_max =
@@ -1379,6 +1399,20 @@ void memory_sub_partition::l2_char_record_dram_issue(
   ++m_ep_l2_b0_accum.dram_scheduler_occ_hist[
       std::min<unsigned>(scheduler_occupancy,
                          m_ep_l2_b0_accum.dram_scheduler_occ_hist.size() - 1)];
+}
+
+void memory_sub_partition::l2_char_record_dram_success(bool is_read,
+                                                         bool is_wb,
+                                                         unsigned bytes) {
+  if (!m_config->m_L2_config.ep_l2_b0_stats_enabled()) return;
+  if (is_read) {
+    ++m_ep_l2_b0_accum.c7e_dram_successful_read_issues;
+    m_ep_l2_b0_accum.c7e_dram_successful_read_bytes += bytes;
+  }
+  if (is_wb) {
+    ++m_ep_l2_b0_accum.c7e_dram_successful_write_issues;
+    m_ep_l2_b0_accum.c7e_dram_successful_write_bytes += bytes;
+  }
 }
 
 void memory_sub_partition::l2_char_record_dram_return(bool eligible,
@@ -1539,6 +1573,19 @@ memory_sub_partition::ep_l2_b0_accum::delta(const ep_l2_b0_accum &start) const {
   d.dram_credit_block -= start.dram_credit_block;
   d.dram_return_eligible -= start.dram_return_eligible;
   d.dram_to_l2_full_block -= start.dram_to_l2_full_block;
+  d.c7e_tag_way_alloc_need -= start.c7e_tag_way_alloc_need;
+  d.c7e_tag_way_alloc_block -= start.c7e_tag_way_alloc_block;
+  d.c7e_line_mshr_need -= start.c7e_line_mshr_need;
+  d.c7e_descriptor_need -= start.c7e_descriptor_need;
+  d.c7e_per_address_cap_check -= start.c7e_per_address_cap_check;
+  d.c7e_dram_issue_attempt -= start.c7e_dram_issue_attempt;
+  d.c7e_dram_successful_read_issues -= start.c7e_dram_successful_read_issues;
+  d.c7e_dram_successful_write_issues -= start.c7e_dram_successful_write_issues;
+  d.c7e_dram_successful_read_bytes -= start.c7e_dram_successful_read_bytes;
+  d.c7e_dram_successful_write_bytes -= start.c7e_dram_successful_write_bytes;
+  d.c7e_dram_scheduler_full_observed -= start.c7e_dram_scheduler_full_observed;
+  d.c7e_dram_scheduler_causal_block -= start.c7e_dram_scheduler_causal_block;
+  d.c7e_dram_to_l2_return_path_block -= start.c7e_dram_to_l2_return_path_block;
   d.dram_scheduler_occ_sum -= start.dram_scheduler_occ_sum;
   d.dram_scheduler_occ_samples -= start.dram_scheduler_occ_samples;
   for (unsigned i = 0; i < d.line_hist.size(); ++i) d.line_hist[i] -= start.line_hist[i];
@@ -1769,7 +1816,13 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
           "c7d_bank0_grants=%llu|c7d_bank1_grants=%llu|c7d_bank2_grants=%llu|c7d_bank3_grants=%llu|"
           "c7d_bank0_true_conflict_ops=%llu|c7d_bank1_true_conflict_ops=%llu|c7d_bank2_true_conflict_ops=%llu|c7d_bank3_true_conflict_ops=%llu|"
           "c7d_bank0_wait_cycles=%llu|c7d_bank1_wait_cycles=%llu|c7d_bank2_wait_cycles=%llu|c7d_bank3_wait_cycles=%llu|"
-          "c7d_bank_resident_hit_read=%llu|c7d_bank_resident_write=%llu|c7d_bank_fill_write=%llu|c7d_bank_wb_readout=%llu|c7d_bank_bypass_fill=%llu|c7d_bank_bypass_read=%llu\n",
+          "c7d_bank_resident_hit_read=%llu|c7d_bank_resident_write=%llu|c7d_bank_fill_write=%llu|c7d_bank_wb_readout=%llu|c7d_bank_bypass_fill=%llu|c7d_bank_bypass_read=%llu|"
+          "c7e_tag_way_alloc_need=%llu|c7e_tag_way_alloc_block=%llu|"
+          "c7e_line_mshr_need=%llu|c7e_descriptor_need=%llu|c7e_per_address_cap_check=%llu|"
+          "c7e_dram_issue_attempt=%llu|c7e_dram_successful_read_issues=%llu|c7e_dram_successful_write_issues=%llu|"
+          "c7e_dram_successful_read_bytes=%llu|c7e_dram_successful_write_bytes=%llu|"
+          "c7e_dram_scheduler_full_observed=%llu|c7e_dram_scheduler_causal_block=%llu|"
+          "c7e_dram_to_l2_return_path_block=%llu|c7e_wad_lifetime_kernel_available=%u\n",
           uid == (unsigned long long)-1 ? "application" : "kernel",
           uid == (unsigned long long)-1 ? "application_cumulative" : "kernel_shared_delta",
           m_id, uid, start_cycle, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle,
@@ -1819,7 +1872,18 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
           bank.true_ops_by_bank[0], bank.true_ops_by_bank[1], bank.true_ops_by_bank[2], bank.true_ops_by_bank[3],
           bank.wait_by_bank[0], bank.wait_by_bank[1], bank.wait_by_bank[2], bank.wait_by_bank[3],
           bank.resident_hit_read, bank.resident_write, bank.fill_write,
-          bank.wb_readout, bank.bypass_fill, bank.bypass_read);
+          bank.wb_readout, bank.bypass_fill, bank.bypass_read,
+          stats.c7e_tag_way_alloc_need, stats.c7e_tag_way_alloc_block,
+          stats.c7e_line_mshr_need, stats.c7e_descriptor_need,
+          stats.c7e_per_address_cap_check, stats.c7e_dram_issue_attempt,
+          stats.c7e_dram_successful_read_issues,
+          stats.c7e_dram_successful_write_issues,
+          stats.c7e_dram_successful_read_bytes,
+          stats.c7e_dram_successful_write_bytes,
+          stats.c7e_dram_scheduler_full_observed,
+          stats.c7e_dram_scheduler_causal_block,
+          stats.c7e_dram_to_l2_return_path_block,
+          uid == (unsigned long long)-1 ? 1 : 0);
   fprintf(fp,
           "EPL2B0V1|INVARIANT|slice=%u|kernel_uid=%llu|line_mshr_used=%u|"
           "line_mshr_capacity=%u|descriptor_used=%u|descriptor_free=%u|"
