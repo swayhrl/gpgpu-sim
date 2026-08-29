@@ -39,8 +39,8 @@
 
 namespace {
 struct l2_char_tag_state {
-  l2_char_tag_state() : reserved(0), dirty(0), valid(0) {}
-  unsigned reserved, dirty, valid;
+  l2_char_tag_state() : reserved(0), dirty(0), valid(0), reserved_set_max(0) {}
+  unsigned reserved, dirty, valid, reserved_set_max;
   std::vector<unsigned char> reserved_way, dirty_way, valid_way;
   std::vector<unsigned> reserved_by_set;
 };
@@ -259,9 +259,19 @@ void tag_array::l2_char_tracking_refresh_line(unsigned idx) {
   const unsigned char dirty = m_lines[idx]->is_modified_line() ? 1 : 0;
   const unsigned char valid = m_lines[idx]->is_valid_line() ? 1 : 0;
   if (reserved != state.reserved_way[idx]) {
+    const unsigned old_reserved_in_set = state.reserved_by_set[set];
     state.reserved += reserved ? 1 : -1;
     state.reserved_by_set[set] += reserved ? 1 : -1;
     state.reserved_way[idx] = reserved;
+    if (reserved) {
+      state.reserved_set_max =
+          std::max(state.reserved_set_max, state.reserved_by_set[set]);
+    } else if (old_reserved_in_set == state.reserved_set_max) {
+      state.reserved_set_max = 0;
+      for (unsigned s = 0; s < state.reserved_by_set.size(); ++s)
+        state.reserved_set_max =
+            std::max(state.reserved_set_max, state.reserved_by_set[s]);
+    }
   }
   if (dirty != state.dirty_way[idx]) {
     state.dirty += dirty ? 1 : -1;
@@ -283,6 +293,18 @@ void tag_array::l2_char_storage_snapshot(unsigned &reserved, unsigned &dirty,
   dirty = found->second.dirty;
   valid = found->second.valid;
   reserved_by_set = found->second.reserved_by_set;
+}
+
+void tag_array::l2_char_storage_snapshot_compact(
+    unsigned &reserved, unsigned &dirty, unsigned &valid,
+    unsigned &reserved_set_max) const {
+  std::map<const tag_array *, l2_char_tag_state>::const_iterator found =
+      g_l2_char_tag_states.find(this);
+  assert(found != g_l2_char_tag_states.end());
+  reserved = found->second.reserved;
+  dirty = found->second.dirty;
+  valid = found->second.valid;
+  reserved_set_max = found->second.reserved_set_max;
 }
 
 void tag_array::add_pending_line(mem_fetch *mf) {
@@ -2381,7 +2403,9 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
       assert(payload_index < 1024);
       m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(
           ep_l2_payload_store::RESIDENT, payload_index,
-          mf->get_is_write(), time);
+          mf->get_is_write(), time, (unsigned long long)-1,
+          mf->get_is_write() ? ep_l2_payload_store::RESIDENT_WRITE
+                             : ep_l2_payload_store::RESIDENT_HIT_READ);
       if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED)
         return RESERVATION_FAIL;
     } else if (payload_probe == MISS) {
@@ -2434,6 +2458,9 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
       // A dirty victim must have no already-pending WAD.  A duplicate would
       // mean an earlier destructive eviction was not serialized correctly.
       assert(inserted);
+      const bool timestamp_inserted =
+          m_ep_l2_wad_birth_cycle.insert(std::make_pair(wad_addr, time)).second;
+      assert(timestamp_inserted);
       wad_reserved = true;
     }
   }
@@ -2443,6 +2470,8 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
   if (wad_reserved) {
     if (result == RESERVATION_FAIL) {
       m_ep_l2_wad_entries_live.erase(wad_addr);
+      const size_t timestamp_erased = m_ep_l2_wad_birth_cycle.erase(wad_addr);
+      assert(timestamp_erased == 1);
     } else {
       cache_event writeback(WRITE_BACK_REQUEST_SENT);
       // Allocation precedes tag mutation, and every reserved WAD must bind to
@@ -2481,10 +2510,24 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
   return result;
 }
 
-void l2_cache::ep_l2_wad_complete(new_addr_type block_addr) {
+void l2_cache::ep_l2_wad_complete(new_addr_type block_addr,
+                                   unsigned long long cycle) {
   if (!ep_l2_wad_enabled()) return;
-  const size_t erased = m_ep_l2_wad_entries_live.erase(
-      m_config.block_addr(block_addr));
+  const new_addr_type normalized = m_config.block_addr(block_addr);
+  std::map<new_addr_type, unsigned long long>::iterator birth =
+      m_ep_l2_wad_birth_cycle.find(normalized);
+  assert(birth != m_ep_l2_wad_birth_cycle.end());
+  // CUDA memcpy traffic can carry a local dispatch offset whereas set_done()
+  // uses the global cycle.  Saturate that instrumentation-only corner rather
+  // than allowing an unsigned underflow to corrupt the lifetime histogram.
+  const unsigned long long lifetime =
+      cycle >= birth->second ? cycle - birth->second : 0;
+  m_ep_l2_wad_lifetime_sum += lifetime;
+  ++m_ep_l2_wad_lifetime_count;
+  m_ep_l2_wad_lifetime_max = std::max(m_ep_l2_wad_lifetime_max, lifetime);
+  ++m_ep_l2_wad_lifetime_hist[lifetime];
+  m_ep_l2_wad_birth_cycle.erase(birth);
+  const size_t erased = m_ep_l2_wad_entries_live.erase(normalized);
   assert(erased == 1);
 }
 
@@ -2518,13 +2561,17 @@ void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
     // A WAD owns this old line until real writeback completion.  Treat the
     // frontend request as non-admissible before it can reach tag mutation.
     plan.probe_status = RESERVATION_FAIL;
+    plan.ep_l2_wad_same_address_hazard = true;
     return;
   }
   unsigned cache_index = (unsigned)-1;
   plan.probe_status =
       m_tag_array->probe(block_addr, cache_index, mf, mf->is_write(), true);
   plan.cache_index = cache_index;
-  if (plan.probe_status == RESERVATION_FAIL) return;
+  if (plan.probe_status == RESERVATION_FAIL) {
+    plan.ep_l2_tag_set_all_reserved = true;
+    return;
+  }
 
   if (plan.probe_status == MISS) {
     plan.victim_valid = m_tag_array->block_is_valid(cache_index);
@@ -2534,6 +2581,7 @@ void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
       // The required WAD must be allocated before data_cache::access()
       // destructively replaces this victim.
       plan.probe_status = RESERVATION_FAIL;
+      plan.ep_l2_wad_full = true;
       return;
     }
     if (plan.victim_dirty) {

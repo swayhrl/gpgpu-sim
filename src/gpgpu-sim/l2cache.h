@@ -432,28 +432,77 @@ class memory_sub_partition {
   struct ep_l2_b0_accum {
     ep_l2_b0_accum() : samples(0), line_sum(0), desc_sum(0), wad_sum(0),
       resident_sum(0), bypass_sum(0), missq_sum(0), lowerq_sum(0),
+      reserved_sum(0), resident_valid_sum(0), resident_dirty_sum(0),
+      resident_pending_sum(0), bypass_pending_sum(0), bypass_ready_sum(0),
       line_max(0), desc_max(0), wad_max(0), resident_max(0), bypass_max(0),
-      missq_max(0), lowerq_max(0), descriptor_block(0), wad_block(0),
-      payload_block(0), bank_block(0), l1_block(0), lower_block(0) {
+      missq_max(0), lowerq_max(0), reserved_max(0), resident_valid_max(0),
+      resident_dirty_max(0), resident_pending_max(0), bypass_pending_max(0),
+      bypass_ready_max(0), reserved_set_max(0), descriptor_block(0), wad_block(0), payload_block(0),
+      bank_block(0), l1_block(0), lower_block(0), line_alloc_eligible(0),
+      line_alloc_block(0), tag_set_all_reserved_block(0),
+      line_mshr_alloc_eligible(0), line_mshr_full_block(0),
+      descriptor_alloc_eligible(0), descriptor_pool_full_block(0),
+      per_address_cap_eligible(0), per_address_cap_block(0), wad_full_events(0),
+      wad_hazard_events(0), wad_hazard_wait_cycles(0),
+      payload_service_port_denial(0), payload_capacity_allocation_denial(0),
+      missq_full_block(0), l2_to_dram_full_block(0) {
       line_hist.assign(1025, 0); desc_hist.assign(257, 0); wad_hist.assign(1025, 0);
       resident_hist.assign(1025, 0); bypass_hist.assign(129, 0);
+      reserved_hist.assign(1025, 0); resident_valid_hist.assign(1025, 0);
+      resident_dirty_hist.assign(1025, 0); resident_pending_hist.assign(1025, 0);
+      bypass_pending_hist.assign(129, 0); bypass_ready_hist.assign(129, 0);
+      reserved_set_hist.assign(17, 0);
     }
     unsigned long long samples, line_sum, desc_sum, wad_sum, resident_sum,
-        bypass_sum, missq_sum, lowerq_sum;
+        bypass_sum, missq_sum, lowerq_sum, reserved_sum, resident_valid_sum,
+        resident_dirty_sum, resident_pending_sum, bypass_pending_sum,
+        bypass_ready_sum;
     unsigned line_max, desc_max, wad_max, resident_max, bypass_max, missq_max,
-        lowerq_max;
+        lowerq_max, reserved_max, resident_valid_max, resident_dirty_max,
+        resident_pending_max, bypass_pending_max, bypass_ready_max, reserved_set_max;
     unsigned long long descriptor_block, wad_block, payload_block, bank_block,
-        l1_block, lower_block;
+        l1_block, lower_block, line_alloc_eligible, line_alloc_block,
+        tag_set_all_reserved_block, line_mshr_alloc_eligible,
+        line_mshr_full_block, descriptor_alloc_eligible,
+        descriptor_pool_full_block, per_address_cap_eligible,
+        per_address_cap_block, wad_full_events, wad_hazard_events,
+        wad_hazard_wait_cycles, payload_service_port_denial,
+        payload_capacity_allocation_denial, missq_full_block,
+        l2_to_dram_full_block;
     std::vector<unsigned long long> line_hist, desc_hist, wad_hist,
-        resident_hist, bypass_hist;
+        resident_hist, bypass_hist, reserved_hist, resident_valid_hist,
+        resident_dirty_hist, resident_pending_hist, bypass_pending_hist,
+        bypass_ready_hist, reserved_set_hist;
     void sample(unsigned line, unsigned desc, unsigned wad, unsigned resident,
-                unsigned bypass, unsigned missq, unsigned lowerq);
+                unsigned bypass, unsigned missq, unsigned lowerq,
+                unsigned reserved, unsigned resident_valid,
+                unsigned resident_dirty, unsigned resident_pending,
+                unsigned bypass_pending, unsigned bypass_ready,
+                unsigned reserved_set_max);
     static unsigned p95(const std::vector<unsigned long long> &hist,
                         unsigned long long n);
     ep_l2_b0_accum delta(const ep_l2_b0_accum &start) const;
   };
   ep_l2_b0_accum m_ep_l2_b0_accum;
   std::map<unsigned long long, ep_l2_b0_accum> m_ep_l2_b0_kernel_start;
+  struct ep_l2_b0_bank_accum {
+    ep_l2_b0_bank_accum() : requests(0), grants(0), conflicts(0), logical(0),
+      attempts(0), retries(0), true_ops(0), true_events(0), wait(0),
+      resident_hit_read(0), resident_write(0), fill_write(0), wb_readout(0),
+      bypass_fill(0), bypass_read(0) {
+      for (unsigned b = 0; b < 4; ++b)
+        logical_by_bank[b] = grants_by_bank[b] = true_ops_by_bank[b] =
+            true_events_by_bank[b] = wait_by_bank[b] = 0;
+    }
+    unsigned long long requests, grants, conflicts, logical, attempts, retries,
+        true_ops, true_events, wait, logical_by_bank[4], grants_by_bank[4],
+        true_ops_by_bank[4], true_events_by_bank[4], wait_by_bank[4],
+        resident_hit_read, resident_write, fill_write, wb_readout, bypass_fill,
+        bypass_read;
+    ep_l2_b0_bank_accum delta(const ep_l2_b0_bank_accum &start) const;
+  };
+  ep_l2_b0_bank_accum ep_l2_b0_bank_snapshot() const;
+  std::map<unsigned long long, ep_l2_b0_bank_accum> m_ep_l2_b0_kernel_bank_start;
   std::map<unsigned long long, unsigned long long> m_ep_l2_b0_kernel_start_cycle;
   std::map<unsigned long long, bool> m_ep_l2_b0_kernel_overlap;
 

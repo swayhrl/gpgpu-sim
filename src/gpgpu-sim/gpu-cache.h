@@ -1024,6 +1024,11 @@ class tag_array {
   void l2_char_storage_snapshot(unsigned &reserved, unsigned &dirty,
                                 unsigned &valid,
                                 std::vector<unsigned> &reserved_by_set) const;
+  // Constant-size snapshot for C7d's per-cycle collector.  It deliberately
+  // avoids copying the per-set vector used by the legacy L2CHAR detail path.
+  void l2_char_storage_snapshot_compact(unsigned &reserved, unsigned &dirty,
+                                        unsigned &valid,
+                                        unsigned &reserved_set_max) const;
 
   void flush();       // flush all written entries
   void invalidate();  // invalidate all entries
@@ -1573,6 +1578,12 @@ class baseline_cache : public cache_t {
     m_tag_array->l2_char_storage_snapshot(reserved, dirty, valid,
                                            reserved_by_set);
   }
+  void l2_char_storage_snapshot_compact(unsigned &reserved, unsigned &dirty,
+                                        unsigned &valid,
+                                        unsigned &reserved_set_max) const {
+    m_tag_array->l2_char_storage_snapshot_compact(
+        reserved, dirty, valid, reserved_set_max);
+  }
   void l2_char_tracking_enable() { m_tag_array->l2_char_tracking_enable(); }
   void l2_char_mshr_states(std::vector<new_addr_type> &addresses,
                            std::vector<unsigned> &targets,
@@ -1979,6 +1990,9 @@ struct l2_access_plan {
         will_send_lower_write(false),
         will_send_writeback(false),
         l1_writeback_absorbed(false),
+        ep_l2_tag_set_all_reserved(false),
+        ep_l2_wad_same_address_hazard(false),
+        ep_l2_wad_full(false),
         ep_l2_mshr_block_reason(mshr_table::EP_L2_BLOCK_NONE),
         ep_l2_needs_lower_read(false) {}
 
@@ -2003,6 +2017,11 @@ struct l2_access_plan {
   bool will_send_lower_write;
   bool will_send_writeback;
   bool l1_writeback_absorbed;
+  // Exact production causes recorded by preview for C7d telemetry.  These
+  // are observations only; admission continues to use probe_status below.
+  bool ep_l2_tag_set_all_reserved;
+  bool ep_l2_wad_same_address_hazard;
+  bool ep_l2_wad_full;
   // EP-L2-only debug observation.  This reports the descriptor-aware MSHR
   // rejection reason selected by the non-mutating preview; it is not an
   // additional admission input.
@@ -2019,6 +2038,16 @@ class ep_l2_payload_store {
   // physical same-bank denial.  C6c needs that distinction both for correct
   // same-cycle admission and for meaningful B0-Banked telemetry.
   enum request_result { GRANTED, LEGACY_PORT_BUSY, BANK_TRUE_CONTENTION };
+  // C7d is observation-only: this labels the logical payload RAM operation
+  // at its real call site.  It does not participate in arbitration.
+  enum operation_class {
+    RESIDENT_HIT_READ,
+    RESIDENT_WRITE,
+    FILL_WRITE,
+    WB_READOUT,
+    BYPASS_FILL,
+    BYPASS_READ
+  };
   enum state {
     FREE,
     RESIDENT_FILL_PENDING,
@@ -2042,8 +2071,18 @@ class ep_l2_payload_store {
         m_bypass_writes(0), m_bank_logical_ops(0), m_bank_attempts(0),
         m_bank_grants(0), m_bank_retry_attempts(0),
         m_bank_true_conflict_ops(0), m_bank_true_conflict_events(0),
-        m_bank_wait_cycles(0), m_next_sequence(0) {
+        m_bank_wait_cycles(0), m_bank_resident_hit_read(0),
+        m_bank_resident_write(0), m_bank_fill_write(0),
+        m_bank_wb_readout(0), m_bank_bypass_fill(0), m_bank_bypass_read(0),
+        m_next_sequence(0) {
     m_resident.resize(1024); m_bypass.resize(128);
+    for (unsigned bank = 0; bank < 4; ++bank) {
+      m_bank_logical_ops_by_bank[bank] = 0;
+      m_bank_grants_by_bank[bank] = 0;
+      m_bank_true_conflict_ops_by_bank[bank] = 0;
+      m_bank_true_conflict_events_by_bank[bank] = 0;
+      m_bank_wait_cycles_by_bank[bank] = 0;
+    }
   }
   bool enabled() const { return m_mode != 0; }
   bool banked() const { return m_mode == 2; }
@@ -2058,6 +2097,7 @@ class ep_l2_payload_store {
   }
   unsigned resident_pending() const { return count_pending_sectors(m_resident); }
   unsigned resident_valid() const { return count_state(m_resident, RESIDENT_VALID) + count_state(m_resident, RESIDENT_DIRTY); }
+  unsigned resident_dirty() const { return count_state(m_resident, RESIDENT_DIRTY); }
   unsigned bypass_pending() const { return count_state(m_bypass, BYPASS_FILL_PENDING); }
   unsigned bypass_ready() const { return count_state(m_bypass, BYPASS_READY); }
   bool resident_owner_matches(unsigned id, new_addr_type owner,
@@ -2161,11 +2201,23 @@ class ep_l2_payload_store {
   unsigned long long bank_true_conflict_ops() const { return m_bank_true_conflict_ops; }
   unsigned long long bank_true_conflict_events() const { return m_bank_true_conflict_events; }
   unsigned long long bank_wait_cycles() const { return m_bank_wait_cycles; }
+  unsigned long long bank_logical_ops(unsigned bank) const { assert(bank < 4); return m_bank_logical_ops_by_bank[bank]; }
+  unsigned long long bank_grants(unsigned bank) const { assert(bank < 4); return m_bank_grants_by_bank[bank]; }
+  unsigned long long bank_true_conflict_ops(unsigned bank) const { assert(bank < 4); return m_bank_true_conflict_ops_by_bank[bank]; }
+  unsigned long long bank_true_conflict_events(unsigned bank) const { assert(bank < 4); return m_bank_true_conflict_events_by_bank[bank]; }
+  unsigned long long bank_wait_cycles(unsigned bank) const { assert(bank < 4); return m_bank_wait_cycles_by_bank[bank]; }
+  unsigned long long bank_resident_hit_read() const { return m_bank_resident_hit_read; }
+  unsigned long long bank_resident_write() const { return m_bank_resident_write; }
+  unsigned long long bank_fill_write() const { return m_bank_fill_write; }
+  unsigned long long bank_wb_readout() const { return m_bank_wb_readout; }
+  unsigned long long bank_bypass_fill() const { return m_bank_bypass_fill; }
+  unsigned long long bank_bypass_read() const { return m_bank_bypass_read; }
   // `sequence` is explicit for deterministic directed arbitration. Production
   // callers use their arrival order; a denied operation keeps that sequence
   // through its retry token in the per-bank pending list.
   request_result request(role r, unsigned id, bool write, unsigned long long cycle,
-                         unsigned long long sequence = (unsigned long long)-1) {
+                         unsigned long long sequence = (unsigned long long)-1,
+                         operation_class op_class = RESIDENT_HIT_READ) {
     if (!enabled()) return GRANTED;
     if (m_cycle != cycle) {
       m_cycle = cycle;
@@ -2206,8 +2258,12 @@ class ep_l2_payload_store {
         // is the retry that finally consumes an oldest-ready grant.
         ++m_bank_retry_attempts;
         m_granted[bank].clear(); m_bank_granted.set(bank); ++m_bank_grants;
-        if (op.true_conflict)
-          m_bank_wait_cycles += cycle - op.first_conflict_cycle;
+        ++m_bank_grants_by_bank[bank];
+        if (op.true_conflict) {
+          const unsigned long long waited = cycle - op.first_conflict_cycle;
+          m_bank_wait_cycles += waited;
+          m_bank_wait_cycles_by_bank[bank] += waited;
+        }
         return GRANTED;
       }
     }
@@ -2226,13 +2282,13 @@ class ep_l2_payload_store {
     if (m_granted[bank].empty() && m_pending[bank].empty() &&
         !m_bank_granted.test(bank)) {
       assert(pending_index < 0);
-      ++m_bank_logical_ops;
-      m_bank_granted.set(bank); ++m_bank_grants;
+      record_logical_operation(bank, op_class);
+      m_bank_granted.set(bank); ++m_bank_grants; ++m_bank_grants_by_bank[bank];
       return GRANTED;
     }
 
     if (pending_index < 0) {
-      ++m_bank_logical_ops;
+      record_logical_operation(bank, op_class);
       m_pending[bank].push_back(pending_op(
           r, id, write,
           sequence == (unsigned long long)-1 ? m_next_sequence++ : sequence,
@@ -2247,8 +2303,10 @@ class ep_l2_payload_store {
       denied.true_conflict = true;
       denied.first_conflict_cycle = cycle;
       ++m_bank_true_conflict_ops;
+      ++m_bank_true_conflict_ops_by_bank[bank];
     }
     ++m_bank_true_conflict_events;
+    ++m_bank_true_conflict_events_by_bank[bank];
     return BANK_TRUE_CONTENTION;
   }
   // A compact oldest-ready arbiter used by directed regressions. Production
@@ -2274,7 +2332,7 @@ class ep_l2_payload_store {
     for (unsigned i = 1; i < q.size(); ++i)
       if (q[i].sequence < q[best].sequence) best = i;
     pending_op op = q[best]; q.erase(q.begin() + best);
-    m_bank_granted.set(bank); ++m_bank_grants;
+    m_bank_granted.set(bank); ++m_bank_grants; ++m_bank_grants_by_bank[bank];
     if (granted_sequence) *granted_sequence = op.sequence;
     return op.r == r && op.id == id && op.write == write;
   }
@@ -2315,6 +2373,18 @@ class ep_l2_payload_store {
     s.status = new_state; s.owner = owner; s.pending_sector_mask.reset(); ++s.generation;
     if (mf) mf->set_ep_l2_payload_identity(payload_id, s.generation);
   }
+  void record_logical_operation(unsigned bank, operation_class op_class) {
+    ++m_bank_logical_ops;
+    ++m_bank_logical_ops_by_bank[bank];
+    switch (op_class) {
+      case RESIDENT_HIT_READ: ++m_bank_resident_hit_read; break;
+      case RESIDENT_WRITE: ++m_bank_resident_write; break;
+      case FILL_WRITE: ++m_bank_fill_write; break;
+      case WB_READOUT: ++m_bank_wb_readout; break;
+      case BYPASS_FILL: ++m_bank_bypass_fill; break;
+      case BYPASS_READ: ++m_bank_bypass_read; break;
+    }
+  }
   struct pending_op {
     pending_op(role role_value, unsigned id_value, bool write_value,
                unsigned long long sequence_value,
@@ -2329,6 +2399,12 @@ class ep_l2_payload_store {
   unsigned long long m_bank_logical_ops, m_bank_attempts, m_bank_grants,
       m_bank_retry_attempts, m_bank_true_conflict_ops,
       m_bank_true_conflict_events, m_bank_wait_cycles;
+  unsigned long long m_bank_logical_ops_by_bank[4], m_bank_grants_by_bank[4],
+      m_bank_true_conflict_ops_by_bank[4],
+      m_bank_true_conflict_events_by_bank[4], m_bank_wait_cycles_by_bank[4];
+  unsigned long long m_bank_resident_hit_read, m_bank_resident_write,
+      m_bank_fill_write, m_bank_wb_readout, m_bank_bypass_fill,
+      m_bank_bypass_read;
   unsigned long long m_next_sequence;
   std::bitset<4> m_bank_granted; std::vector<slot> m_resident, m_bypass;
   std::vector<pending_op> m_pending[4], m_granted[4];
@@ -2346,6 +2422,8 @@ class l2_cache : public data_cache {
                    L2_WR_ALLOC_R, L2_WRBK_ACC, gpu, level),
         m_ep_l2_wad_full_block_count(0),
         m_ep_l2_wad_same_address_wait_count(0),
+        m_ep_l2_wad_lifetime_sum(0), m_ep_l2_wad_lifetime_count(0),
+        m_ep_l2_wad_lifetime_max(0),
         m_ep_l2_payload(config.m_ep_l2_payload_mode),
         m_ep_l2_last_payload_request_result(ep_l2_payload_store::GRANTED) {}
 
@@ -2370,17 +2448,24 @@ class l2_cache : public data_cache {
       return ep_l2_payload_store::LEGACY_PORT_BUSY;
     const unsigned id = mf->get_ep_l2_payload_id();
     return id < 1024 ? m_ep_l2_payload.request(ep_l2_payload_store::RESIDENT,
-                                                id, true, cycle)
+                                                id, true, cycle,
+                                                (unsigned long long)-1,
+                                                ep_l2_payload_store::FILL_WRITE)
                      : ep_l2_payload_store::LEGACY_PORT_BUSY;
   }
   bool ep_l2_last_payload_bank_contention() const {
     return m_ep_l2_last_payload_request_result ==
            ep_l2_payload_store::BANK_TRUE_CONTENTION;
   }
+  bool ep_l2_last_payload_service_port_denial() const {
+    return m_ep_l2_last_payload_request_result ==
+           ep_l2_payload_store::LEGACY_PORT_BUSY;
+  }
   unsigned ep_l2_resident_payload_occupancy() const { return m_ep_l2_payload.resident_used(); }
   unsigned ep_l2_bypass_payload_occupancy() const { return m_ep_l2_payload.bypass_used(); }
   unsigned ep_l2_resident_pending() const { return m_ep_l2_payload.resident_pending(); }
   unsigned ep_l2_resident_valid() const { return m_ep_l2_payload.resident_valid(); }
+  unsigned ep_l2_resident_dirty() const { return m_ep_l2_payload.resident_dirty(); }
   unsigned ep_l2_bypass_pending() const { return m_ep_l2_payload.bypass_pending(); }
   unsigned ep_l2_bypass_ready() const { return m_ep_l2_payload.bypass_ready(); }
   unsigned ep_l2_payload_pending_operations() const { return m_ep_l2_payload.pending_operations(); }
@@ -2393,6 +2478,17 @@ class l2_cache : public data_cache {
   unsigned long long ep_l2_payload_bank_true_conflict_ops() const { return m_ep_l2_payload.bank_true_conflict_ops(); }
   unsigned long long ep_l2_payload_bank_true_conflict_events() const { return m_ep_l2_payload.bank_true_conflict_events(); }
   unsigned long long ep_l2_payload_bank_wait_cycles() const { return m_ep_l2_payload.bank_wait_cycles(); }
+  unsigned long long ep_l2_payload_bank_logical_ops(unsigned bank) const { return m_ep_l2_payload.bank_logical_ops(bank); }
+  unsigned long long ep_l2_payload_bank_grants(unsigned bank) const { return m_ep_l2_payload.bank_grants(bank); }
+  unsigned long long ep_l2_payload_bank_true_conflict_ops(unsigned bank) const { return m_ep_l2_payload.bank_true_conflict_ops(bank); }
+  unsigned long long ep_l2_payload_bank_true_conflict_events(unsigned bank) const { return m_ep_l2_payload.bank_true_conflict_events(bank); }
+  unsigned long long ep_l2_payload_bank_wait_cycles(unsigned bank) const { return m_ep_l2_payload.bank_wait_cycles(bank); }
+  unsigned long long ep_l2_payload_bank_resident_hit_read() const { return m_ep_l2_payload.bank_resident_hit_read(); }
+  unsigned long long ep_l2_payload_bank_resident_write() const { return m_ep_l2_payload.bank_resident_write(); }
+  unsigned long long ep_l2_payload_bank_fill_write() const { return m_ep_l2_payload.bank_fill_write(); }
+  unsigned long long ep_l2_payload_bank_wb_readout() const { return m_ep_l2_payload.bank_wb_readout(); }
+  unsigned long long ep_l2_payload_bank_bypass_fill() const { return m_ep_l2_payload.bank_bypass_fill(); }
+  unsigned long long ep_l2_payload_bank_bypass_read() const { return m_ep_l2_payload.bank_bypass_read(); }
   bool ep_l2_payload_ownership_consistent() const {
     return m_ep_l2_payload.ownership_consistent();
   }
@@ -2401,7 +2497,7 @@ class l2_cache : public data_cache {
   // C4 WAD ownership is intentionally address-indexed. A reservation must
   // exist before tag_array::access can evict a dirty victim; release happens
   // only when the corresponding no-return writeback reaches set_done().
-  void ep_l2_wad_complete(new_addr_type block_addr);
+  void ep_l2_wad_complete(new_addr_type block_addr, unsigned long long cycle);
   unsigned ep_l2_wad_occupancy() const { return m_ep_l2_wad_entries_live.size(); }
   unsigned ep_l2_wad_capacity() const { return m_config.m_ep_l2_wad_entries; }
   unsigned long long ep_l2_wad_full_blocks() const {
@@ -2409,6 +2505,28 @@ class l2_cache : public data_cache {
   }
   unsigned long long ep_l2_wad_same_address_waits() const {
     return m_ep_l2_wad_same_address_wait_count;
+  }
+  unsigned long long ep_l2_wad_lifetime_count() const {
+    return m_ep_l2_wad_lifetime_count;
+  }
+  unsigned long long ep_l2_wad_lifetime_sum() const {
+    return m_ep_l2_wad_lifetime_sum;
+  }
+  unsigned long long ep_l2_wad_lifetime_max() const {
+    return m_ep_l2_wad_lifetime_max;
+  }
+  unsigned long long ep_l2_wad_lifetime_p95() const {
+    if (!m_ep_l2_wad_lifetime_count) return 0;
+    const unsigned long long target =
+        (95 * m_ep_l2_wad_lifetime_count + 99) / 100;
+    unsigned long long seen = 0;
+    for (std::map<unsigned long long, unsigned long long>::const_iterator it =
+             m_ep_l2_wad_lifetime_hist.begin();
+         it != m_ep_l2_wad_lifetime_hist.end(); ++it) {
+      seen += it->second;
+      if (seen >= target) return it->first;
+    }
+    return m_ep_l2_wad_lifetime_max;
   }
   bool ep_l2_wad_contains(new_addr_type block_addr) const {
     return m_ep_l2_wad_entries_live.count(block_addr) != 0;
@@ -2422,8 +2540,15 @@ class l2_cache : public data_cache {
  private:
   bool ep_l2_wad_enabled() const { return m_config.m_ep_l2_wad_entries != 0; }
   std::set<new_addr_type> m_ep_l2_wad_entries_live;
+  // Sidecar timestamps/histogram are instrumentation only. WAD membership and
+  // ownership remain in m_ep_l2_wad_entries_live and are untouched by C7d.
+  std::map<new_addr_type, unsigned long long> m_ep_l2_wad_birth_cycle;
   unsigned long long m_ep_l2_wad_full_block_count;
   unsigned long long m_ep_l2_wad_same_address_wait_count;
+  unsigned long long m_ep_l2_wad_lifetime_sum;
+  unsigned long long m_ep_l2_wad_lifetime_count;
+  unsigned long long m_ep_l2_wad_lifetime_max;
+  std::map<unsigned long long, unsigned long long> m_ep_l2_wad_lifetime_hist;
   ep_l2_payload_store m_ep_l2_payload;
   ep_l2_payload_store::request_result m_ep_l2_last_payload_request_result;
 };

@@ -800,8 +800,14 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
   m_ep_l2_lower_read_issue_count = 0;
   m_ep_l2_payload_identity_lower_issue_count = 0;
   m_ep_l2_last_preview_block_reason = mshr_table::EP_L2_BLOCK_NONE;
-  if (!m_config->m_L2_config.disabled() && config->gpgpu_l2_char_enable) {
+  // C7d samples the maintained tag-state counters too. Enabling that
+  // sidecar is observational and avoids a per-cycle tag-array scan; it is
+  // independent of whether legacy L2CHARV1 output is requested.
+  if (!m_config->m_L2_config.disabled() &&
+      (config->gpgpu_l2_char_enable ||
+       m_config->m_L2_config.ep_l2_b0_stats_enabled()))
     m_L2cache->l2_char_tracking_enable();
+  if (!m_config->m_L2_config.disabled() && config->gpgpu_l2_char_enable) {
     m_l2_char_collector = new l2_char_collector(
         m_id, m_config->m_L2_config.m_nset, m_config->m_L2_config.m_assoc,
         m_L2cache->mshr_entry_capacity(), m_L2cache->mshr_merge_capacity(),
@@ -951,6 +957,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         ++m_ep_l2_b0_accum.payload_block;
         if (fill_result == ep_l2_payload_store::BANK_TRUE_CONTENTION)
           ++m_ep_l2_b0_accum.bank_block;
+        else if (fill_result == ep_l2_payload_store::LEGACY_PORT_BUSY)
+          ++m_ep_l2_b0_accum.payload_service_port_denial;
       }
       if (fill_ready) {
         mf->set_status(IN_PARTITION_L2_FILL_QUEUE,
@@ -1007,6 +1015,46 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       bool admit = false;
       l2_admission_inputs admission;
       if (plan.exact) {
+        // C7d exact target telemetry is sourced from the same non-mutating
+        // production preview used for admission.  None of these counters are
+        // read by the controller.
+        const bool line_alloc =
+            plan.probe_status == MISS || plan.probe_status == SECTOR_MISS ||
+            plan.ep_l2_tag_set_all_reserved || plan.ep_l2_wad_full;
+        if (line_alloc) ++m_ep_l2_b0_accum.line_alloc_eligible;
+        if (plan.ep_l2_tag_set_all_reserved) {
+          ++m_ep_l2_b0_accum.line_alloc_block;
+          ++m_ep_l2_b0_accum.tag_set_all_reserved_block;
+        }
+        if (plan.needs_new_mshr || plan.needs_mshr_merge) {
+          switch (plan.ep_l2_mshr_block_reason) {
+            case mshr_table::EP_L2_BLOCK_LINE_MSHR_FULL:
+              ++m_ep_l2_b0_accum.line_mshr_alloc_eligible;
+              ++m_ep_l2_b0_accum.line_mshr_full_block;
+              break;
+            case mshr_table::EP_L2_BLOCK_DESCRIPTOR_POOL_FULL:
+              ++m_ep_l2_b0_accum.descriptor_alloc_eligible;
+              ++m_ep_l2_b0_accum.descriptor_pool_full_block;
+              break;
+            case mshr_table::EP_L2_BLOCK_PER_ADDRESS_CAP:
+              ++m_ep_l2_b0_accum.per_address_cap_eligible;
+              ++m_ep_l2_b0_accum.per_address_cap_block;
+              break;
+            case mshr_table::EP_L2_BLOCK_NONE:
+              if (plan.needs_new_mshr)
+                ++m_ep_l2_b0_accum.line_mshr_alloc_eligible;
+              if (plan.needs_new_mshr || plan.needs_mshr_merge)
+                ++m_ep_l2_b0_accum.descriptor_alloc_eligible;
+              if (plan.needs_mshr_merge)
+                ++m_ep_l2_b0_accum.per_address_cap_eligible;
+              break;
+          }
+        }
+        if (plan.ep_l2_wad_full) ++m_ep_l2_b0_accum.wad_full_events;
+        if (plan.ep_l2_wad_same_address_hazard) {
+          ++m_ep_l2_b0_accum.wad_hazard_events;
+          ++m_ep_l2_b0_accum.wad_hazard_wait_cycles;
+        }
         admission.line_available = plan.probe_status != RESERVATION_FAIL;
         admission.needs_new_mshr = plan.needs_new_mshr;
         admission.new_mshr_available = plan.mshr_entry_available;
@@ -1060,11 +1108,16 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
             m_l2_block_state);
         if (plan.ep_l2_mshr_block_reason != mshr_table::EP_L2_BLOCK_NONE)
           ++m_ep_l2_b0_accum.descriptor_block;
-        if (m_config->m_L2_config.m_ep_l2_wad_entries && plan.is_read &&
-            m_L2cache->ep_l2_wad_occupancy())
+        // Compatibility fields remain coarse; C7d consumers must use the
+        // explicitly named exact fields above instead of reinterpreting them.
+        if (plan.ep_l2_wad_full || plan.ep_l2_wad_same_address_hazard)
           ++m_ep_l2_b0_accum.wad_block;
-        if (plan.will_send_lower_read && m_L2_dram_queue->full())
+        if (plan.new_missq_entries && !admission.missq_available)
+          ++m_ep_l2_b0_accum.missq_full_block;
+        if (plan.will_send_lower_read && m_L2_dram_queue->full()) {
           ++m_ep_l2_b0_accum.lower_block;
+          ++m_ep_l2_b0_accum.l2_to_dram_full_block;
+        }
 
         if (plan.needs_data_port && !admission.data_port_available &&
             plan.is_read && plan.probe_status == HIT)
@@ -1149,6 +1202,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
           ++m_ep_l2_b0_accum.payload_block;
           if (m_L2cache->ep_l2_last_payload_bank_contention())
             ++m_ep_l2_b0_accum.bank_block;
+          else if (m_L2cache->ep_l2_last_payload_service_port_denial())
+            ++m_ep_l2_b0_accum.payload_service_port_denial;
         }
         m_l2_block_state.erase(mf);
         if (m_l2_char_collector) {
@@ -1368,20 +1423,39 @@ void memory_sub_partition::print_l2_char_stats(FILE *fp) const {
 
 void memory_sub_partition::ep_l2_b0_accum::sample(
     unsigned line, unsigned desc, unsigned wad, unsigned resident,
-    unsigned bypass, unsigned missq, unsigned lowerq) {
+    unsigned bypass, unsigned missq, unsigned lowerq, unsigned reserved,
+    unsigned resident_valid, unsigned resident_dirty, unsigned resident_pending,
+    unsigned bypass_pending, unsigned bypass_ready, unsigned reserved_set_max) {
   ++samples;
   line_sum += line; desc_sum += desc; wad_sum += wad;
   resident_sum += resident; bypass_sum += bypass; missq_sum += missq;
   lowerq_sum += lowerq;
+  reserved_sum += reserved; resident_valid_sum += resident_valid;
+  resident_dirty_sum += resident_dirty; resident_pending_sum += resident_pending;
+  bypass_pending_sum += bypass_pending; bypass_ready_sum += bypass_ready;
   line_max = std::max(line_max, line); desc_max = std::max(desc_max, desc);
   wad_max = std::max(wad_max, wad); resident_max = std::max(resident_max, resident);
   bypass_max = std::max(bypass_max, bypass); missq_max = std::max(missq_max, missq);
   lowerq_max = std::max(lowerq_max, lowerq);
+  reserved_max = std::max(reserved_max, reserved);
+  resident_valid_max = std::max(resident_valid_max, resident_valid);
+  resident_dirty_max = std::max(resident_dirty_max, resident_dirty);
+  resident_pending_max = std::max(resident_pending_max, resident_pending);
+  bypass_pending_max = std::max(bypass_pending_max, bypass_pending);
+  bypass_ready_max = std::max(bypass_ready_max, bypass_ready);
+  this->reserved_set_max = std::max(this->reserved_set_max, reserved_set_max);
   ++line_hist[std::min<unsigned>(line, line_hist.size() - 1)];
   ++desc_hist[std::min<unsigned>(desc, desc_hist.size() - 1)];
   ++wad_hist[std::min<unsigned>(wad, wad_hist.size() - 1)];
   ++resident_hist[std::min<unsigned>(resident, resident_hist.size() - 1)];
   ++bypass_hist[std::min<unsigned>(bypass, bypass_hist.size() - 1)];
+  ++reserved_hist[std::min<unsigned>(reserved, reserved_hist.size() - 1)];
+  ++resident_valid_hist[std::min<unsigned>(resident_valid, resident_valid_hist.size() - 1)];
+  ++resident_dirty_hist[std::min<unsigned>(resident_dirty, resident_dirty_hist.size() - 1)];
+  ++resident_pending_hist[std::min<unsigned>(resident_pending, resident_pending_hist.size() - 1)];
+  ++bypass_pending_hist[std::min<unsigned>(bypass_pending, bypass_pending_hist.size() - 1)];
+  ++bypass_ready_hist[std::min<unsigned>(bypass_ready, bypass_ready_hist.size() - 1)];
+  ++reserved_set_hist[std::min<unsigned>(reserved_set_max, reserved_set_hist.size() - 1)];
 }
 
 unsigned memory_sub_partition::ep_l2_b0_accum::p95(
@@ -1403,25 +1477,127 @@ memory_sub_partition::ep_l2_b0_accum::delta(const ep_l2_b0_accum &start) const {
   d.wad_sum -= start.wad_sum; d.resident_sum -= start.resident_sum;
   d.bypass_sum -= start.bypass_sum; d.missq_sum -= start.missq_sum;
   d.lowerq_sum -= start.lowerq_sum; d.descriptor_block -= start.descriptor_block;
+  d.reserved_sum -= start.reserved_sum; d.resident_valid_sum -= start.resident_valid_sum;
+  d.resident_dirty_sum -= start.resident_dirty_sum;
+  d.resident_pending_sum -= start.resident_pending_sum;
+  d.bypass_pending_sum -= start.bypass_pending_sum;
+  d.bypass_ready_sum -= start.bypass_ready_sum;
   d.wad_block -= start.wad_block; d.payload_block -= start.payload_block;
   d.bank_block -= start.bank_block; d.l1_block -= start.l1_block;
   d.lower_block -= start.lower_block;
+  d.line_alloc_eligible -= start.line_alloc_eligible;
+  d.line_alloc_block -= start.line_alloc_block;
+  d.tag_set_all_reserved_block -= start.tag_set_all_reserved_block;
+  d.line_mshr_alloc_eligible -= start.line_mshr_alloc_eligible;
+  d.line_mshr_full_block -= start.line_mshr_full_block;
+  d.descriptor_alloc_eligible -= start.descriptor_alloc_eligible;
+  d.descriptor_pool_full_block -= start.descriptor_pool_full_block;
+  d.per_address_cap_eligible -= start.per_address_cap_eligible;
+  d.per_address_cap_block -= start.per_address_cap_block;
+  d.wad_full_events -= start.wad_full_events;
+  d.wad_hazard_events -= start.wad_hazard_events;
+  d.wad_hazard_wait_cycles -= start.wad_hazard_wait_cycles;
+  d.payload_service_port_denial -= start.payload_service_port_denial;
+  d.payload_capacity_allocation_denial -= start.payload_capacity_allocation_denial;
+  d.missq_full_block -= start.missq_full_block;
+  d.l2_to_dram_full_block -= start.l2_to_dram_full_block;
   for (unsigned i = 0; i < d.line_hist.size(); ++i) d.line_hist[i] -= start.line_hist[i];
   for (unsigned i = 0; i < d.desc_hist.size(); ++i) d.desc_hist[i] -= start.desc_hist[i];
   for (unsigned i = 0; i < d.wad_hist.size(); ++i) d.wad_hist[i] -= start.wad_hist[i];
   for (unsigned i = 0; i < d.resident_hist.size(); ++i) d.resident_hist[i] -= start.resident_hist[i];
   for (unsigned i = 0; i < d.bypass_hist.size(); ++i) d.bypass_hist[i] -= start.bypass_hist[i];
+  for (unsigned i = 0; i < d.reserved_hist.size(); ++i) d.reserved_hist[i] -= start.reserved_hist[i];
+  for (unsigned i = 0; i < d.resident_valid_hist.size(); ++i) d.resident_valid_hist[i] -= start.resident_valid_hist[i];
+  for (unsigned i = 0; i < d.resident_dirty_hist.size(); ++i) d.resident_dirty_hist[i] -= start.resident_dirty_hist[i];
+  for (unsigned i = 0; i < d.resident_pending_hist.size(); ++i) d.resident_pending_hist[i] -= start.resident_pending_hist[i];
+  for (unsigned i = 0; i < d.bypass_pending_hist.size(); ++i) d.bypass_pending_hist[i] -= start.bypass_pending_hist[i];
+  for (unsigned i = 0; i < d.bypass_ready_hist.size(); ++i) d.bypass_ready_hist[i] -= start.bypass_ready_hist[i];
+  for (unsigned i = 0; i < d.reserved_set_hist.size(); ++i) d.reserved_set_hist[i] -= start.reserved_set_hist[i];
+  // Maxima are interval values for kernel snapshots, not cumulative maxima
+  // inherited from the application accumulator.
+  const std::vector<unsigned long long> *hists[] = {
+      &d.line_hist, &d.desc_hist, &d.wad_hist, &d.resident_hist,
+      &d.bypass_hist, &d.reserved_hist, &d.resident_valid_hist,
+      &d.resident_dirty_hist, &d.resident_pending_hist,
+      &d.bypass_pending_hist, &d.bypass_ready_hist, &d.reserved_set_hist};
+  unsigned *maxes[] = {&d.line_max, &d.desc_max, &d.wad_max, &d.resident_max,
+                       &d.bypass_max, &d.reserved_max, &d.resident_valid_max,
+                       &d.resident_dirty_max, &d.resident_pending_max,
+                       &d.bypass_pending_max, &d.bypass_ready_max,
+                       &d.reserved_set_max};
+  for (unsigned h = 0; h < sizeof(hists) / sizeof(hists[0]); ++h) {
+    *maxes[h] = 0;
+    for (unsigned i = 0; i < hists[h]->size(); ++i)
+      if ((*hists[h])[i]) *maxes[h] = i;
+  }
   return d;
 }
 
 void memory_sub_partition::ep_l2_b0_sample() {
   if (!m_config->m_L2_config.ep_l2_b0_stats_enabled()) return;
+  unsigned reserved = 0, dirty = 0, valid = 0, reserved_set_max = 0;
+  m_L2cache->l2_char_storage_snapshot_compact(
+      reserved, dirty, valid, reserved_set_max);
   m_ep_l2_b0_accum.sample(
       m_L2cache->mshr_entries_used(), m_L2cache->ep_l2_descriptor_count_used(),
       m_L2cache->ep_l2_wad_occupancy(),
       m_L2cache->ep_l2_resident_payload_occupancy(),
       m_L2cache->ep_l2_bypass_payload_occupancy(),
-      m_L2cache->miss_queue_occupancy(), m_L2_dram_queue->get_n_element());
+      m_L2cache->miss_queue_occupancy(), m_L2_dram_queue->get_n_element(),
+      reserved, m_L2cache->ep_l2_resident_valid(),
+      m_L2cache->ep_l2_resident_dirty(), m_L2cache->ep_l2_resident_pending(),
+      m_L2cache->ep_l2_bypass_pending(), m_L2cache->ep_l2_bypass_ready(),
+      reserved_set_max);
+}
+
+memory_sub_partition::ep_l2_b0_bank_accum
+memory_sub_partition::ep_l2_b0_bank_accum::delta(
+    const ep_l2_b0_bank_accum &start) const {
+  ep_l2_b0_bank_accum d(*this);
+  d.requests -= start.requests; d.grants -= start.grants;
+  d.conflicts -= start.conflicts; d.logical -= start.logical;
+  d.attempts -= start.attempts; d.retries -= start.retries;
+  d.true_ops -= start.true_ops; d.true_events -= start.true_events;
+  d.wait -= start.wait; d.resident_hit_read -= start.resident_hit_read;
+  d.resident_write -= start.resident_write; d.fill_write -= start.fill_write;
+  d.wb_readout -= start.wb_readout; d.bypass_fill -= start.bypass_fill;
+  d.bypass_read -= start.bypass_read;
+  for (unsigned b = 0; b < 4; ++b) {
+    d.logical_by_bank[b] -= start.logical_by_bank[b];
+    d.grants_by_bank[b] -= start.grants_by_bank[b];
+    d.true_ops_by_bank[b] -= start.true_ops_by_bank[b];
+    d.true_events_by_bank[b] -= start.true_events_by_bank[b];
+    d.wait_by_bank[b] -= start.wait_by_bank[b];
+  }
+  return d;
+}
+
+memory_sub_partition::ep_l2_b0_bank_accum
+memory_sub_partition::ep_l2_b0_bank_snapshot() const {
+  ep_l2_b0_bank_accum s;
+  s.requests = m_L2cache->ep_l2_payload_bank_requests();
+  s.grants = m_L2cache->ep_l2_payload_bank_grants();
+  s.conflicts = m_L2cache->ep_l2_payload_bank_conflicts();
+  s.logical = m_L2cache->ep_l2_payload_bank_logical_ops();
+  s.attempts = m_L2cache->ep_l2_payload_bank_attempts();
+  s.retries = m_L2cache->ep_l2_payload_bank_retry_attempts();
+  s.true_ops = m_L2cache->ep_l2_payload_bank_true_conflict_ops();
+  s.true_events = m_L2cache->ep_l2_payload_bank_true_conflict_events();
+  s.wait = m_L2cache->ep_l2_payload_bank_wait_cycles();
+  s.resident_hit_read = m_L2cache->ep_l2_payload_bank_resident_hit_read();
+  s.resident_write = m_L2cache->ep_l2_payload_bank_resident_write();
+  s.fill_write = m_L2cache->ep_l2_payload_bank_fill_write();
+  s.wb_readout = m_L2cache->ep_l2_payload_bank_wb_readout();
+  s.bypass_fill = m_L2cache->ep_l2_payload_bank_bypass_fill();
+  s.bypass_read = m_L2cache->ep_l2_payload_bank_bypass_read();
+  for (unsigned b = 0; b < 4; ++b) {
+    s.logical_by_bank[b] = m_L2cache->ep_l2_payload_bank_logical_ops(b);
+    s.grants_by_bank[b] = m_L2cache->ep_l2_payload_bank_grants(b);
+    s.true_ops_by_bank[b] = m_L2cache->ep_l2_payload_bank_true_conflict_ops(b);
+    s.true_events_by_bank[b] = m_L2cache->ep_l2_payload_bank_true_conflict_events(b);
+    s.wait_by_bank[b] = m_L2cache->ep_l2_payload_bank_wait_cycles(b);
+  }
+  return s;
 }
 
 void memory_sub_partition::begin_ep_l2_b0_kernel(unsigned long long uid) {
@@ -1432,6 +1608,7 @@ void memory_sub_partition::begin_ep_l2_b0_kernel(unsigned long long uid) {
          it != m_ep_l2_b0_kernel_overlap.end(); ++it)
       it->second = true;
   m_ep_l2_b0_kernel_start[uid] = m_ep_l2_b0_accum;
+  m_ep_l2_b0_kernel_bank_start[uid] = ep_l2_b0_bank_snapshot();
   m_ep_l2_b0_kernel_start_cycle[uid] = m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
   m_ep_l2_b0_kernel_overlap[uid] = overlap;
 }
@@ -1440,6 +1617,7 @@ void memory_sub_partition::end_ep_l2_b0_kernel(FILE *fp,
                                                 unsigned long long uid) {
   print_ep_l2_b0_snapshot(fp, uid);
   m_ep_l2_b0_kernel_start.erase(uid);
+  m_ep_l2_b0_kernel_bank_start.erase(uid);
   m_ep_l2_b0_kernel_start_cycle.erase(uid);
   m_ep_l2_b0_kernel_overlap.erase(uid);
 }
@@ -1464,6 +1642,12 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
         m_ep_l2_b0_kernel_overlap.find(uid);
     if (overlap_it != m_ep_l2_b0_kernel_overlap.end()) overlap = overlap_it->second;
   }
+  ep_l2_b0_bank_accum bank = ep_l2_b0_bank_snapshot();
+  if (uid != (unsigned long long)-1) {
+    std::map<unsigned long long, ep_l2_b0_bank_accum>::const_iterator start =
+        m_ep_l2_b0_kernel_bank_start.find(uid);
+    if (start != m_ep_l2_b0_kernel_bank_start.end()) bank = bank.delta(start->second);
+  }
   fprintf(fp,
           "EPL2B0V1|scope=%s|interval=%s|slice=%u|kernel_uid=%llu|start_cycle=%llu|completion_cycle=%llu|overlap_detected=%u|samples=%llu|"
           "line_mshr_avg=%llu|line_mshr_p95=%u|line_mshr_max=%u|"
@@ -1476,7 +1660,27 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
           "bank_requests=%llu|bank_grants=%llu|bank_conflicts=%llu|"
           "bank_logical_ops=%llu|bank_attempts=%llu|bank_retry_attempts=%llu|"
           "bank_true_conflict_ops=%llu|bank_true_conflict_events=%llu|"
-          "bank_wait_cycles=%llu\n",
+          "bank_wait_cycles=%llu|"
+          "c7d_line_alloc_eligible=%llu|c7d_line_alloc_block=%llu|"
+          "c7d_tag_set_all_reserved_block=%llu|"
+          "c7d_line_mshr_alloc_eligible=%llu|c7d_line_mshr_full_block=%llu|"
+          "c7d_descriptor_alloc_eligible=%llu|c7d_descriptor_pool_full_block=%llu|"
+          "c7d_per_address_cap_eligible=%llu|c7d_per_address_cap_block=%llu|"
+          "c7d_wad_full_events=%llu|c7d_wad_hazard_events=%llu|c7d_wad_hazard_wait_cycles=%llu|"
+          "c7d_wad_lifetime_avg=%llu|c7d_wad_lifetime_p95=%llu|c7d_wad_lifetime_max=%llu|"
+          "c7d_reserved_avg=%llu|c7d_reserved_p95=%u|c7d_reserved_max=%u|c7d_reserved_set_max=%u|"
+          "c7d_resident_valid_avg=%llu|c7d_resident_valid_p95=%u|c7d_resident_valid_max=%u|"
+          "c7d_resident_dirty_avg=%llu|c7d_resident_dirty_p95=%u|c7d_resident_dirty_max=%u|"
+          "c7d_resident_pending_sector_avg=%llu|c7d_resident_pending_sector_p95=%u|c7d_resident_pending_sector_max=%u|"
+          "c7d_bypass_pending_avg=%llu|c7d_bypass_pending_p95=%u|c7d_bypass_pending_max=%u|"
+          "c7d_bypass_ready_avg=%llu|c7d_bypass_ready_p95=%u|c7d_bypass_ready_max=%u|"
+          "c7d_payload_service_port_denial=%llu|c7d_payload_capacity_allocation_denial=%llu|"
+          "c7d_missq_full_block=%llu|c7d_l2_to_dram_full_block=%llu|"
+          "c7d_bank0_logical_ops=%llu|c7d_bank1_logical_ops=%llu|c7d_bank2_logical_ops=%llu|c7d_bank3_logical_ops=%llu|"
+          "c7d_bank0_grants=%llu|c7d_bank1_grants=%llu|c7d_bank2_grants=%llu|c7d_bank3_grants=%llu|"
+          "c7d_bank0_true_conflict_ops=%llu|c7d_bank1_true_conflict_ops=%llu|c7d_bank2_true_conflict_ops=%llu|c7d_bank3_true_conflict_ops=%llu|"
+          "c7d_bank0_wait_cycles=%llu|c7d_bank1_wait_cycles=%llu|c7d_bank2_wait_cycles=%llu|c7d_bank3_wait_cycles=%llu|"
+          "c7d_bank_resident_hit_read=%llu|c7d_bank_resident_write=%llu|c7d_bank_fill_write=%llu|c7d_bank_wb_readout=%llu|c7d_bank_bypass_fill=%llu|c7d_bank_bypass_read=%llu\n",
           uid == (unsigned long long)-1 ? "application" : "kernel",
           uid == (unsigned long long)-1 ? "application_cumulative" : "kernel_shared_delta",
           m_id, uid, start_cycle, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle,
@@ -1489,15 +1693,32 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
           n ? stats.missq_sum / n : 0, stats.missq_max, n ? stats.lowerq_sum / n : 0,
           stats.lowerq_max, stats.descriptor_block, stats.wad_block,
           stats.payload_block, stats.bank_block, stats.l1_block, stats.lower_block,
-          m_L2cache->ep_l2_payload_bank_requests(),
-          m_L2cache->ep_l2_payload_bank_grants(),
-          m_L2cache->ep_l2_payload_bank_conflicts(),
-          m_L2cache->ep_l2_payload_bank_logical_ops(),
-          m_L2cache->ep_l2_payload_bank_attempts(),
-          m_L2cache->ep_l2_payload_bank_retry_attempts(),
-          m_L2cache->ep_l2_payload_bank_true_conflict_ops(),
-          m_L2cache->ep_l2_payload_bank_true_conflict_events(),
-          m_L2cache->ep_l2_payload_bank_wait_cycles());
+          bank.requests, bank.grants, bank.conflicts, bank.logical, bank.attempts,
+          bank.retries, bank.true_ops, bank.true_events, bank.wait,
+          stats.line_alloc_eligible, stats.line_alloc_block,
+          stats.tag_set_all_reserved_block, stats.line_mshr_alloc_eligible,
+          stats.line_mshr_full_block, stats.descriptor_alloc_eligible,
+          stats.descriptor_pool_full_block, stats.per_address_cap_eligible,
+          stats.per_address_cap_block, stats.wad_full_events,
+          stats.wad_hazard_events, stats.wad_hazard_wait_cycles,
+          m_L2cache->ep_l2_wad_lifetime_count() ?
+              m_L2cache->ep_l2_wad_lifetime_sum() / m_L2cache->ep_l2_wad_lifetime_count() : 0,
+          m_L2cache->ep_l2_wad_lifetime_p95(), m_L2cache->ep_l2_wad_lifetime_max(),
+          n ? stats.reserved_sum / n : 0, ep_l2_b0_accum::p95(stats.reserved_hist, n), stats.reserved_max,
+          stats.reserved_set_max,
+          n ? stats.resident_valid_sum / n : 0, ep_l2_b0_accum::p95(stats.resident_valid_hist, n), stats.resident_valid_max,
+          n ? stats.resident_dirty_sum / n : 0, ep_l2_b0_accum::p95(stats.resident_dirty_hist, n), stats.resident_dirty_max,
+          n ? stats.resident_pending_sum / n : 0, ep_l2_b0_accum::p95(stats.resident_pending_hist, n), stats.resident_pending_max,
+          n ? stats.bypass_pending_sum / n : 0, ep_l2_b0_accum::p95(stats.bypass_pending_hist, n), stats.bypass_pending_max,
+          n ? stats.bypass_ready_sum / n : 0, ep_l2_b0_accum::p95(stats.bypass_ready_hist, n), stats.bypass_ready_max,
+          stats.payload_service_port_denial, stats.payload_capacity_allocation_denial,
+          stats.missq_full_block, stats.l2_to_dram_full_block,
+          bank.logical_by_bank[0], bank.logical_by_bank[1], bank.logical_by_bank[2], bank.logical_by_bank[3],
+          bank.grants_by_bank[0], bank.grants_by_bank[1], bank.grants_by_bank[2], bank.grants_by_bank[3],
+          bank.true_ops_by_bank[0], bank.true_ops_by_bank[1], bank.true_ops_by_bank[2], bank.true_ops_by_bank[3],
+          bank.wait_by_bank[0], bank.wait_by_bank[1], bank.wait_by_bank[2], bank.wait_by_bank[3],
+          bank.resident_hit_read, bank.resident_write, bank.fill_write,
+          bank.wb_readout, bank.bypass_fill, bank.bypass_read);
   fprintf(fp,
           "EPL2B0V1|INVARIANT|slice=%u|kernel_uid=%llu|line_mshr_used=%u|"
           "line_mshr_capacity=%u|descriptor_used=%u|descriptor_free=%u|"
@@ -1727,7 +1948,8 @@ mem_fetch *memory_sub_partition::top() {
 
 void memory_sub_partition::set_done(mem_fetch *mf) {
   if (mf->get_access_type() == L2_WRBK_ACC)
-    m_L2cache->ep_l2_wad_complete(mf->get_addr());
+    m_L2cache->ep_l2_wad_complete(
+        mf->get_addr(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
   m_request_tracker.erase(mf);
 }
 
