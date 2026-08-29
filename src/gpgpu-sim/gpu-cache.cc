@@ -2361,8 +2361,48 @@ enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
 enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events) {
+  bool wad_reserved = false;
+  new_addr_type wad_addr = 0;
+  if (ep_l2_wad_enabled()) {
+    const new_addr_type requested_block = m_config.block_addr(addr);
+    // Reads of an address with an outstanding dirty writeback are ordered
+    // behind that writeback.  The tag may already be reused, so this must be
+    // checked independently of the normal tag probe.
+    if (!mf->get_is_write() && ep_l2_wad_contains(requested_block)) {
+      ++m_ep_l2_wad_same_address_wait_count;
+      return RESERVATION_FAIL;
+    }
+
+    unsigned victim_index = (unsigned)-1;
+    const enum cache_request_status victim_status = m_tag_array->probe(
+        requested_block, victim_index, mf, mf->is_write(), true);
+    if (victim_status == MISS &&
+        m_tag_array->block_is_modified(victim_index)) {
+      wad_addr = m_tag_array->get_block(victim_index)->m_block_addr;
+      if (m_ep_l2_wad_entries_live.size() >= m_config.m_ep_l2_wad_entries) {
+        ++m_ep_l2_wad_full_block_count;
+        return RESERVATION_FAIL;
+      }
+      const bool inserted = m_ep_l2_wad_entries_live.insert(wad_addr).second;
+      // A dirty victim must have no already-pending WAD.  A duplicate would
+      // mean an earlier destructive eviction was not serialized correctly.
+      assert(inserted);
+      wad_reserved = true;
+    }
+  }
+
   const enum cache_request_status result =
       data_cache::access(addr, mf, time, events);
+  if (wad_reserved) {
+    if (result == RESERVATION_FAIL) {
+      m_ep_l2_wad_entries_live.erase(wad_addr);
+    } else {
+      cache_event writeback(WRITE_BACK_REQUEST_SENT);
+      // Allocation precedes tag mutation, and every reserved WAD must bind to
+      // the real writeback that data_cache just created.
+      assert(was_writeback_sent(events, writeback));
+    }
+  }
   // data_cache policies may modify the selected block after tag_array::access
   // (for example a write hit).  Refresh only the selected L2 line.
   unsigned cache_index = (unsigned)-1;
@@ -2372,6 +2412,13 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
   if (status != RESERVATION_FAIL)
     m_tag_array->l2_char_tracking_refresh_line(cache_index);
   return result;
+}
+
+void l2_cache::ep_l2_wad_complete(new_addr_type block_addr) {
+  if (!ep_l2_wad_enabled()) return;
+  const size_t erased = m_ep_l2_wad_entries_live.erase(
+      m_config.block_addr(block_addr));
+  assert(erased == 1);
 }
 
 void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
@@ -2385,6 +2432,12 @@ void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
   plan.l1_writeback_absorbed = mf->get_access_type() == L1_WRBK_ACC;
 
   new_addr_type block_addr = m_config.block_addr(addr);
+  if (ep_l2_wad_enabled() && plan.is_read && ep_l2_wad_contains(block_addr)) {
+    // A WAD owns this old line until real writeback completion.  Treat the
+    // frontend request as non-admissible before it can reach tag mutation.
+    plan.probe_status = RESERVATION_FAIL;
+    return;
+  }
   unsigned cache_index = (unsigned)-1;
   plan.probe_status =
       m_tag_array->probe(block_addr, cache_index, mf, mf->is_write(), true);
@@ -2394,6 +2447,13 @@ void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
   if (plan.probe_status == MISS) {
     plan.victim_valid = m_tag_array->block_is_valid(cache_index);
     plan.victim_dirty = m_tag_array->block_is_modified(cache_index);
+    if (plan.victim_dirty && ep_l2_wad_enabled() &&
+        m_ep_l2_wad_entries_live.size() >= m_config.m_ep_l2_wad_entries) {
+      // The required WAD must be allocated before data_cache::access()
+      // destructively replaces this victim.
+      plan.probe_status = RESERVATION_FAIL;
+      return;
+    }
     if (plan.victim_dirty) {
       plan.victim_modified_bytes =
           m_tag_array->block_modified_size(cache_index);

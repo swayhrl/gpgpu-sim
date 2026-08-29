@@ -337,6 +337,13 @@ class memory_sub_partition {
   unsigned ep_l2_missq_occupancy() const {
     return m_L2cache->miss_queue_occupancy();
   }
+  unsigned ep_l2_wad_occupancy() const { return m_L2cache->ep_l2_wad_occupancy(); }
+  unsigned long long ep_l2_wad_full_blocks() const {
+    return m_L2cache->ep_l2_wad_full_blocks();
+  }
+  unsigned long long ep_l2_wad_same_address_waits() const {
+    return m_L2cache->ep_l2_wad_same_address_waits();
+  }
   unsigned ep_l2_l2dram_occupancy() const {
     return m_L2_dram_queue->get_n_element();
   }
@@ -345,6 +352,9 @@ class memory_sub_partition {
   }
   unsigned ep_l2_l2icnt_occupancy() const {
     return m_L2_icnt_queue->get_n_element();
+  }
+  unsigned ep_l2_icntl2_occupancy() const {
+    return m_icnt_L2_queue->get_n_element();
   }
   unsigned long long ep_l2_lower_read_issue_count() const {
     return m_ep_l2_lower_read_issue_count;

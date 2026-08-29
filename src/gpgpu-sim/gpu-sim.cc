@@ -262,6 +262,10 @@ void memory_config::reg_options(class OptionParser *opp) {
       opp, "-gpgpu_ep_l2_descriptor_per_line_cap", OPT_UINT32,
       &m_L2_config.m_ep_l2_descriptor_per_line_cap,
       "EP-L2 B0 maximum long-lived descriptors per 128B L2 line", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_wad_entries", OPT_UINT32,
+                         &m_L2_config.m_ep_l2_wad_entries,
+                         "EP-L2 B0 dirty write-address descriptor capacity (0 disables)",
+                         "0");
   option_parser_register(opp, "-gpgpu_cache:dl2_texture_only", OPT_BOOL,
                          &m_L2_texure_only, "L2 cache used for texture only",
                          "1");

@@ -575,6 +575,7 @@ class cache_config {
     m_wr_percent = 0;
     m_ep_l2_descriptor_pool_size = 0;
     m_ep_l2_descriptor_per_line_cap = 0;
+    m_ep_l2_wad_entries = 0;
   }
   void init(char *config, FuncCache status) {
     cache_status = status;
@@ -916,6 +917,8 @@ class cache_config {
   // reuse m_miss_queue, which remains the short lower-issue queue.
   unsigned m_ep_l2_descriptor_pool_size;
   unsigned m_ep_l2_descriptor_per_line_cap;
+  // EP-L2 write-address descriptors. Zero preserves the conventional path.
+  unsigned m_ep_l2_wad_entries;
   enum set_index_function
       m_set_index_function;  // Hash, linear, or custom set index function
 
@@ -2006,7 +2009,9 @@ class l2_cache : public data_cache {
            enum mem_fetch_status status, class gpgpu_sim *gpu,
            enum cache_gpu_level level)
       : data_cache(name, config, core_id, type_id, memport, mfcreator, status,
-                   L2_WR_ALLOC_R, L2_WRBK_ACC, gpu, level) {}
+                   L2_WR_ALLOC_R, L2_WRBK_ACC, gpu, level),
+        m_ep_l2_wad_full_block_count(0),
+        m_ep_l2_wad_same_address_wait_count(0) {}
 
   virtual ~l2_cache() {}
 
@@ -2014,10 +2019,32 @@ class l2_cache : public data_cache {
                                            unsigned time,
                                            std::list<cache_event> &events);
 
+  // C4 WAD ownership is intentionally address-indexed. A reservation must
+  // exist before tag_array::access can evict a dirty victim; release happens
+  // only when the corresponding no-return writeback reaches set_done().
+  void ep_l2_wad_complete(new_addr_type block_addr);
+  unsigned ep_l2_wad_occupancy() const { return m_ep_l2_wad_entries_live.size(); }
+  unsigned ep_l2_wad_capacity() const { return m_config.m_ep_l2_wad_entries; }
+  unsigned long long ep_l2_wad_full_blocks() const {
+    return m_ep_l2_wad_full_block_count;
+  }
+  unsigned long long ep_l2_wad_same_address_waits() const {
+    return m_ep_l2_wad_same_address_wait_count;
+  }
+  bool ep_l2_wad_contains(new_addr_type block_addr) const {
+    return m_ep_l2_wad_entries_live.count(block_addr) != 0;
+  }
+
   // Inspect only: no LRU update, tag/sector allocation, MSHR change, queue
   // insertion, cache event, or normal cache statistic is permitted here.
   void preview_access(new_addr_type addr, mem_fetch *mf,
                       l2_access_plan &plan) const;
+
+ private:
+  bool ep_l2_wad_enabled() const { return m_config.m_ep_l2_wad_entries != 0; }
+  std::set<new_addr_type> m_ep_l2_wad_entries_live;
+  unsigned long long m_ep_l2_wad_full_block_count;
+  unsigned long long m_ep_l2_wad_same_address_wait_count;
 };
 
 /*****************************************************************************/

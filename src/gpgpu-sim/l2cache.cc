@@ -1514,6 +1514,8 @@ mem_fetch *memory_sub_partition::top() {
 }
 
 void memory_sub_partition::set_done(mem_fetch *mf) {
+  if (mf->get_access_type() == L2_WRBK_ACC)
+    m_L2cache->ep_l2_wad_complete(mf->get_addr());
   m_request_tracker.erase(mf);
 }
 
