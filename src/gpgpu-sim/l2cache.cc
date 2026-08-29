@@ -742,6 +742,12 @@ void memory_partition_unit::print(FILE *fp) const {
   m_dram->print(fp);
 }
 
+void memory_partition_unit::print_ep_l2_b0_snapshot(FILE *fp,
+                                                     unsigned long long uid) const {
+  for (unsigned p = 0; p < m_config->m_n_sub_partition_per_memory_channel; ++p)
+    m_sub_partition[p]->print_ep_l2_b0_snapshot(fp, uid);
+}
+
 memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
                                            const memory_config *config,
                                            class memory_stats_t *stats,
@@ -1309,6 +1315,28 @@ void memory_sub_partition::print_l2_char_stats(FILE *fp) const {
         m_L2cache->l2_char_native_fill_busy_cycles(),
         m_L2cache->l2_char_native_port_samples());
   fprintf(fp, "L2_char_resource_leak_free = %u\n",
+          l2_char_no_resource_leak() ? 1 : 0);
+  print_ep_l2_b0_snapshot(fp, (unsigned long long)-1);
+}
+
+void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
+                                                    unsigned long long uid) const {
+  fprintf(fp,
+          "EPL2B0V1|scope=%s|slice=%u|kernel_uid=%llu|line_mshr=%u|"
+          "descriptor=%u|wad=%u|wad_full=%llu|wad_same_addr_wait=%llu|"
+          "resident_payload=%u|bypass_payload=%u|missq=%u|l2dram=%u|"
+          "draml2=%u|l2icnt=%u|lower_reads=%llu|resource_leak_free=%u\n",
+          uid == (unsigned long long)-1 ? "application" : "kernel",
+          m_id, uid, m_L2cache->mshr_entries_used(),
+          m_L2cache->ep_l2_descriptor_count_used(),
+          m_L2cache->ep_l2_wad_occupancy(),
+          m_L2cache->ep_l2_wad_full_blocks(),
+          m_L2cache->ep_l2_wad_same_address_waits(),
+          m_L2cache->ep_l2_resident_payload_occupancy(),
+          m_L2cache->ep_l2_bypass_payload_occupancy(),
+          m_L2cache->miss_queue_occupancy(), m_L2_dram_queue->get_n_element(),
+          m_dram_L2_queue->get_n_element(), m_L2_icnt_queue->get_n_element(),
+          m_ep_l2_lower_read_issue_count,
           l2_char_no_resource_leak() ? 1 : 0);
 }
 

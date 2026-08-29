@@ -153,6 +153,7 @@ class memory_partition_unit {
   void print_stat(FILE *fp) { m_dram->print_stat(fp); }
   void visualize() const { m_dram->visualize(); }
   void print(FILE *fp) const;
+  void print_ep_l2_b0_snapshot(FILE *fp, unsigned long long uid) const;
   void handle_memcpy_to_gpu(size_t dst_start_addr, unsigned subpart_id,
                             mem_access_sector_mask_t mask);
 
@@ -321,6 +322,9 @@ class memory_sub_partition {
   void get_L2cache_sub_stats_pw(struct cache_sub_stats_pw &css) const;
   void clear_L2cache_stats_pw();
   void print_l2_char_stats(FILE *fp) const;
+  // C7: a separate target schema. uid is a kernel-launch UID for boundary
+  // snapshots; this is statistics-only and never resets cache resources.
+  void print_ep_l2_b0_snapshot(FILE *fp, unsigned long long uid) const;
   bool l2_char_no_resource_leak() const;
 
   // EP-L2 C3b observation hooks.  They expose production state for directed

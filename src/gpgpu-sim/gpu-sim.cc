@@ -845,6 +845,12 @@ void gpgpu_sim::launch(kernel_info_t *kinfo) {
   unsigned kernelID = kinfo->get_uid();
   unsigned long long streamID = kinfo->get_streamID();
 
+  // C7 boundary snapshot: do not flush/reset any architectural state.  This
+  // records the precise shared-L2 state observed at each kernel-launch UID.
+  if (m_memory_partition_unit)
+    for (unsigned i = 0; i < m_memory_config->m_n_mem; ++i)
+      m_memory_partition_unit[i]->print_ep_l2_b0_snapshot(stdout, kernelID);
+
   kernel_time_t kernel_time = {gpu_tot_sim_cycle + gpu_sim_cycle, 0};
   if (gpu_kernel_time.find(streamID) == gpu_kernel_time.end()) {
     std::map<unsigned, kernel_time_t> new_val;
