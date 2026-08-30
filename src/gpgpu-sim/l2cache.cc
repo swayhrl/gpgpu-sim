@@ -1256,7 +1256,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         admission.response_slot_available = !m_L2_icnt_queue->full();
         admit = l2_admission_allowed(admission);
         ep_l2_m0a_record_frontend(plan, admission, admit);
-        ep_l2_motivation_record_frontend(plan, admission, admit);
+        ep_l2_motivation_record_frontend(mf, plan, admission, admit);
         if (m_l2_char_collector) {
           unsigned eligible = 0;
           // RESERVATION_FAIL is the production form of "all replacement
@@ -1918,10 +1918,15 @@ void memory_sub_partition::ep_l2_motivation_record_reference(
 }
 
 void memory_sub_partition::ep_l2_motivation_record_frontend(
-    const l2_access_plan &plan, const l2_admission_inputs &admission,
+    mem_fetch *mf, const l2_access_plan &plan,
+    const l2_admission_inputs &admission,
     bool admitted) {
+  // Scope is frontend demand-miss admission: both reads and writes.  The
+  // queue can also carry writeback bookkeeping; neither that traffic nor a
+  // hit owns a demand-miss admission attempt.
   if (!m_config->m_L2_config.ep_l2_motivation_stats_enabled() || !plan.exact ||
-      !plan.is_read || plan.probe_status == HIT) return;
+      plan.probe_status == HIT || mf->get_access_type() == L1_WRBK_ACC ||
+      mf->get_access_type() == L2_WRBK_ACC) return;
   // Audited production order: WAD hazard/full preview, tag reservation,
   // MSHR metadata, MissQ.  The WBUF shadow is a non-mutating final
   // dirty-victim admission predicate on that same observed stream.

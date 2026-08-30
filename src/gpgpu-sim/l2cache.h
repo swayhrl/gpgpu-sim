@@ -642,7 +642,8 @@ class memory_sub_partition {
   void ep_l2_motivation_reset_epoch();
   void ep_l2_motivation_record_reference(mem_fetch *mf,
                                          unsigned long long cycle);
-  void ep_l2_motivation_record_frontend(const l2_access_plan &plan,
+  void ep_l2_motivation_record_frontend(mem_fetch *mf,
+                                        const l2_access_plan &plan,
                                         const l2_admission_inputs &admission,
                                         bool admitted);
   void ep_l2_motivation_record_wb_create(new_addr_type block,
