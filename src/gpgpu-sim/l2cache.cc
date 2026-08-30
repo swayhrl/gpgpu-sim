@@ -909,7 +909,8 @@ void memory_partition_unit::print_ep_l2_b0_snapshot(FILE *fp,
 
 void memory_partition_unit::begin_ep_l2_b0_kernel(unsigned long long uid) {
   if (!m_config->m_L2_config.ep_l2_b0_stats_enabled() &&
-      !m_config->m_L2_config.ep_l2_m0a_stats_enabled()) return;
+      !m_config->m_L2_config.ep_l2_m0a_stats_enabled() &&
+      !m_config->m_L2_config.ep_l2_motivation_stats_enabled()) return;
   for (unsigned p = 0; p < m_config->m_n_sub_partition_per_memory_channel; ++p)
     m_sub_partition[p]->begin_ep_l2_b0_kernel(uid);
 }
@@ -917,7 +918,8 @@ void memory_partition_unit::begin_ep_l2_b0_kernel(unsigned long long uid) {
 void memory_partition_unit::end_ep_l2_b0_kernel(FILE *fp,
                                                  unsigned long long uid) {
   if (!m_config->m_L2_config.ep_l2_b0_stats_enabled() &&
-      !m_config->m_L2_config.ep_l2_m0a_stats_enabled()) return;
+      !m_config->m_L2_config.ep_l2_m0a_stats_enabled() &&
+      !m_config->m_L2_config.ep_l2_motivation_stats_enabled()) return;
   for (unsigned p = 0; p < m_config->m_n_sub_partition_per_memory_channel; ++p)
     m_sub_partition[p]->end_ep_l2_b0_kernel(fp, uid);
 }
@@ -965,13 +967,15 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
   m_ep_l2_b0_window_started = false;
   m_ep_l2_m0a_window_start_cycle = 0;
   m_ep_l2_m0a_window_started = false;
+  m_ep_l2_motivation_sequence = 0;
   // C7d samples the maintained tag-state counters too. Enabling that
   // sidecar is observational and avoids a per-cycle tag-array scan; it is
   // independent of whether legacy L2CHARV1 output is requested.
   if (!m_config->m_L2_config.disabled() &&
       (config->gpgpu_l2_char_enable ||
        m_config->m_L2_config.ep_l2_b0_stats_enabled() ||
-       m_config->m_L2_config.ep_l2_m0a_stats_enabled()))
+       m_config->m_L2_config.ep_l2_m0a_stats_enabled() ||
+       m_config->m_L2_config.ep_l2_motivation_stats_enabled()))
     m_L2cache->l2_char_tracking_enable();
   if (!m_config->m_L2_config.disabled() && config->gpgpu_l2_char_enable) {
     m_l2_char_collector = new l2_char_collector(
@@ -1170,6 +1174,10 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       // L2 is enabled and access is for L2
       l2_access_plan plan;
       m_L2cache->preview_access(mf->get_addr(), mf, plan);
+      if (m_config->m_L2_config.ep_l2_motivation_stats_enabled() &&
+          m_ep_l2_motivation_seen_frontend.insert(mf).second)
+        ep_l2_motivation_record_reference(
+            mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
       if (plan.exact)
         m_ep_l2_last_preview_block_reason = plan.ep_l2_mshr_block_reason;
       if (plan.exact && plan.victim_dirty)
@@ -1248,6 +1256,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         admission.response_slot_available = !m_L2_icnt_queue->full();
         admit = l2_admission_allowed(admission);
         ep_l2_m0a_record_frontend(plan, admission, admit);
+        ep_l2_motivation_record_frontend(plan, admission, admit);
         if (m_l2_char_collector) {
           unsigned eligible = 0;
           // RESERVATION_FAIL is the production form of "all replacement
@@ -1378,6 +1387,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
                               m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
                                   m_memcpy_cycle_offset,
                               events);
+        if (status != RESERVATION_FAIL)
+          m_ep_l2_motivation_seen_frontend.erase(mf);
         // This is the commit point: preview said admissible and access did
         // mutate/accept the request.  A defensive reservation failure is not
         // an admission and is intentionally excluded.
@@ -1434,6 +1445,14 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
           }
           assert(preview_matches);
 #endif
+        }
+        if (m_config->m_L2_config.ep_l2_motivation_stats_enabled() &&
+            plan.will_send_writeback) {
+          cache_event motivation_wb(WRITE_BACK_REQUEST_SENT);
+          if (was_writeback_sent(events, motivation_wb))
+            ep_l2_motivation_record_wb_create(
+                motivation_wb.m_evicted_block.m_block_addr,
+                m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
         }
         bool write_sent = was_write_sent(events);
         bool read_sent = was_read_sent(events);
@@ -1543,6 +1562,9 @@ class mem_fetch *memory_sub_partition::L2_dram_queue_top() const {
 
 void memory_sub_partition::L2_dram_queue_pop() {
   mem_fetch *mf = m_L2_dram_queue->top();
+  if (m_config->m_L2_config.ep_l2_motivation_stats_enabled())
+    ep_l2_motivation_record_wb_lower_accept(
+        mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
   l2_char_record_l2dram_pop(mf);
   m_L2_dram_queue->pop();
 }
@@ -1807,6 +1829,183 @@ memory_sub_partition::ep_l2_b0_accum::delta(const ep_l2_b0_accum &start) const {
   return d;
 }
 
+memory_sub_partition::ep_l2_motivation_stats::ep_l2_motivation_stats()
+    : eligible_refs(0), excluded_wb_refs(0), reuse_instances(0),
+      unique_lines(0), unique_reused(0), one_touch_lines(0),
+      post_evictions(0), post_eviction_rerefs(0), post_eviction_seq_sum(0),
+      post_eviction_cycle_sum(0), wb_created(0), wb_lower_accepted(0),
+      wb_lifetime_sum(0), wb_lifetime_max(0) {
+  for (unsigned i = 0; i < 9; ++i) reuse_bins[i] = 0;
+  for (unsigned c = 0; c < 3; ++c) {
+    eligible_miss_cycles[c] = blocked_cycles[c] = 0;
+    wbuf_opportunities[c] = wbuf_would_block[c] = 0;
+    for (unsigned b = 0; b < 5; ++b) blocks[c][b] = 0;
+  }
+}
+
+void memory_sub_partition::ep_l2_motivation_reset_epoch() {
+  m_ep_l2_motivation_epoch = ep_l2_motivation_stats();
+  m_ep_l2_motivation_touches.clear();
+  m_ep_l2_motivation_stack.clear();
+  m_ep_l2_motivation_stack_pos.clear();
+  m_ep_l2_motivation_evictions.clear();
+  m_ep_l2_motivation_seen_frontend.clear();
+  m_ep_l2_motivation_sequence = 0;
+}
+
+void memory_sub_partition::ep_l2_motivation_record_reference(
+    mem_fetch *mf, unsigned long long cycle) {
+  // Requests enter at the L2 frontend only here.  L1/L2 writebacks are
+  // excluded; fills and returns never use this path.
+  if (mf->get_access_type() == L1_WRBK_ACC ||
+      mf->get_access_type() == L2_WRBK_ACC) {
+    ++m_ep_l2_motivation_total.excluded_wb_refs;
+    ++m_ep_l2_motivation_epoch.excluded_wb_refs;
+    return;
+  }
+  const new_addr_type block = m_config->m_L2_config.block_addr(mf->get_addr());
+  ++m_ep_l2_motivation_sequence;
+  ep_l2_motivation_stats *stats[2] = {&m_ep_l2_motivation_total,
+                                      &m_ep_l2_motivation_epoch};
+  for (unsigned s = 0; s < 2; ++s) ++stats[s]->eligible_refs;
+  std::map<new_addr_type, ep_l2_motivation_eviction>::iterator evict =
+      m_ep_l2_motivation_evictions.find(block);
+  if (evict != m_ep_l2_motivation_evictions.end()) {
+    const unsigned long long seq_delta = m_ep_l2_motivation_sequence - evict->second.sequence;
+    const unsigned long long cycle_delta = cycle - evict->second.cycle;
+    for (unsigned s = 0; s < 2; ++s) {
+      ++stats[s]->post_eviction_rerefs;
+      stats[s]->post_eviction_seq_sum += seq_delta;
+      stats[s]->post_eviction_cycle_sum += cycle_delta;
+    }
+    m_ep_l2_motivation_evictions.erase(evict);
+  }
+  std::map<new_addr_type, unsigned>::iterator touch =
+      m_ep_l2_motivation_touches.find(block);
+  if (touch == m_ep_l2_motivation_touches.end()) {
+    m_ep_l2_motivation_touches[block] = 1;
+    for (unsigned s = 0; s < 2; ++s) ++stats[s]->unique_lines;
+  } else {
+    if (touch->second == 1)
+      for (unsigned s = 0; s < 2; ++s) ++stats[s]->unique_reused;
+    ++touch->second;
+    for (unsigned s = 0; s < 2; ++s) ++stats[s]->reuse_instances;
+    unsigned distance = 1025;
+    std::map<new_addr_type, std::list<new_addr_type>::iterator>::iterator pos =
+        m_ep_l2_motivation_stack_pos.find(block);
+    if (pos != m_ep_l2_motivation_stack_pos.end()) {
+      distance = 0;
+      for (std::list<new_addr_type>::iterator it = m_ep_l2_motivation_stack.begin();
+           it != pos->second; ++it) ++distance;
+      m_ep_l2_motivation_stack.erase(pos->second);
+      m_ep_l2_motivation_stack_pos.erase(pos);
+    }
+    const unsigned bin = distance <= 8 ? 0 : distance <= 16 ? 1 :
+        distance <= 32 ? 2 : distance <= 64 ? 3 : distance <= 128 ? 4 :
+        distance <= 256 ? 5 : distance <= 512 ? 6 : distance <= 1024 ? 7 : 8;
+    for (unsigned s = 0; s < 2; ++s) ++stats[s]->reuse_bins[bin];
+  }
+  // Keeping 1025 MRU distinct blocks preserves exact distances through 1024.
+  m_ep_l2_motivation_stack.push_front(block);
+  m_ep_l2_motivation_stack_pos[block] = m_ep_l2_motivation_stack.begin();
+  if (m_ep_l2_motivation_stack.size() > 1025) {
+    const new_addr_type old = m_ep_l2_motivation_stack.back();
+    m_ep_l2_motivation_stack.pop_back();
+    m_ep_l2_motivation_stack_pos.erase(old);
+  }
+}
+
+void memory_sub_partition::ep_l2_motivation_record_frontend(
+    const l2_access_plan &plan, const l2_admission_inputs &admission,
+    bool admitted) {
+  if (!m_config->m_L2_config.ep_l2_motivation_stats_enabled() || !plan.exact ||
+      !plan.is_read || plan.probe_status == HIT) return;
+  // Audited production order: WAD hazard/full preview, tag reservation,
+  // MSHR metadata, MissQ.  The WBUF shadow is a non-mutating final
+  // dirty-victim admission predicate on that same observed stream.
+  const unsigned capacity[3] = {4, 8, 16};
+  for (unsigned c = 0; c < 3; ++c) {
+    ++m_ep_l2_motivation_total.eligible_miss_cycles[c];
+    ++m_ep_l2_motivation_epoch.eligible_miss_cycles[c];
+    if (plan.victim_dirty) {
+      ++m_ep_l2_motivation_total.wbuf_opportunities[c];
+      ++m_ep_l2_motivation_epoch.wbuf_opportunities[c];
+    }
+    int block = -1;
+    if (plan.ep_l2_wad_same_address_hazard || plan.ep_l2_wad_full)
+      block = 3;
+    else if (plan.probe_status == RESERVATION_FAIL)
+      block = 0;
+    else if (plan.ep_l2_mshr_block_reason != mshr_table::EP_L2_BLOCK_NONE)
+      block = 1;
+    else if (!admission.missq_available)
+      block = 2;
+    else if (plan.victim_dirty && m_ep_l2_motivation_active_wb.size() >= capacity[c]) {
+      block = 3;
+      ++m_ep_l2_motivation_total.wbuf_would_block[c];
+      ++m_ep_l2_motivation_epoch.wbuf_would_block[c];
+    } else if (!admitted)
+      block = 4;
+    if (block >= 0) {
+      ++m_ep_l2_motivation_total.blocked_cycles[c];
+      ++m_ep_l2_motivation_epoch.blocked_cycles[c];
+      ++m_ep_l2_motivation_total.blocks[c][block];
+      ++m_ep_l2_motivation_epoch.blocks[c][block];
+    }
+  }
+}
+
+void memory_sub_partition::ep_l2_motivation_record_wb_create(
+    new_addr_type block, unsigned long long cycle) {
+  if (!m_ep_l2_motivation_active_wb.insert(std::make_pair(block, cycle)).second)
+    return;  // WAD serialization makes this defensive duplicate unreachable.
+  ++m_ep_l2_motivation_total.wb_created;
+  ++m_ep_l2_motivation_epoch.wb_created;
+  ++m_ep_l2_motivation_total.post_evictions;
+  ++m_ep_l2_motivation_epoch.post_evictions;
+  m_ep_l2_motivation_evictions[block] =
+      ep_l2_motivation_eviction(m_ep_l2_motivation_sequence, cycle);
+}
+
+void memory_sub_partition::ep_l2_motivation_record_wb_lower_accept(
+    mem_fetch *mf, unsigned long long cycle) {
+  if (mf->get_access_type() != L2_WRBK_ACC) return;
+  std::map<new_addr_type, unsigned long long>::iterator active =
+      m_ep_l2_motivation_active_wb.find(mf->get_addr());
+  if (active == m_ep_l2_motivation_active_wb.end()) return;
+  const unsigned long long lifetime = cycle - active->second;
+  ep_l2_motivation_stats *stats[2] = {&m_ep_l2_motivation_total,
+                                      &m_ep_l2_motivation_epoch};
+  for (unsigned s = 0; s < 2; ++s) {
+    ++stats[s]->wb_lower_accepted;
+    stats[s]->wb_lifetime_sum += lifetime;
+    if (lifetime > stats[s]->wb_lifetime_max) stats[s]->wb_lifetime_max = lifetime;
+  }
+  m_ep_l2_motivation_active_wb.erase(active);
+}
+
+void memory_sub_partition::ep_l2_motivation_print(
+    FILE *fp, const char *scope, unsigned long long kernel_uid) const {
+  const ep_l2_motivation_stats &s =
+      kernel_uid == (unsigned long long)-1 ? m_ep_l2_motivation_total :
+                                               m_ep_l2_motivation_epoch;
+  fprintf(fp,
+      "EPL2MOTV1|scope=%s|slice=%u|kernel_uid=%llu|eligible_demand_references=%llu|excluded_writeback_references=%llu|reuse_instances=%llu|reuse_le8=%llu|reuse_9_16=%llu|reuse_17_32=%llu|reuse_33_64=%llu|reuse_65_128=%llu|reuse_129_256=%llu|reuse_257_512=%llu|reuse_513_1024=%llu|reuse_gt1024=%llu|unique_lines=%llu|unique_lines_reused=%llu|one_touch_unique_lines=%llu|post_evictions=%llu|post_eviction_rerefs=%llu|post_eviction_seq_sum=%llu|post_eviction_cycle_sum=%llu|wb_packets_created=%llu|wb_packets_lower_accepted=%llu|wb_lifetime_sum=%llu|wb_lifetime_max=%llu|eligible_miss_cycles_4=%llu|blocked_miss_cycles_4=%llu|set_assoc_4=%llu|mshr_meta_4=%llu|missq_lower_4=%llu|wb_path_4=%llu|other_4=%llu|wbuf_opportunities_4=%llu|wbuf_would_block_4=%llu|eligible_miss_cycles_8=%llu|blocked_miss_cycles_8=%llu|set_assoc_8=%llu|mshr_meta_8=%llu|missq_lower_8=%llu|wb_path_8=%llu|other_8=%llu|wbuf_opportunities_8=%llu|wbuf_would_block_8=%llu|eligible_miss_cycles_16=%llu|blocked_miss_cycles_16=%llu|set_assoc_16=%llu|mshr_meta_16=%llu|missq_lower_16=%llu|wb_path_16=%llu|other_16=%llu|wbuf_opportunities_16=%llu|wbuf_would_block_16=%llu\n",
+      scope, m_id, kernel_uid, s.eligible_refs, s.excluded_wb_refs,
+      s.reuse_instances, s.reuse_bins[0], s.reuse_bins[1], s.reuse_bins[2],
+      s.reuse_bins[3], s.reuse_bins[4], s.reuse_bins[5], s.reuse_bins[6],
+      s.reuse_bins[7], s.reuse_bins[8], s.unique_lines, s.unique_reused,
+      s.unique_lines - s.unique_reused, s.post_evictions, s.post_eviction_rerefs,
+      s.post_eviction_seq_sum, s.post_eviction_cycle_sum, s.wb_created,
+      s.wb_lower_accepted, s.wb_lifetime_sum, s.wb_lifetime_max,
+      s.eligible_miss_cycles[0], s.blocked_cycles[0], s.blocks[0][0], s.blocks[0][1],
+      s.blocks[0][2], s.blocks[0][3], s.blocks[0][4], s.wbuf_opportunities[0], s.wbuf_would_block[0],
+      s.eligible_miss_cycles[1], s.blocked_cycles[1], s.blocks[1][0], s.blocks[1][1],
+      s.blocks[1][2], s.blocks[1][3], s.blocks[1][4], s.wbuf_opportunities[1], s.wbuf_would_block[1],
+      s.eligible_miss_cycles[2], s.blocked_cycles[2], s.blocks[2][0], s.blocks[2][1],
+      s.blocks[2][2], s.blocks[2][3], s.blocks[2][4], s.wbuf_opportunities[2], s.wbuf_would_block[2]);
+}
+
 memory_sub_partition::ep_l2_m0a_accum
 memory_sub_partition::ep_l2_m0a_accum::delta(
     const ep_l2_m0a_accum &start) const {
@@ -2058,6 +2257,8 @@ void memory_sub_partition::begin_ep_l2_b0_kernel(unsigned long long uid) {
   m_ep_l2_b0_kernel_overlap[uid] = overlap;
   if (m_config->m_L2_config.ep_l2_m0a_stats_enabled())
     m_ep_l2_m0a_kernel_start[uid] = m_ep_l2_m0a_accum;
+  if (m_config->m_L2_config.ep_l2_motivation_stats_enabled())
+    ep_l2_motivation_reset_epoch();
 }
 
 void memory_sub_partition::end_ep_l2_b0_kernel(FILE *fp,
@@ -2072,6 +2273,8 @@ void memory_sub_partition::end_ep_l2_b0_kernel(FILE *fp,
 
 void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
                                                     unsigned long long uid) const {
+  if (m_config->m_L2_config.ep_l2_motivation_stats_enabled())
+    ep_l2_motivation_print(fp, uid == (unsigned long long)-1 ? "application" : "kernel", uid);
   if (m_config->m_L2_config.ep_l2_m0a_stats_enabled()) {
     ep_l2_m0a_accum m0 = m_ep_l2_m0a_accum;
     unsigned long long start_cycle = 0;

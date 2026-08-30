@@ -607,6 +607,50 @@ class memory_sub_partition {
                        unsigned long long uid, unsigned long long start_cycle,
                        unsigned long long completion_cycle) const;
   void ep_l2_m0a_record_response_enqueue();
+  // EPL2MOTV1 is intentionally separate from M0a: these routines only
+  // observe the already-decided frontend/dirty-WB stream.
+  struct ep_l2_motivation_stats {
+    ep_l2_motivation_stats();
+    unsigned long long eligible_refs, excluded_wb_refs, reuse_instances;
+    unsigned long long reuse_bins[9];
+    unsigned long long unique_lines, unique_reused, one_touch_lines;
+    unsigned long long post_evictions, post_eviction_rerefs;
+    unsigned long long post_eviction_seq_sum, post_eviction_cycle_sum;
+    unsigned long long eligible_miss_cycles[3], blocked_cycles[3];
+    unsigned long long blocks[3][5];
+    unsigned long long wbuf_opportunities[3], wbuf_would_block[3];
+    unsigned long long wb_created, wb_lower_accepted, wb_lifetime_sum,
+        wb_lifetime_max;
+  };
+  struct ep_l2_motivation_eviction {
+    unsigned long long sequence, cycle;
+    ep_l2_motivation_eviction() : sequence(0), cycle(0) {}
+    ep_l2_motivation_eviction(unsigned long long s, unsigned long long c)
+        : sequence(s), cycle(c) {}
+  };
+  ep_l2_motivation_stats m_ep_l2_motivation_total;
+  ep_l2_motivation_stats m_ep_l2_motivation_epoch;
+  std::map<new_addr_type, unsigned> m_ep_l2_motivation_touches;
+  std::list<new_addr_type> m_ep_l2_motivation_stack;
+  std::map<new_addr_type, std::list<new_addr_type>::iterator>
+      m_ep_l2_motivation_stack_pos;
+  std::map<new_addr_type, ep_l2_motivation_eviction>
+      m_ep_l2_motivation_evictions;
+  std::map<new_addr_type, unsigned long long> m_ep_l2_motivation_active_wb;
+  std::set<mem_fetch *> m_ep_l2_motivation_seen_frontend;
+  unsigned long long m_ep_l2_motivation_sequence;
+  void ep_l2_motivation_reset_epoch();
+  void ep_l2_motivation_record_reference(mem_fetch *mf,
+                                         unsigned long long cycle);
+  void ep_l2_motivation_record_frontend(const l2_access_plan &plan,
+                                        const l2_admission_inputs &admission,
+                                        bool admitted);
+  void ep_l2_motivation_record_wb_create(new_addr_type block,
+                                         unsigned long long cycle);
+  void ep_l2_motivation_record_wb_lower_accept(mem_fetch *mf,
+                                               unsigned long long cycle);
+  void ep_l2_motivation_print(FILE *fp, const char *scope,
+                              unsigned long long kernel_uid) const;
   static unsigned l2_char_queue_class(const mem_fetch *mf);
 
   friend class L2interface;

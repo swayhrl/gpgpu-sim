@@ -586,6 +586,9 @@ class cache_config {
     // M0a is deliberately opt-in.  It is a telemetry sidecar and is never
     // consulted by the admission controller.
     m_ep_l2_m0a_stats = false;
+    // Motivation figures are an independent, default-OFF observation family.
+    // No cache/controller predicate may read this option.
+    m_ep_l2_motivation_stats = false;
   }
   void init(char *config, FuncCache status) {
     cache_status = status;
@@ -849,6 +852,9 @@ class cache_config {
   }
   bool ep_l2_b0_stats_enabled() const { return m_ep_l2_b0_stats; }
   bool ep_l2_m0a_stats_enabled() const { return m_ep_l2_m0a_stats; }
+  bool ep_l2_motivation_stats_enabled() const {
+    return m_ep_l2_motivation_stats;
+  }
   enum mshr_config_t get_mshr_type() const { return m_mshr_type; }
   void set_assoc(unsigned n) {
     // set new assoc. L1 cache dynamically resized in Volta
@@ -945,6 +951,7 @@ class cache_config {
   // Generic M0a observability switch.  OFF must leave the production
   // controller's timing and resource transitions unchanged.
   bool m_ep_l2_m0a_stats;
+  bool m_ep_l2_motivation_stats;
   enum set_index_function
       m_set_index_function;  // Hash, linear, or custom set index function
 
