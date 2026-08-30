@@ -1389,6 +1389,11 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
                               events);
         if (status != RESERVATION_FAIL)
           m_ep_l2_motivation_seen_frontend.erase(mf);
+        if (m_config->m_L2_config.ep_l2_motivation_stats_enabled() &&
+            status != RESERVATION_FAIL && plan.victim_valid)
+          ep_l2_motivation_record_eviction(
+              plan.victim_block_addr,
+              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
         // This is the commit point: preview said admissible and access did
         // mutate/accept the request.  A defensive reservation failure is not
         // an admission and is intentionally excluded.
@@ -1961,6 +1966,10 @@ void memory_sub_partition::ep_l2_motivation_record_wb_create(
     return;  // WAD serialization makes this defensive duplicate unreachable.
   ++m_ep_l2_motivation_total.wb_created;
   ++m_ep_l2_motivation_epoch.wb_created;
+}
+
+void memory_sub_partition::ep_l2_motivation_record_eviction(
+    new_addr_type block, unsigned long long cycle) {
   ++m_ep_l2_motivation_total.post_evictions;
   ++m_ep_l2_motivation_epoch.post_evictions;
   m_ep_l2_motivation_evictions[block] =

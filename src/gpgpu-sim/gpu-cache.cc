@@ -2626,6 +2626,8 @@ void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
   if (plan.probe_status == MISS) {
     plan.victim_valid = m_tag_array->block_is_valid(cache_index);
     plan.victim_dirty = m_tag_array->block_is_modified(cache_index);
+    if (plan.victim_valid)
+      plan.victim_block_addr = m_tag_array->get_block(cache_index)->m_block_addr;
     if (plan.victim_dirty && ep_l2_wad_enabled() &&
         m_ep_l2_wad_entries_live.size() >= m_config.m_ep_l2_wad_entries) {
       // The required WAD must be allocated before data_cache::access()

@@ -647,6 +647,8 @@ class memory_sub_partition {
                                         bool admitted);
   void ep_l2_motivation_record_wb_create(new_addr_type block,
                                          unsigned long long cycle);
+  void ep_l2_motivation_record_eviction(new_addr_type block,
+                                        unsigned long long cycle);
   void ep_l2_motivation_record_wb_lower_accept(mem_fetch *mf,
                                                unsigned long long cycle);
   void ep_l2_motivation_print(FILE *fp, const char *scope,

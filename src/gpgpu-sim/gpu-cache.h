@@ -2023,6 +2023,7 @@ struct l2_access_plan {
         mshr_merge_available(false),
         victim_valid(false),
         victim_dirty(false),
+        victim_block_addr(0),
         victim_modified_bytes(0),
         new_missq_entries(0),
         needs_data_port(false),
@@ -2050,6 +2051,7 @@ struct l2_access_plan {
   bool mshr_merge_available;
   bool victim_valid;
   bool victim_dirty;
+  new_addr_type victim_block_addr;
   unsigned victim_modified_bytes;
   unsigned new_missq_entries;
   bool needs_data_port;
