@@ -1567,9 +1567,6 @@ class mem_fetch *memory_sub_partition::L2_dram_queue_top() const {
 
 void memory_sub_partition::L2_dram_queue_pop() {
   mem_fetch *mf = m_L2_dram_queue->top();
-  if (m_config->m_L2_config.ep_l2_motivation_stats_enabled())
-    ep_l2_motivation_record_wb_lower_accept(
-        mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
   l2_char_record_l2dram_pop(mf);
   m_L2_dram_queue->pop();
 }
@@ -1979,6 +1976,7 @@ void memory_sub_partition::ep_l2_motivation_record_eviction(
 void memory_sub_partition::ep_l2_motivation_record_wb_lower_accept(
     mem_fetch *mf, unsigned long long cycle) {
   if (mf->get_access_type() != L2_WRBK_ACC) return;
+  if (!cycle) cycle = m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
   std::map<new_addr_type, unsigned long long>::iterator active =
       m_ep_l2_motivation_active_wb.find(mf->get_addr());
   if (active == m_ep_l2_motivation_active_wb.end()) return;

@@ -679,6 +679,10 @@ class L2interface : public mem_fetch_interface {
   virtual void push(mem_fetch *mf) {
     mf->set_status(IN_PARTITION_L2_TO_DRAM_QUEUE, 0 /*FIXME*/);
     m_unit->m_L2_dram_queue->push(mf);
+    // ADR-009: release after this cache-side lower-interface acceptance,
+    // not after later arbitration/DRAM issue or final set_done().
+    if (m_unit->m_config->m_L2_config.ep_l2_motivation_stats_enabled())
+      m_unit->ep_l2_motivation_record_wb_lower_accept(mf, 0);
     m_unit->l2_char_record_l2dram_push(mf);
     m_unit->ep_l2_record_lower_issue(mf);
   }
