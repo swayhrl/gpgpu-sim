@@ -908,14 +908,16 @@ void memory_partition_unit::print_ep_l2_b0_snapshot(FILE *fp,
 }
 
 void memory_partition_unit::begin_ep_l2_b0_kernel(unsigned long long uid) {
-  if (!m_config->m_L2_config.ep_l2_b0_stats_enabled()) return;
+  if (!m_config->m_L2_config.ep_l2_b0_stats_enabled() &&
+      !m_config->m_L2_config.ep_l2_m0a_stats_enabled()) return;
   for (unsigned p = 0; p < m_config->m_n_sub_partition_per_memory_channel; ++p)
     m_sub_partition[p]->begin_ep_l2_b0_kernel(uid);
 }
 
 void memory_partition_unit::end_ep_l2_b0_kernel(FILE *fp,
                                                  unsigned long long uid) {
-  if (!m_config->m_L2_config.ep_l2_b0_stats_enabled()) return;
+  if (!m_config->m_L2_config.ep_l2_b0_stats_enabled() &&
+      !m_config->m_L2_config.ep_l2_m0a_stats_enabled()) return;
   for (unsigned p = 0; p < m_config->m_n_sub_partition_per_memory_channel; ++p)
     m_sub_partition[p]->end_ep_l2_b0_kernel(fp, uid);
 }
@@ -961,12 +963,15 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
   m_ep_l2_last_preview_block_reason = mshr_table::EP_L2_BLOCK_NONE;
   m_ep_l2_b0_window_start_cycle = 0;
   m_ep_l2_b0_window_started = false;
+  m_ep_l2_m0a_window_start_cycle = 0;
+  m_ep_l2_m0a_window_started = false;
   // C7d samples the maintained tag-state counters too. Enabling that
   // sidecar is observational and avoids a per-cycle tag-array scan; it is
   // independent of whether legacy L2CHARV1 output is requested.
   if (!m_config->m_L2_config.disabled() &&
       (config->gpgpu_l2_char_enable ||
-       m_config->m_L2_config.ep_l2_b0_stats_enabled()))
+       m_config->m_L2_config.ep_l2_b0_stats_enabled() ||
+       m_config->m_L2_config.ep_l2_m0a_stats_enabled()))
     m_L2cache->l2_char_tracking_enable();
   if (!m_config->m_L2_config.disabled() && config->gpgpu_l2_char_enable) {
     m_l2_char_collector = new l2_char_collector(
@@ -1079,6 +1084,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         mf->set_reply();
         mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE,
                        m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+        ep_l2_m0a_record_response_enqueue();
         m_L2_icnt_queue->push(mf);
       } else {
         if (m_config->m_L2_config.m_write_alloc_policy == FETCH_ON_WRITE) {
@@ -1088,6 +1094,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
           original_wr_mf->set_status(
               IN_PARTITION_L2_TO_ICNT_QUEUE,
               m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+          ep_l2_m0a_record_response_enqueue();
           m_L2_icnt_queue->push(original_wr_mf);
         }
         m_request_tracker.erase(mf);
@@ -1132,6 +1139,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       if (mf->is_write() && mf->get_type() == WRITE_ACK)
         mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE,
                        m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+      ep_l2_m0a_record_response_enqueue();
       m_L2_icnt_queue->push(mf);
       m_dram_L2_queue->pop();
     }
@@ -1239,6 +1247,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         admission.needs_response_slot = plan.needs_immediate_response_slot;
         admission.response_slot_available = !m_L2_icnt_queue->full();
         admit = l2_admission_allowed(admission);
+        ep_l2_m0a_record_frontend(plan, admission, admit);
         if (m_l2_char_collector) {
           unsigned eligible = 0;
           // RESERVATION_FAIL is the production form of "all replacement
@@ -1369,6 +1378,12 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
                               m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
                                   m_memcpy_cycle_offset,
                               events);
+        // This is the commit point: preview said admissible and access did
+        // mutate/accept the request.  A defensive reservation failure is not
+        // an admission and is intentionally excluded.
+        if (plan.exact && status != RESERVATION_FAIL &&
+            m_config->m_L2_config.ep_l2_m0a_stats_enabled())
+          ++m_ep_l2_m0a_accum.useful_frontend_admit;
         if (status == RESERVATION_FAIL &&
             m_config->m_L2_config.m_ep_l2_payload_mode) {
           ++m_ep_l2_b0_accum.payload_block;
@@ -1436,6 +1451,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
               mf->set_reply();
               mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE,
                              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+              ep_l2_m0a_record_response_enqueue();
               m_L2_icnt_queue->push(mf);
             }
             m_icnt_L2_queue->pop();
@@ -1456,6 +1472,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
               mf->set_reply();
               mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE,
                              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+              ep_l2_m0a_record_response_enqueue();
               m_L2_icnt_queue->push(mf);
             }
           }
@@ -1506,6 +1523,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         !m_L2cache->miss_queue_has_slots(1), m_dram_L2_queue->full(),
         m_L2_icnt_queue->full(), m_icnt_L2_queue->full());
     ep_l2_b0_sample(m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+    ep_l2_m0a_sample(m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
   }
 }
 
@@ -1789,6 +1807,142 @@ memory_sub_partition::ep_l2_b0_accum::delta(const ep_l2_b0_accum &start) const {
   return d;
 }
 
+memory_sub_partition::ep_l2_m0a_accum
+memory_sub_partition::ep_l2_m0a_accum::delta(
+    const ep_l2_m0a_accum &start) const {
+  ep_l2_m0a_accum d(*this);
+  d.resident_samples -= start.resident_samples;
+  d.resident_occupied_sum -= start.resident_occupied_sum;
+  d.resident_free_sum -= start.resident_free_sum;
+  d.observed -= start.observed;
+  d.any_blocked -= start.any_blocked;
+  d.tag_way -= start.tag_way;
+  d.wad_full -= start.wad_full;
+  d.wad_hazard -= start.wad_hazard;
+  d.line_mshr -= start.line_mshr;
+  d.descriptor -= start.descriptor;
+  d.per_address -= start.per_address;
+  d.missq -= start.missq;
+  d.payload_service -= start.payload_service;
+  d.payload_capacity -= start.payload_capacity;
+  d.lowerq -= start.lowerq;
+  d.responseq -= start.responseq;
+  d.useful_frontend_admit -= start.useful_frontend_admit;
+  d.useful_response_enqueue -= start.useful_response_enqueue;
+  // Max/min are meaningful only for cumulative snapshots.  The 5K stream
+  // deliberately carries exact sums/samples; downstream computes its
+  // distribution across complete physical-slice windows.
+  d.resident_occupied_max = 0;
+  d.resident_free_min = 1024;
+  return d;
+}
+
+void memory_sub_partition::ep_l2_m0a_accum::sample_resident(
+    unsigned occupied, unsigned capacity) {
+  ++resident_samples;
+  resident_occupied_sum += occupied;
+  resident_free_sum += capacity - occupied;
+  if (occupied > resident_occupied_max) resident_occupied_max = occupied;
+  if (capacity - occupied < resident_free_min) resident_free_min = capacity - occupied;
+}
+
+void memory_sub_partition::ep_l2_m0a_record_frontend(
+    const l2_access_plan &plan, const l2_admission_inputs &admission,
+    bool admit) {
+  if (!m_config->m_L2_config.ep_l2_m0a_stats_enabled() || !plan.exact) return;
+  // Exactly one observation is made for the current frontend head in this
+  // simulated cycle, immediately after all real preview predicates are
+  // available and before access() may mutate state.
+  ++m_ep_l2_m0a_accum.observed;
+  if (!admit) ++m_ep_l2_m0a_accum.any_blocked;
+
+  // Independent bits intentionally do not use the controller's historical
+  // priority label.  They derive from the same side-effect-free preview and
+  // availability inputs used by l2_admission_allowed(), so overlaps are real.
+  if (plan.ep_l2_tag_set_all_reserved) ++m_ep_l2_m0a_accum.tag_way;
+  if (plan.ep_l2_wad_full) ++m_ep_l2_m0a_accum.wad_full;
+  if (plan.ep_l2_wad_same_address_hazard) ++m_ep_l2_m0a_accum.wad_hazard;
+  if (plan.ep_l2_mshr_block_reason == mshr_table::EP_L2_BLOCK_LINE_MSHR_FULL)
+    ++m_ep_l2_m0a_accum.line_mshr;
+  if (plan.ep_l2_mshr_block_reason == mshr_table::EP_L2_BLOCK_DESCRIPTOR_POOL_FULL)
+    ++m_ep_l2_m0a_accum.descriptor;
+  if (plan.ep_l2_mshr_block_reason == mshr_table::EP_L2_BLOCK_PER_ADDRESS_CAP)
+    ++m_ep_l2_m0a_accum.per_address;
+  if (plan.new_missq_entries && !admission.missq_available)
+    ++m_ep_l2_m0a_accum.missq;
+  // In this reviewed controller data_port is the only payload-service
+  // predicate at frontend admission.  Capacity allocation occurs in access
+  // / fill, not in preview, therefore remains a truthful zero here.
+  if (plan.needs_data_port && !admission.data_port_available)
+    ++m_ep_l2_m0a_accum.payload_service;
+  if (plan.needs_immediate_response_slot && !admission.response_slot_available)
+    ++m_ep_l2_m0a_accum.responseq;
+  // lowerq and payload_capacity are emitted as explicit zero-valued fields:
+  // neither is a direct frontend prerequisite in the corrected D512 path.
+}
+
+void memory_sub_partition::ep_l2_m0a_record_response_enqueue() {
+  if (m_config->m_L2_config.ep_l2_m0a_stats_enabled())
+    ++m_ep_l2_m0a_accum.useful_response_enqueue;
+}
+
+void memory_sub_partition::ep_l2_m0a_print(
+    FILE *fp, const ep_l2_m0a_accum &stats, const char *scope,
+    const char *interval, unsigned long long uid, unsigned long long start_cycle,
+    unsigned long long completion_cycle) const {
+  const unsigned long long n = stats.resident_samples;
+  fprintf(fp,
+          "EPL2M0AV1|scope=%s|interval=%s|slice=%u|kernel_uid=%llu|"
+          "start_cycle=%llu|completion_cycle=%llu|resident_samples=%llu|"
+          "m0_resident_payload_occupied_sum=%llu|m0_resident_payload_free_sum=%llu|"
+          "m0_resident_payload_occupied_avg=%llu|m0_resident_payload_free_avg=%llu|"
+          "m0_resident_payload_occupied_max=%u|m0_resident_payload_free_min=%u|"
+          "m0_frontend_head_observed_cycles=%llu|"
+          "m0_frontend_head_any_blocked_cycles=%llu|"
+          "m0_frontend_head_blocked_cycles_tag_way=%llu|"
+          "m0_frontend_head_blocked_cycles_wad_full=%llu|"
+          "m0_frontend_head_blocked_cycles_wad_hazard=%llu|"
+          "m0_frontend_head_blocked_cycles_line_mshr=%llu|"
+          "m0_frontend_head_blocked_cycles_descriptor=%llu|"
+          "m0_frontend_head_blocked_cycles_per_address=%llu|"
+          "m0_frontend_head_blocked_cycles_missq=%llu|"
+          "m0_frontend_head_blocked_cycles_payload_service=%llu|"
+          "m0_frontend_head_blocked_cycles_payload_capacity=%llu|"
+          "m0_frontend_head_blocked_cycles_lowerq=%llu|"
+          "m0_frontend_head_blocked_cycles_responseq=%llu|"
+          "m0_useful_frontend_admit=%llu|m0_useful_response_enqueue=%llu\n",
+          scope, interval, m_id, uid, start_cycle, completion_cycle, n,
+          stats.resident_occupied_sum, stats.resident_free_sum,
+          n ? stats.resident_occupied_sum / n : 0,
+          n ? stats.resident_free_sum / n : 0,
+          stats.resident_occupied_max, stats.resident_free_min,
+          stats.observed, stats.any_blocked, stats.tag_way, stats.wad_full,
+          stats.wad_hazard, stats.line_mshr, stats.descriptor, stats.per_address,
+          stats.missq, stats.payload_service, stats.payload_capacity, stats.lowerq,
+          stats.responseq, stats.useful_frontend_admit,
+          stats.useful_response_enqueue);
+}
+
+void memory_sub_partition::ep_l2_m0a_sample(unsigned long long cycle) {
+  if (!m_config->m_L2_config.ep_l2_m0a_stats_enabled()) return;
+  // This is the same frozen B0 sampling boundary: all prior drains/fills are
+  // visible, while the current frontend head is still uncommitted.
+  m_ep_l2_m0a_accum.sample_resident(
+      m_L2cache->ep_l2_resident_payload_occupancy(), 1024);
+  if (!m_ep_l2_m0a_window_started) {
+    m_ep_l2_m0a_window_start = m_ep_l2_m0a_accum;
+    m_ep_l2_m0a_window_start_cycle = cycle;
+    m_ep_l2_m0a_window_started = true;
+    return;
+  }
+  if (cycle - m_ep_l2_m0a_window_start_cycle < 5000) return;
+  ep_l2_m0a_print(stdout, m_ep_l2_m0a_accum.delta(m_ep_l2_m0a_window_start),
+                   "window", "5000_cycle", (unsigned long long)-1,
+                   m_ep_l2_m0a_window_start_cycle, cycle);
+  m_ep_l2_m0a_window_start = m_ep_l2_m0a_accum;
+  m_ep_l2_m0a_window_start_cycle = cycle;
+}
+
 void memory_sub_partition::ep_l2_b0_sample(unsigned long long cycle) {
   if (!m_config->m_L2_config.ep_l2_b0_stats_enabled()) return;
   unsigned reserved = 0, dirty = 0, valid = 0, reserved_set_max = 0;
@@ -1902,6 +2056,8 @@ void memory_sub_partition::begin_ep_l2_b0_kernel(unsigned long long uid) {
   m_ep_l2_b0_kernel_bank_start[uid] = ep_l2_b0_bank_snapshot();
   m_ep_l2_b0_kernel_start_cycle[uid] = m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
   m_ep_l2_b0_kernel_overlap[uid] = overlap;
+  if (m_config->m_L2_config.ep_l2_m0a_stats_enabled())
+    m_ep_l2_m0a_kernel_start[uid] = m_ep_l2_m0a_accum;
 }
 
 void memory_sub_partition::end_ep_l2_b0_kernel(FILE *fp,
@@ -1911,10 +2067,27 @@ void memory_sub_partition::end_ep_l2_b0_kernel(FILE *fp,
   m_ep_l2_b0_kernel_bank_start.erase(uid);
   m_ep_l2_b0_kernel_start_cycle.erase(uid);
   m_ep_l2_b0_kernel_overlap.erase(uid);
+  m_ep_l2_m0a_kernel_start.erase(uid);
 }
 
 void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
                                                     unsigned long long uid) const {
+  if (m_config->m_L2_config.ep_l2_m0a_stats_enabled()) {
+    ep_l2_m0a_accum m0 = m_ep_l2_m0a_accum;
+    unsigned long long start_cycle = 0;
+    if (uid != (unsigned long long)-1) {
+      std::map<unsigned long long, ep_l2_m0a_accum>::const_iterator start =
+          m_ep_l2_m0a_kernel_start.find(uid);
+      if (start != m_ep_l2_m0a_kernel_start.end()) m0 = m0.delta(start->second);
+      std::map<unsigned long long, unsigned long long>::const_iterator cycle =
+          m_ep_l2_b0_kernel_start_cycle.find(uid);
+      if (cycle != m_ep_l2_b0_kernel_start_cycle.end()) start_cycle = cycle->second;
+    }
+    ep_l2_m0a_print(fp, m0, uid == (unsigned long long)-1 ? "application" : "kernel",
+                     uid == (unsigned long long)-1 ? "application_cumulative" : "kernel_shared_delta",
+                     uid, start_cycle,
+                     m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+  }
   if (!m_config->m_L2_config.ep_l2_b0_stats_enabled()) return;
   ep_l2_b0_accum stats = m_ep_l2_b0_accum;
   if (uid != (unsigned long long)-1) {

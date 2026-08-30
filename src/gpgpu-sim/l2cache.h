@@ -567,11 +567,46 @@ class memory_sub_partition {
   std::map<unsigned long long, unsigned long long> m_ep_l2_b0_kernel_start_cycle;
   std::map<unsigned long long, bool> m_ep_l2_b0_kernel_overlap;
 
+  // M0a is intentionally a compact, separate schema from the reviewed B0
+  // calibration stream.  All fields are sampled/counted after their actual
+  // production predicate or commit point; no field is read by control logic.
+  struct ep_l2_m0a_accum {
+    ep_l2_m0a_accum()
+        : resident_samples(0), resident_occupied_sum(0), resident_free_sum(0),
+          resident_occupied_max(0), resident_free_min(1024), observed(0),
+          any_blocked(0), tag_way(0), wad_full(0), wad_hazard(0),
+          line_mshr(0), descriptor(0), per_address(0), missq(0),
+          payload_service(0), payload_capacity(0), lowerq(0), responseq(0),
+          useful_frontend_admit(0), useful_response_enqueue(0) {}
+    unsigned long long resident_samples, resident_occupied_sum, resident_free_sum;
+    unsigned resident_occupied_max, resident_free_min;
+    unsigned long long observed, any_blocked, tag_way, wad_full, wad_hazard,
+        line_mshr, descriptor, per_address, missq, payload_service,
+        payload_capacity, lowerq, responseq, useful_frontend_admit,
+        useful_response_enqueue;
+    ep_l2_m0a_accum delta(const ep_l2_m0a_accum &start) const;
+    void sample_resident(unsigned occupied, unsigned capacity);
+  };
+  ep_l2_m0a_accum m_ep_l2_m0a_accum;
+  std::map<unsigned long long, ep_l2_m0a_accum> m_ep_l2_m0a_kernel_start;
+  ep_l2_m0a_accum m_ep_l2_m0a_window_start;
+  unsigned long long m_ep_l2_m0a_window_start_cycle;
+  bool m_ep_l2_m0a_window_started;
+
   void l2_char_record_l2dram_push(mem_fetch *mf);
   void ep_l2_record_lower_issue(mem_fetch *mf);
   void l2_char_record_l2dram_pop(mem_fetch *mf);
   void l2_char_sample(unsigned long long cycle);
   void ep_l2_b0_sample(unsigned long long cycle);
+  void ep_l2_m0a_sample(unsigned long long cycle);
+  void ep_l2_m0a_record_frontend(const l2_access_plan &plan,
+                                 const l2_admission_inputs &admission,
+                                 bool admit);
+  void ep_l2_m0a_print(FILE *fp, const ep_l2_m0a_accum &stats,
+                       const char *scope, const char *interval,
+                       unsigned long long uid, unsigned long long start_cycle,
+                       unsigned long long completion_cycle) const;
+  void ep_l2_m0a_record_response_enqueue();
   static unsigned l2_char_queue_class(const mem_fetch *mf);
 
   friend class L2interface;

@@ -583,6 +583,9 @@ class cache_config {
     m_ep_l2_feature_tvd = false;
     m_ep_l2_feature_adaptive_policy = false;
     m_ep_l2_b0_stats = true;
+    // M0a is deliberately opt-in.  It is a telemetry sidecar and is never
+    // consulted by the admission controller.
+    m_ep_l2_m0a_stats = false;
   }
   void init(char *config, FuncCache status) {
     cache_status = status;
@@ -845,6 +848,7 @@ class cache_config {
     return m_ep_l2_descriptor_pool_size != 0;
   }
   bool ep_l2_b0_stats_enabled() const { return m_ep_l2_b0_stats; }
+  bool ep_l2_m0a_stats_enabled() const { return m_ep_l2_m0a_stats; }
   enum mshr_config_t get_mshr_type() const { return m_mshr_type; }
   void set_assoc(unsigned n) {
     // set new assoc. L1 cache dynamically resized in Volta
@@ -938,6 +942,9 @@ class cache_config {
   bool m_ep_l2_feature_adaptive_policy;
   // Observational only. Disabling it must not change simulator timing.
   bool m_ep_l2_b0_stats;
+  // Generic M0a observability switch.  OFF must leave the production
+  // controller's timing and resource transitions unchanged.
+  bool m_ep_l2_m0a_stats;
   enum set_index_function
       m_set_index_function;  // Hash, linear, or custom set index function
 
