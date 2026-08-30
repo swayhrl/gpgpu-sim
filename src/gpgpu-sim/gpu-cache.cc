@@ -2420,6 +2420,7 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
   unsigned payload_index = (unsigned)-1;
   bool payload_reserved = false;
   ep_l2_payload_store::slot payload_saved;
+  ep_l2_payload_store::payload_handle sidecar_saved;
   const new_addr_type payload_owner = m_config.block_addr(addr);
   if (m_ep_l2_payload.enabled()) {
     const enum cache_request_status payload_probe = m_tag_array->probe(
@@ -2427,31 +2428,42 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
     // Hits consume a target-RAM operation. A miss only reserves its static
     // landing; the physical 128B write occurs when its lower response lands.
     if (payload_probe == HIT) {
-      assert(payload_index < 1024);
+      assert(payload_index < ep_l2_payload_store::k_resident_slots);
+      const ep_l2_payload_store::payload_handle handle =
+          tag_payload_handle(payload_index);
+      assert(handle.valid() && handle.payload_id == payload_index &&
+             m_ep_l2_payload.handle_owner_matches(handle, payload_owner));
       m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(
-          ep_l2_payload_store::RESIDENT, payload_index,
+          handle,
           mf->get_is_write(), time, (unsigned long long)-1,
           mf->get_is_write() ? ep_l2_payload_store::RESIDENT_WRITE
                              : ep_l2_payload_store::RESIDENT_HIT_READ);
       if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED)
         return RESERVATION_FAIL;
     } else if (payload_probe == MISS) {
-      assert(payload_index < 1024);
+      assert(payload_index < ep_l2_payload_store::k_resident_slots);
       payload_saved = m_ep_l2_payload.resident(payload_index);
+      sidecar_saved = tag_payload_handle(payload_index);
       // Identity exists before data_cache::access can enqueue the lower read.
       m_ep_l2_payload.reserve_resident(payload_index, payload_owner, mf);
+      const ep_l2_payload_store::payload_handle handle =
+          m_ep_l2_payload.resident_handle(payload_index);
+      assert(handle.payload_id == payload_index);
+      set_tag_payload_handle(payload_index, handle);
+      reconcile_tag_payload_handles();
       payload_reserved = true;
     } else if (payload_probe != RESERVATION_FAIL) {
       // Sector/MSHR requests to a reserved line share the original static
       // landing. The status is HIT_RESERVED in some cache organizations and
       // SECTOR_MISS in others, so state—not the status spelling—defines this.
-      assert(payload_index < 1024);
+      assert(payload_index < ep_l2_payload_store::k_resident_slots);
       // A sector miss may target a payload that is already valid/dirty for
       // another sector.  Identity is line-scoped and must be carried in that
       // case too; only the pending-sector mask is fill-scoped.
-      assert(m_ep_l2_payload.resident_owner_matches(
-          payload_index, payload_owner,
-          m_ep_l2_payload.resident(payload_index).generation));
+      const ep_l2_payload_store::payload_handle handle =
+          tag_payload_handle(payload_index);
+      assert(handle.valid() && handle.payload_id == payload_index &&
+             m_ep_l2_payload.handle_owner_matches(handle, payload_owner));
       m_ep_l2_payload.attach_resident_identity(payload_index, mf);
     }
   }
@@ -2464,8 +2476,10 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
     // checked independently of the normal tag probe.
     if (!mf->get_is_write() && ep_l2_wad_contains(requested_block)) {
       ++m_ep_l2_wad_same_address_wait_count;
-      if (payload_reserved)
+      if (payload_reserved) {
         m_ep_l2_payload.restore_resident(payload_index, payload_saved);
+        set_tag_payload_handle(payload_index, sidecar_saved);
+      }
       return RESERVATION_FAIL;
     }
 
@@ -2477,8 +2491,10 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
       wad_addr = m_tag_array->get_block(victim_index)->m_block_addr;
       if (m_ep_l2_wad_entries_live.size() >= m_config.m_ep_l2_wad_entries) {
         ++m_ep_l2_wad_full_block_count;
-        if (payload_reserved)
+        if (payload_reserved) {
           m_ep_l2_payload.restore_resident(payload_index, payload_saved);
+          set_tag_payload_handle(payload_index, sidecar_saved);
+        }
         return RESERVATION_FAIL;
       }
       const bool inserted = m_ep_l2_wad_entries_live.insert(wad_addr).second;
@@ -2509,6 +2525,7 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
   const bool lower_read = was_read_sent(events);
   if (payload_reserved && result == RESERVATION_FAIL) {
     m_ep_l2_payload.restore_resident(payload_index, payload_saved);
+    set_tag_payload_handle(payload_index, sidecar_saved);
   } else if (m_ep_l2_payload.enabled() && result == HIT &&
              mf->get_is_write() && payload_index != (unsigned)-1) {
     m_ep_l2_payload.mark_resident_dirty(payload_index);
@@ -2562,9 +2579,15 @@ void l2_cache::fill(mem_fetch *mf, unsigned time) {
   if (m_ep_l2_payload.enabled()) {
     assert(mf->has_ep_l2_payload_identity());
     const unsigned id = mf->get_ep_l2_payload_id();
-    assert(id < 1024);
+    assert(id < ep_l2_payload_store::k_resident_slots);
     extra_mf_fields_lookup::iterator e = m_extra_mf_fields.find(mf);
     assert(e != m_extra_mf_fields.end());
+    const ep_l2_payload_store::payload_handle handle(
+        id, mf->get_ep_l2_payload_generation());
+    assert(tag_payload_handle(e->second.m_cache_index).payload_id == id &&
+           tag_payload_handle(e->second.m_cache_index).generation ==
+               handle.generation &&
+           m_ep_l2_payload.handle_owner_matches(handle, e->second.m_block_addr));
     // A stale response must never land into a reused static payload slot.
     m_ep_l2_payload.complete_resident_fill(
         id, e->second.m_block_addr, mf->get_ep_l2_payload_generation(),

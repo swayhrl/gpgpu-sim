@@ -229,9 +229,11 @@ static void payload_landing(const char *base, const char *fixture) {
           s.subpartition->ep_l2_resident_payload_valid());
   assert(s.subpartition->ep_l2_payload_identity_lower_issue_count() == 1);
   assert(s.subpartition->ep_l2_resident_payload_pending() == 1);
+  assert(s.subpartition->ep_l2_tag_payload_consistent());
   s.drain(5000);
   assert(s.subpartition->ep_l2_resident_payload_pending() == 0);
   assert(s.subpartition->ep_l2_resident_payload_valid() == 1);
+  assert(s.subpartition->ep_l2_tag_payload_consistent());
 }
 
 static void valid_or_dirty_sector_miss(const char *base, const char *fixture) {
@@ -254,9 +256,11 @@ static void valid_or_dirty_sector_miss(const char *base, const char *fixture) {
          reads_after_first + 1);
   assert(s.subpartition->ep_l2_resident_payload_valid() == 1);
   assert(s.subpartition->ep_l2_resident_payload_pending() == 1);
+  assert(s.subpartition->ep_l2_tag_payload_consistent());
   s.drain(5000);
   assert(s.replies == 2);
   assert(s.subpartition->ep_l2_resident_payload_pending() == 0);
+  assert(s.subpartition->ep_l2_tag_payload_consistent());
 
   // T2/T5: lazy-fetch write allocation is locally complete with no lower
   // pending sector; a later missing-sector read retains its dirty ownership

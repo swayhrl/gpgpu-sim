@@ -269,6 +269,21 @@ void memory_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_ep_l2_payload_mode", OPT_UINT32,
                          &m_L2_config.m_ep_l2_payload_mode,
                          "EP-L2 payload mode: 0=off, 1=Legacy, 2=Banked", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_payload_policy", OPT_UINT32,
+                         &m_L2_config.m_ep_l2_payload_policy,
+                         "EP-L2 payload policy: 0=static (only M1-supported policy)", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_feature_unified_payload", OPT_BOOL,
+                         &m_L2_config.m_ep_l2_feature_unified_payload,
+                         "EP-L2 future Unified Payload feature (unsupported in M1)", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_feature_ro_pending_state", OPT_BOOL,
+                         &m_L2_config.m_ep_l2_feature_ro_pending_state,
+                         "EP-L2 future RO pending-state feature (unsupported in M1)", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_feature_tvd", OPT_BOOL,
+                         &m_L2_config.m_ep_l2_feature_tvd,
+                         "EP-L2 future TVD feature (unsupported in M1)", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_feature_adaptive_policy", OPT_BOOL,
+                         &m_L2_config.m_ep_l2_feature_adaptive_policy,
+                         "EP-L2 future adaptive policy feature (unsupported in M1)", "0");
   option_parser_register(opp, "-gpgpu_ep_l2_b0_stats", OPT_BOOL,
                          &m_L2_config.m_ep_l2_b0_stats,
                          "emit timing-neutral EPL2B0V1 target instrumentation", "1");

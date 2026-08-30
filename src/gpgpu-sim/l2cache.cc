@@ -2076,7 +2076,8 @@ bool memory_sub_partition::l2_char_no_resource_leak() const {
          m_L2_icnt_queue->empty() && m_rop.empty() &&
          m_l2_block_state.empty() && m_L2cache->l2_char_no_pending_resources() &&
          m_L2cache->ep_l2_resident_pending() == 0 &&
-         m_L2cache->ep_l2_payload_pending_operations() == 0;
+         m_L2cache->ep_l2_payload_pending_operations() == 0 &&
+         m_L2cache->ep_l2_tag_payload_consistent();
 }
 
 void memory_stats_t::visualizer_print(gzFile visualizer_file) {

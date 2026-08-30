@@ -401,6 +401,11 @@ class memory_sub_partition {
   unsigned ep_l2_resident_payload_valid() const {
     return m_L2cache->ep_l2_resident_valid();
   }
+  // M1 directed-test observation: tag metadata must retain only a live
+  // static resident handle. This does not participate in cache admission.
+  bool ep_l2_tag_payload_consistent() const {
+    return m_L2cache->ep_l2_tag_payload_consistent();
+  }
   mshr_table::ep_l2_block_reason ep_l2_last_preview_block_reason() const {
     return m_ep_l2_last_preview_block_reason;
   }
