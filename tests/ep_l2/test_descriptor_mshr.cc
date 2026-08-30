@@ -34,6 +34,55 @@ int main() {
     assert(table.full_reason(0x200000) == mshr_table::EP_L2_BLOCK_LINE_MSHR_FULL);
   }
 
+  // Line-MSHR capacity is independently parameterized from descriptors.  At
+  // 256 entries, verify both sides of the legacy boundary (127/128/129) and
+  // the new capacity boundary (255/256), then release/reuse one entry.  Every
+  // address is distinct, and descriptor capacity is deliberately larger, so
+  // neither the per-address cap nor descriptor pool can mask LINE_MSHR_FULL.
+  {
+    const new_addr_type base = 0x220000;
+    const new_addr_type replacement = 0x330000;
+    mshr_table table(256, 1, 1024, 32);
+    for (unsigned n = 0; n < 127; ++n)
+      table.add_for_test(base + n * 128, request(10000 + n), sector(0));
+    assert(table.num_entries_used() == 127);
+    assert(!table.full(base + 127 * 128));
+    table.add_for_test(base + 127 * 128, request(10127), sector(0));
+    assert(table.num_entries_used() == 128);
+    assert(!table.full(base + 128 * 128));
+    table.add_for_test(base + 128 * 128, request(10128), sector(0));
+    assert(table.num_entries_used() == 129);
+    for (unsigned n = 129; n < 255; ++n)
+      table.add_for_test(base + n * 128, request(10000 + n), sector(0));
+    assert(table.num_entries_used() == 255);
+    assert(!table.full(base + 255 * 128));
+    table.add_for_test(base + 255 * 128, request(10255), sector(0));
+    assert(table.num_entries_used() == 256);
+    assert(table.full(replacement));
+    assert(table.full_reason(replacement) ==
+           mshr_table::EP_L2_BLOCK_LINE_MSHR_FULL);
+
+    bool atomic = false;
+    table.mark_ready(base, atomic, sector(0));
+    assert(table.peek_next_access() == request(10000));
+    table.commit_next_access();
+    assert(table.num_entries_used() == 255);
+    assert(!table.full(replacement));
+    table.add_for_test(replacement, request(11000), sector(0));
+    assert(table.num_entries_used() == 256);
+
+    for (unsigned n = 1; n < 256; ++n) {
+      table.mark_ready(base + n * 128, atomic, sector(0));
+      assert(table.peek_next_access() == request(10000 + n));
+      table.commit_next_access();
+    }
+    table.mark_ready(replacement, atomic, sector(0));
+    assert(table.peek_next_access() == request(11000));
+    table.commit_next_access();
+    assert(table.num_entries_used() == 0);
+    assert(table.descriptor_count_used() == 0);
+  }
+
   // 256 globally shared descriptors are not 128 x 32 static positions.
   {
     mshr_table table(512, 1, 256, 32);
