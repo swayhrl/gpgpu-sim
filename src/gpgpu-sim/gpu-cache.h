@@ -114,17 +114,20 @@ struct evicted_block_info {
 
 struct cache_event {
   enum cache_event_type m_cache_event_type;
+  mem_fetch *m_request;  // exact request created for this production event
   evicted_block_info m_evicted_block;  // if it was write_back event, fill the
                                        // the evicted block info
 
   cache_event(enum cache_event_type m_cache_event) {
     m_cache_event_type = m_cache_event;
+    m_request = NULL;
   }
 
   cache_event(enum cache_event_type cache_event,
               evicted_block_info evicted_block) {
     m_cache_event_type = cache_event;
     m_evicted_block = evicted_block;
+    m_request = NULL;
   }
 };
 

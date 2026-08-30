@@ -1455,8 +1455,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
             plan.will_send_writeback) {
           cache_event motivation_wb(WRITE_BACK_REQUEST_SENT);
           if (was_writeback_sent(events, motivation_wb))
-            ep_l2_motivation_record_wb_create(
-                motivation_wb.m_evicted_block.m_block_addr,
+            ep_l2_motivation_record_wb_create(motivation_wb.m_request,
                 m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
         }
         bool write_sent = was_write_sent(events);
@@ -1836,7 +1835,7 @@ memory_sub_partition::ep_l2_motivation_stats::ep_l2_motivation_stats()
       unique_lines(0), unique_reused(0), one_touch_lines(0),
       post_evictions(0), post_eviction_rerefs(0), post_eviction_seq_sum(0),
       post_eviction_cycle_sum(0), wb_created(0), wb_lower_accepted(0),
-      wb_lifetime_sum(0), wb_lifetime_max(0) {
+      wb_active_max(0), wb_lifetime_sum(0), wb_lifetime_max(0) {
   for (unsigned i = 0; i < 9; ++i) reuse_bins[i] = 0;
   for (unsigned c = 0; c < 3; ++c) {
     eligible_miss_cycles[c] = blocked_cycles[c] = 0;
@@ -1963,11 +1962,18 @@ void memory_sub_partition::ep_l2_motivation_record_frontend(
 }
 
 void memory_sub_partition::ep_l2_motivation_record_wb_create(
-    new_addr_type block, unsigned long long cycle) {
-  if (!m_ep_l2_motivation_active_wb.insert(std::make_pair(block, cycle)).second)
-    return;  // WAD serialization makes this defensive duplicate unreachable.
+    mem_fetch *wb, unsigned long long cycle) {
+  assert(wb);
+  assert(m_ep_l2_motivation_active_wb.find(wb) ==
+         m_ep_l2_motivation_active_wb.end());
+  m_ep_l2_motivation_active_wb.insert(std::make_pair(wb, cycle));
   ++m_ep_l2_motivation_total.wb_created;
   ++m_ep_l2_motivation_epoch.wb_created;
+  const unsigned long long active = m_ep_l2_motivation_active_wb.size();
+  if (active > m_ep_l2_motivation_total.wb_active_max)
+    m_ep_l2_motivation_total.wb_active_max = active;
+  if (active > m_ep_l2_motivation_epoch.wb_active_max)
+    m_ep_l2_motivation_epoch.wb_active_max = active;
 }
 
 void memory_sub_partition::ep_l2_motivation_record_eviction(
@@ -1982,8 +1988,8 @@ void memory_sub_partition::ep_l2_motivation_record_wb_lower_accept(
     mem_fetch *mf, unsigned long long cycle) {
   if (mf->get_access_type() != L2_WRBK_ACC) return;
   if (!cycle) cycle = m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
-  std::map<new_addr_type, unsigned long long>::iterator active =
-      m_ep_l2_motivation_active_wb.find(mf->get_addr());
+  std::map<mem_fetch *, unsigned long long>::iterator active =
+      m_ep_l2_motivation_active_wb.find(mf);
   if (active == m_ep_l2_motivation_active_wb.end()) return;
   const unsigned long long lifetime = cycle - active->second;
   ep_l2_motivation_stats *stats[2] = {&m_ep_l2_motivation_total,
@@ -2002,14 +2008,15 @@ void memory_sub_partition::ep_l2_motivation_print(
       kernel_uid == (unsigned long long)-1 ? m_ep_l2_motivation_total :
                                                m_ep_l2_motivation_epoch;
   fprintf(fp,
-      "EPL2MOTV1|scope=%s|slice=%u|kernel_uid=%llu|eligible_demand_references=%llu|excluded_writeback_references=%llu|reuse_instances=%llu|reuse_le8=%llu|reuse_9_16=%llu|reuse_17_32=%llu|reuse_33_64=%llu|reuse_65_128=%llu|reuse_129_256=%llu|reuse_257_512=%llu|reuse_513_1024=%llu|reuse_gt1024=%llu|unique_lines=%llu|unique_lines_reused=%llu|one_touch_unique_lines=%llu|post_evictions=%llu|post_eviction_rerefs=%llu|post_eviction_seq_sum=%llu|post_eviction_cycle_sum=%llu|wb_packets_created=%llu|wb_packets_lower_accepted=%llu|wb_lifetime_sum=%llu|wb_lifetime_max=%llu|eligible_miss_cycles_4=%llu|blocked_miss_cycles_4=%llu|set_assoc_4=%llu|mshr_meta_4=%llu|missq_lower_4=%llu|wb_path_4=%llu|other_4=%llu|wbuf_opportunities_4=%llu|wbuf_would_block_4=%llu|eligible_miss_cycles_8=%llu|blocked_miss_cycles_8=%llu|set_assoc_8=%llu|mshr_meta_8=%llu|missq_lower_8=%llu|wb_path_8=%llu|other_8=%llu|wbuf_opportunities_8=%llu|wbuf_would_block_8=%llu|eligible_miss_cycles_16=%llu|blocked_miss_cycles_16=%llu|set_assoc_16=%llu|mshr_meta_16=%llu|missq_lower_16=%llu|wb_path_16=%llu|other_16=%llu|wbuf_opportunities_16=%llu|wbuf_would_block_16=%llu\n",
+      "EPL2MOTV1|scope=%s|slice=%u|kernel_uid=%llu|eligible_demand_references=%llu|excluded_writeback_references=%llu|reuse_instances=%llu|reuse_le8=%llu|reuse_9_16=%llu|reuse_17_32=%llu|reuse_33_64=%llu|reuse_65_128=%llu|reuse_129_256=%llu|reuse_257_512=%llu|reuse_513_1024=%llu|reuse_gt1024=%llu|unique_lines=%llu|unique_lines_reused=%llu|one_touch_unique_lines=%llu|post_evictions=%llu|post_eviction_rerefs=%llu|post_eviction_seq_sum=%llu|post_eviction_cycle_sum=%llu|wb_packets_created=%llu|wb_packets_lower_accepted=%llu|wb_active_at_snapshot=%llu|wb_active_max=%llu|wb_lifetime_sum=%llu|wb_lifetime_max=%llu|eligible_miss_cycles_4=%llu|blocked_miss_cycles_4=%llu|set_assoc_4=%llu|mshr_meta_4=%llu|missq_lower_4=%llu|wb_path_4=%llu|other_4=%llu|wbuf_opportunities_4=%llu|wbuf_would_block_4=%llu|eligible_miss_cycles_8=%llu|blocked_miss_cycles_8=%llu|set_assoc_8=%llu|mshr_meta_8=%llu|missq_lower_8=%llu|wb_path_8=%llu|other_8=%llu|wbuf_opportunities_8=%llu|wbuf_would_block_8=%llu|eligible_miss_cycles_16=%llu|blocked_miss_cycles_16=%llu|set_assoc_16=%llu|mshr_meta_16=%llu|missq_lower_16=%llu|wb_path_16=%llu|other_16=%llu|wbuf_opportunities_16=%llu|wbuf_would_block_16=%llu\n",
       scope, m_id, kernel_uid, s.eligible_refs, s.excluded_wb_refs,
       s.reuse_instances, s.reuse_bins[0], s.reuse_bins[1], s.reuse_bins[2],
       s.reuse_bins[3], s.reuse_bins[4], s.reuse_bins[5], s.reuse_bins[6],
       s.reuse_bins[7], s.reuse_bins[8], s.unique_lines, s.unique_reused,
       s.unique_lines - s.unique_reused, s.post_evictions, s.post_eviction_rerefs,
       s.post_eviction_seq_sum, s.post_eviction_cycle_sum, s.wb_created,
-      s.wb_lower_accepted, s.wb_lifetime_sum, s.wb_lifetime_max,
+      s.wb_lower_accepted, (unsigned long long)m_ep_l2_motivation_active_wb.size(),
+      s.wb_active_max, s.wb_lifetime_sum, s.wb_lifetime_max,
       s.eligible_miss_cycles[0], s.blocked_cycles[0], s.blocks[0][0], s.blocks[0][1],
       s.blocks[0][2], s.blocks[0][3], s.blocks[0][4], s.wbuf_opportunities[0], s.wbuf_would_block[0],
       s.eligible_miss_cycles[1], s.blocked_cycles[1], s.blocks[1][0], s.blocks[1][1],

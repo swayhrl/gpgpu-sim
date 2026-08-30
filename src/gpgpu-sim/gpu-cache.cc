@@ -1759,6 +1759,7 @@ void baseline_cache::send_read_request(new_addr_type addr,
 void data_cache::send_write_request(mem_fetch *mf, cache_event request,
                                     unsigned time,
                                     std::list<cache_event> &events) {
+  request.m_request = mf;
   events.push_back(request);
   m_miss_queue.push_back(mf);
   mf->set_status(m_miss_queue_status, time);

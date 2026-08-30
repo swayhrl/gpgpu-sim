@@ -619,8 +619,8 @@ class memory_sub_partition {
     unsigned long long eligible_miss_cycles[3], blocked_cycles[3];
     unsigned long long blocks[3][5];
     unsigned long long wbuf_opportunities[3], wbuf_would_block[3];
-    unsigned long long wb_created, wb_lower_accepted, wb_lifetime_sum,
-        wb_lifetime_max;
+    unsigned long long wb_created, wb_lower_accepted, wb_active_max,
+        wb_lifetime_sum, wb_lifetime_max;
   };
   struct ep_l2_motivation_eviction {
     unsigned long long sequence, cycle;
@@ -636,7 +636,7 @@ class memory_sub_partition {
       m_ep_l2_motivation_stack_pos;
   std::map<new_addr_type, ep_l2_motivation_eviction>
       m_ep_l2_motivation_evictions;
-  std::map<new_addr_type, unsigned long long> m_ep_l2_motivation_active_wb;
+  std::map<mem_fetch *, unsigned long long> m_ep_l2_motivation_active_wb;
   std::set<mem_fetch *> m_ep_l2_motivation_seen_frontend;
   unsigned long long m_ep_l2_motivation_sequence;
   void ep_l2_motivation_reset_epoch();
@@ -646,7 +646,7 @@ class memory_sub_partition {
                                         const l2_access_plan &plan,
                                         const l2_admission_inputs &admission,
                                         bool admitted);
-  void ep_l2_motivation_record_wb_create(new_addr_type block,
+  void ep_l2_motivation_record_wb_create(mem_fetch *wb,
                                          unsigned long long cycle);
   void ep_l2_motivation_record_eviction(new_addr_type block,
                                         unsigned long long cycle);
