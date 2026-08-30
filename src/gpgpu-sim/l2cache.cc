@@ -909,7 +909,8 @@ void memory_partition_unit::print_ep_l2_b0_snapshot(FILE *fp,
 
 void memory_partition_unit::begin_ep_l2_b0_kernel(unsigned long long uid) {
   if (!m_config->m_L2_config.ep_l2_b0_stats_enabled() &&
-      !m_config->m_L2_config.ep_l2_m0a_stats_enabled()) return;
+      !m_config->m_L2_config.ep_l2_m0a_stats_enabled() &&
+      !m_config->m_L2_config.ep_l2_m0b_stats_enabled()) return;
   for (unsigned p = 0; p < m_config->m_n_sub_partition_per_memory_channel; ++p)
     m_sub_partition[p]->begin_ep_l2_b0_kernel(uid);
 }
@@ -917,7 +918,8 @@ void memory_partition_unit::begin_ep_l2_b0_kernel(unsigned long long uid) {
 void memory_partition_unit::end_ep_l2_b0_kernel(FILE *fp,
                                                  unsigned long long uid) {
   if (!m_config->m_L2_config.ep_l2_b0_stats_enabled() &&
-      !m_config->m_L2_config.ep_l2_m0a_stats_enabled()) return;
+      !m_config->m_L2_config.ep_l2_m0a_stats_enabled() &&
+      !m_config->m_L2_config.ep_l2_m0b_stats_enabled()) return;
   for (unsigned p = 0; p < m_config->m_n_sub_partition_per_memory_channel; ++p)
     m_sub_partition[p]->end_ep_l2_b0_kernel(fp, uid);
 }
@@ -971,7 +973,8 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
   if (!m_config->m_L2_config.disabled() &&
       (config->gpgpu_l2_char_enable ||
        m_config->m_L2_config.ep_l2_b0_stats_enabled() ||
-       m_config->m_L2_config.ep_l2_m0a_stats_enabled()))
+       m_config->m_L2_config.ep_l2_m0a_stats_enabled() ||
+       m_config->m_L2_config.ep_l2_m0b_stats_enabled()))
     m_L2cache->l2_char_tracking_enable();
   if (!m_config->m_L2_config.disabled() && config->gpgpu_l2_char_enable) {
     m_l2_char_collector = new l2_char_collector(
@@ -1015,6 +1018,9 @@ void memory_sub_partition::ep_l2_record_lower_issue(mem_fetch *mf) {
   if (m_config->m_L2_config.m_ep_l2_payload_mode &&
       mf->has_ep_l2_payload_identity())
     ++m_ep_l2_payload_identity_lower_issue_count;
+  if (m_config->m_L2_config.ep_l2_m0b_stats_enabled())
+    m_L2cache->ep_l2_m0b_record_lower_issue(
+        mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
 }
 
 void memory_sub_partition::l2_char_record_l2dram_pop(mem_fetch *mf) {
@@ -2072,6 +2078,9 @@ void memory_sub_partition::end_ep_l2_b0_kernel(FILE *fp,
 
 void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
                                                     unsigned long long uid) const {
+  if (m_config->m_L2_config.ep_l2_m0b_stats_enabled())
+    m_L2cache->ep_l2_m0b_print(
+        fp, m_id, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
   if (m_config->m_L2_config.ep_l2_m0a_stats_enabled()) {
     ep_l2_m0a_accum m0 = m_ep_l2_m0a_accum;
     unsigned long long start_cycle = 0;

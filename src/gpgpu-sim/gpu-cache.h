@@ -586,6 +586,8 @@ class cache_config {
     // M0a is deliberately opt-in.  It is a telemetry sidecar and is never
     // consulted by the admission controller.
     m_ep_l2_m0a_stats = false;
+    // M0b is a separate default-OFF opportunity-observation sidecar.
+    m_ep_l2_m0b_stats = false;
   }
   void init(char *config, FuncCache status) {
     cache_status = status;
@@ -849,6 +851,7 @@ class cache_config {
   }
   bool ep_l2_b0_stats_enabled() const { return m_ep_l2_b0_stats; }
   bool ep_l2_m0a_stats_enabled() const { return m_ep_l2_m0a_stats; }
+  bool ep_l2_m0b_stats_enabled() const { return m_ep_l2_m0b_stats; }
   enum mshr_config_t get_mshr_type() const { return m_mshr_type; }
   void set_assoc(unsigned n) {
     // set new assoc. L1 cache dynamically resized in Volta
@@ -945,6 +948,7 @@ class cache_config {
   // Generic M0a observability switch.  OFF must leave the production
   // controller's timing and resource transitions unchanged.
   bool m_ep_l2_m0a_stats;
+  bool m_ep_l2_m0b_stats;
   enum set_index_function
       m_set_index_function;  // Hash, linear, or custom set index function
 
@@ -2651,6 +2655,12 @@ class l2_cache : public data_cache {
     return m_ep_l2_wad_entries_live.count(block_addr) != 0;
   }
 
+  // M0b observes only exact source events.  A non-write is deliberately an
+  // uncertified candidate, never a proof of read-only safety.
+  void ep_l2_m0b_record_lower_issue(mem_fetch *mf, unsigned long long cycle);
+  void ep_l2_m0b_print(FILE *fp, unsigned slice,
+                        unsigned long long completion_cycle) const;
+
   // Inspect only: no LRU update, tag/sector allocation, MSHR change, queue
   // insertion, cache event, or normal cache statistic is permitted here.
   void preview_access(new_addr_type addr, mem_fetch *mf,
@@ -2696,6 +2706,50 @@ class l2_cache : public data_cache {
   unsigned long long m_ep_l2_wad_lifetime_count;
   unsigned long long m_ep_l2_wad_lifetime_max;
   std::map<unsigned long long, unsigned long long> m_ep_l2_wad_lifetime_hist;
+  struct ep_l2_m0b_mshr_instance {
+    ep_l2_m0b_mshr_instance()
+        : epoch(0), allocation_cycle(0), candidate_uncertified(false),
+          first_lower_issue_seen(false), first_lower_issue_cycle(0),
+          last_lower_issue_cycle(0), first_fill_seen(false),
+          all_ready_seen(false) {}
+    unsigned long long epoch;
+    unsigned long long allocation_cycle;
+    bool candidate_uncertified;
+    bool first_lower_issue_seen;
+    unsigned long long first_lower_issue_cycle;
+    unsigned long long last_lower_issue_cycle;
+    bool first_fill_seen;
+    bool all_ready_seen;
+  };
+  struct ep_l2_m0b_observation {
+    ep_l2_m0b_observation()
+        : next_epoch(0), mshr_allocations(0), candidate_uncertified(0),
+          excluded_write(0), excluded_atomic(0), excluded_writeback(0),
+          first_lower_issue_count(0), allocation_to_first_lower_issue_sum(0),
+          first_fill_count(0), allocation_to_first_fill_sum(0),
+          all_ready_count(0), allocation_to_all_ready_sum(0),
+          wad_dirty_victim_events(0), wad_old_handle_valid(0),
+          wad_old_handle_live_after_reassign(0),
+          wad_old_handle_not_live_after_reassign(0),
+          resident_allocations(0), bypass_allocations(0) {}
+    unsigned long long next_epoch, mshr_allocations, candidate_uncertified;
+    unsigned long long excluded_write, excluded_atomic, excluded_writeback;
+    unsigned long long first_lower_issue_count, allocation_to_first_lower_issue_sum;
+    unsigned long long first_fill_count, allocation_to_first_fill_sum;
+    unsigned long long all_ready_count, allocation_to_all_ready_sum;
+    unsigned long long wad_dirty_victim_events, wad_old_handle_valid;
+    unsigned long long wad_old_handle_live_after_reassign;
+    unsigned long long wad_old_handle_not_live_after_reassign;
+    unsigned long long resident_allocations, bypass_allocations;
+    std::map<new_addr_type, ep_l2_m0b_mshr_instance> instances;
+  };
+  void ep_l2_m0b_record_allocation(new_addr_type mshr_addr, mem_fetch *mf,
+                                   unsigned long long cycle);
+  void ep_l2_m0b_record_fill(new_addr_type mshr_addr,
+                             unsigned long long cycle);
+  void ep_l2_m0b_record_wad_payload(
+      const ep_l2_payload_store::payload_handle &old_handle);
+  ep_l2_m0b_observation m_ep_l2_m0b;
   ep_l2_payload_store m_ep_l2_payload;
   ep_l2_payload_store::request_result m_ep_l2_last_payload_request_result;
   std::vector<ep_l2_payload_store::payload_handle> m_ep_l2_tag_payload;

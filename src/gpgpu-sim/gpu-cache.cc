@@ -2417,6 +2417,8 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events) {
   m_ep_l2_last_payload_request_result = ep_l2_payload_store::GRANTED;
+  const new_addr_type m0b_mshr_addr = m_config.mshr_addr(mf->get_addr());
+  const bool m0b_mshr_present_before = m_mshrs.probe(m0b_mshr_addr);
   unsigned payload_index = (unsigned)-1;
   bool payload_reserved = false;
   ep_l2_payload_store::slot payload_saved;
@@ -2520,9 +2522,17 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
       // Allocation precedes tag mutation, and every reserved WAD must bind to
       // the real writeback that data_cache just created.
       assert(was_writeback_sent(events, writeback));
+      if (m_config.ep_l2_m0b_stats_enabled())
+        ep_l2_m0b_record_wad_payload(sidecar_saved);
     }
   }
   const bool lower_read = was_read_sent(events);
+  if (m_config.ep_l2_m0b_stats_enabled() && !m0b_mshr_present_before &&
+      result != RESERVATION_FAIL && lower_read)
+    ep_l2_m0b_record_allocation(m0b_mshr_addr, mf, time);
+  if (m_config.ep_l2_m0b_stats_enabled() && payload_reserved &&
+      result != RESERVATION_FAIL)
+    ++m_ep_l2_m0b.resident_allocations;
   if (payload_reserved && result == RESERVATION_FAIL) {
     m_ep_l2_payload.restore_resident(payload_index, payload_saved);
     set_tag_payload_handle(payload_index, sidecar_saved);
@@ -2576,6 +2586,15 @@ void l2_cache::ep_l2_wad_complete(new_addr_type block_addr,
 }
 
 void l2_cache::fill(mem_fetch *mf, unsigned time) {
+  new_addr_type m0b_mshr_addr = 0;
+  bool m0b_fill_tracked = false;
+  if (m_config.ep_l2_m0b_stats_enabled()) {
+    extra_mf_fields_lookup::iterator m0b_extra = m_extra_mf_fields.find(mf);
+    if (m0b_extra != m_extra_mf_fields.end()) {
+      m0b_mshr_addr = m0b_extra->second.m_block_addr;
+      m0b_fill_tracked = true;
+    }
+  }
   if (m_ep_l2_payload.enabled()) {
     assert(mf->has_ep_l2_payload_identity());
     const unsigned id = mf->get_ep_l2_payload_id();
@@ -2594,6 +2613,115 @@ void l2_cache::fill(mem_fetch *mf, unsigned time) {
         mf->get_access_sector_mask(), mf->is_write());
   }
   baseline_cache::fill(mf, time);
+  if (m0b_fill_tracked) ep_l2_m0b_record_fill(m0b_mshr_addr, time);
+}
+
+void l2_cache::ep_l2_m0b_record_allocation(new_addr_type mshr_addr,
+                                            mem_fetch *mf,
+                                            unsigned long long cycle) {
+  ep_l2_m0b_mshr_instance instance;
+  instance.epoch = ++m_ep_l2_m0b.next_epoch;
+  instance.allocation_cycle = cycle;
+  // No source predicate proves a request is safe for RO pending state.
+  if (mf->get_is_write())
+    ++m_ep_l2_m0b.excluded_write;
+  else if (mf->isatomic())
+    ++m_ep_l2_m0b.excluded_atomic;
+  else if (mf->get_access_type() == L1_WRBK_ACC ||
+           mf->get_access_type() == L2_WRBK_ACC)
+    ++m_ep_l2_m0b.excluded_writeback;
+  else {
+    instance.candidate_uncertified = true;
+    ++m_ep_l2_m0b.candidate_uncertified;
+  }
+  ++m_ep_l2_m0b.mshr_allocations;
+  // Replacing this map entry is the address-reuse boundary; every live
+  // incarnation has a distinct monotonic epoch.
+  m_ep_l2_m0b.instances[mshr_addr] = instance;
+}
+
+void l2_cache::ep_l2_m0b_record_lower_issue(mem_fetch *mf,
+                                             unsigned long long cycle) {
+  if (!m_config.ep_l2_m0b_stats_enabled() || mf->get_is_write()) return;
+  const new_addr_type mshr_addr = m_config.mshr_addr(mf->get_addr());
+  std::map<new_addr_type, ep_l2_m0b_mshr_instance>::iterator instance =
+      m_ep_l2_m0b.instances.find(mshr_addr);
+  if (instance == m_ep_l2_m0b.instances.end() ||
+      !instance->second.candidate_uncertified)
+    return;
+  if (!instance->second.first_lower_issue_seen) {
+    instance->second.first_lower_issue_seen = true;
+    instance->second.first_lower_issue_cycle = cycle;
+    ++m_ep_l2_m0b.first_lower_issue_count;
+    m_ep_l2_m0b.allocation_to_first_lower_issue_sum +=
+        cycle >= instance->second.allocation_cycle
+            ? cycle - instance->second.allocation_cycle
+            : 0;
+  }
+  instance->second.last_lower_issue_cycle = cycle;
+}
+
+void l2_cache::ep_l2_m0b_record_fill(new_addr_type mshr_addr,
+                                      unsigned long long cycle) {
+  std::map<new_addr_type, ep_l2_m0b_mshr_instance>::iterator instance =
+      m_ep_l2_m0b.instances.find(mshr_addr);
+  if (instance == m_ep_l2_m0b.instances.end() ||
+      !instance->second.candidate_uncertified)
+    return;
+  if (!instance->second.first_fill_seen) {
+    instance->second.first_fill_seen = true;
+    ++m_ep_l2_m0b.first_fill_count;
+    m_ep_l2_m0b.allocation_to_first_fill_sum +=
+        cycle >= instance->second.allocation_cycle
+            ? cycle - instance->second.allocation_cycle
+            : 0;
+  }
+  mem_access_sector_mask_t pending, issued, ready;
+  m_mshrs.sector_masks(mshr_addr, pending, issued, ready);
+  if (!instance->second.all_ready_seen && pending.none()) {
+    instance->second.all_ready_seen = true;
+    ++m_ep_l2_m0b.all_ready_count;
+    m_ep_l2_m0b.allocation_to_all_ready_sum +=
+        cycle >= instance->second.allocation_cycle
+            ? cycle - instance->second.allocation_cycle
+            : 0;
+  }
+}
+
+void l2_cache::ep_l2_m0b_record_wad_payload(
+    const ep_l2_payload_store::payload_handle &old_handle) {
+  ++m_ep_l2_m0b.wad_dirty_victim_events;
+  if (!old_handle.valid()) return;
+  ++m_ep_l2_m0b.wad_old_handle_valid;
+  if (m_ep_l2_payload.handle_live(old_handle))
+    ++m_ep_l2_m0b.wad_old_handle_live_after_reassign;
+  else
+    ++m_ep_l2_m0b.wad_old_handle_not_live_after_reassign;
+}
+
+void l2_cache::ep_l2_m0b_print(FILE *fp, unsigned slice,
+                                unsigned long long completion_cycle) const {
+  if (!m_config.ep_l2_m0b_stats_enabled()) return;
+  const ep_l2_m0b_observation &s = m_ep_l2_m0b;
+  fprintf(fp,
+          "EPL2M0BV1|scope=application_cumulative|slice=%u|completion_cycle=%llu|"
+          "mshr_instance_epoch=MONOTONIC_ADDRESS_REUSE_SAFE|mshr_allocations=%llu|"
+          "ro_candidate_uncertified=%llu|ro_excluded_write=%llu|ro_excluded_atomic=%llu|ro_excluded_writeback=%llu|"
+          "allocation_to_first_lower_issue_count=%llu|allocation_to_first_lower_issue_sum=%llu|"
+          "allocation_to_last_lower_issue=NOT_EMITTED|allocation_to_first_fill_count=%llu|allocation_to_first_fill_sum=%llu|"
+          "allocation_to_all_required_sectors_ready_count=%llu|allocation_to_all_required_sectors_ready_sum=%llu|"
+          "allocation_to_final_retirement=NOT_EMITTED|last_lower_issue_to_final_retirement=NOT_EMITTED|all_ready_to_final_retirement=NOT_EMITTED|"
+          "wad_dirty_victim_events=%llu|wad_old_handle_valid=%llu|wad_old_handle_live_after_reassign=%llu|wad_old_handle_not_live_after_reassign=%llu|"
+          "resident_payload_allocations=%llu|nonresident_payload_allocations=%llu|shared_payload_opportunity=NO_REAL_CONSUMER_YET\n",
+          slice, completion_cycle, s.mshr_allocations, s.candidate_uncertified,
+          s.excluded_write, s.excluded_atomic, s.excluded_writeback,
+          s.first_lower_issue_count, s.allocation_to_first_lower_issue_sum,
+          s.first_fill_count, s.allocation_to_first_fill_sum,
+          s.all_ready_count, s.allocation_to_all_ready_sum,
+          s.wad_dirty_victim_events, s.wad_old_handle_valid,
+          s.wad_old_handle_live_after_reassign,
+          s.wad_old_handle_not_live_after_reassign,
+          s.resident_allocations, s.bypass_allocations);
 }
 
 void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
