@@ -1660,7 +1660,13 @@ void memory_sub_partition::ep_l2_b0_accum::sample(
   this->descriptor_chain_max =
       std::max(this->descriptor_chain_max, descriptor_chain_max);
   ++line_hist[std::min<unsigned>(line, line_hist.size() - 1)];
-  ++desc_hist[std::min<unsigned>(desc, desc_hist.size() - 1)];
+  // Descriptor capacity is a configuration parameter.  Unlike the other
+  // fixed EP-L2 resources, its telemetry histogram must not silently fold
+  // every occupancy above the original 256-entry experiment into one bin.
+  // Grow only when a configured capacity actually reaches a new value;
+  // D256 retains its original 257-bin representation.
+  if (desc >= desc_hist.size()) desc_hist.resize(desc + 1, 0);
+  ++desc_hist[desc];
   ++wad_hist[std::min<unsigned>(wad, wad_hist.size() - 1)];
   ++resident_hist[std::min<unsigned>(resident, resident_hist.size() - 1)];
   ++bypass_hist[std::min<unsigned>(bypass, bypass_hist.size() - 1)];
@@ -1744,7 +1750,8 @@ memory_sub_partition::ep_l2_b0_accum::delta(const ep_l2_b0_accum &start) const {
   d.dram_scheduler_occ_sum -= start.dram_scheduler_occ_sum;
   d.dram_scheduler_occ_samples -= start.dram_scheduler_occ_samples;
   for (unsigned i = 0; i < d.line_hist.size(); ++i) d.line_hist[i] -= start.line_hist[i];
-  for (unsigned i = 0; i < d.desc_hist.size(); ++i) d.desc_hist[i] -= start.desc_hist[i];
+  for (unsigned i = 0; i < d.desc_hist.size(); ++i)
+    if (i < start.desc_hist.size()) d.desc_hist[i] -= start.desc_hist[i];
   for (unsigned i = 0; i < d.wad_hist.size(); ++i) d.wad_hist[i] -= start.wad_hist[i];
   for (unsigned i = 0; i < d.resident_hist.size(); ++i) d.resident_hist[i] -= start.resident_hist[i];
   for (unsigned i = 0; i < d.bypass_hist.size(); ++i) d.bypass_hist[i] -= start.bypass_hist[i];

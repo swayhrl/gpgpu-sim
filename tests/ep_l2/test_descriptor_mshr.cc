@@ -44,6 +44,45 @@ int main() {
            mshr_table::EP_L2_BLOCK_DESCRIPTOR_POOL_FULL);
   }
 
+  // D512 keeps the same allocator/lifetime semantics while moving only the
+  // global pool boundary.  Exercise the old boundary (255/256/257), the new
+  // boundary (511/512), full-pool rejection, and release/reuse.
+  {
+    // Use more line entries than descriptor slots so this isolates the
+    // global descriptor boundary from the independent line-MSHR boundary.
+    mshr_table table(1024, 1, 512, 32);
+    for (unsigned n = 0; n < 257; ++n)
+      table.add_for_test(0x410000 + n * 128, request(1000 + n), sector(0));
+    assert(table.descriptor_count_used() == 257);
+    assert(!table.full(0x510000));
+    for (unsigned n = 257; n < 512; ++n)
+      table.add_for_test(0x410000 + n * 128, request(1000 + n), sector(0));
+    assert(table.descriptor_count_used() == 512);
+    assert(table.full(0x610000));
+    assert(table.full_reason(0x610000) ==
+           mshr_table::EP_L2_BLOCK_DESCRIPTOR_POOL_FULL);
+
+    // Releasing one descriptor restores exactly one global-pool slot and
+    // does not alter the independent 32-requester/address cap.
+    bool atomic = false;
+    table.mark_ready(0x410000, atomic, sector(0));
+    assert(table.peek_next_access() == request(1000));
+    table.commit_next_access();
+    assert(table.descriptor_count_used() == 511);
+    assert(!table.full(0x610000));
+    table.add_for_test(0x610000, request(2000), sector(0));
+    assert(table.descriptor_count_used() == 512);
+    // The pool is full above, so use a fresh D512 table to prove that the
+    // per-address cap is neither widened nor coupled to global capacity.
+    mshr_table per_address(1024, 1, 512, 32);
+    for (unsigned n = 0; n < 32; ++n)
+      per_address.add_for_test(0x710000, request(2200 + n), sector(0));
+    assert(per_address.descriptor_count_used() == 32);
+    assert(per_address.full(0x710000));
+    assert(per_address.full_reason(0x710000) ==
+           mshr_table::EP_L2_BLOCK_PER_ADDRESS_CAP);
+  }
+
   // The 33rd requester for one line is a per-address, not global, block.
   {
     mshr_table table(128, 1, 256, 32);
