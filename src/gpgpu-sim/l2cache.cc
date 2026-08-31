@@ -910,7 +910,8 @@ void memory_partition_unit::print_ep_l2_b0_snapshot(FILE *fp,
 void memory_partition_unit::begin_ep_l2_b0_kernel(unsigned long long uid) {
   if (!m_config->m_L2_config.ep_l2_b0_stats_enabled() &&
       !m_config->m_L2_config.ep_l2_m0a_stats_enabled() &&
-      !m_config->m_L2_config.ep_l2_motivation_stats_enabled()) return;
+      !m_config->m_L2_config.ep_l2_motivation_stats_enabled() &&
+      !m_config->m_L2_config.ep_l2_sector_reuse_stats_enabled()) return;
   for (unsigned p = 0; p < m_config->m_n_sub_partition_per_memory_channel; ++p)
     m_sub_partition[p]->begin_ep_l2_b0_kernel(uid);
 }
@@ -919,7 +920,8 @@ void memory_partition_unit::end_ep_l2_b0_kernel(FILE *fp,
                                                  unsigned long long uid) {
   if (!m_config->m_L2_config.ep_l2_b0_stats_enabled() &&
       !m_config->m_L2_config.ep_l2_m0a_stats_enabled() &&
-      !m_config->m_L2_config.ep_l2_motivation_stats_enabled()) return;
+      !m_config->m_L2_config.ep_l2_motivation_stats_enabled() &&
+      !m_config->m_L2_config.ep_l2_sector_reuse_stats_enabled()) return;
   for (unsigned p = 0; p < m_config->m_n_sub_partition_per_memory_channel; ++p)
     m_sub_partition[p]->end_ep_l2_b0_kernel(fp, uid);
 }
@@ -1174,10 +1176,15 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       // L2 is enabled and access is for L2
       l2_access_plan plan;
       m_L2cache->preview_access(mf->get_addr(), mf, plan);
-      if (m_config->m_L2_config.ep_l2_motivation_stats_enabled() &&
-          m_ep_l2_motivation_seen_frontend.insert(mf).second)
-        ep_l2_motivation_record_reference(
-            mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+      if ((m_config->m_L2_config.ep_l2_motivation_stats_enabled() ||
+           m_config->m_L2_config.ep_l2_sector_reuse_stats_enabled()) &&
+          m_ep_l2_motivation_seen_frontend.insert(mf).second) {
+        if (m_config->m_L2_config.ep_l2_motivation_stats_enabled())
+          ep_l2_motivation_record_reference(
+              mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+        if (m_config->m_L2_config.ep_l2_sector_reuse_stats_enabled())
+          ep_l2_sector_reuse_record_reference(mf);
+      }
       if (plan.exact)
         m_ep_l2_last_preview_block_reason = plan.ep_l2_mshr_block_reason;
       if (plan.exact && plan.victim_dirty)
@@ -1854,6 +1861,132 @@ void memory_sub_partition::ep_l2_motivation_reset_epoch() {
   m_ep_l2_motivation_sequence = 0;
 }
 
+memory_sub_partition::ep_l2_sector_reuse_stats::ep_l2_sector_reuse_stats()
+    : total_events(0), excluded_wb_requests(0), new_sector_on_new_line(0),
+      new_sector_on_seen_line(0), temporal_reuse_instances(0),
+      unique_sectors(0), unique_reused(0) {
+  for (unsigned i = 0; i < 11; ++i) reuse_bins[i] = 0;
+}
+
+void memory_sub_partition::ep_l2_sector_reuse_reset_epoch() {
+  m_ep_l2_sector_reuse_epoch = ep_l2_sector_reuse_stats();
+  m_ep_l2_sector_reuse_touches.clear();
+  m_ep_l2_sector_reuse_seen_lines.clear();
+  m_ep_l2_sector_reuse_stack.clear();
+  m_ep_l2_sector_reuse_stack_pos.clear();
+  // The de-duplication guard is shared by both observation families.  It is
+  // request-lifetime state and must not survive an epoch when sector-only
+  // telemetry is enabled.
+  m_ep_l2_motivation_seen_frontend.clear();
+}
+
+void memory_sub_partition::ep_l2_sector_reuse_record_reference(mem_fetch *mf) {
+  // This is the same frontend demand request hook as EPL2MOTV1.  It excludes
+  // writebacks before sector expansion; fills/returns do not enter this path.
+  if (mf->get_access_type() == L1_WRBK_ACC ||
+      mf->get_access_type() == L2_WRBK_ACC) {
+    ++m_ep_l2_sector_reuse_total.excluded_wb_requests;
+    ++m_ep_l2_sector_reuse_epoch.excluded_wb_requests;
+    return;
+  }
+  const new_addr_type block = m_config->m_L2_config.block_addr(mf->get_addr());
+  const mem_access_sector_mask_t mask = mf->get_access_sector_mask();
+  new_addr_type sectors[SECTOR_CHUNCK_SIZE];
+  unsigned count = 0;
+  for (unsigned i = 0; i < SECTOR_CHUNCK_SIZE; ++i)
+    if (mask.test(i)) sectors[count++] = block + i * SECTOR_SIZE;
+  if (!count) return;
+
+  ep_l2_sector_reuse_stats *stats[2] = {&m_ep_l2_sector_reuse_total,
+                                        &m_ep_l2_sector_reuse_epoch};
+  const bool line_seen_before_request =
+      m_ep_l2_sector_reuse_seen_lines.find(block) !=
+      m_ep_l2_sector_reuse_seen_lines.end();
+
+  // Classify and measure every bit from the pre-request state.  Therefore a
+  // multi-sector request cannot manufacture spatial or temporal reuse among
+  // its own bits.
+  unsigned distances[SECTOR_CHUNCK_SIZE];
+  bool temporal[SECTOR_CHUNCK_SIZE];
+  for (unsigned n = 0; n < count; ++n) {
+    const new_addr_type sector = sectors[n];
+    std::map<new_addr_type, unsigned>::iterator touch =
+        m_ep_l2_sector_reuse_touches.find(sector);
+    temporal[n] = touch != m_ep_l2_sector_reuse_touches.end();
+    for (unsigned s = 0; s < 2; ++s) ++stats[s]->total_events;
+    if (!temporal[n]) {
+      for (unsigned s = 0; s < 2; ++s) {
+        ++stats[s]->unique_sectors;
+        if (line_seen_before_request) ++stats[s]->new_sector_on_seen_line;
+        else ++stats[s]->new_sector_on_new_line;
+      }
+      continue;
+    }
+    if (touch->second == 1)
+      for (unsigned s = 0; s < 2; ++s) ++stats[s]->unique_reused;
+    ++touch->second;
+    std::map<new_addr_type, std::list<new_addr_type>::iterator>::iterator pos =
+        m_ep_l2_sector_reuse_stack_pos.find(sector);
+    distances[n] = 4097;
+    if (pos != m_ep_l2_sector_reuse_stack_pos.end()) {
+      distances[n] = 0;
+      for (std::list<new_addr_type>::iterator it =
+               m_ep_l2_sector_reuse_stack.begin();
+           it != pos->second; ++it)
+        ++distances[n];
+    }
+    for (unsigned s = 0; s < 2; ++s) ++stats[s]->temporal_reuse_instances;
+  }
+
+  // Commit the request only after all sectors have been classified.  Remove
+  // all touched sectors first so no same-request ordering affects a distance.
+  for (unsigned n = 0; n < count; ++n) {
+    const new_addr_type sector = sectors[n];
+    if (!temporal[n]) m_ep_l2_sector_reuse_touches[sector] = 1;
+    std::map<new_addr_type, std::list<new_addr_type>::iterator>::iterator pos =
+        m_ep_l2_sector_reuse_stack_pos.find(sector);
+    if (pos != m_ep_l2_sector_reuse_stack_pos.end()) {
+      m_ep_l2_sector_reuse_stack.erase(pos->second);
+      m_ep_l2_sector_reuse_stack_pos.erase(pos);
+    }
+  }
+  for (unsigned n = 0; n < count; ++n) {
+    if (temporal[n]) {
+      const unsigned d = distances[n];
+      const unsigned bin = d <= 8 ? 0 : d <= 16 ? 1 : d <= 32 ? 2 :
+          d <= 64 ? 3 : d <= 128 ? 4 : d <= 256 ? 5 : d <= 512 ? 6 :
+          d <= 1024 ? 7 : d <= 2048 ? 8 : d <= 4096 ? 9 : 10;
+      for (unsigned s = 0; s < 2; ++s) ++stats[s]->reuse_bins[bin];
+    }
+    const new_addr_type sector = sectors[n];
+    m_ep_l2_sector_reuse_stack.push_front(sector);
+    m_ep_l2_sector_reuse_stack_pos[sector] = m_ep_l2_sector_reuse_stack.begin();
+  }
+  // Retain one extra identity: a retained position of 4096 is still exact.
+  while (m_ep_l2_sector_reuse_stack.size() > 4097) {
+    const new_addr_type old = m_ep_l2_sector_reuse_stack.back();
+    m_ep_l2_sector_reuse_stack.pop_back();
+    m_ep_l2_sector_reuse_stack_pos.erase(old);
+  }
+  m_ep_l2_sector_reuse_seen_lines.insert(block);
+}
+
+void memory_sub_partition::ep_l2_sector_reuse_print(
+    FILE *fp, const char *scope, unsigned long long kernel_uid) const {
+  const ep_l2_sector_reuse_stats &s =
+      kernel_uid == (unsigned long long)-1 ? m_ep_l2_sector_reuse_total :
+                                               m_ep_l2_sector_reuse_epoch;
+  fprintf(fp,
+      "EPL2SRV1|scope=%s|slice=%u|kernel_uid=%llu|total_sector_reference_events=%llu|excluded_writeback_requests=%llu|new_sector_on_new_line_events=%llu|new_sector_on_seen_line_events=%llu|temporal_sector_reuse_instances=%llu|unique_sector_identities=%llu|unique_sectors_reused_at_least_once=%llu|one_touch_unique_sectors=%llu|sector_reuse_le8=%llu|sector_reuse_9_16=%llu|sector_reuse_17_32=%llu|sector_reuse_33_64=%llu|sector_reuse_65_128=%llu|sector_reuse_129_256=%llu|sector_reuse_257_512=%llu|sector_reuse_513_1024=%llu|sector_reuse_1025_2048=%llu|sector_reuse_2049_4096=%llu|sector_reuse_gt4096=%llu\n",
+      scope, m_id, kernel_uid, s.total_events, s.excluded_wb_requests,
+      s.new_sector_on_new_line, s.new_sector_on_seen_line,
+      s.temporal_reuse_instances, s.unique_sectors, s.unique_reused,
+      s.unique_sectors - s.unique_reused, s.reuse_bins[0], s.reuse_bins[1],
+      s.reuse_bins[2], s.reuse_bins[3], s.reuse_bins[4], s.reuse_bins[5],
+      s.reuse_bins[6], s.reuse_bins[7], s.reuse_bins[8], s.reuse_bins[9],
+      s.reuse_bins[10]);
+}
+
 void memory_sub_partition::ep_l2_motivation_record_reference(
     mem_fetch *mf, unsigned long long cycle) {
   // Requests enter at the L2 frontend only here.  L1/L2 writebacks are
@@ -2278,6 +2411,8 @@ void memory_sub_partition::begin_ep_l2_b0_kernel(unsigned long long uid) {
     m_ep_l2_m0a_kernel_start[uid] = m_ep_l2_m0a_accum;
   if (m_config->m_L2_config.ep_l2_motivation_stats_enabled())
     ep_l2_motivation_reset_epoch();
+  if (m_config->m_L2_config.ep_l2_sector_reuse_stats_enabled())
+    ep_l2_sector_reuse_reset_epoch();
 }
 
 void memory_sub_partition::end_ep_l2_b0_kernel(FILE *fp,
@@ -2294,6 +2429,8 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
                                                     unsigned long long uid) const {
   if (m_config->m_L2_config.ep_l2_motivation_stats_enabled())
     ep_l2_motivation_print(fp, uid == (unsigned long long)-1 ? "application" : "kernel", uid);
+  if (m_config->m_L2_config.ep_l2_sector_reuse_stats_enabled())
+    ep_l2_sector_reuse_print(fp, uid == (unsigned long long)-1 ? "application" : "kernel", uid);
   if (m_config->m_L2_config.ep_l2_m0a_stats_enabled()) {
     ep_l2_m0a_accum m0 = m_ep_l2_m0a_accum;
     unsigned long long start_cycle = 0;

@@ -293,6 +293,9 @@ void memory_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_ep_l2_motivation_stats", OPT_BOOL,
                          &m_L2_config.m_ep_l2_motivation_stats,
                          "emit timing-neutral EPL2MOTV1 motivation telemetry", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_sector_reuse_stats", OPT_BOOL,
+                         &m_L2_config.m_ep_l2_sector_reuse_stats,
+                         "emit timing-neutral EPL2SRV1 sector temporal-reuse telemetry", "0");
   option_parser_register(opp, "-gpgpu_cache:dl2_texture_only", OPT_BOOL,
                          &m_L2_texure_only, "L2 cache used for texture only",
                          "1");

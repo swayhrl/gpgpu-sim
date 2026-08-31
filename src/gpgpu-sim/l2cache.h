@@ -654,6 +654,27 @@ class memory_sub_partition {
                                                unsigned long long cycle);
   void ep_l2_motivation_print(FILE *fp, const char *scope,
                               unsigned long long kernel_uid) const;
+  // EPL2SRV1 is observation-only and deliberately separate from EPL2MOTV1.
+  // Identity is the physical 128-B block plus its 32-B sector base address.
+  struct ep_l2_sector_reuse_stats {
+    ep_l2_sector_reuse_stats();
+    unsigned long long total_events, excluded_wb_requests;
+    unsigned long long new_sector_on_new_line, new_sector_on_seen_line;
+    unsigned long long temporal_reuse_instances;
+    unsigned long long unique_sectors, unique_reused;
+    unsigned long long reuse_bins[11];
+  };
+  ep_l2_sector_reuse_stats m_ep_l2_sector_reuse_total;
+  ep_l2_sector_reuse_stats m_ep_l2_sector_reuse_epoch;
+  std::map<new_addr_type, unsigned> m_ep_l2_sector_reuse_touches;
+  std::set<new_addr_type> m_ep_l2_sector_reuse_seen_lines;
+  std::list<new_addr_type> m_ep_l2_sector_reuse_stack;
+  std::map<new_addr_type, std::list<new_addr_type>::iterator>
+      m_ep_l2_sector_reuse_stack_pos;
+  void ep_l2_sector_reuse_reset_epoch();
+  void ep_l2_sector_reuse_record_reference(mem_fetch *mf);
+  void ep_l2_sector_reuse_print(FILE *fp, const char *scope,
+                                unsigned long long kernel_uid) const;
   static unsigned l2_char_queue_class(const mem_fetch *mf);
 
   friend class L2interface;
