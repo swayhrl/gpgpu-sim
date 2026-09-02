@@ -43,6 +43,7 @@
 #include "addrdec.h"
 #include "gpu-cache.h"
 #include "shader.h"
+#include "vm_translation.h"
 
 // constants for statistics printouts
 #define GPU_RSTAT_SHD_INFO 0x1
@@ -667,6 +668,10 @@ class gpgpu_sim : public gpgpu_t {
    */
   bool is_SST_mode() { return m_config.is_SST_mode(); }
 
+  vm_translation::translation_controller *vm_translation() const {
+    return m_vm_translation;
+  }
+
   // backward pointer
   class gpgpu_context *gpgpu_ctx;
 
@@ -725,6 +730,7 @@ class gpgpu_sim : public gpgpu_t {
   class memory_stats_t *m_memory_stats;
   class power_stat_t *m_power_stats;
   class gpgpu_sim_wrapper *m_gpgpusim_wrapper;
+  vm_translation::translation_controller *m_vm_translation;
   unsigned long long last_gpu_sim_insn;
 
   unsigned long long last_liveness_message_time;

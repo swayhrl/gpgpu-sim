@@ -2294,11 +2294,23 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
       assert(access.get_sim_va() == access.get_sim_pa());
       ++m_stats->vm_identity_equal;
     } else {
-      fprintf(stderr,
-              "ERROR: -gpgpu_vm_mode=%u requires the M2 functional "
-              "translation pipeline\n",
-              m_config->gpgpu_vm_mode);
-      abort();
+      assert(m_config->gpgpu_vm_mode == 2);
+      assert(m_gpu->vm_translation() != NULL);
+      uint64_t translated_pa = 0;
+      const vm_translation::lookup_result result =
+          m_gpu->vm_translation()->translate(
+              m_sid, 0, access.get_sim_va(),
+              m_core->get_gpu()->gpu_sim_cycle +
+                  m_core->get_gpu()->gpu_tot_sim_cycle,
+              &translated_pa);
+      if (result != vm_translation::READY) {
+        ++m_stats->vm_translation_stall_cycles;
+        stall_reason = COAL_STALL;
+        return false;
+      }
+      access.set_sim_pa(static_cast<new_addr_type>(translated_pa));
+      ++m_stats->vm_ideal_translations;
+      assert(access.get_sim_va() == access.get_sim_pa());
     }
   }
 

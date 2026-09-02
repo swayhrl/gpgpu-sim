@@ -68,6 +68,7 @@
 #include "power_stat.h"
 #include "stats.h"
 #include "visualizer.h"
+#include "vm_translation.h"
 
 #ifdef GPGPUSIM_POWER_MODEL
 #include "power_interface.h"
@@ -392,10 +393,28 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          "0");
   option_parser_register(opp, "-gpgpu_vm_mode", OPT_UINT32, &gpgpu_vm_mode,
                          "VM core mode: 0=disabled, 1=ideal identity, "
-                         "2=future functional (unsupported in M1)", "0");
+                         "2=functional TLB translation", "0");
   option_parser_register(opp, "-gpgpu_vm_page_size", OPT_UINT32,
                          &gpgpu_vm_page_size,
                          "VM core base page size in bytes", "65536");
+  option_parser_register(opp, "-gpgpu_vm_l1_tlb_entries", OPT_UINT32,
+                         &gpgpu_vm_l1_tlb_entries,
+                         "per-SM functional L1 TLB entries", "32");
+  option_parser_register(opp, "-gpgpu_vm_l1_tlb_assoc", OPT_UINT32,
+                         &gpgpu_vm_l1_tlb_assoc,
+                         "per-SM functional L1 TLB associativity", "32");
+  option_parser_register(opp, "-gpgpu_vm_l1_tlb_ports", OPT_UINT32,
+                         &gpgpu_vm_l1_tlb_ports,
+                         "per-SM functional L1 TLB lookups/cycle", "1");
+  option_parser_register(opp, "-gpgpu_vm_l2_tlb_entries", OPT_UINT32,
+                         &gpgpu_vm_l2_tlb_entries,
+                         "shared functional L2 TLB entries", "768");
+  option_parser_register(opp, "-gpgpu_vm_l2_tlb_assoc", OPT_UINT32,
+                         &gpgpu_vm_l2_tlb_assoc,
+                         "shared functional L2 TLB associativity", "16");
+  option_parser_register(opp, "-gpgpu_vm_l2_tlb_ports", OPT_UINT32,
+                         &gpgpu_vm_l2_tlb_ports,
+                         "shared functional L2 TLB lookups/cycle", "1");
 
   option_parser_register(opp, "-gpgpu_perfect_mem", OPT_BOOL,
                          &gpgpu_perfect_mem,
@@ -982,6 +1001,22 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
   gpgpu_ctx = ctx;
   m_shader_config = &m_config.m_shader_config;
   m_memory_config = &m_config.m_memory_config;
+  m_vm_translation = NULL;
+  if (m_shader_config->gpgpu_vm_mode == 2) {
+    vm_translation::translation_config vm_config(
+        m_shader_config->num_shader(), m_shader_config->gpgpu_vm_page_size,
+        vm_translation::tlb_config(m_shader_config->gpgpu_vm_l1_tlb_entries,
+                                   m_shader_config->gpgpu_vm_l1_tlb_assoc,
+                                   m_shader_config->gpgpu_vm_l1_tlb_ports),
+        vm_translation::tlb_config(m_shader_config->gpgpu_vm_l2_tlb_entries,
+                                   m_shader_config->gpgpu_vm_l2_tlb_assoc,
+                                   m_shader_config->gpgpu_vm_l2_tlb_ports));
+    if (!vm_config.valid()) {
+      fprintf(stderr, "ERROR: invalid functional VM TLB configuration\n");
+      abort();
+    }
+    m_vm_translation = new vm_translation::translation_controller(vm_config);
+  }
   ctx->ptx_parser->set_ptx_warp_size(m_shader_config);
   ptx_file_line_stats_create_exposed_latency_tracker(m_config.num_shader());
 
@@ -1269,6 +1304,7 @@ PowerscalingCoefficients *gpgpu_sim::get_scaling_coeffs() {
 void gpgpu_sim::print_stats(unsigned long long streamID) {
   gpgpu_ctx->stats->ptx_file_line_stats_write_file();
   gpu_print_stat(streamID);
+  if (m_vm_translation != NULL) m_vm_translation->print_stats(stdout);
 
   if (g_network_mode) {
     printf(

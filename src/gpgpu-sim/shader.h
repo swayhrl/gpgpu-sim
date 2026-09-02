@@ -1641,9 +1641,15 @@ class shader_core_config : public core_config {
 
   bool gpgpu_dwf_reg_bankconflict;
 
-  // VM-core M1 modes: 0=disabled, 1=ideal identity, 2=future functional.
+  // VM modes: 0=disabled, 1=ideal identity, 2=functional translation.
   unsigned gpgpu_vm_mode;
   unsigned gpgpu_vm_page_size;
+  unsigned gpgpu_vm_l1_tlb_entries;
+  unsigned gpgpu_vm_l1_tlb_assoc;
+  unsigned gpgpu_vm_l1_tlb_ports;
+  unsigned gpgpu_vm_l2_tlb_entries;
+  unsigned gpgpu_vm_l2_tlb_assoc;
+  unsigned gpgpu_vm_l2_tlb_ports;
 
   unsigned gpgpu_num_sched_per_core;
   int gpgpu_max_insn_issue_per_warp;
