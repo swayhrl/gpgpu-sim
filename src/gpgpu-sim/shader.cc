@@ -3042,7 +3042,14 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
       m_config->dtc_l1_tag_requests_per_bank_per_cycle;
   dtc_config.tag_requests_per_cycle =
       m_config->dtc_l1_tag_requests_per_cycle;
+  dtc_config.logical_sets = m_config->dtc_l1_logical_sets;
+  dtc_config.logical_ways = m_config->dtc_l1_logical_ways;
+  dtc_config.physical_lines = m_config->dtc_l1_physical_lines;
+  dtc_config.allocation_width = m_config->dtc_l1_allocation_width;
+  dtc_config.io_pib_entries = m_config->dtc_l1_io_pib_entries;
   m_dtc_l1_frontend = std::make_unique<dtc_l1::paper_frontend>(dtc_config);
+  if (m_config->dtc_l1_mode == static_cast<unsigned>(dtc_l1::mode::PAPER_IO))
+    m_dtc_l1_io_frontend = std::make_unique<dtc_l1::io_frontend>(dtc_config);
   m_dtc_l1_debug_events_left = m_config->dtc_l1_debug_event_limit;
   m_name = "MEM ";
 }

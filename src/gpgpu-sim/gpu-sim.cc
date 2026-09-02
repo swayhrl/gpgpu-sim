@@ -425,6 +425,18 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_dtc_l1_logical_sets", OPT_UINT32,
                          &dtc_l1_logical_sets,
                          "DTC-L1 logical Tag sets", "32");
+  option_parser_register(opp, "-gpgpu_dtc_l1_logical_ways", OPT_UINT32,
+                         &dtc_l1_logical_ways,
+                         "DTC-L1 logical Tag ways", "4");
+  option_parser_register(opp, "-gpgpu_dtc_l1_physical_lines", OPT_UINT32,
+                         &dtc_l1_physical_lines,
+                         "DTC-L1 whole-line physical pool entries", "640");
+  option_parser_register(opp, "-gpgpu_dtc_l1_allocation_width", OPT_UINT32,
+                         &dtc_l1_allocation_width,
+                         "DTC-L1 whole-line allocations per cycle", "4");
+  option_parser_register(opp, "-gpgpu_dtc_l1_io_pib_entries", OPT_UINT32,
+                         &dtc_l1_io_pib_entries,
+                         "DTC-L1 IO FIFO entries", "256");
   option_parser_register(opp, "-gpgpu_smem_latency", OPT_UINT32, &smem_latency,
                          "smem Latency", "3");
   option_parser_register(opp, "-gpgpu_cache:dl1PrefL1", OPT_CSTR,

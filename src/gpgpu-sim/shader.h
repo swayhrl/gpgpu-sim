@@ -2101,6 +2101,7 @@ class ldst_unit : public pipelined_simd_unit {
   void L1_latency_queue_cycle();
 
   std::unique_ptr<dtc_l1::paper_frontend> m_dtc_l1_frontend;
+  std::unique_ptr<dtc_l1::io_frontend> m_dtc_l1_io_frontend;
   std::set<unsigned> m_dtc_l1_live_instruction_uids;
   unsigned m_dtc_l1_debug_events_left = 0;
 
@@ -2289,6 +2290,10 @@ class shader_core_config : public core_config {
   unsigned dtc_l1_tag_requests_per_bank_per_cycle;
   unsigned dtc_l1_tag_requests_per_cycle;
   unsigned dtc_l1_logical_sets;
+  unsigned dtc_l1_logical_ways;
+  unsigned dtc_l1_physical_lines;
+  unsigned dtc_l1_allocation_width;
+  unsigned dtc_l1_io_pib_entries;
 
   bool gpgpu_dwf_reg_bankconflict;
 
