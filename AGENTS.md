@@ -11,8 +11,11 @@ Before modifying source, configuration, tests, or scripts on `hrl/decoupled-l1-m
 3. In `swayhrl/accel-sim-framework@hrl/decoupled-l1-exp-m1m4-v0`:
    - `AGENTS.md`
    - `docs/dtc_l1/chatgpt_handoff/CURRENT_STATE.md`
-   - `docs/dtc_l1/chatgpt_handoff/DISCUSSION_REFERENCE.md`
+   - `docs/dtc_l1/codex_handoff/LATEST_REPORT.md`
    - `docs/dtc_l1/chatgpt_handoff/CODEX_NEXT_STAGE.md`
+   - `docs/dtc_l1/chatgpt_handoff/GOAL_START.md`
+   - `docs/dtc_l1/chatgpt_handoff/DISCUSSION_REFERENCE.md`
+   - `docs/dtc_l1/goal/M2_IO_RESPONSE_RECOVERY_SPEC.md`
    - `docs/dtc_l1/goal/M1_M4_GOAL_PLAN.md`
    - `docs/dtc_l1/goal/COUNTER_INVARIANT_SPEC.md`
    - `docs/dtc_l1/goal/VALIDATION_ACCEPTANCE_MATRIX.md`
@@ -48,11 +51,13 @@ Use these labels in design/audit documents:
 
 Never silently upgrade `PROVISIONAL_MODEL` or `UNKNOWN` to a verified fact.
 
-## Scope control and continuous Goal mode
+## Scope control and persistent Goal mode
 
-Codex executes only the active M1-M4 goal specification in the framework repository.
+M1 Foundation is already closed PASS. The active persistent Goal is the remaining M2 work through M4. The durable objective and stopping condition are in framework `docs/dtc_l1/chatgpt_handoff/GOAL_START.md`.
 
-The authorized progression is M1 -> M2 -> M3 -> M4. Codex may continue between these stages without human confirmation only when every HARD gate for the completed stage passes and the required review evidence/commits have been created and pushed.
+Codex may continue M2 -> M3 -> M4 without human confirmation only when every HARD gate for the completed stage passes and the required review evidence/commits have been created and pushed.
+
+Ordinary progress is not a stop condition. Do not stop merely because a directed test passed, a safe semantic checkpoint was committed/pushed, a build succeeded, or M2/M3 passed. Continue toward the persistent Goal after preserving the required evidence.
 
 If any HARD gate fails, or source audit exposes a semantic ambiguity that would require guessing, STOP and report. Do not continue into later stages hoping they will mask the issue.
 
@@ -61,13 +66,17 @@ M5 and later work is not authorized.
 In particular:
 
 - Do not refactor unrelated cache, NoC, L2, DRAM, scheduler, or trace code for style.
-- Do not change `LEGACY` behavior when project mechanisms are disabled.
+- Do not change `LEGACY` behavior when project mechanisms are disabled or regress the closed M1 boundary.
 - Do not add protective behavior that changes the specified mechanism. Protocol/resource invariants belong in assertions and diagnostics, not semantic guards, unless the goal explicitly requires a guard.
 - Do not special-case expected results such as `16.5KB => deadlock`; progress/deadlock must emerge from modeled resource dependencies.
 - Do not tune implementation to hit thesis speedup numbers.
 - Do not use the traditional L1 MSHR as DTC's own capacity/merge mechanism.
+- Do not fabricate conventional `m_extra_mf_fields`/MSHR state to make Paper-IO read responses fit `baseline_cache::fill()`.
+- Do not route IO-owned read responses through conventional `baseline_cache::fill()`.
+- Do not keep DTC and conventional L1D read backends active for the same Paper-IO request.
 - Do not merge Atomic side effects through read Pending-hit merge logic.
 - Do not implement thesis DTC policy bypass in M1-M4.
+- Do not start sector extension until whole-line OO HARD gates pass.
 
 ## Parameterization requirement
 
@@ -123,9 +132,7 @@ Required invariant families include:
 
 ## Baseline neutrality
 
-Maintain a project `LEGACY` path intended to be exactly equivalent to the frozen clean upstream baseline when paper/DTC features are disabled.
-
-M1 cannot pass unless required deterministic tests show exact equality for cycles and agreed traffic/instruction counters.
+Maintain a project `LEGACY` path exactly equivalent to the frozen clean upstream baseline when paper/DTC features are disabled. M1 already validated this; later stages must not regress it.
 
 Use identical trace/input/unrelated configuration across Paper Base/IO/OO.
 
@@ -160,10 +167,10 @@ Use compact review evidence and raw-log indexes.
 
 ## Long-running commands
 
-If a build/test/experiment shows no meaningful progress, inspect around 20 minutes, diagnose/escalate around 40 minutes, and stop plus record state by around 60 minutes unless the active goal explicitly expects a longer silent interval.
+If a build/test/experiment shows no meaningful progress, inspect around 20 minutes, diagnose/escalate around 40 minutes, and stop plus record state by around 60 minutes unless the active goal explicitly expects a longer silent interval. A long job with measurable progress is not a stop condition.
 
 ## Final STOP boundary
 
-Within the authorized M1-M4 goal, passing a major-stage HARD gate permits automatic continuation after evidence/commit/push.
+Within the authorized M2-M4 Goal, passing a major-stage HARD gate permits automatic continuation after evidence/commit/push.
 
 After M4 passes, push final evidence, update the framework Codex handoff to `READY_FOR_M5_REVIEW`, and STOP. Do not begin M5.
