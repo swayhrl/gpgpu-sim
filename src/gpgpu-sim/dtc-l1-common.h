@@ -8,6 +8,7 @@
 #define DTC_L1_COMMON_H
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstdint>
 #include <map>
@@ -688,6 +689,456 @@ class oo_frontend {
            m_wakeups = 0, m_tag_evictions = 0, m_immediate_reclaims = 0,
            m_deferred_reclaims = 0, m_final_ref_reclaims = 0,
            m_no_free_physical_events = 0,
+           m_allocation_width_limited_events = 0, m_tag_cycle = UINT64_MAX,
+           m_tag_requests = 0, m_tag_conflicts = 0;
+  unsigned m_allocations_this_cycle = 0, m_rr_next = 0;
+  std::vector<unsigned> m_tag_requests_this_cycle =
+      std::vector<unsigned>(m_cfg.tag_banks, 0);
+  unsigned m_total_tag_requests_this_cycle = 0;
+};
+
+// Sector-aware continuation of the OO-DTC model.  A logical 128B Tag still
+// names exactly one physical allocation and each live instruction owns at
+// most one Ref to that allocation.  Only readiness and lower requests are
+// sector-granular: a 32B sector is INVALID, PENDING, or VALID independently.
+class sector_oo_frontend {
+ public:
+  enum class sector_state : uint8_t { INVALID, PENDING, VALID };
+
+  struct access_result {
+    io_access_kind kind = io_access_kind::NO_FREE_LINE;
+    physical_identity physical;
+    uint8_t valid_mask = 0;
+    uint8_t pending_mask = 0;
+    uint8_t new_request_mask = 0;
+  };
+
+  explicit sector_oo_frontend(config cfg)
+      : m_cfg(cfg),
+        m_tags(cfg.logical_sets * cfg.logical_ways),
+        m_phys(cfg.physical_lines),
+        m_slots(cfg.oo_pib_entries) {
+    assert(cfg.logical_sets && cfg.logical_ways && cfg.physical_lines);
+    assert(cfg.allocation_width && cfg.oo_pib_entries);
+    assert(cfg.ref_count_bits && cfg.ref_count_bits < 32);
+    assert(cfg.tag_banks && cfg.tag_requests_per_bank_per_cycle &&
+           cfg.tag_requests_per_cycle);
+  }
+
+  void begin_cycle(uint64_t cycle) {
+    if (cycle == m_cycle) return;
+    m_cycle = cycle;
+    m_allocations_this_cycle = 0;
+  }
+
+  bool admit(uint64_t uid) {
+    if (find_entry(uid)) return true;
+    if (m_entries.size() >= m_cfg.oo_pib_entries) return false;
+    unsigned slot = 0;
+    for (; slot < m_slots.size(); ++slot)
+      if (!m_slots[slot].active) break;
+    assert(slot < m_slots.size());
+    slot_state &state = m_slots[slot];
+    state.active = true;
+    state.uid = uid;
+    ++state.generation;
+    m_entries.push_back({uid, slot, state.generation, {}, 0});
+    assert_shadow_refs();
+    return true;
+  }
+
+  bool try_serve_tag(uint64_t cycle, uint64_t address) {
+    if (cycle != m_tag_cycle) {
+      m_tag_cycle = cycle;
+      std::fill(m_tag_requests_this_cycle.begin(),
+                m_tag_requests_this_cycle.end(), 0);
+      m_total_tag_requests_this_cycle = 0;
+    }
+    const unsigned set = static_cast<unsigned>(
+        (address / kLogicalLineBytes) % m_cfg.logical_sets);
+    const unsigned bank = set % m_cfg.tag_banks;
+    if (m_total_tag_requests_this_cycle >= m_cfg.tag_requests_per_cycle ||
+        m_tag_requests_this_cycle[bank] >=
+            m_cfg.tag_requests_per_bank_per_cycle) {
+      ++m_tag_conflicts;
+      return false;
+    }
+    ++m_total_tag_requests_this_cycle;
+    ++m_tag_requests_this_cycle[bank];
+    ++m_tag_requests;
+    return true;
+  }
+
+  // The mask is canonicalized to the low four sectors.  INVALID sectors on
+  // a hit are promoted to PENDING without allocating a second physical line.
+  access_result access(uint64_t cycle, uint64_t uid, uint64_t address,
+                       uint8_t sector_mask) {
+    begin_cycle(cycle);
+    assert(sector_mask && !(sector_mask & ~0xFU));
+    entry *owner = find_entry(uid);
+    assert(owner);
+    const uint64_t line = address & ~(kLogicalLineBytes - 1);
+    tag_entry *tag = find_tag(line);
+    if (!tag) {
+      if (m_allocations_this_cycle >= m_cfg.allocation_width) {
+        ++m_allocation_width_limited_events;
+        return {};
+      }
+      tag_entry *victim = select_victim(line);
+      int free_id = find_free_physical();
+      const bool can_reclaim_victim =
+          victim->valid && m_phys[victim->physical.id].ref_count == 0;
+      if (free_id < 0 && !can_reclaim_victim) {
+        ++m_no_free_physical_events;
+        return {};
+      }
+      if (victim->valid) evict_tag(*victim);
+      if (free_id < 0) free_id = find_free_physical();
+      assert(free_id >= 0);
+      physical_line &physical = m_phys[free_id];
+      physical.allocated = true;
+      physical.tag_valid = true;
+      physical.ref_count = 0;
+      physical.waiters.clear();
+      physical.sectors.fill(sector_state::INVALID);
+      physical_identity identity{static_cast<unsigned>(free_id),
+                                 ++physical.generation};
+      *victim = {true, line, identity, ++m_lru_clock};
+      ++m_allocations_this_cycle;
+      ++m_new_line_misses;
+      tag = victim;
+    }
+
+    reference &ref = attach_reference(*owner, tag->physical);
+    physical_line &physical = m_phys[tag->physical.id];
+    access_result result;
+    result.physical = tag->physical;
+    for (unsigned sector = 0; sector < kSectorsPerLogicalLine; ++sector) {
+      const uint8_t bit = static_cast<uint8_t>(1U << sector);
+      if (!(sector_mask & bit) || (ref.sector_mask & bit)) continue;
+      ref.sector_mask |= bit;
+      switch (physical.sectors[sector]) {
+        case sector_state::VALID:
+          result.valid_mask |= bit;
+          ++m_valid_sector_hits;
+          break;
+        case sector_state::PENDING:
+          result.pending_mask |= bit;
+          add_waiter(ref, sector);
+          ++m_pending_sector_hits;
+          break;
+        case sector_state::INVALID:
+          physical.sectors[sector] = sector_state::PENDING;
+          result.new_request_mask |= bit;
+          add_waiter(ref, sector);
+          ++m_new_sector_requests;
+          break;
+      }
+    }
+    result.kind = result.new_request_mask
+                      ? io_access_kind::NEW_MISS
+                      : (result.pending_mask ? io_access_kind::PENDING_HIT
+                                             : io_access_kind::VALID_HIT);
+    assert(result.valid_mask || result.pending_mask || result.new_request_mask ||
+           (ref.sector_mask & sector_mask));
+    assert_shadow_refs();
+    return result;
+  }
+
+  bool fill_identity_matches(physical_identity identity) const {
+    return identity.id < m_phys.size() && m_phys[identity.id].allocated &&
+           m_phys[identity.id].generation == identity.generation;
+  }
+
+  // A lower response identifies both original physical generation and sector.
+  // It can wake only waiters that requested that sector.
+  void complete_sector(physical_identity identity, unsigned sector) {
+    assert(sector < kSectorsPerLogicalLine);
+    assert(fill_identity_matches(identity) &&
+           "sector fill must match original physical generation");
+    physical_line &physical = m_phys[identity.id];
+    assert(physical.sectors[sector] == sector_state::PENDING &&
+           "sector response must be unique and pending");
+    physical.sectors[sector] = sector_state::VALID;
+    for (auto it = physical.waiters.begin(); it != physical.waiters.end();) {
+      if (it->sector != sector) {
+        ++it;
+        continue;
+      }
+      entry *owner = find_entry_by_slot(it->slot, it->slot_generation);
+      assert(owner);
+      reference *ref = find_reference(*owner, identity);
+      assert(ref && (ref->pending_mask & (1U << sector)) &&
+             owner->pending_dependencies);
+      ref->pending_mask &= static_cast<uint8_t>(~(1U << sector));
+      --owner->pending_dependencies;
+      ++m_wakeups;
+      it = physical.waiters.erase(it);
+    }
+    ++m_sector_responses;
+    assert_shadow_refs();
+  }
+
+  bool retire_one_ready(uint64_t cycle, uint64_t *retired_uid = nullptr) {
+    if (cycle == m_retire_cycle) return false;
+    auto selected = m_entries.end();
+    for (auto it = m_entries.begin(); it != m_entries.end(); ++it) {
+      if (entry_ready(*it)) {
+        selected = it;
+        break;
+      }
+    }
+    if (selected == m_entries.end()) return false;
+    bool older_unready = false;
+    for (auto it = m_entries.begin(); it != selected; ++it)
+      older_unready |= !entry_ready(*it);
+    if (older_unready) ++m_out_of_order_retires;
+    for (const reference &ref : selected->references) {
+      physical_line &physical = m_phys[ref.identity.id];
+      assert(fill_identity_matches(ref.identity) && physical.ref_count);
+      --physical.ref_count;
+      if (!physical.tag_valid && physical.ref_count == 0) {
+        release(ref.identity);
+        ++m_final_ref_reclaims;
+      }
+    }
+    m_slots[selected->slot].active = false;
+    if (retired_uid) *retired_uid = selected->uid;
+    m_entries.erase(selected);
+    m_retire_cycle = cycle;
+    ++m_retires;
+    assert_shadow_refs();
+    return true;
+  }
+
+  bool oldest_ready_uid(uint64_t *uid) const {
+    for (const entry &owner : m_entries)
+      if (entry_ready(owner)) {
+        if (uid) *uid = owner.uid;
+        return true;
+      }
+    return false;
+  }
+
+  size_t occupancy() const { return m_entries.size(); }
+  uint64_t ref_count(physical_identity identity) const {
+    assert(fill_identity_matches(identity));
+    return m_phys[identity.id].ref_count;
+  }
+  bool tag_visible(physical_identity identity) const {
+    assert(fill_identity_matches(identity));
+    return m_phys[identity.id].tag_valid;
+  }
+  bool is_allocated(physical_identity identity) const {
+    return fill_identity_matches(identity);
+  }
+  sector_state state(physical_identity identity, unsigned sector) const {
+    assert(fill_identity_matches(identity) && sector < kSectorsPerLogicalLine);
+    return m_phys[identity.id].sectors[sector];
+  }
+  bool entry_ready_for(uint64_t uid) const {
+    const entry *owner = find_entry_const(uid);
+    return owner && entry_ready(*owner);
+  }
+  uint64_t new_line_misses() const { return m_new_line_misses; }
+  uint64_t new_sector_requests() const { return m_new_sector_requests; }
+  uint64_t sector_responses() const { return m_sector_responses; }
+  uint64_t valid_sector_hits() const { return m_valid_sector_hits; }
+  uint64_t pending_sector_hits() const { return m_pending_sector_hits; }
+  uint64_t wakeups() const { return m_wakeups; }
+  uint64_t retires() const { return m_retires; }
+  uint64_t tag_evictions() const { return m_tag_evictions; }
+  uint64_t immediate_reclaims() const { return m_immediate_reclaims; }
+  uint64_t final_ref_reclaims() const { return m_final_ref_reclaims; }
+  size_t allocated_lines() const {
+    size_t result = 0;
+    for (const physical_line &physical : m_phys) result += physical.allocated;
+    return result;
+  }
+
+  void assert_shadow_refs() const {
+    std::vector<uint64_t> shadow(m_phys.size(), 0);
+    for (const entry &owner : m_entries)
+      for (const reference &ref : owner.references) {
+        assert(fill_identity_matches(ref.identity));
+        assert(ref.sector_mask && !(ref.sector_mask & ~0xFU));
+        assert(!(ref.pending_mask & ~ref.sector_mask));
+        ++shadow[ref.identity.id];
+      }
+    for (size_t id = 0; id < m_phys.size(); ++id) {
+      const physical_line &physical = m_phys[id];
+      assert(physical.ref_count == shadow[id]);
+      if (!physical.allocated) {
+        assert(!physical.tag_valid && !physical.ref_count &&
+               physical.waiters.empty());
+      }
+    }
+    for (const tag_entry &tag : m_tags)
+      if (tag.valid) {
+        assert(fill_identity_matches(tag.physical));
+        assert(m_phys[tag.physical.id].tag_valid);
+      }
+  }
+
+ private:
+  struct waiter {
+    unsigned slot;
+    uint64_t slot_generation;
+    unsigned sector;
+  };
+  struct physical_line {
+    bool allocated = false;
+    bool tag_valid = false;
+    uint64_t generation = 0;
+    uint64_t ref_count = 0;
+    std::array<sector_state, kSectorsPerLogicalLine> sectors;
+    std::vector<waiter> waiters;
+  };
+  struct tag_entry {
+    bool valid = false;
+    uint64_t line = 0;
+    physical_identity physical;
+    uint64_t lru = 0;
+  };
+  struct reference {
+    physical_identity identity;
+    uint8_t sector_mask = 0;
+    uint8_t pending_mask = 0;
+  };
+  struct entry {
+    uint64_t uid;
+    unsigned slot;
+    uint64_t slot_generation;
+    std::vector<reference> references;
+    unsigned pending_dependencies;
+  };
+  struct slot_state {
+    bool active = false;
+    uint64_t uid = 0;
+    uint64_t generation = 0;
+  };
+
+  entry *find_entry(uint64_t uid) {
+    for (entry &owner : m_entries)
+      if (owner.uid == uid) return &owner;
+    return nullptr;
+  }
+  const entry *find_entry_const(uint64_t uid) const {
+    for (const entry &owner : m_entries)
+      if (owner.uid == uid) return &owner;
+    return nullptr;
+  }
+  entry *find_entry_by_slot(unsigned slot, uint64_t generation) {
+    if (slot >= m_slots.size() || !m_slots[slot].active ||
+        m_slots[slot].generation != generation)
+      return nullptr;
+    return find_entry(m_slots[slot].uid);
+  }
+  static reference *find_reference(entry &owner, physical_identity identity) {
+    for (reference &ref : owner.references)
+      if (ref.identity.id == identity.id &&
+          ref.identity.generation == identity.generation)
+        return &ref;
+    return nullptr;
+  }
+  reference &attach_reference(entry &owner, physical_identity identity) {
+    if (reference *existing = find_reference(owner, identity)) return *existing;
+    physical_line &physical = m_phys[identity.id];
+    assert(fill_identity_matches(identity));
+    const uint64_t max_ref_count = (1ULL << m_cfg.ref_count_bits) - 1;
+    assert(physical.ref_count < max_ref_count);
+    ++physical.ref_count;
+    owner.references.push_back({identity, 0, 0});
+    return owner.references.back();
+  }
+  void add_waiter(reference &ref, unsigned sector) {
+    const uint8_t bit = static_cast<uint8_t>(1U << sector);
+    assert(!(ref.pending_mask & bit));
+    entry *owner = nullptr;
+    for (entry &candidate : m_entries)
+      for (reference &candidate_ref : candidate.references)
+        if (&candidate_ref == &ref) owner = &candidate;
+    assert(owner);
+    physical_line &physical = m_phys[ref.identity.id];
+    ref.pending_mask |= bit;
+    ++owner->pending_dependencies;
+    physical.waiters.push_back({owner->slot, owner->slot_generation, sector});
+  }
+  bool entry_ready(const entry &owner) const {
+    if (owner.pending_dependencies) return false;
+    for (const reference &ref : owner.references) {
+      if (!fill_identity_matches(ref.identity) || ref.pending_mask) return false;
+      const physical_line &physical = m_phys[ref.identity.id];
+      for (unsigned sector = 0; sector < kSectorsPerLogicalLine; ++sector)
+        if ((ref.sector_mask & (1U << sector)) &&
+            physical.sectors[sector] != sector_state::VALID)
+          return false;
+    }
+    return true;
+  }
+  tag_entry *find_tag(uint64_t line) {
+    const unsigned set = static_cast<unsigned>(
+        (line / kLogicalLineBytes) % m_cfg.logical_sets);
+    for (unsigned way = 0; way < m_cfg.logical_ways; ++way) {
+      tag_entry &tag = m_tags[set * m_cfg.logical_ways + way];
+      if (tag.valid && tag.line == line) {
+        tag.lru = ++m_lru_clock;
+        return &tag;
+      }
+    }
+    return nullptr;
+  }
+  tag_entry *select_victim(uint64_t line) {
+    const unsigned set = static_cast<unsigned>(
+        (line / kLogicalLineBytes) % m_cfg.logical_sets);
+    tag_entry *victim = &m_tags[set * m_cfg.logical_ways];
+    for (unsigned way = 0; way < m_cfg.logical_ways; ++way) {
+      tag_entry &tag = m_tags[set * m_cfg.logical_ways + way];
+      if (!tag.valid) return &tag;
+      if (tag.lru < victim->lru) victim = &tag;
+    }
+    return victim;
+  }
+  int find_free_physical() {
+    for (unsigned offset = 0; offset < m_phys.size(); ++offset) {
+      const unsigned id = (m_rr_next + offset) % m_phys.size();
+      if (!m_phys[id].allocated) {
+        m_rr_next = (id + 1) % m_phys.size();
+        return id;
+      }
+    }
+    return -1;
+  }
+  void evict_tag(tag_entry &victim) {
+    physical_line &old = m_phys[victim.physical.id];
+    assert(fill_identity_matches(victim.physical) && old.tag_valid);
+    old.tag_valid = false;
+    ++m_tag_evictions;
+    if (old.ref_count == 0) {
+      release(victim.physical);
+      ++m_immediate_reclaims;
+    }
+  }
+  void release(physical_identity identity) {
+    physical_line &physical = m_phys[identity.id];
+    assert(fill_identity_matches(identity) && !physical.tag_valid &&
+           !physical.ref_count && physical.waiters.empty());
+    physical.allocated = false;
+    physical.sectors.fill(sector_state::INVALID);
+  }
+
+  config m_cfg;
+  std::vector<tag_entry> m_tags;
+  std::vector<physical_line> m_phys;
+  std::vector<slot_state> m_slots;
+  std::list<entry> m_entries;
+  uint64_t m_cycle = UINT64_MAX, m_retire_cycle = UINT64_MAX,
+           m_lru_clock = 0, m_new_line_misses = 0,
+           m_new_sector_requests = 0, m_sector_responses = 0,
+           m_valid_sector_hits = 0, m_pending_sector_hits = 0,
+           m_wakeups = 0, m_retires = 0, m_out_of_order_retires = 0,
+           m_tag_evictions = 0, m_immediate_reclaims = 0,
+           m_final_ref_reclaims = 0, m_no_free_physical_events = 0,
            m_allocation_width_limited_events = 0, m_tag_cycle = UINT64_MAX,
            m_tag_requests = 0, m_tag_conflicts = 0;
   unsigned m_allocations_this_cycle = 0, m_rr_next = 0;

@@ -509,5 +509,92 @@ int main() {
   assert(!slot_reuse.fill_identity_matches(slot_old.physical));
   assert(!slot_reuse.fill_identity_matches(
       {slot_new.physical.id, slot_new.physical.generation + 1}));
+
+  // M3 sector S01-S09: physical allocation and Ref Count remain 128B-line
+  // granularity, but each requested 32B sector independently transitions
+  // INVALID -> PENDING -> VALID and wakes only its matching waiters.
+  config sector_cfg;
+  sector_cfg.selected_mode = mode::MODERN_OO_SECTOR;
+  sector_cfg.logical_sets = 1;
+  sector_cfg.logical_ways = 1;
+  sector_cfg.physical_lines = 2;
+  sector_cfg.allocation_width = 4;
+  sector_cfg.oo_pib_entries = 8;
+  dtc_l1::sector_oo_frontend sector(sector_cfg);
+  assert(sector.admit(1000));
+  const auto s0_miss = sector.access(600, 1000, 0, 0x1);
+  assert(s0_miss.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(s0_miss.new_request_mask == 0x1);
+  assert(sector.allocated_lines() == 1);
+  assert(sector.ref_count(s0_miss.physical) == 1);
+  assert(sector.state(s0_miss.physical, 0) ==
+         dtc_l1::sector_oo_frontend::sector_state::PENDING);
+  sector.complete_sector(s0_miss.physical, 0);
+  assert(sector.entry_ready_for(1000));
+  assert(sector.retire_one_ready(601));
+
+  // S01: a valid sector is a hit, creates no lower request, and retains the
+  // same 128B physical identity.
+  assert(sector.admit(1001));
+  const auto s0_hit = sector.access(602, 1001, 0, 0x1);
+  assert(s0_hit.kind == dtc_l1::io_access_kind::VALID_HIT);
+  assert(s0_hit.valid_mask == 0x1 && !s0_hit.pending_mask &&
+         !s0_hit.new_request_mask);
+  assert(s0_hit.physical.id == s0_miss.physical.id);
+  assert(sector.retire_one_ready(602));
+
+  // S03/S04: two invalid sectors of an existing Tag start two sector reads
+  // but retain one physical allocation and one Ref for this instruction.
+  assert(sector.admit(1002));
+  const auto partial_sector = sector.access(603, 1002, 0, 0x6);
+  assert(partial_sector.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(partial_sector.physical.id == s0_miss.physical.id);
+  assert(partial_sector.new_request_mask == 0x6);
+  assert(sector.allocated_lines() == 1);
+  assert(sector.ref_count(partial_sector.physical) == 1);
+
+  // S02/S05: another instruction merges both pending sectors, adds only one
+  // line Ref, and receives one waiter for each unresolved sector.
+  assert(sector.admit(1003));
+  const auto merged = sector.access(604, 1003, 0, 0x6);
+  assert(merged.kind == dtc_l1::io_access_kind::PENDING_HIT);
+  assert(merged.pending_mask == 0x6 && !merged.new_request_mask);
+  assert(sector.ref_count(partial_sector.physical) == 2);
+  sector.complete_sector(partial_sector.physical, 1);
+  assert(!sector.entry_ready_for(1002));
+  assert(!sector.entry_ready_for(1003));
+  sector.complete_sector(partial_sector.physical, 2);
+  assert(sector.entry_ready_for(1002));
+  assert(sector.entry_ready_for(1003));
+  assert(sector.wakeups() == 5);  // one S0 plus two waiters for S1/S2.
+  assert(sector.retire_one_ready(605));
+  assert(sector.retire_one_ready(606));
+
+  // S07/S08: evicting the logical Tag cannot redirect an old pending-sector
+  // response; its live Ref preserves the old physical allocation through the
+  // original response, then final retirement makes it reclaimable.
+  assert(sector.admit(1004));
+  const auto old_sector = sector.access(607, 1004, 0, 0x8);
+  assert(old_sector.new_request_mask == 0x8);
+  assert(sector.admit(1005));
+  const auto replacement_sector = sector.access(608, 1005, 128, 0x1);
+  assert(replacement_sector.new_request_mask == 0x1);
+  assert(!sector.tag_visible(old_sector.physical));
+  assert(sector.is_allocated(old_sector.physical));
+  assert(sector.ref_count(old_sector.physical) == 1);
+  sector.complete_sector(old_sector.physical, 3);
+  assert(sector.entry_ready_for(1004));
+  assert(sector.retire_one_ready(609));
+  assert(!sector.is_allocated(old_sector.physical));
+  sector.complete_sector(replacement_sector.physical, 0);
+  assert(sector.retire_one_ready(610));
+
+  // S09: all model masks are precisely four sector bits; every issued lower
+  // sector got exactly one response in this directed sequence.
+  assert(sector.new_sector_requests() == 5);
+  assert(sector.sector_responses() == 5);
+  assert(sector.valid_sector_hits() == 1);
+  assert(sector.pending_sector_hits() == 2);
+  sector.assert_shadow_refs();
   return 0;
 }
