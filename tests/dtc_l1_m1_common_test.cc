@@ -596,5 +596,46 @@ int main() {
   assert(sector.valid_sector_hits() == 1);
   assert(sector.pending_sector_hits() == 2);
   sector.assert_shadow_refs();
+
+  // M3.8 causal HOL proof: the same two dynamic line reads leave PAPER_IO
+  // blocked behind an older long-latency head, while PAPER_OO may retire the
+  // younger short-latency completion first.  Both paths still retire exactly
+  // the same two instruction identities after their original fills arrive.
+  config causal_cfg;
+  causal_cfg.logical_sets = 1;
+  causal_cfg.logical_ways = 2;
+  causal_cfg.physical_lines = 3;
+  causal_cfg.allocation_width = 4;
+  causal_cfg.io_pib_entries = 4;
+  causal_cfg.oo_pib_entries = 4;
+  causal_cfg.selected_mode = mode::PAPER_IO;
+  dtc_l1::io_frontend causal_io(causal_cfg);
+  assert(causal_io.admit(1100));
+  const auto io_long = causal_io.access(700, 1100, 0);
+  assert(causal_io.admit(1101));
+  const auto io_short = causal_io.access(701, 1101, 128);
+  causal_io.complete(io_short.physical);
+  assert(causal_io.younger_ready_exists());
+  assert(!causal_io.retire_head());  // FIFO HOL is causal, not incidental.
+  causal_io.complete(io_long.physical);
+  assert(causal_io.retire_head());
+  assert(causal_io.retire_head());
+  assert(causal_io.retires() == 2);
+
+  causal_cfg.selected_mode = mode::PAPER_OO;
+  dtc_l1::oo_frontend causal_oo(causal_cfg);
+  assert(causal_oo.admit(1100));
+  const auto oo_long = causal_oo.access(700, 1100, 0);
+  assert(causal_oo.admit(1101));
+  const auto oo_short = causal_oo.access(701, 1101, 128);
+  causal_oo.complete(oo_short.physical);
+  uint64_t causal_retired = 0;
+  assert(causal_oo.retire_one_ready(702, &causal_retired));
+  assert(causal_retired == 1101);
+  assert(causal_oo.out_of_order_retires() == 1);
+  causal_oo.complete(oo_long.physical);
+  assert(causal_oo.retire_one_ready(703, &causal_retired));
+  assert(causal_retired == 1100);
+  assert(causal_oo.retires() == 2);
   return 0;
 }

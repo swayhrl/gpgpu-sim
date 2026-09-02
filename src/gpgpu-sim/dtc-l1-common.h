@@ -947,12 +947,18 @@ class sector_oo_frontend {
   uint64_t pending_sector_hits() const { return m_pending_sector_hits; }
   uint64_t wakeups() const { return m_wakeups; }
   uint64_t retires() const { return m_retires; }
+  uint64_t out_of_order_retires() const { return m_out_of_order_retires; }
   uint64_t tag_evictions() const { return m_tag_evictions; }
   uint64_t immediate_reclaims() const { return m_immediate_reclaims; }
   uint64_t final_ref_reclaims() const { return m_final_ref_reclaims; }
   size_t allocated_lines() const {
     size_t result = 0;
     for (const physical_line &physical : m_phys) result += physical.allocated;
+    return result;
+  }
+  uint64_t active_refs() const {
+    uint64_t result = 0;
+    for (const physical_line &physical : m_phys) result += physical.ref_count;
     return result;
   }
 
@@ -1226,6 +1232,22 @@ struct paper_frontend_stats {
   uint64_t oo_wakeups = 0;
   uint64_t oo_active_refs = 0;
   uint64_t oo_physical_allocated = 0;
+  uint64_t sector_lower_created = 0;
+  uint64_t sector_lower_issued = 0;
+  uint64_t sector_lower_responses = 0;
+  uint64_t sector_inflight_current = 0;
+  uint64_t sector_pib_occupancy = 0;
+  uint64_t sector_retire_count = 0;
+  uint64_t sector_out_of_order_retires = 0;
+  uint64_t sector_completion_dependencies = 0;
+  uint64_t sector_completion_dependencies_closed = 0;
+  uint64_t sector_valid_hits = 0;
+  uint64_t sector_pending_hits = 0;
+  uint64_t sector_new_line_misses = 0;
+  uint64_t sector_new_requests = 0;
+  uint64_t sector_fill_wakeups = 0;
+  uint64_t sector_active_refs = 0;
+  uint64_t sector_physical_allocated = 0;
 
   void add(const paper_frontend_stats &other) {
     admits += other.admits;
@@ -1321,6 +1343,23 @@ struct paper_frontend_stats {
     oo_wakeups += other.oo_wakeups;
     oo_active_refs += other.oo_active_refs;
     oo_physical_allocated += other.oo_physical_allocated;
+    sector_lower_created += other.sector_lower_created;
+    sector_lower_issued += other.sector_lower_issued;
+    sector_lower_responses += other.sector_lower_responses;
+    sector_inflight_current += other.sector_inflight_current;
+    sector_pib_occupancy += other.sector_pib_occupancy;
+    sector_retire_count += other.sector_retire_count;
+    sector_out_of_order_retires += other.sector_out_of_order_retires;
+    sector_completion_dependencies += other.sector_completion_dependencies;
+    sector_completion_dependencies_closed +=
+        other.sector_completion_dependencies_closed;
+    sector_valid_hits += other.sector_valid_hits;
+    sector_pending_hits += other.sector_pending_hits;
+    sector_new_line_misses += other.sector_new_line_misses;
+    sector_new_requests += other.sector_new_requests;
+    sector_fill_wakeups += other.sector_fill_wakeups;
+    sector_active_refs += other.sector_active_refs;
+    sector_physical_allocated += other.sector_physical_allocated;
   }
 };
 

@@ -2142,28 +2142,50 @@ void ldst_unit::get_dtc_l1_stats(
   }
   if (dtc_l1_paper_oo_active()) {
     dtc_l1::paper_frontend_stats oo;
-    oo.oo_lower_created = m_dtc_l1_oo_lower_created;
-    oo.oo_lower_issued = m_dtc_l1_oo_lower_issued;
-    oo.oo_lower_responses = m_dtc_l1_oo_lower_responses;
-    oo.oo_inflight_current = m_dtc_l1_oo_inflight.size();
-    oo.oo_pib_occupancy = m_dtc_l1_oo_pib.size();
-    oo.oo_retire_count = m_dtc_l1_oo_frontend->retires();
-    oo.oo_out_of_order_retires = m_dtc_l1_oo_out_of_order_retires;
-    oo.oo_ready_but_writeback_blocked_cycles =
-        m_dtc_l1_oo_ready_but_wb_blocked_cycles;
-    oo.oo_completion_dependencies = m_dtc_l1_oo_completion_dependencies;
-    oo.oo_completion_dependencies_closed =
-        m_dtc_l1_oo_completion_dependencies_closed;
-    oo.oo_valid_hits = m_dtc_l1_oo_frontend->valid_hits();
-    oo.oo_pending_hits = m_dtc_l1_oo_frontend->pending_hits();
-    oo.oo_new_misses = m_dtc_l1_oo_frontend->new_misses();
-    oo.oo_tag_evictions = m_dtc_l1_oo_frontend->tag_evictions();
-    oo.oo_immediate_reclaims = m_dtc_l1_oo_frontend->immediate_reclaims();
-    oo.oo_deferred_reclaims = m_dtc_l1_oo_frontend->deferred_reclaims();
-    oo.oo_final_ref_reclaims = m_dtc_l1_oo_frontend->final_ref_reclaims();
-    oo.oo_wakeups = m_dtc_l1_oo_frontend->wakeups();
-    oo.oo_active_refs = m_dtc_l1_oo_frontend->active_refs();
-    oo.oo_physical_allocated = m_dtc_l1_oo_frontend->allocated_lines();
+    if (dtc_l1_sector_oo_active()) {
+      oo.sector_lower_created = m_dtc_l1_oo_lower_created;
+      oo.sector_lower_issued = m_dtc_l1_oo_lower_issued;
+      oo.sector_lower_responses = m_dtc_l1_oo_lower_responses;
+      oo.sector_inflight_current = m_dtc_l1_oo_inflight.size();
+      oo.sector_pib_occupancy = m_dtc_l1_oo_pib.size();
+      oo.sector_retire_count = m_dtc_l1_sector_frontend->retires();
+      oo.sector_out_of_order_retires = m_dtc_l1_oo_out_of_order_retires;
+      oo.sector_completion_dependencies = m_dtc_l1_oo_completion_dependencies;
+      oo.sector_completion_dependencies_closed =
+          m_dtc_l1_oo_completion_dependencies_closed;
+      oo.sector_valid_hits = m_dtc_l1_sector_frontend->valid_sector_hits();
+      oo.sector_pending_hits = m_dtc_l1_sector_frontend->pending_sector_hits();
+      oo.sector_new_line_misses = m_dtc_l1_sector_frontend->new_line_misses();
+      oo.sector_new_requests =
+          m_dtc_l1_sector_frontend->new_sector_requests();
+      oo.sector_fill_wakeups = m_dtc_l1_sector_frontend->wakeups();
+      oo.sector_active_refs = m_dtc_l1_sector_frontend->active_refs();
+      oo.sector_physical_allocated =
+          m_dtc_l1_sector_frontend->allocated_lines();
+    } else {
+      oo.oo_lower_created = m_dtc_l1_oo_lower_created;
+      oo.oo_lower_issued = m_dtc_l1_oo_lower_issued;
+      oo.oo_lower_responses = m_dtc_l1_oo_lower_responses;
+      oo.oo_inflight_current = m_dtc_l1_oo_inflight.size();
+      oo.oo_pib_occupancy = m_dtc_l1_oo_pib.size();
+      oo.oo_retire_count = m_dtc_l1_oo_frontend->retires();
+      oo.oo_out_of_order_retires = m_dtc_l1_oo_out_of_order_retires;
+      oo.oo_ready_but_writeback_blocked_cycles =
+          m_dtc_l1_oo_ready_but_wb_blocked_cycles;
+      oo.oo_completion_dependencies = m_dtc_l1_oo_completion_dependencies;
+      oo.oo_completion_dependencies_closed =
+          m_dtc_l1_oo_completion_dependencies_closed;
+      oo.oo_valid_hits = m_dtc_l1_oo_frontend->valid_hits();
+      oo.oo_pending_hits = m_dtc_l1_oo_frontend->pending_hits();
+      oo.oo_new_misses = m_dtc_l1_oo_frontend->new_misses();
+      oo.oo_tag_evictions = m_dtc_l1_oo_frontend->tag_evictions();
+      oo.oo_immediate_reclaims = m_dtc_l1_oo_frontend->immediate_reclaims();
+      oo.oo_deferred_reclaims = m_dtc_l1_oo_frontend->deferred_reclaims();
+      oo.oo_final_ref_reclaims = m_dtc_l1_oo_frontend->final_ref_reclaims();
+      oo.oo_wakeups = m_dtc_l1_oo_frontend->wakeups();
+      oo.oo_active_refs = m_dtc_l1_oo_frontend->active_refs();
+      oo.oo_physical_allocated = m_dtc_l1_oo_frontend->allocated_lines();
+    }
     stats.add(oo);
   }
 }
@@ -2483,7 +2505,9 @@ mem_stage_stall_type ldst_unit::process_memory_access_queue_l1cache(
 }
 
 bool ldst_unit::dtc_l1_paper_base_active() const {
-  return m_dtc_l1_frontend && m_dtc_l1_frontend->enabled();
+  return m_dtc_l1_frontend && m_dtc_l1_frontend->enabled() &&
+         m_config->dtc_l1_mode ==
+             static_cast<unsigned>(dtc_l1::mode::PAPER_BASE);
 }
 
 bool ldst_unit::dtc_l1_paper_io_active() const {
@@ -2491,7 +2515,11 @@ bool ldst_unit::dtc_l1_paper_io_active() const {
 }
 
 bool ldst_unit::dtc_l1_paper_oo_active() const {
-  return m_dtc_l1_oo_frontend != nullptr;
+  return m_dtc_l1_oo_frontend != nullptr || m_dtc_l1_sector_frontend != nullptr;
+}
+
+bool ldst_unit::dtc_l1_sector_oo_active() const {
+  return m_dtc_l1_sector_frontend != nullptr;
 }
 
 ldst_unit::dtc_l1_io_pib_entry *ldst_unit::dtc_l1_io_find_entry(
@@ -2731,15 +2759,19 @@ ldst_unit::dtc_l1_oo_pib_entry *ldst_unit::dtc_l1_oo_find_entry(
   return nullptr;
 }
 
-// PAPER_OO owns the same whole-line lower request lifecycle as PAPER_IO, but
-// uses oo_frontend's random-access PIB/ref-count state and ready selection.
+// PAPER_OO and MODERN_OO_SECTOR share the random-access PIB and line-level
+// Ref ownership.  The latter only refines the lower request/readiness unit to
+// one 32B sector at a time.
 bool ldst_unit::dtc_l1_oo_memory_cycle(
     warp_inst_t &inst, mem_stage_stall_type &stall_reason,
     mem_stage_access_type &access_type) {
   const unsigned uid = inst.get_uid();
   dtc_l1_oo_pib_entry *entry = dtc_l1_oo_find_entry(uid);
   if (!entry) {
-    if (!m_dtc_l1_oo_frontend->admit(uid)) {
+    const bool admitted = dtc_l1_sector_oo_active()
+                             ? m_dtc_l1_sector_frontend->admit(uid)
+                             : m_dtc_l1_oo_frontend->admit(uid);
+    if (!admitted) {
       stall_reason = BK_CONF;
       access_type = G_MEM_LD;
       return false;
@@ -2753,24 +2785,48 @@ bool ldst_unit::dtc_l1_oo_memory_cycle(
         entry->references[entry->next_reference];
     const unsigned long long cycle =
         m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
-    if (!m_dtc_l1_oo_frontend->try_serve_tag(cycle,
-                                              reference.line_address)) {
+    const bool tag_served = dtc_l1_sector_oo_active()
+                                ? m_dtc_l1_sector_frontend->try_serve_tag(
+                                      cycle, reference.line_address)
+                                : m_dtc_l1_oo_frontend->try_serve_tag(
+                                      cycle, reference.line_address);
+    if (!tag_served) {
       stall_reason = BK_CONF;
       access_type = G_MEM_LD;
       return false;
     }
-    const dtc_l1::io_access_result result =
-        m_dtc_l1_oo_frontend->access(cycle, uid, reference.line_address);
-    if (result.kind == dtc_l1::io_access_kind::NO_FREE_LINE) {
-      stall_reason = BK_CONF;
-      access_type = G_MEM_LD;
-      return false;
-    }
-    if (result.kind == dtc_l1::io_access_kind::NEW_MISS) {
-      assert(m_dtc_l1_oo_lower_create_queue.size() <
-             m_config->dtc_l1_oo_pib_entries);
-      m_dtc_l1_oo_lower_create_queue.push_back(
-          {uid, result.physical, reference.line_address});
+    if (dtc_l1_sector_oo_active()) {
+      const dtc_l1::sector_oo_frontend::access_result result =
+          m_dtc_l1_sector_frontend->access(cycle, uid, reference.line_address,
+                                            reference.sector_mask);
+      if (result.kind == dtc_l1::io_access_kind::NO_FREE_LINE) {
+        stall_reason = BK_CONF;
+        access_type = G_MEM_LD;
+        return false;
+      }
+      for (unsigned sector = 0; sector < dtc_l1::kSectorsPerLogicalLine;
+           ++sector) {
+        const uint8_t sector_bit = static_cast<uint8_t>(1U << sector);
+        if (!(result.new_request_mask & sector_bit)) continue;
+        assert(m_dtc_l1_oo_lower_create_queue.size() <
+               m_config->dtc_l1_oo_pib_entries);
+        m_dtc_l1_oo_lower_create_queue.push_back(
+            {uid, result.physical, reference.line_address, sector_bit});
+      }
+    } else {
+      const dtc_l1::io_access_result result =
+          m_dtc_l1_oo_frontend->access(cycle, uid, reference.line_address);
+      if (result.kind == dtc_l1::io_access_kind::NO_FREE_LINE) {
+        stall_reason = BK_CONF;
+        access_type = G_MEM_LD;
+        return false;
+      }
+      if (result.kind == dtc_l1::io_access_kind::NEW_MISS) {
+        assert(m_dtc_l1_oo_lower_create_queue.size() <
+               m_config->dtc_l1_oo_pib_entries);
+        m_dtc_l1_oo_lower_create_queue.push_back(
+            {uid, result.physical, reference.line_address, 0xF});
+      }
     }
     ++entry->next_reference;
   }
@@ -2795,18 +2851,33 @@ void ldst_unit::dtc_l1_oo_issue_lower_requests() {
     assert(entry);
     mem_access_byte_mask_t byte_mask;
     mem_access_sector_mask_t sector_mask;
-    byte_mask.set();
-    sector_mask.set();
-    mem_access_t whole_line(GLOBAL_ACC_R, candidate.line_address,
-                            dtc_l1::kLogicalLineBytes, false,
+    uint64_t request_address = candidate.line_address;
+    unsigned request_size = dtc_l1::kLogicalLineBytes;
+    if (dtc_l1_sector_oo_active()) {
+      assert(candidate.sector_mask && !(candidate.sector_mask &
+                                         (candidate.sector_mask - 1)) &&
+             !(candidate.sector_mask & ~0xFU));
+      unsigned sector = 0;
+      while (!(candidate.sector_mask & (1U << sector))) ++sector;
+      request_address += sector * 32;
+      request_size = 32;
+      sector_mask.set(sector);
+      for (unsigned byte = sector * 32; byte < (sector + 1) * 32; ++byte)
+        byte_mask.set(byte);
+    } else {
+      byte_mask.set();
+      sector_mask.set();
+    }
+    mem_access_t lower_read(GLOBAL_ACC_R, request_address, request_size, false,
                             entry->inst.get_warp_active_mask(), byte_mask,
                             sector_mask, m_memory_config->gpgpu_ctx);
-    mem_fetch *mf = m_mf_allocator->alloc(entry->inst, whole_line, cycle);
+    mem_fetch *mf = m_mf_allocator->alloc(entry->inst, lower_read, cycle);
     const bool inserted = m_dtc_l1_oo_inflight
                               .emplace(mf->get_request_uid(),
                                        dtc_l1_oo_inflight{candidate.physical,
                                                            candidate.line_address,
-                                                           candidate.inst_uid})
+                                                           candidate.inst_uid,
+                                                           candidate.sector_mask})
                               .second;
     assert(inserted && "OO request UID must remain unique while live");
     m_dtc_l1_oo_lower_issue_queue.push_back(mf);
@@ -2839,20 +2910,25 @@ bool ldst_unit::dtc_l1_oo_consume_response(mem_fetch *mf) {
       static_cast<unsigned>((mf->get_addr() - record.line_address) / 32);
   if (mf->get_is_write() || aligned_address != record.line_address ||
       sector >= dtc_l1::kSectorsPerLogicalLine ||
+      !(record.expected_sector_mask & (1U << sector)) ||
       (record.response_sector_mask & (1U << sector))) {
     assert(false && "OO response identity/address mismatch");
   }
   record.response_sector_mask |= static_cast<uint8_t>(1U << sector);
   mem_fetch *original = mf->get_original_mf();
-  const bool whole_line_complete = record.response_sector_mask == 0xFU;
-  if (whole_line_complete) {
-    m_dtc_l1_oo_frontend->complete(record.physical);
+  const bool request_complete =
+      record.response_sector_mask == record.expected_sector_mask;
+  if (request_complete) {
+    if (dtc_l1_sector_oo_active())
+      m_dtc_l1_sector_frontend->complete_sector(record.physical, sector);
+    else
+      m_dtc_l1_oo_frontend->complete(record.physical);
     m_core->get_gpu()->dtc_l1_complete_lower_request();
     m_dtc_l1_oo_inflight.erase(it);
     ++m_dtc_l1_oo_lower_responses;
   }
   delete mf;
-  if (original && whole_line_complete) delete original;
+  if (original && request_complete) delete original;
   return true;
 }
 
@@ -2884,7 +2960,10 @@ void ldst_unit::dtc_l1_oo_complete_instruction(const warp_inst_t &inst,
 bool ldst_unit::dtc_l1_oo_writeback_ready() {
   if (!dtc_l1_paper_oo_active()) return false;
   uint64_t uid = 0;
-  if (!m_dtc_l1_oo_frontend->oldest_ready_uid(&uid)) return false;
+  const bool ready = dtc_l1_sector_oo_active()
+                         ? m_dtc_l1_sector_frontend->oldest_ready_uid(&uid)
+                         : m_dtc_l1_oo_frontend->oldest_ready_uid(&uid);
+  if (!ready) return false;
   dtc_l1_oo_pib_entry *entry = dtc_l1_oo_find_entry(static_cast<unsigned>(uid));
   assert(entry);
   m_next_wb = entry->inst;
@@ -2898,7 +2977,12 @@ bool ldst_unit::dtc_l1_oo_writeback_ready() {
   uint64_t retired = 0;
   const unsigned long long cycle =
       m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
-  assert(m_dtc_l1_oo_frontend->retire_one_ready(cycle, &retired));
+  const bool retired_ok = dtc_l1_sector_oo_active()
+                              ? m_dtc_l1_sector_frontend->retire_one_ready(
+                                    cycle, &retired)
+                              : m_dtc_l1_oo_frontend->retire_one_ready(cycle,
+                                                                       &retired);
+  assert(retired_ok);
   assert(retired == uid);
   for (auto it = m_dtc_l1_oo_pib.begin(); it != m_dtc_l1_oo_pib.end(); ++it) {
     if (it->inst.get_uid() == uid) {
@@ -2907,7 +2991,9 @@ bool ldst_unit::dtc_l1_oo_writeback_ready() {
     }
   }
   m_dtc_l1_oo_out_of_order_retires =
-      m_dtc_l1_oo_frontend->out_of_order_retires();
+      dtc_l1_sector_oo_active()
+          ? m_dtc_l1_sector_frontend->out_of_order_retires()
+          : m_dtc_l1_oo_frontend->out_of_order_retires();
   m_next_wb.clear();
   return true;
 }
@@ -3616,6 +3702,12 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
   if (m_config->dtc_l1_mode == static_cast<unsigned>(dtc_l1::mode::PAPER_OO)) {
     dtc_config.selected_mode = dtc_l1::mode::PAPER_OO;
     m_dtc_l1_oo_frontend = std::make_unique<dtc_l1::oo_frontend>(dtc_config);
+  }
+  if (m_config->dtc_l1_mode ==
+      static_cast<unsigned>(dtc_l1::mode::MODERN_OO_SECTOR)) {
+    dtc_config.selected_mode = dtc_l1::mode::MODERN_OO_SECTOR;
+    m_dtc_l1_sector_frontend =
+        std::make_unique<dtc_l1::sector_oo_frontend>(dtc_config);
   }
   m_dtc_l1_debug_events_left = m_config->dtc_l1_debug_event_limit;
   m_dtc_l1_io_identity_events_left = m_config->dtc_l1_debug_event_limit;
@@ -4853,7 +4945,8 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
   const unsigned mode = m_shader_config->dtc_l1_mode;
   if (mode != static_cast<unsigned>(dtc_l1::mode::PAPER_BASE) &&
       mode != static_cast<unsigned>(dtc_l1::mode::PAPER_IO) &&
-      mode != static_cast<unsigned>(dtc_l1::mode::PAPER_OO)) {
+      mode != static_cast<unsigned>(dtc_l1::mode::PAPER_OO) &&
+      mode != static_cast<unsigned>(dtc_l1::mode::MODERN_OO_SECTOR)) {
     return;
   }
 
@@ -4976,6 +5069,58 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
             conventional_mshr_entry_full);
     fprintf(fout, "DTC_L1_conventional_l1d_mshr_merge_full_events = %llu\n",
             conventional_mshr_merge_full);
+    return;
+  }
+  if (mode == static_cast<unsigned>(dtc_l1::mode::MODERN_OO_SECTOR)) {
+    assert(total.sector_inflight_current == 0);
+    assert(total.sector_pib_occupancy == 0);
+    assert(total.sector_lower_created == total.sector_lower_issued);
+    assert(total.sector_lower_created == total.sector_lower_responses);
+    assert(total.sector_completion_dependencies ==
+           total.sector_completion_dependencies_closed);
+    assert(total.sector_active_refs == 0);
+    assert(dtc_l1_lower_outstanding() == 0);
+    assert(dtc_l1_lower_requests_acquired() ==
+           dtc_l1_lower_requests_released());
+    fprintf(fout, "DTC_L1_mode = MODERN_OO_SECTOR\n");
+    fprintf(fout, "DTC_L1_sector_lower_created = %llu\n",
+            static_cast<unsigned long long>(total.sector_lower_created));
+    fprintf(fout, "DTC_L1_sector_lower_issued = %llu\n",
+            static_cast<unsigned long long>(total.sector_lower_issued));
+    fprintf(fout, "DTC_L1_sector_lower_responses = %llu\n",
+            static_cast<unsigned long long>(total.sector_lower_responses));
+    fprintf(fout, "DTC_L1_sector_inflight_current = %llu\n",
+            static_cast<unsigned long long>(total.sector_inflight_current));
+    fprintf(fout, "DTC_L1_sector_pib_occupancy = %llu\n",
+            static_cast<unsigned long long>(total.sector_pib_occupancy));
+    fprintf(fout, "DTC_L1_sector_retire_count = %llu\n",
+            static_cast<unsigned long long>(total.sector_retire_count));
+    fprintf(fout, "DTC_L1_sector_out_of_order_retires = %llu\n",
+            static_cast<unsigned long long>(total.sector_out_of_order_retires));
+    fprintf(fout, "DTC_L1_sector_completion_dependency_count = %llu\n",
+            static_cast<unsigned long long>(total.sector_completion_dependencies));
+    fprintf(fout, "DTC_L1_sector_completion_dependency_closed = %llu\n",
+            static_cast<unsigned long long>(total.sector_completion_dependencies_closed));
+    fprintf(fout, "DTC_L1_sector_valid_hits = %llu\n",
+            static_cast<unsigned long long>(total.sector_valid_hits));
+    fprintf(fout, "DTC_L1_sector_pending_hits = %llu\n",
+            static_cast<unsigned long long>(total.sector_pending_hits));
+    fprintf(fout, "DTC_L1_sector_new_line_misses = %llu\n",
+            static_cast<unsigned long long>(total.sector_new_line_misses));
+    fprintf(fout, "DTC_L1_sector_new_requests = %llu\n",
+            static_cast<unsigned long long>(total.sector_new_requests));
+    fprintf(fout, "DTC_L1_sector_fill_wakeups = %llu\n",
+            static_cast<unsigned long long>(total.sector_fill_wakeups));
+    fprintf(fout, "DTC_L1_sector_active_refs = %llu\n",
+            static_cast<unsigned long long>(total.sector_active_refs));
+    fprintf(fout, "DTC_L1_sector_physical_allocated = %llu\n",
+            static_cast<unsigned long long>(total.sector_physical_allocated));
+    fprintf(fout, "DTC_L1_lower_credit_acquired = %llu\n",
+            static_cast<unsigned long long>(dtc_l1_lower_requests_acquired()));
+    fprintf(fout, "DTC_L1_lower_credit_released = %llu\n",
+            static_cast<unsigned long long>(dtc_l1_lower_requests_released()));
+    fprintf(fout, "DTC_L1_lower_outstanding = %u\n",
+            dtc_l1_lower_outstanding());
     return;
   }
   if (mode == static_cast<unsigned>(dtc_l1::mode::PAPER_OO)) {

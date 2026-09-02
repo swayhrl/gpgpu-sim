@@ -2048,6 +2048,7 @@ class ldst_unit : public pipelined_simd_unit {
   bool dtc_l1_paper_base_active() const;
   bool dtc_l1_paper_io_active() const;
   bool dtc_l1_paper_oo_active() const;
+  bool dtc_l1_sector_oo_active() const;
   bool dtc_l1_admit(warp_inst_t &inst);
   bool dtc_l1_try_tag(new_addr_type address);
   void dtc_l1_retire(const warp_inst_t &inst);
@@ -2127,6 +2128,7 @@ class ldst_unit : public pipelined_simd_unit {
   std::unique_ptr<dtc_l1::paper_frontend> m_dtc_l1_frontend;
   std::unique_ptr<dtc_l1::io_frontend> m_dtc_l1_io_frontend;
   std::unique_ptr<dtc_l1::oo_frontend> m_dtc_l1_oo_frontend;
+  std::unique_ptr<dtc_l1::sector_oo_frontend> m_dtc_l1_sector_frontend;
   struct dtc_l1_io_pib_entry {
     warp_inst_t inst;
     std::vector<dtc_l1::line_reference> references;
@@ -2178,11 +2180,13 @@ class ldst_unit : public pipelined_simd_unit {
     unsigned inst_uid = 0;
     dtc_l1::physical_identity physical;
     uint64_t line_address = 0;
+    uint8_t sector_mask = 0xF;
   };
   struct dtc_l1_oo_inflight {
     dtc_l1::physical_identity physical;
     uint64_t line_address = 0;
     unsigned inst_uid = 0;
+    uint8_t expected_sector_mask = 0xF;
     uint8_t response_sector_mask = 0;
   };
   dtc_l1_oo_pib_entry *dtc_l1_oo_find_entry(unsigned uid);
