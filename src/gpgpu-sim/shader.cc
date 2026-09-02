@@ -4207,6 +4207,10 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
           static_cast<unsigned long long>(total.pib_peak));
   fprintf(fout, "DTC_L1_pib_full_events = %llu\n",
           static_cast<unsigned long long>(total.pib_full_events));
+  fprintf(fout, "DTC_L1_primary_stall_pib_full = %llu\n",
+          static_cast<unsigned long long>(total.pib_full_stall_cycles));
+  fprintf(fout, "DTC_L1_primary_stall_tag_bank = %llu\n",
+          static_cast<unsigned long long>(total.tag_conflict_stall_cycles));
   fprintf(fout, "DTC_L1_pib_occupancy_cycle_sum = %llu\n",
           static_cast<unsigned long long>(total.pib_occupancy_cycle_sum));
   fprintf(fout, "DTC_L1_pib_occupancy_sample_cycles = %llu\n",
@@ -4221,10 +4225,15 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
           dtc_l1_lower_peak());
   fprintf(fout, "DTC_L1_lower_cap_full_events = %llu\n",
           static_cast<unsigned long long>(dtc_l1_lower_cap_full_events()));
+  fprintf(fout, "DTC_L1_primary_stall_lower_cap = %llu\n",
+          static_cast<unsigned long long>(dtc_l1_lower_cap_full_events()));
   fprintf(fout, "DTC_L1_lower_requests_acquired = %llu\n",
           static_cast<unsigned long long>(dtc_l1_lower_requests_acquired()));
   fprintf(fout, "DTC_L1_lower_requests_released = %llu\n",
           static_cast<unsigned long long>(dtc_l1_lower_requests_released()));
+  fprintf(fout, "DTC_L1_frontend_stall_cycles = %llu\n",
+          static_cast<unsigned long long>(total.frontend_stall_cycles +
+                                          dtc_l1_lower_cap_full_events()));
   fprintf(fout, "DTC_L1_tag_requests = %llu\n",
           static_cast<unsigned long long>(total.tag_requests));
   fprintf(fout, "DTC_L1_tag_conflicts = %llu\n",

@@ -42,6 +42,7 @@ int main() {
   assert(front_end.pib_occupancy() == 2);
   assert(front_end.pib_peak() == 2);
   assert(front_end.pib_full_events() == 1);
+  assert(front_end.pib_full_stall_cycles() == 1);
   front_end.retire(10);
   assert(front_end.try_admit(12));
   front_end.sample_cycle(99);
@@ -59,6 +60,10 @@ int main() {
   for (unsigned bank = 0; bank < 4; ++bank)
     assert(front_end.try_serve_tag(200, bank * 128, 32));
   assert(!front_end.try_serve_tag(200, 4 * 128, 32));
+  assert(front_end.tag_conflict_stall_cycles() == 2);
+  assert(front_end.frontend_stall_cycles() ==
+         front_end.pib_full_stall_cycles() +
+             front_end.tag_conflict_stall_cycles());
   assert(front_end.requests_per_bank().size() == 4);
   for (const uint64_t requests : front_end.requests_per_bank())
     assert(requests >= 1);
