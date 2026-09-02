@@ -415,6 +415,9 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_vm_l2_tlb_ports", OPT_UINT32,
                          &gpgpu_vm_l2_tlb_ports,
                          "shared functional L2 TLB lookups/cycle", "1");
+  option_parser_register(opp, "-gpgpu_vm_translation_mshr_entries",
+                         OPT_UINT32, &gpgpu_vm_translation_mshr_entries,
+                         "functional translation MSHR entries", "32");
 
   option_parser_register(opp, "-gpgpu_perfect_mem", OPT_BOOL,
                          &gpgpu_perfect_mem,
@@ -1010,7 +1013,8 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
                                    m_shader_config->gpgpu_vm_l1_tlb_ports),
         vm_translation::tlb_config(m_shader_config->gpgpu_vm_l2_tlb_entries,
                                    m_shader_config->gpgpu_vm_l2_tlb_assoc,
-                                   m_shader_config->gpgpu_vm_l2_tlb_ports));
+                                   m_shader_config->gpgpu_vm_l2_tlb_ports),
+        m_shader_config->gpgpu_vm_translation_mshr_entries);
     if (!vm_config.valid()) {
       fprintf(stderr, "ERROR: invalid functional VM TLB configuration\n");
       abort();

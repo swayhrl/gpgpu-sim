@@ -81,20 +81,38 @@ struct translation_config {
   uint64_t page_size;
   tlb_config l1;
   tlb_config l2;
+  unsigned mshr_entries;
   translation_config(unsigned sms = 1,
                      uint64_t page = vm_core::kDefaultBasePageSize,
                      const tlb_config &l1_config = tlb_config(),
-                     const tlb_config &l2_config = tlb_config(768, 16, 1))
-      : num_sms(sms), page_size(page), l1(l1_config), l2(l2_config) {}
+                     const tlb_config &l2_config = tlb_config(768, 16, 1),
+                     unsigned mshr_count = 32)
+      : num_sms(sms), page_size(page), l1(l1_config), l2(l2_config),
+        mshr_entries(mshr_count) {}
   bool valid() const;
 };
 
-enum lookup_result { READY, L1_PORT_STALL, L2_PORT_STALL };
+enum lookup_result {
+  READY,
+  L1_PORT_STALL,
+  L2_PORT_STALL,
+  TRANSLATION_PENDING,
+  MSHR_FULL
+};
 
 struct translation_stats {
   uint64_t mapper_lookups;
   uint64_t completed;
-  translation_stats() : mapper_lookups(0), completed(0) {}
+  uint64_t mshr_allocations;
+  uint64_t mshr_merges;
+  uint64_t mshr_full_events;
+  uint64_t waiter_registrations;
+  uint64_t waiter_wakeups;
+  uint64_t mshr_releases;
+  translation_stats()
+      : mapper_lookups(0), completed(0), mshr_allocations(0),
+        mshr_merges(0), mshr_full_events(0), waiter_registrations(0),
+        waiter_wakeups(0), mshr_releases(0) {}
 };
 
 // G2-1 controller: hit latency is zero, but both TLBs have finite lookup
@@ -104,7 +122,13 @@ class translation_controller {
  public:
   explicit translation_controller(const translation_config &config);
   lookup_result translate(unsigned sid, unsigned asid, uint64_t sim_va,
-                          uint64_t cycle, uint64_t *sim_pa);
+                          uint64_t cycle, uint64_t waiter_uid,
+                          uint64_t *sim_pa);
+  // G2-2 test hook and G2-3 walker completion entry point.
+  bool complete_translation(const translation_key &key, uint64_t cycle);
+  bool invariants_hold() const;
+  bool quiescent_invariants_hold() const;
+  unsigned active_mshrs() const { return m_mshrs.size(); }
   const translation_config &config() const { return m_config; }
   const set_associative_tlb &l1(unsigned sid) const;
   const set_associative_tlb &l2() const { return m_l2; }
@@ -112,10 +136,26 @@ class translation_controller {
   void print_stats(FILE *fout) const;
 
  private:
+  struct waiter {
+    unsigned sid;
+    uint64_t uid;
+    waiter(unsigned s, uint64_t u) : sid(s), uid(u) {}
+  };
+  struct mshr_entry {
+    translation_key key;
+    std::vector<waiter> waiters;
+    mshr_entry(const translation_key &k) : key(k), waiters() {}
+    bool has_waiter(uint64_t uid) const;
+  };
+  mshr_entry *find_mshr(const translation_key &key);
+  const mshr_entry *find_mshr(const translation_key &key) const;
+  lookup_result allocate_or_merge(unsigned sid, uint64_t waiter_uid,
+                                  const translation_key &key);
   translation_config m_config;
   present_page_mapper m_mapper;
   std::vector<set_associative_tlb> m_l1s;
   set_associative_tlb m_l2;
+  std::vector<mshr_entry> m_mshrs;
   translation_stats m_stats;
 };
 

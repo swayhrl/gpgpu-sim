@@ -840,6 +840,7 @@ class mem_access_t {
   void set_addr(new_addr_type addr) { m_addr = addr; }
   new_addr_type get_sim_va() const { return m_sim_va; }
   new_addr_type get_sim_pa() const { return m_sim_pa; }
+  unsigned get_uid() const { return m_uid; }
   bool vm_translation_applied() const { return m_vm_translation_applied; }
   void set_sim_pa(new_addr_type sim_pa) {
     m_sim_pa = sim_pa;

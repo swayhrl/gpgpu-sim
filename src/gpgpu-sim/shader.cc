@@ -2302,6 +2302,7 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
               m_sid, 0, access.get_sim_va(),
               m_core->get_gpu()->gpu_sim_cycle +
                   m_core->get_gpu()->gpu_tot_sim_cycle,
+              access.get_uid(),
               &translated_pa);
       if (result != vm_translation::READY) {
         ++m_stats->vm_translation_stall_cycles;
