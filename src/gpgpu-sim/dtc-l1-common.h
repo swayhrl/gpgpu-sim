@@ -318,6 +318,8 @@ class oo_frontend {
     assert(cfg.logical_sets && cfg.logical_ways && cfg.physical_lines);
     assert(cfg.allocation_width && cfg.oo_pib_entries);
     assert(cfg.ref_count_bits && cfg.ref_count_bits < 32);
+    assert(cfg.tag_banks && cfg.tag_requests_per_bank_per_cycle &&
+           cfg.tag_requests_per_cycle);
   }
 
   void begin_cycle(uint64_t cycle) {
@@ -339,6 +341,28 @@ class oo_frontend {
     ++state.generation;
     m_entries.push_back({uid, slot, state.generation, {}, 0});
     assert_shadow_refs();
+    return true;
+  }
+
+  bool try_serve_tag(uint64_t cycle, uint64_t address) {
+    if (cycle != m_tag_cycle) {
+      m_tag_cycle = cycle;
+      std::fill(m_tag_requests_this_cycle.begin(),
+                m_tag_requests_this_cycle.end(), 0);
+      m_total_tag_requests_this_cycle = 0;
+    }
+    const unsigned set = static_cast<unsigned>(
+        (address / kLogicalLineBytes) % m_cfg.logical_sets);
+    const unsigned bank = set % m_cfg.tag_banks;
+    if (m_total_tag_requests_this_cycle >= m_cfg.tag_requests_per_cycle ||
+        m_tag_requests_this_cycle[bank] >=
+            m_cfg.tag_requests_per_bank_per_cycle) {
+      ++m_tag_conflicts;
+      return false;
+    }
+    ++m_total_tag_requests_this_cycle;
+    ++m_tag_requests_this_cycle[bank];
+    ++m_tag_requests;
     return true;
   }
 
@@ -458,6 +482,16 @@ class oo_frontend {
     return true;
   }
 
+  bool oldest_ready_uid(uint64_t *uid) const {
+    for (const entry &owner : m_entries) {
+      if (entry_ready(owner)) {
+        if (uid) *uid = owner.uid;
+        return true;
+      }
+    }
+    return false;
+  }
+
   size_t occupancy() const { return m_entries.size(); }
   uint64_t new_misses() const { return m_new_misses; }
   uint64_t valid_hits() const { return m_valid_hits; }
@@ -472,6 +506,18 @@ class oo_frontend {
   uint64_t no_free_physical_events() const { return m_no_free_physical_events; }
   uint64_t allocation_width_limited_events() const {
     return m_allocation_width_limited_events;
+  }
+  uint64_t tag_requests() const { return m_tag_requests; }
+  uint64_t tag_conflicts() const { return m_tag_conflicts; }
+  size_t allocated_lines() const {
+    size_t result = 0;
+    for (const physical_line &physical : m_phys) result += physical.allocated;
+    return result;
+  }
+  uint64_t active_refs() const {
+    uint64_t result = 0;
+    for (const physical_line &physical : m_phys) result += physical.ref_count;
+    return result;
   }
   uint64_t ref_count(physical_identity identity) const {
     assert(fill_identity_matches(identity));
@@ -642,8 +688,12 @@ class oo_frontend {
            m_wakeups = 0, m_tag_evictions = 0, m_immediate_reclaims = 0,
            m_deferred_reclaims = 0, m_final_ref_reclaims = 0,
            m_no_free_physical_events = 0,
-           m_allocation_width_limited_events = 0;
+           m_allocation_width_limited_events = 0, m_tag_cycle = UINT64_MAX,
+           m_tag_requests = 0, m_tag_conflicts = 0;
   unsigned m_allocations_this_cycle = 0, m_rr_next = 0;
+  std::vector<unsigned> m_tag_requests_this_cycle =
+      std::vector<unsigned>(m_cfg.tag_banks, 0);
+  unsigned m_total_tag_requests_this_cycle = 0;
 };
 
 // A value snapshot lets the normal SM/cluster aggregation path emit a compact
@@ -705,6 +755,26 @@ struct paper_frontend_stats {
   uint64_t io_tag_requests = 0;
   uint64_t io_tag_conflicts = 0;
   std::vector<uint64_t> io_tag_requests_per_bank;
+  uint64_t oo_lower_created = 0;
+  uint64_t oo_lower_issued = 0;
+  uint64_t oo_lower_responses = 0;
+  uint64_t oo_inflight_current = 0;
+  uint64_t oo_pib_occupancy = 0;
+  uint64_t oo_retire_count = 0;
+  uint64_t oo_out_of_order_retires = 0;
+  uint64_t oo_ready_but_writeback_blocked_cycles = 0;
+  uint64_t oo_completion_dependencies = 0;
+  uint64_t oo_completion_dependencies_closed = 0;
+  uint64_t oo_valid_hits = 0;
+  uint64_t oo_pending_hits = 0;
+  uint64_t oo_new_misses = 0;
+  uint64_t oo_tag_evictions = 0;
+  uint64_t oo_immediate_reclaims = 0;
+  uint64_t oo_deferred_reclaims = 0;
+  uint64_t oo_final_ref_reclaims = 0;
+  uint64_t oo_wakeups = 0;
+  uint64_t oo_active_refs = 0;
+  uint64_t oo_physical_allocated = 0;
 
   void add(const paper_frontend_stats &other) {
     admits += other.admits;
@@ -779,6 +849,27 @@ struct paper_frontend_stats {
       io_tag_requests_per_bank.resize(other.io_tag_requests_per_bank.size(), 0);
     for (size_t bank = 0; bank < other.io_tag_requests_per_bank.size(); ++bank)
       io_tag_requests_per_bank[bank] += other.io_tag_requests_per_bank[bank];
+    oo_lower_created += other.oo_lower_created;
+    oo_lower_issued += other.oo_lower_issued;
+    oo_lower_responses += other.oo_lower_responses;
+    oo_inflight_current += other.oo_inflight_current;
+    oo_pib_occupancy += other.oo_pib_occupancy;
+    oo_retire_count += other.oo_retire_count;
+    oo_out_of_order_retires += other.oo_out_of_order_retires;
+    oo_ready_but_writeback_blocked_cycles +=
+        other.oo_ready_but_writeback_blocked_cycles;
+    oo_completion_dependencies += other.oo_completion_dependencies;
+    oo_completion_dependencies_closed += other.oo_completion_dependencies_closed;
+    oo_valid_hits += other.oo_valid_hits;
+    oo_pending_hits += other.oo_pending_hits;
+    oo_new_misses += other.oo_new_misses;
+    oo_tag_evictions += other.oo_tag_evictions;
+    oo_immediate_reclaims += other.oo_immediate_reclaims;
+    oo_deferred_reclaims += other.oo_deferred_reclaims;
+    oo_final_ref_reclaims += other.oo_final_ref_reclaims;
+    oo_wakeups += other.oo_wakeups;
+    oo_active_refs += other.oo_active_refs;
+    oo_physical_allocated += other.oo_physical_allocated;
   }
 };
 

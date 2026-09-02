@@ -437,6 +437,12 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_dtc_l1_io_pib_entries", OPT_UINT32,
                          &dtc_l1_io_pib_entries,
                          "DTC-L1 IO FIFO entries", "256");
+  option_parser_register(opp, "-gpgpu_dtc_l1_oo_pib_entries", OPT_UINT32,
+                         &dtc_l1_oo_pib_entries,
+                         "DTC-L1 OO random-access PIB entries", "128");
+  option_parser_register(opp, "-gpgpu_dtc_l1_ref_count_bits", OPT_UINT32,
+                         &dtc_l1_ref_count_bits,
+                         "DTC-L1 OO physical-line Ref Count width", "13");
   option_parser_register(opp, "-gpgpu_smem_latency", OPT_UINT32, &smem_latency,
                          "smem Latency", "3");
   option_parser_register(opp, "-gpgpu_cache:dl1PrefL1", OPT_CSTR,
@@ -1322,7 +1328,9 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
 bool gpgpu_sim::dtc_l1_try_acquire_lower_request() {
   const unsigned mode = m_shader_config->dtc_l1_mode;
   if (mode != static_cast<unsigned>(dtc_l1::mode::PAPER_BASE) &&
-      mode != static_cast<unsigned>(dtc_l1::mode::PAPER_IO)) {
+      mode != static_cast<unsigned>(dtc_l1::mode::PAPER_IO) &&
+      mode != static_cast<unsigned>(dtc_l1::mode::PAPER_OO) &&
+      mode != static_cast<unsigned>(dtc_l1::mode::MODERN_OO_SECTOR)) {
     return true;
   }
   const unsigned cap = m_shader_config->dtc_l1_lower_outstanding_cap;
@@ -1341,7 +1349,9 @@ bool gpgpu_sim::dtc_l1_try_acquire_lower_request() {
 void gpgpu_sim::dtc_l1_complete_lower_request() {
   const unsigned mode = m_shader_config->dtc_l1_mode;
   if (mode != static_cast<unsigned>(dtc_l1::mode::PAPER_BASE) &&
-      mode != static_cast<unsigned>(dtc_l1::mode::PAPER_IO)) {
+      mode != static_cast<unsigned>(dtc_l1::mode::PAPER_IO) &&
+      mode != static_cast<unsigned>(dtc_l1::mode::PAPER_OO) &&
+      mode != static_cast<unsigned>(dtc_l1::mode::MODERN_OO_SECTOR)) {
     return;
   }
   assert(m_dtc_l1_lower_outstanding > 0);
