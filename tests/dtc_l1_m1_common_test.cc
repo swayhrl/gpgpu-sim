@@ -155,5 +155,29 @@ int main() {
   assert(width.access(20, 20, 128).kind ==
          dtc_l1::io_access_kind::NO_FREE_LINE);
   assert(width.access(21, 20, 128).kind == dtc_l1::io_access_kind::NEW_MISS);
+
+  // M2 identity/LRU basis: replacing a ready logical Tag holds its old
+  // physical allocation through FIFO retirement, then a later allocation may
+  // reuse that slot only with a fresh generation.
+  config eviction_cfg;
+  eviction_cfg.selected_mode = mode::PAPER_IO;
+  eviction_cfg.logical_sets = 1;
+  eviction_cfg.logical_ways = 1;
+  eviction_cfg.physical_lines = 2;
+  dtc_l1::io_frontend eviction(eviction_cfg);
+  assert(eviction.admit(30));
+  const auto old = eviction.access(30, 30, 0);
+  eviction.complete(old.physical);
+  assert(eviction.retire_head());
+  assert(eviction.admit(31));
+  const auto newer = eviction.access(31, 31, 128);
+  assert(newer.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(newer.physical.id != old.physical.id);
+  eviction.complete(newer.physical);
+  assert(eviction.retire_head());
+  assert(eviction.admit(32));
+  const auto reused = eviction.access(32, 32, 256);
+  assert(reused.physical.id == old.physical.id);
+  assert(reused.physical.generation > old.physical.generation);
   return 0;
 }
