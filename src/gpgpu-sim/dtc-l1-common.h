@@ -65,7 +65,7 @@ class io_frontend {
 
   bool admit(uint64_t uid) {
     if (m_entries.size() >= m_cfg.io_pib_entries) return false;
-    m_entries.push_back({uid, {}, {}});
+    m_entries.push_back({uid, {}, {}, false});
     return true;
   }
 
@@ -82,10 +82,14 @@ class io_frontend {
               tag->physical};
     }
     if (m_allocations_this_cycle >= m_cfg.allocation_width) {
+      owner->allocation_blocked = true;
       return {io_access_kind::NO_FREE_LINE, {}};
     }
     const int free_id = find_free_physical();
-    if (free_id < 0) return {io_access_kind::NO_FREE_LINE, {}};
+    if (free_id < 0) {
+      owner->allocation_blocked = true;
+      return {io_access_kind::NO_FREE_LINE, {}};
+    }
     tag_entry *victim = select_victim(line);
     if (victim->valid) owner->release_on_retire.push_back(victim->physical);
     physical_identity identity{static_cast<unsigned>(free_id), ++m_phys[free_id].generation};
@@ -93,6 +97,7 @@ class io_frontend {
     m_phys[free_id].ready = false;
     *victim = {true, line, identity, ++m_lru_clock};
     owner->references.push_back(identity);
+    owner->allocation_blocked = false;
     ++m_allocations_this_cycle;
     ++m_new_misses;
     return {io_access_kind::NEW_MISS, identity};
@@ -126,7 +131,7 @@ class io_frontend {
  private:
   struct physical_line { bool allocated = false; bool ready = false; uint64_t generation = 0; };
   struct tag_entry { bool valid = false; uint64_t line = 0; physical_identity physical; uint64_t lru = 0; };
-  struct entry { uint64_t uid; std::vector<physical_identity> references; std::vector<physical_identity> release_on_retire; };
+  struct entry { uint64_t uid; std::vector<physical_identity> references; std::vector<physical_identity> release_on_retire; bool allocation_blocked; };
   entry *find_entry(uint64_t uid) { for (entry &e : m_entries) if (e.uid == uid) return &e; return nullptr; }
   tag_entry *find_tag(uint64_t line) {
     const unsigned set = static_cast<unsigned>((line / kLogicalLineBytes) % m_cfg.logical_sets);
@@ -143,7 +148,7 @@ class io_frontend {
     for (unsigned offset = 0; offset < m_phys.size(); ++offset) { const unsigned id = (m_rr_next + offset) % m_phys.size(); if (!m_phys[id].allocated) { m_rr_next = (id + 1) % m_phys.size(); return id; } }
     return -1;
   }
-  bool entry_ready(const entry &e) const { for (const physical_identity id : e.references) if (!m_phys[id.id].ready || m_phys[id.id].generation != id.generation) return false; return true; }
+  bool entry_ready(const entry &e) const { if (e.allocation_blocked) return false; for (const physical_identity id : e.references) if (!m_phys[id.id].ready || m_phys[id.id].generation != id.generation) return false; return true; }
   void release(physical_identity identity) { physical_line &line = m_phys[identity.id]; assert(line.generation == identity.generation); line.allocated = false; line.ready = false; }
   config m_cfg; std::vector<tag_entry> m_tags; std::vector<physical_line> m_phys; std::deque<entry> m_entries;
   uint64_t m_cycle = UINT64_MAX, m_lru_clock = 0, m_new_misses = 0, m_retires = 0; unsigned m_allocations_this_cycle = 0, m_rr_next = 0;

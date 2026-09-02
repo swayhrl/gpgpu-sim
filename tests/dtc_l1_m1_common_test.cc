@@ -119,5 +119,36 @@ int main() {
   io.complete(replacement.physical);
   assert(io.retire_head());
   assert(io.free_lines() == 1);
+
+  // M2 allocator semantics: allocation width is finite, partial allocations
+  // remain held, and an undersized pool naturally stops making progress.
+  config partial_cfg;
+  partial_cfg.selected_mode = mode::PAPER_IO;
+  partial_cfg.logical_sets = 2;
+  partial_cfg.logical_ways = 1;
+  partial_cfg.physical_lines = 1;
+  partial_cfg.allocation_width = 1;
+  dtc_l1::io_frontend partial(partial_cfg);
+  assert(partial.admit(10));
+  const auto held = partial.access(10, 10, 0);
+  assert(held.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(partial.access(10, 10, 128).kind ==
+         dtc_l1::io_access_kind::NO_FREE_LINE);
+  assert(partial.free_lines() == 0);
+  partial.complete(held.physical);
+  assert(!partial.retire_head());
+
+  config width_cfg;
+  width_cfg.selected_mode = mode::PAPER_IO;
+  width_cfg.logical_sets = 2;
+  width_cfg.logical_ways = 1;
+  width_cfg.physical_lines = 2;
+  width_cfg.allocation_width = 1;
+  dtc_l1::io_frontend width(width_cfg);
+  assert(width.admit(20));
+  assert(width.access(20, 20, 0).kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(width.access(20, 20, 128).kind ==
+         dtc_l1::io_access_kind::NO_FREE_LINE);
+  assert(width.access(21, 20, 128).kind == dtc_l1::io_access_kind::NEW_MISS);
   return 0;
 }
