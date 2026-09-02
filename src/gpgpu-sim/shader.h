@@ -2046,6 +2046,7 @@ class ldst_unit : public pipelined_simd_unit {
   bool dtc_l1_admit(warp_inst_t &inst);
   bool dtc_l1_try_tag(new_addr_type address);
   void dtc_l1_retire(const warp_inst_t &inst);
+  void print_dtc_l1_stats(FILE *fp) const;
   gpgpu_sim *m_gpu;
 
   const memory_config *m_memory_config;

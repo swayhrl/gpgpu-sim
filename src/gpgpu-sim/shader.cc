@@ -2069,6 +2069,7 @@ void ldst_unit::print_cache_stats(FILE *fp, unsigned &dl1_accesses,
   if (m_L1D) {
     m_L1D->print(fp, dl1_accesses, dl1_misses);
   }
+  print_dtc_l1_stats(fp);
 }
 
 void ldst_unit::get_cache_stats(cache_stats &cs) {
@@ -2391,6 +2392,34 @@ void ldst_unit::dtc_l1_retire(const warp_inst_t &inst) {
   const size_t erased = m_dtc_l1_live_instruction_uids.erase(uid);
   if (!erased) return;
   m_dtc_l1_frontend->retire(uid);
+  m_dtc_l1_frontend->assert_accounting();
+}
+
+void ldst_unit::print_dtc_l1_stats(FILE *fp) const {
+  if (!dtc_l1_paper_base_active()) return;
+  const dtc_l1::paper_frontend &front_end = *m_dtc_l1_frontend;
+  fprintf(fp, "DTC_L1_mode = PAPER_BASE\n");
+  fprintf(fp, "DTC_L1_pib_admits = %llu\n",
+          static_cast<unsigned long long>(front_end.admits()));
+  fprintf(fp, "DTC_L1_pib_retires = %llu\n",
+          static_cast<unsigned long long>(front_end.retires()));
+  fprintf(fp, "DTC_L1_pib_occupancy = %zu\n", front_end.pib_occupancy());
+  fprintf(fp, "DTC_L1_pib_peak = %zu\n", front_end.pib_peak());
+  fprintf(fp, "DTC_L1_pib_full_events = %llu\n",
+          static_cast<unsigned long long>(front_end.pib_full_events()));
+  fprintf(fp, "DTC_L1_pib_occupancy_cycle_sum = %llu\n",
+          static_cast<unsigned long long>(front_end.pib_occupancy_cycle_sum()));
+  fprintf(fp, "DTC_L1_pib_occupancy_sample_cycles = %llu\n",
+          static_cast<unsigned long long>(front_end.pib_occupancy_sample_cycles()));
+  fprintf(fp, "DTC_L1_tag_requests = %llu\n",
+          static_cast<unsigned long long>(front_end.tag_requests()));
+  fprintf(fp, "DTC_L1_tag_conflicts = %llu\n",
+          static_cast<unsigned long long>(front_end.tag_conflicts()));
+  const std::vector<uint64_t> &per_bank = front_end.requests_per_bank();
+  for (size_t bank = 0; bank < per_bank.size(); ++bank) {
+    fprintf(fp, "DTC_L1_tag_bank_%zu_requests = %llu\n", bank,
+            static_cast<unsigned long long>(per_bank[bank]));
+  }
 }
 
 void ldst_unit::L1_latency_queue_cycle() {
@@ -3497,6 +3526,11 @@ inst->space.get_type() != shared_space) { unsigned warp_id = inst->warp_id();
 }
 */
 void ldst_unit::cycle() {
+  if (dtc_l1_paper_base_active()) {
+    m_dtc_l1_frontend->sample_cycle(m_core->get_gpu()->gpu_sim_cycle +
+                                    m_core->get_gpu()->gpu_tot_sim_cycle);
+    m_dtc_l1_frontend->assert_accounting();
+  }
   writeback();
 
   // Move warp in pipeline

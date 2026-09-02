@@ -79,9 +79,13 @@ class paper_frontend {
   bool try_admit(uint64_t dynamic_instruction_id) {
     if (!enabled()) return true;
     if (m_live_instructions.count(dynamic_instruction_id)) return true;
-    if (m_live_instructions.size() >= m_cfg.pib_entries) return false;
+    if (m_live_instructions.size() >= m_cfg.pib_entries) {
+      ++m_pib_full_events;
+      return false;
+    }
     m_live_instructions.insert(dynamic_instruction_id);
     ++m_admits;
+    m_pib_peak = std::max(m_pib_peak, m_live_instructions.size());
     return true;
   }
 
@@ -97,6 +101,15 @@ class paper_frontend {
     m_cycle = cycle;
     m_total_served_this_cycle = 0;
     std::fill(m_served_per_bank.begin(), m_served_per_bank.end(), 0);
+  }
+
+  // Must be called once per modeled LD/ST cycle so occupancy does not depend
+  // on whether that cycle happens to contain Tag work.
+  void sample_cycle(uint64_t cycle) {
+    if (!enabled() || cycle == m_last_occupancy_sample_cycle) return;
+    m_last_occupancy_sample_cycle = cycle;
+    m_pib_occupancy_cycle_sum += m_live_instructions.size();
+    ++m_pib_occupancy_sample_cycles;
   }
 
   unsigned tag_bank(uint64_t line_address, unsigned logical_set_count) const {
@@ -117,6 +130,7 @@ class paper_frontend {
       return false;
     }
     ++m_served_per_bank[bank];
+    ++m_requests_per_bank[bank];
     ++m_total_served_this_cycle;
     ++m_tag_requests;
     return true;
@@ -127,6 +141,23 @@ class paper_frontend {
   uint64_t retires() const { return m_retires; }
   uint64_t tag_requests() const { return m_tag_requests; }
   uint64_t tag_conflicts() const { return m_tag_conflicts; }
+  uint64_t pib_full_events() const { return m_pib_full_events; }
+  size_t pib_peak() const { return m_pib_peak; }
+  uint64_t pib_occupancy_cycle_sum() const {
+    return m_pib_occupancy_cycle_sum;
+  }
+  uint64_t pib_occupancy_sample_cycles() const {
+    return m_pib_occupancy_sample_cycles;
+  }
+  const std::vector<uint64_t> &requests_per_bank() const {
+    return m_requests_per_bank;
+  }
+
+  void assert_accounting() const {
+    assert(m_admits >= m_retires);
+    assert(m_admits - m_retires == m_live_instructions.size());
+    assert(m_live_instructions.size() <= m_cfg.pib_entries);
+  }
 
  private:
   config m_cfg;
@@ -135,10 +166,17 @@ class paper_frontend {
   unsigned m_total_served_this_cycle = 0;
   std::vector<unsigned> m_served_per_bank =
       std::vector<unsigned>(m_cfg.tag_banks, 0);
+  std::vector<uint64_t> m_requests_per_bank =
+      std::vector<uint64_t>(m_cfg.tag_banks, 0);
   uint64_t m_admits = 0;
   uint64_t m_retires = 0;
   uint64_t m_tag_requests = 0;
   uint64_t m_tag_conflicts = 0;
+  uint64_t m_pib_full_events = 0;
+  size_t m_pib_peak = 0;
+  uint64_t m_last_occupancy_sample_cycle = UINT64_MAX;
+  uint64_t m_pib_occupancy_cycle_sum = 0;
+  uint64_t m_pib_occupancy_sample_cycles = 0;
 };
 
 }  // namespace dtc_l1
