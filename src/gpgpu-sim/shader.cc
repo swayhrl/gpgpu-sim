@@ -2296,6 +2296,9 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
     } else {
       assert(m_config->gpgpu_vm_mode == 2);
       assert(m_gpu->vm_translation() != NULL);
+      assert(!vm_core::transaction_crosses_page(
+          access.get_sim_va(), access.get_size(),
+          m_config->gpgpu_vm_page_size));
       uint64_t translated_pa = 0;
       const vm_translation::lookup_result result =
           m_gpu->vm_translation()->translate(
