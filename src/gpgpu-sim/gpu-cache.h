@@ -827,6 +827,12 @@ class cache_config {
     return addr & ~(new_addr_type)(m_atom_sz - 1);
   }
   enum mshr_config_t get_mshr_type() const { return m_mshr_type; }
+  unsigned get_mshr_entries() const { return m_mshr_entries; }
+  void override_mshr_entries(unsigned entries) {
+    assert(m_valid);
+    assert(entries > 0);
+    m_mshr_entries = entries;
+  }
   void set_assoc(unsigned n) {
     // set new assoc. L1 cache dynamically resized in Volta
     m_assoc = n;

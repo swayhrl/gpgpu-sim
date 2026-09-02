@@ -62,6 +62,18 @@ int main() {
   assert(front_end.requests_per_bank().size() == 4);
   for (const uint64_t requests : front_end.requests_per_bank())
     assert(requests >= 1);
+
+  // Kernel summaries aggregate value snapshots across SM-local front-ends.
+  const dtc_l1::paper_frontend_stats one_sm = front_end.stats();
+  dtc_l1::paper_frontend_stats total;
+  total.add(one_sm);
+  total.add(one_sm);
+  assert(total.admits == 2 * one_sm.admits);
+  assert(total.retires == 2 * one_sm.retires);
+  assert(total.tag_requests == 2 * one_sm.tag_requests);
+  assert(total.requests_per_bank.size() == 4);
+  for (unsigned bank = 0; bank < 4; ++bank)
+    assert(total.requests_per_bank[bank] == 2 * one_sm.requests_per_bank[bank]);
   front_end.assert_accounting();
   return 0;
 }

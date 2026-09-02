@@ -704,6 +704,22 @@ class gpgpu_sim : public gpgpu_t {
     return gpu_sim_cycle + gpu_tot_sim_cycle;
   }
 
+  bool dtc_l1_try_acquire_lower_request();
+  void dtc_l1_complete_lower_request();
+  unsigned dtc_l1_lower_outstanding() const {
+    return m_dtc_l1_lower_outstanding;
+  }
+  unsigned dtc_l1_lower_peak() const { return m_dtc_l1_lower_peak; }
+  unsigned long long dtc_l1_lower_cap_full_events() const {
+    return m_dtc_l1_lower_cap_full_events;
+  }
+  unsigned long long dtc_l1_lower_requests_acquired() const {
+    return m_dtc_l1_lower_requests_acquired;
+  }
+  unsigned long long dtc_l1_lower_requests_released() const {
+    return m_dtc_l1_lower_requests_released;
+  }
+
   // backward pointer
   class gpgpu_context *gpgpu_ctx;
 
@@ -720,6 +736,7 @@ class gpgpu_sim : public gpgpu_t {
   void shader_print_runtime_stat(FILE *fout);
   void shader_print_l1_miss_stat(FILE *fout) const;
   void shader_print_cache_stats(FILE *fout) const;
+  void shader_print_dtc_l1_stats(FILE *fout) const;
   void shader_print_scheduler_stat(FILE *fout, bool print_dynamic_info) const;
   void visualizer_printstat();
   void print_shader_cycle_distro(FILE *fout) const;
@@ -792,6 +809,12 @@ class gpgpu_sim : public gpgpu_t {
   std::vector<unsigned>
       m_executed_kernel_uids;  //< uids of kernel launches for stat printout
   std::map<unsigned, watchpoint_event> g_watchpoint_hits;
+
+  unsigned m_dtc_l1_lower_outstanding;
+  unsigned m_dtc_l1_lower_peak;
+  unsigned long long m_dtc_l1_lower_cap_full_events;
+  unsigned long long m_dtc_l1_lower_requests_acquired;
+  unsigned long long m_dtc_l1_lower_requests_released;
 
   std::string executed_kernel_info_string();  //< format the kernel information
                                               // into a string for stat printout

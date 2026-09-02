@@ -30,6 +30,39 @@ struct config {
   unsigned coalescer_threads_per_cycle = 32;
 };
 
+// A value snapshot lets the normal SM/cluster aggregation path emit a compact
+// kernel summary without exposing mutable front-end state.
+struct paper_frontend_stats {
+  uint64_t admits = 0;
+  uint64_t retires = 0;
+  uint64_t tag_requests = 0;
+  uint64_t tag_conflicts = 0;
+  uint64_t pib_full_events = 0;
+  uint64_t pib_occupancy_cycle_sum = 0;
+  uint64_t pib_occupancy_sample_cycles = 0;
+  uint64_t pib_occupancy = 0;
+  uint64_t pib_peak = 0;
+  std::vector<uint64_t> requests_per_bank;
+
+  void add(const paper_frontend_stats &other) {
+    admits += other.admits;
+    retires += other.retires;
+    tag_requests += other.tag_requests;
+    tag_conflicts += other.tag_conflicts;
+    pib_full_events += other.pib_full_events;
+    pib_occupancy_cycle_sum += other.pib_occupancy_cycle_sum;
+    pib_occupancy_sample_cycles += other.pib_occupancy_sample_cycles;
+    pib_occupancy += other.pib_occupancy;
+    pib_peak = std::max(pib_peak, other.pib_peak);
+    if (requests_per_bank.size() < other.requests_per_bank.size()) {
+      requests_per_bank.resize(other.requests_per_bank.size(), 0);
+    }
+    for (size_t bank = 0; bank < other.requests_per_bank.size(); ++bank) {
+      requests_per_bank[bank] += other.requests_per_bank[bank];
+    }
+  }
+};
+
 struct sector_access {
   uint64_t address = 0;
   // One bit for each 32B sector touched by this existing coalesced access.
@@ -151,6 +184,21 @@ class paper_frontend {
   }
   const std::vector<uint64_t> &requests_per_bank() const {
     return m_requests_per_bank;
+  }
+
+  paper_frontend_stats stats() const {
+    paper_frontend_stats result;
+    result.admits = m_admits;
+    result.retires = m_retires;
+    result.tag_requests = m_tag_requests;
+    result.tag_conflicts = m_tag_conflicts;
+    result.pib_full_events = m_pib_full_events;
+    result.pib_occupancy_cycle_sum = m_pib_occupancy_cycle_sum;
+    result.pib_occupancy_sample_cycles = m_pib_occupancy_sample_cycles;
+    result.pib_occupancy = m_live_instructions.size();
+    result.pib_peak = m_pib_peak;
+    result.requests_per_bank = m_requests_per_bank;
+    return result;
   }
 
   void assert_accounting() const {

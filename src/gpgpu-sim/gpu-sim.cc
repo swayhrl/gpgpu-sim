@@ -405,6 +405,12 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_dtc_l1_pib_entries", OPT_UINT32,
                          &dtc_l1_pib_entries,
                          "DTC-L1 pending-instruction entries", "8");
+  option_parser_register(opp, "-gpgpu_dtc_l1_mshr_entries", OPT_UINT32,
+                         &dtc_l1_mshr_entries,
+                         "DTC-L1 Paper Base traditional MSHR entries", "32");
+  option_parser_register(opp, "-gpgpu_dtc_l1_lower_outstanding_cap",
+                         OPT_UINT32, &dtc_l1_lower_outstanding_cap,
+                         "DTC-L1 global lower outstanding-request cap", "256");
   option_parser_register(opp, "-gpgpu_dtc_l1_tag_banks", OPT_UINT32,
                          &dtc_l1_tag_banks, "DTC-L1 logical Tag banks", "4");
   option_parser_register(opp, "-gpgpu_dtc_l1_tag_req_per_bank", OPT_UINT32,
@@ -1107,6 +1113,11 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
   gpu_tot_sim_cycle_parition_util = 0;
   partiton_replys_in_parallel = 0;
   partiton_replys_in_parallel_total = 0;
+  m_dtc_l1_lower_outstanding = 0;
+  m_dtc_l1_lower_peak = 0;
+  m_dtc_l1_lower_cap_full_events = 0;
+  m_dtc_l1_lower_requests_acquired = 0;
+  m_dtc_l1_lower_requests_released = 0;
   last_streamID = -1;
 
   gpu_kernel_time.clear();
@@ -1291,6 +1302,37 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
   // DRAM traffic per memory controller
   perf_counters.add_statistics_counter(m_memory_stats->dram_reads_per_mc);
   perf_counters.add_statistics_counter(m_memory_stats->dram_writes_per_mc);
+}
+
+bool gpgpu_sim::dtc_l1_try_acquire_lower_request() {
+  if (m_shader_config->dtc_l1_mode !=
+      static_cast<unsigned>(dtc_l1::mode::PAPER_BASE)) {
+    return true;
+  }
+  const unsigned cap = m_shader_config->dtc_l1_lower_outstanding_cap;
+  assert(cap > 0);
+  if (m_dtc_l1_lower_outstanding >= cap) {
+    ++m_dtc_l1_lower_cap_full_events;
+    return false;
+  }
+  ++m_dtc_l1_lower_outstanding;
+  ++m_dtc_l1_lower_requests_acquired;
+  m_dtc_l1_lower_peak =
+      std::max(m_dtc_l1_lower_peak, m_dtc_l1_lower_outstanding);
+  return true;
+}
+
+void gpgpu_sim::dtc_l1_complete_lower_request() {
+  if (m_shader_config->dtc_l1_mode !=
+      static_cast<unsigned>(dtc_l1::mode::PAPER_BASE)) {
+    return;
+  }
+  assert(m_dtc_l1_lower_outstanding > 0);
+  --m_dtc_l1_lower_outstanding;
+  ++m_dtc_l1_lower_requests_released;
+  assert(m_dtc_l1_lower_requests_acquired -
+             m_dtc_l1_lower_requests_released ==
+         m_dtc_l1_lower_outstanding);
 }
 
 void sst_gpgpu_sim::SST_receive_mem_reply(unsigned core_id, void *mem_req) {
@@ -1713,6 +1755,11 @@ void gpgpu_sim::change_cache_config(FuncCache cache_config) {
     default:
       break;
   }
+  if (m_shader_config->dtc_l1_mode ==
+      static_cast<unsigned>(dtc_l1::mode::PAPER_BASE)) {
+    m_shader_config->m_L1D_config.override_mshr_entries(
+        m_shader_config->dtc_l1_mshr_entries);
+  }
 }
 
 void gpgpu_sim::clear_executed_kernel_info() {
@@ -1792,6 +1839,7 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
 
   // shader_print_l1_miss_stat( stdout );
   shader_print_cache_stats(stdout);
+  shader_print_dtc_l1_stats(stdout);
 
   cache_stats core_cache_stats;
   core_cache_stats.clear();

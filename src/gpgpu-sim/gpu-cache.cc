@@ -1288,6 +1288,7 @@ void baseline_cache::fill(mem_fetch *mf, unsigned time) {
     block->set_byte_mask(mf);
   }
   m_extra_mf_fields.erase(mf);
+  if (m_level == L1_GPU_CACHE) m_gpu->dtc_l1_complete_lower_request();
   m_bandwidth_management.use_fill_port(mf);
 }
 
@@ -1389,6 +1390,11 @@ void baseline_cache::send_read_request(new_addr_type addr,
 
   } else if (!mshr_hit && mshr_avail &&
              (m_miss_queue.size() < m_config.m_miss_queue_size)) {
+    if (m_level == L1_GPU_CACHE && !m_gpu->dtc_l1_try_acquire_lower_request()) {
+      m_stats.inc_fail_stats(mf->get_access_type(), MISS_QUEUE_FULL,
+                             mf->get_streamID());
+      return;
+    }
     if (read_only)
       m_tag_array->access(block_addr, time, cache_index, mf);
     else

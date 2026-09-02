@@ -2079,6 +2079,11 @@ void ldst_unit::get_cache_stats(cache_stats &cs) {
   if (m_L1T) cs += m_L1T->get_stats();
 }
 
+void ldst_unit::get_dtc_l1_stats(
+    dtc_l1::paper_frontend_stats &stats) const {
+  if (dtc_l1_paper_base_active()) stats.add(m_dtc_l1_frontend->stats());
+}
+
 void ldst_unit::get_L1D_sub_stats(struct cache_sub_stats &css) const {
   if (m_L1D) m_L1D->get_sub_stats(css);
 }
@@ -4180,6 +4185,56 @@ void gpgpu_sim::shader_print_cache_stats(FILE *fout) const {
   }
 }
 
+void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
+  if (m_shader_config->dtc_l1_mode !=
+      static_cast<unsigned>(dtc_l1::mode::PAPER_BASE)) {
+    return;
+  }
+
+  dtc_l1::paper_frontend_stats total;
+  for (unsigned i = 0; i < m_shader_config->n_simt_clusters; ++i) {
+    m_cluster[i]->get_dtc_l1_stats(total);
+  }
+
+  fprintf(fout, "DTC_L1_mode = PAPER_BASE\n");
+  fprintf(fout, "DTC_L1_pib_admits = %llu\n",
+          static_cast<unsigned long long>(total.admits));
+  fprintf(fout, "DTC_L1_pib_retires = %llu\n",
+          static_cast<unsigned long long>(total.retires));
+  fprintf(fout, "DTC_L1_pib_occupancy = %llu\n",
+          static_cast<unsigned long long>(total.pib_occupancy));
+  fprintf(fout, "DTC_L1_pib_peak_per_sm = %llu\n",
+          static_cast<unsigned long long>(total.pib_peak));
+  fprintf(fout, "DTC_L1_pib_full_events = %llu\n",
+          static_cast<unsigned long long>(total.pib_full_events));
+  fprintf(fout, "DTC_L1_pib_occupancy_cycle_sum = %llu\n",
+          static_cast<unsigned long long>(total.pib_occupancy_cycle_sum));
+  fprintf(fout, "DTC_L1_pib_occupancy_sample_cycles = %llu\n",
+          static_cast<unsigned long long>(total.pib_occupancy_sample_cycles));
+  fprintf(fout, "DTC_L1_baseline_mshr_entries = %u\n",
+          m_shader_config->m_L1D_config.get_mshr_entries());
+  fprintf(fout, "DTC_L1_lower_outstanding_cap = %u\n",
+          m_shader_config->dtc_l1_lower_outstanding_cap);
+  fprintf(fout, "DTC_L1_lower_outstanding = %u\n",
+          dtc_l1_lower_outstanding());
+  fprintf(fout, "DTC_L1_lower_outstanding_peak = %u\n",
+          dtc_l1_lower_peak());
+  fprintf(fout, "DTC_L1_lower_cap_full_events = %llu\n",
+          static_cast<unsigned long long>(dtc_l1_lower_cap_full_events()));
+  fprintf(fout, "DTC_L1_lower_requests_acquired = %llu\n",
+          static_cast<unsigned long long>(dtc_l1_lower_requests_acquired()));
+  fprintf(fout, "DTC_L1_lower_requests_released = %llu\n",
+          static_cast<unsigned long long>(dtc_l1_lower_requests_released()));
+  fprintf(fout, "DTC_L1_tag_requests = %llu\n",
+          static_cast<unsigned long long>(total.tag_requests));
+  fprintf(fout, "DTC_L1_tag_conflicts = %llu\n",
+          static_cast<unsigned long long>(total.tag_conflicts));
+  for (size_t bank = 0; bank < total.requests_per_bank.size(); ++bank) {
+    fprintf(fout, "DTC_L1_tag_bank_%zu_requests = %llu\n", bank,
+            static_cast<unsigned long long>(total.requests_per_bank[bank]));
+  }
+}
+
 void gpgpu_sim::shader_print_l1_miss_stat(FILE *fout) const {
   unsigned total_d1_misses = 0, total_d1_accesses = 0;
   for (unsigned i = 0; i < m_shader_config->n_simt_clusters; ++i) {
@@ -5078,6 +5133,11 @@ void shader_core_ctx::print_cache_stats(FILE *fp, unsigned &dl1_accesses,
   m_ldst_unit->print_cache_stats(fp, dl1_accesses, dl1_misses);
 }
 
+void shader_core_ctx::get_dtc_l1_stats(
+    dtc_l1::paper_frontend_stats &stats) const {
+  m_ldst_unit->get_dtc_l1_stats(stats);
+}
+
 void shader_core_ctx::get_cache_stats(cache_stats &cs) {
   // Adds stats from each cache to 'cs'
   cs += m_L1I->get_stats();          // Get L1I stats
@@ -5904,6 +5964,13 @@ void simt_core_cluster::print_cache_stats(FILE *fp, unsigned &dl1_accesses,
                                           unsigned &dl1_misses) const {
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i) {
     m_core[i]->print_cache_stats(fp, dl1_accesses, dl1_misses);
+  }
+}
+
+void simt_core_cluster::get_dtc_l1_stats(
+    dtc_l1::paper_frontend_stats &stats) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i) {
+    m_core[i]->get_dtc_l1_stats(stats);
   }
 }
 

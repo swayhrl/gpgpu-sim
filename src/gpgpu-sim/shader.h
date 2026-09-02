@@ -1992,6 +1992,7 @@ class ldst_unit : public pipelined_simd_unit {
   void print(FILE *fout) const;
   void print_cache_stats(FILE *fp, unsigned &dl1_accesses,
                          unsigned &dl1_misses);
+  void get_dtc_l1_stats(dtc_l1::paper_frontend_stats &stats) const;
   void get_cache_stats(unsigned &read_accesses, unsigned &write_accesses,
                        unsigned &read_misses, unsigned &write_misses,
                        unsigned cache_type);
@@ -2192,6 +2193,9 @@ class shader_core_config : public core_config {
     m_L1T_config.init(m_L1T_config.m_config_string, FuncCachePreferNone);
     m_L1C_config.init(m_L1C_config.m_config_string, FuncCachePreferNone);
     m_L1D_config.init(m_L1D_config.m_config_string, FuncCachePreferNone);
+    if (dtc_l1_mode == static_cast<unsigned>(dtc_l1::mode::PAPER_BASE)) {
+      m_L1D_config.override_mshr_entries(dtc_l1_mshr_entries);
+    }
     gpgpu_cache_texl1_linesize = m_L1T_config.get_line_sz();
     gpgpu_cache_constl1_linesize = m_L1C_config.get_line_sz();
     m_valid = true;
@@ -2273,6 +2277,8 @@ class shader_core_config : public core_config {
   // reuse the conventional L1 bank/MSHR controls so LEGACY remains untouched.
   unsigned dtc_l1_mode;
   unsigned dtc_l1_pib_entries;
+  unsigned dtc_l1_mshr_entries;
+  unsigned dtc_l1_lower_outstanding_cap;
   unsigned dtc_l1_tag_banks;
   unsigned dtc_l1_tag_requests_per_bank_per_cycle;
   unsigned dtc_l1_tag_requests_per_cycle;
@@ -2821,6 +2827,7 @@ class shader_core_ctx : public core_t {
   // Statistics
   void print_cache_stats(FILE *fp, unsigned &dl1_accesses,
                          unsigned &dl1_misses);
+  void get_dtc_l1_stats(dtc_l1::paper_frontend_stats &stats) const;
 
   void get_cache_stats(cache_stats &cs);
   void get_L1I_sub_stats(struct cache_sub_stats &css) const;
@@ -3345,6 +3352,7 @@ class simt_core_cluster {
   void display_pipeline(unsigned sid, FILE *fout, int print_mem, int mask);
   void print_cache_stats(FILE *fp, unsigned &dl1_accesses,
                          unsigned &dl1_misses) const;
+  void get_dtc_l1_stats(dtc_l1::paper_frontend_stats &stats) const;
 
   void get_cache_stats(cache_stats &cs) const;
   void get_L1I_sub_stats(struct cache_sub_stats &css) const;
