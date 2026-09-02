@@ -1654,6 +1654,10 @@ class shader_core_config : public core_config {
   unsigned gpgpu_vm_pwq_entries;
   unsigned gpgpu_vm_walkers;
   unsigned gpgpu_vm_walk_latency;
+  unsigned gpgpu_vm_pt_levels;
+  uint64_t gpgpu_vm_application_physical_limit;
+  uint64_t gpgpu_vm_pte_physical_base;
+  uint64_t gpgpu_vm_pte_physical_bytes;
 
   unsigned gpgpu_num_sched_per_core;
   int gpgpu_max_insn_issue_per_warp;

@@ -4,9 +4,98 @@
 
 namespace vm_translation {
 
+namespace {
+
+const uint64_t kPteBytes = 8;
+const uint64_t kBasePage64KB = 64ULL * 1024ULL;
+const uint64_t kLargePage2MB = 2ULL * 1024ULL * 1024ULL;
+
+unsigned log2_exact(uint64_t value) {
+  assert(value != 0 && (value & (value - 1)) == 0);
+  unsigned result = 0;
+  while (value > 1) {
+    value >>= 1;
+    ++result;
+  }
+  return result;
+}
+
+}  // namespace
+
 uint64_t present_page_mapper::translate(const translation_key &key) const {
   assert(vm_core::valid_page_size(key.page_size));
   return key.vpn;  // distinct resident VPNs retain distinct PPNs.
+}
+
+bool page_table_config::valid() const {
+  if (levels == 0 || virtual_address_bits != 49 ||
+      application_physical_limit > pte_physical_base ||
+      (pte_physical_base % kBasePage64KB) != 0 ||
+      pte_physical_bytes == 0 ||
+      pte_physical_base > ~0ULL - pte_physical_bytes)
+    return false;
+
+  // The largest supported key class is 64KB: four levels x two classes x
+  // 2^(49-16) entries x 8 bytes = 512 GiB for the generic default.
+  const unsigned max_vpn_bits = virtual_address_bits - log2_exact(kBasePage64KB);
+  const uint64_t required_bytes =
+      uint64_t(levels) * 2ULL * (1ULL << max_vpn_bits) * kPteBytes;
+  return pte_physical_bytes >= required_bytes;
+}
+
+radix_page_table_backend::radix_page_table_backend(
+    const page_table_config &config)
+    : m_config(config) {
+  assert(valid());
+}
+
+bool radix_page_table_backend::valid() const { return m_config.valid(); }
+
+unsigned radix_page_table_backend::page_size_class(uint64_t page_size) const {
+  if (page_size == kBasePage64KB) return 0;
+  if (page_size == kLargePage2MB) return 1;
+  assert(false && "M3 generic PTE backend supports 64KB and 2MB only");
+  return 0;
+}
+
+unsigned radix_page_table_backend::vpn_bits(uint64_t page_size) const {
+  assert(vm_core::valid_page_size(page_size));
+  const unsigned shift = log2_exact(page_size);
+  assert(shift < m_config.virtual_address_bits);
+  return m_config.virtual_address_bits - shift;
+}
+
+uint64_t radix_page_table_backend::pte_address(const translation_key &key,
+                                                unsigned level) const {
+  assert(valid());
+  assert(level < m_config.levels);
+  const unsigned key_vpn_bits = vpn_bits(key.page_size);
+  assert(key.vpn < (1ULL << key_vpn_bits));
+  const uint64_t slot =
+      (uint64_t(page_size_class(key.page_size) * m_config.levels + level)
+       << key_vpn_bits) |
+      key.vpn;
+  const uint64_t offset = slot * kPteBytes;
+  assert(offset <= m_config.pte_physical_bytes - kPteBytes);
+  const uint64_t result = m_config.pte_physical_base + offset;
+  assert(owns_pte_physical_address(result));
+  return result;
+}
+
+uint64_t radix_page_table_backend::resolve_ppn(
+    const translation_key &key) const {
+  assert(vm_core::valid_page_size(key.page_size));
+  return key.vpn;  // Preserve the frozen identity-like data mapping.
+}
+
+pte_request radix_page_table_backend::make_pte_request(
+    const translation_key &key, unsigned level, uint64_t request_id) const {
+  return pte_request(key, level, pte_address(key, level), request_id);
+}
+
+bool radix_page_table_backend::owns_pte_physical_address(uint64_t pa) const {
+  return pa >= m_config.pte_physical_base &&
+         pa < m_config.pte_physical_base + m_config.pte_physical_bytes;
 }
 
 bool tlb_config::valid() const {
@@ -101,13 +190,25 @@ unsigned set_associative_tlb::occupancy() const {
 bool translation_config::valid() const {
   return num_sms != 0 && vm_core::valid_page_size(page_size) && l1.valid() &&
          l2.valid() && mshr_entries != 0 && pwq_entries != 0 && walkers != 0 &&
-         walk_latency != 0;
+         walk_latency != 0 && page_table.valid();
 }
 
 translation_controller::translation_controller(const translation_config &config)
-    : m_config(config), m_mapper(), m_l1s(), m_l2(config.l2), m_mshrs(),
+    : m_config(config), m_default_page_table(config.page_table),
+      m_page_table(&m_default_page_table), m_l1s(), m_l2(config.l2), m_mshrs(),
       m_pwq(), m_active_walks(), m_stats() {
   assert(m_config.valid());
+  for (unsigned sid = 0; sid < m_config.num_sms; ++sid)
+    m_l1s.push_back(set_associative_tlb(m_config.l1));
+}
+
+translation_controller::translation_controller(const translation_config &config,
+                                               page_table_backend *backend)
+    : m_config(config), m_default_page_table(config.page_table),
+      m_page_table(backend), m_l1s(), m_l2(config.l2), m_mshrs(), m_pwq(),
+      m_active_walks(), m_stats() {
+  assert(m_config.valid());
+  assert(m_page_table != 0 && m_page_table->valid());
   for (unsigned sid = 0; sid < m_config.num_sms; ++sid)
     m_l1s.push_back(set_associative_tlb(m_config.l1));
 }
@@ -186,7 +287,7 @@ bool translation_controller::complete_translation(const translation_key &key,
                                                    uint64_t cycle) {
   for (unsigned index = 0; index < m_mshrs.size(); ++index) {
     if (!(m_mshrs[index].key == key)) continue;
-    const uint64_t ppn = m_mapper.translate(key);
+    const uint64_t ppn = m_page_table->resolve_ppn(key);
     ++m_stats.mapper_lookups;
     m_l2.fill(key, ppn, cycle);
     for (unsigned waiter_index = 0;

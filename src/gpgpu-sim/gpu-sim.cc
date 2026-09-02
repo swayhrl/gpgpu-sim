@@ -425,6 +425,21 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_vm_walk_latency", OPT_UINT32,
                          &gpgpu_vm_walk_latency,
                          "M2 fixed page-walk latency in core cycles", "100");
+  option_parser_register(opp, "-gpgpu_vm_pt_levels", OPT_UINT32,
+                         &gpgpu_vm_pt_levels,
+                         "generic M3 radix page-table levels", "4");
+  option_parser_register(opp, "-gpgpu_vm_application_physical_limit",
+                         OPT_UINT64, &gpgpu_vm_application_physical_limit,
+                         "exclusive identity-mapped application physical limit",
+                         "562949953421312");
+  option_parser_register(opp, "-gpgpu_vm_pte_physical_base", OPT_UINT64,
+                         &gpgpu_vm_pte_physical_base,
+                         "generic M3 reserved PTE physical range base",
+                         "4503599627370496");
+  option_parser_register(opp, "-gpgpu_vm_pte_physical_bytes", OPT_UINT64,
+                         &gpgpu_vm_pte_physical_bytes,
+                         "generic M3 reserved PTE physical range size",
+                         "1099511627776");
 
   option_parser_register(opp, "-gpgpu_perfect_mem", OPT_BOOL,
                          &gpgpu_perfect_mem,
@@ -1023,7 +1038,12 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
                                    m_shader_config->gpgpu_vm_l2_tlb_ports),
         m_shader_config->gpgpu_vm_translation_mshr_entries,
         m_shader_config->gpgpu_vm_pwq_entries, m_shader_config->gpgpu_vm_walkers,
-        m_shader_config->gpgpu_vm_walk_latency);
+        m_shader_config->gpgpu_vm_walk_latency,
+        vm_translation::page_table_config(
+            m_shader_config->gpgpu_vm_pt_levels, 49,
+            m_shader_config->gpgpu_vm_application_physical_limit,
+            m_shader_config->gpgpu_vm_pte_physical_base,
+            m_shader_config->gpgpu_vm_pte_physical_bytes));
     if (!vm_config.valid()) {
       fprintf(stderr, "ERROR: invalid functional VM TLB configuration\n");
       abort();

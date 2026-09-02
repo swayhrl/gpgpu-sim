@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include <memory>
 #include <vector>
 
 #include "vm_core.h"
@@ -28,6 +29,76 @@ struct translation_key {
 class present_page_mapper {
  public:
   uint64_t translate(const translation_key &key) const;
+};
+
+// M3's PTE addresses are a simulator modeling contract.  The defaults reserve
+// a 1-TiB physical range above the 49-bit identity-mapped application range;
+// they are neither a hardware claim nor a Segmentation-paper implementation
+// detail.  M3 requires 64KB and 2MB translation keys, so the generic v0
+// backend deliberately rejects other PTE page-size classes.
+struct page_table_config {
+  unsigned levels;
+  unsigned virtual_address_bits;
+  uint64_t application_physical_limit;
+  uint64_t pte_physical_base;
+  uint64_t pte_physical_bytes;
+  page_table_config(unsigned level_count = 4, unsigned va_bits = 49,
+                    uint64_t app_limit = 1ULL << 49,
+                    uint64_t pte_base = 1ULL << 52,
+                    uint64_t pte_bytes = 1ULL << 40)
+      : levels(level_count), virtual_address_bits(va_bits),
+        application_physical_limit(app_limit), pte_physical_base(pte_base),
+        pte_physical_bytes(pte_bytes) {}
+  bool valid() const;
+};
+
+// A PTE request has a physical address at construction time.  The explicit
+// flags form the G3-1 no-recursion contract that G3-2 will carry on a real
+// mem_fetch through L2/DRAM.
+struct pte_request {
+  translation_key key;
+  unsigned level;
+  uint64_t physical_address;
+  uint64_t request_id;
+  bool is_physical;
+  bool bypass_translation;
+  pte_request(const translation_key &k = translation_key(), unsigned l = 0,
+              uint64_t pa = 0, uint64_t id = 0)
+      : key(k), level(l), physical_address(pa), request_id(id),
+        is_physical(true), bypass_translation(true) {}
+};
+
+// Replaceable backend boundary.  M2 keeps the identity-like present mapping;
+// G3-2 will consume pte_request objects through the real memory hierarchy.
+class page_table_backend {
+ public:
+  virtual ~page_table_backend() {}
+  virtual bool valid() const = 0;
+  virtual unsigned levels() const = 0;
+  virtual uint64_t resolve_ppn(const translation_key &key) const = 0;
+  virtual pte_request make_pte_request(const translation_key &key,
+                                       unsigned level,
+                                       uint64_t request_id) const = 0;
+  virtual bool owns_pte_physical_address(uint64_t pa) const = 0;
+};
+
+class radix_page_table_backend : public page_table_backend {
+ public:
+  explicit radix_page_table_backend(
+      const page_table_config &config = page_table_config());
+  bool valid() const;
+  unsigned levels() const { return m_config.levels; }
+  uint64_t resolve_ppn(const translation_key &key) const;
+  pte_request make_pte_request(const translation_key &key, unsigned level,
+                               uint64_t request_id) const;
+  bool owns_pte_physical_address(uint64_t pa) const;
+  const page_table_config &config() const { return m_config; }
+
+ private:
+  unsigned page_size_class(uint64_t page_size) const;
+  unsigned vpn_bits(uint64_t page_size) const;
+  uint64_t pte_address(const translation_key &key, unsigned level) const;
+  page_table_config m_config;
 };
 
 struct tlb_config {
@@ -85,15 +156,18 @@ struct translation_config {
   unsigned pwq_entries;
   unsigned walkers;
   unsigned walk_latency;
+  page_table_config page_table;
   translation_config(unsigned sms = 1,
                      uint64_t page = vm_core::kDefaultBasePageSize,
                      const tlb_config &l1_config = tlb_config(),
                      const tlb_config &l2_config = tlb_config(768, 16, 1),
                      unsigned mshr_count = 32, unsigned pwq_count = 32,
-                     unsigned walker_count = 16, unsigned latency = 100)
+                     unsigned walker_count = 16, unsigned latency = 100,
+                     const page_table_config &page_table_config_value =
+                         page_table_config())
       : num_sms(sms), page_size(page), l1(l1_config), l2(l2_config),
         mshr_entries(mshr_count), pwq_entries(pwq_count), walkers(walker_count),
-        walk_latency(latency) {}
+        walk_latency(latency), page_table(page_table_config_value) {}
   bool valid() const;
 };
 
@@ -134,6 +208,11 @@ struct translation_stats {
 class translation_controller {
  public:
   explicit translation_controller(const translation_config &config);
+  // The caller retains an injected backend's lifetime.  This is a narrow test
+  // and future-adapter seam; the normal simulator constructor uses the generic
+  // radix backend above.
+  translation_controller(const translation_config &config,
+                         page_table_backend *backend);
   lookup_result translate(unsigned sid, unsigned asid, uint64_t sim_va,
                           uint64_t cycle, uint64_t waiter_uid,
                           uint64_t *sim_pa);
@@ -176,7 +255,8 @@ class translation_controller {
   lookup_result allocate_or_merge(unsigned sid, uint64_t waiter_uid,
                                   const translation_key &key, uint64_t cycle);
   translation_config m_config;
-  present_page_mapper m_mapper;
+  radix_page_table_backend m_default_page_table;
+  page_table_backend *m_page_table;
   std::vector<set_associative_tlb> m_l1s;
   set_associative_tlb m_l2;
   std::vector<mshr_entry> m_mshrs;
