@@ -77,6 +77,20 @@ class io_frontend {
     return true;
   }
 
+  // M4 sidecar dependencies represent completion on an existing
+  // architectural path (store acknowledgement/accounting, bypass return, or
+  // proxy-fence writeback). They intentionally own no Tag or physical line.
+  void add_external_dependency(uint64_t uid) {
+    entry *owner = find_entry(uid);
+    assert(owner);
+    ++owner->external_dependencies;
+  }
+  void complete_external_dependency(uint64_t uid) {
+    entry *owner = find_entry(uid);
+    assert(owner && owner->external_dependencies);
+    --owner->external_dependencies;
+  }
+
   // IO owns its data/merge state, but it obeys the same frozen logical Tag
   // service contract as Paper Base: one reference per bank and four total at
   // the default configuration. This is intentionally independent of the
@@ -255,7 +269,7 @@ class io_frontend {
  private:
   struct physical_line { bool allocated = false; bool ready = false; uint64_t generation = 0; };
   struct tag_entry { bool valid = false; uint64_t line = 0; physical_identity physical; uint64_t lru = 0; };
-  struct entry { uint64_t uid; std::vector<physical_identity> references; std::vector<physical_identity> release_on_retire; bool has_unresolved_line; uint64_t unresolved_line; };
+  struct entry { uint64_t uid; std::vector<physical_identity> references; std::vector<physical_identity> release_on_retire; bool has_unresolved_line; uint64_t unresolved_line; unsigned external_dependencies = 0; };
   entry *find_entry(uint64_t uid) { for (entry &e : m_entries) if (e.uid == uid) return &e; return nullptr; }
   static bool has_reference(const entry &e, physical_identity identity) {
     for (const physical_identity &existing : e.references)
@@ -285,7 +299,7 @@ class io_frontend {
     for (unsigned offset = 0; offset < m_phys.size(); ++offset) { const unsigned id = (m_rr_next + offset) % m_phys.size(); if (!m_phys[id].allocated) { m_rr_next = (id + 1) % m_phys.size(); return id; } }
     return -1;
   }
-  bool entry_ready(const entry &e) const { if (e.has_unresolved_line) return false; for (const physical_identity id : e.references) if (!m_phys[id.id].ready || m_phys[id.id].generation != id.generation) return false; return true; }
+  bool entry_ready(const entry &e) const { if (e.has_unresolved_line || e.external_dependencies) return false; for (const physical_identity id : e.references) if (!m_phys[id.id].ready || m_phys[id.id].generation != id.generation) return false; return true; }
   void release(physical_identity identity) { physical_line &line = m_phys[identity.id]; assert(line.generation == identity.generation); line.allocated = false; line.ready = false; ++m_releases; sample_resource_extrema(); }
   config m_cfg; std::vector<tag_entry> m_tags; std::vector<physical_line> m_phys; std::deque<entry> m_entries;
   uint64_t m_cycle = UINT64_MAX, m_lru_clock = 0, m_new_misses = 0, m_retires = 0;
@@ -343,6 +357,17 @@ class oo_frontend {
     m_entries.push_back({uid, slot, state.generation, {}, 0});
     assert_shadow_refs();
     return true;
+  }
+
+  void add_external_dependency(uint64_t uid) {
+    entry *owner = find_entry(uid);
+    assert(owner);
+    ++owner->external_dependencies;
+  }
+  void complete_external_dependency(uint64_t uid) {
+    entry *owner = find_entry(uid);
+    assert(owner && owner->external_dependencies);
+    --owner->external_dependencies;
   }
 
   bool try_serve_tag(uint64_t cycle, uint64_t address) {
@@ -483,6 +508,37 @@ class oo_frontend {
     return true;
   }
 
+  // M4 supplies an eligibility-filtered UID when source-backed fence
+  // ordering constrains OO retirement. The frozen one-retirement/cycle width
+  // and OOO accounting remain identical to retire_one_ready().
+  bool retire_ready_uid(uint64_t cycle, uint64_t uid) {
+    if (cycle == m_retire_cycle) return false;
+    auto selected = m_entries.end();
+    for (auto it = m_entries.begin(); it != m_entries.end(); ++it)
+      if (it->uid == uid) { selected = it; break; }
+    if (selected == m_entries.end() || !entry_ready(*selected)) return false;
+    bool older_unready = false;
+    for (auto it = m_entries.begin(); it != selected; ++it)
+      older_unready |= !entry_ready(*it);
+    if (older_unready) ++m_out_of_order_retires;
+    for (const physical_identity identity : selected->references) {
+      physical_line &physical = m_phys[identity.id];
+      assert(physical.allocated && physical.generation == identity.generation &&
+             physical.ref_count);
+      --physical.ref_count;
+      if (!physical.tag_valid && physical.ref_count == 0) {
+        release(identity);
+        ++m_final_ref_reclaims;
+      }
+    }
+    m_slots[selected->slot].active = false;
+    m_entries.erase(selected);
+    m_retire_cycle = cycle;
+    ++m_retires;
+    assert_shadow_refs();
+    return true;
+  }
+
   bool oldest_ready_uid(uint64_t *uid) const {
     for (const entry &owner : m_entries) {
       if (entry_ready(owner)) {
@@ -591,6 +647,7 @@ class oo_frontend {
     uint64_t slot_generation;
     std::vector<physical_identity> references;
     unsigned pending_dependencies;
+    unsigned external_dependencies = 0;
   };
   struct slot_state { bool active = false; uint64_t uid = 0; uint64_t generation = 0; };
 
@@ -630,7 +687,7 @@ class oo_frontend {
     }
   }
   bool entry_ready(const entry &owner) const {
-    if (owner.pending_dependencies) return false;
+    if (owner.pending_dependencies || owner.external_dependencies) return false;
     for (const physical_identity identity : owner.references)
       if (!fill_identity_matches(identity) || !m_phys[identity.id].ready)
         return false;
@@ -745,6 +802,17 @@ class sector_oo_frontend {
     m_entries.push_back({uid, slot, state.generation, {}, 0});
     assert_shadow_refs();
     return true;
+  }
+
+  void add_external_dependency(uint64_t uid) {
+    entry *owner = find_entry(uid);
+    assert(owner);
+    ++owner->external_dependencies;
+  }
+  void complete_external_dependency(uint64_t uid) {
+    entry *owner = find_entry(uid);
+    assert(owner && owner->external_dependencies);
+    --owner->external_dependencies;
   }
 
   bool try_serve_tag(uint64_t cycle, uint64_t address) {
@@ -911,6 +979,33 @@ class sector_oo_frontend {
     return true;
   }
 
+  bool retire_ready_uid(uint64_t cycle, uint64_t uid) {
+    if (cycle == m_retire_cycle) return false;
+    auto selected = m_entries.end();
+    for (auto it = m_entries.begin(); it != m_entries.end(); ++it)
+      if (it->uid == uid) { selected = it; break; }
+    if (selected == m_entries.end() || !entry_ready(*selected)) return false;
+    bool older_unready = false;
+    for (auto it = m_entries.begin(); it != selected; ++it)
+      older_unready |= !entry_ready(*it);
+    if (older_unready) ++m_out_of_order_retires;
+    for (const reference &ref : selected->references) {
+      physical_line &physical = m_phys[ref.identity.id];
+      assert(fill_identity_matches(ref.identity) && physical.ref_count);
+      --physical.ref_count;
+      if (!physical.tag_valid && physical.ref_count == 0) {
+        release(ref.identity);
+        ++m_final_ref_reclaims;
+      }
+    }
+    m_slots[selected->slot].active = false;
+    m_entries.erase(selected);
+    m_retire_cycle = cycle;
+    ++m_retires;
+    assert_shadow_refs();
+    return true;
+  }
+
   bool oldest_ready_uid(uint64_t *uid) const {
     for (const entry &owner : m_entries)
       if (entry_ready(owner)) {
@@ -1017,6 +1112,7 @@ class sector_oo_frontend {
     uint64_t slot_generation;
     std::vector<reference> references;
     unsigned pending_dependencies;
+    unsigned external_dependencies = 0;
   };
   struct slot_state {
     bool active = false;
@@ -1071,7 +1167,7 @@ class sector_oo_frontend {
     physical.waiters.push_back({owner->slot, owner->slot_generation, sector});
   }
   bool entry_ready(const entry &owner) const {
-    if (owner.pending_dependencies) return false;
+    if (owner.pending_dependencies || owner.external_dependencies) return false;
     for (const reference &ref : owner.references) {
       if (!fill_identity_matches(ref.identity) || ref.pending_mask) return false;
       const physical_line &physical = m_phys[ref.identity.id];
@@ -1248,6 +1344,12 @@ struct paper_frontend_stats {
   uint64_t sector_fill_wakeups = 0;
   uint64_t sector_active_refs = 0;
   uint64_t sector_physical_allocated = 0;
+  uint64_t m4_store_admits = 0;
+  uint64_t m4_atomic_admits = 0;
+  uint64_t m4_bypass_load_admits = 0;
+  uint64_t m4_proxy_fence_admits = 0;
+  uint64_t m4_source_completions = 0;
+  uint64_t m4_observation_retires = 0;
 
   void add(const paper_frontend_stats &other) {
     admits += other.admits;
@@ -1360,6 +1462,12 @@ struct paper_frontend_stats {
     sector_fill_wakeups += other.sector_fill_wakeups;
     sector_active_refs += other.sector_active_refs;
     sector_physical_allocated += other.sector_physical_allocated;
+    m4_store_admits += other.m4_store_admits;
+    m4_atomic_admits += other.m4_atomic_admits;
+    m4_bypass_load_admits += other.m4_bypass_load_admits;
+    m4_proxy_fence_admits += other.m4_proxy_fence_admits;
+    m4_source_completions += other.m4_source_completions;
+    m4_observation_retires += other.m4_observation_retires;
   }
 };
 

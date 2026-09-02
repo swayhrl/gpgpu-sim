@@ -2074,6 +2074,17 @@ class ldst_unit : public pipelined_simd_unit {
   bool dtc_l1_oo_writeback_ready();
   void dtc_l1_oo_complete_instruction(const warp_inst_t &inst,
                                       unsigned dependencies);
+  enum class dtc_l1_m4_operation : uint8_t {
+    CACHEABLE_LOAD,
+    STORE,
+    ATOMIC,
+    BYPASS_LOAD,
+    PROXY_FENCE,
+  };
+  bool dtc_l1_m4_observe_admit(warp_inst_t &inst,
+                               dtc_l1_m4_operation operation);
+  void dtc_l1_m4_observe_complete(const warp_inst_t &inst);
+  bool dtc_l1_oo_select_ready(uint64_t *uid) const;
   void print_dtc_l1_stats(FILE *fp) const;
   gpgpu_sim *m_gpu;
 
@@ -2133,6 +2144,8 @@ class ldst_unit : public pipelined_simd_unit {
     warp_inst_t inst;
     std::vector<dtc_l1::line_reference> references;
     size_t next_reference = 0;
+    dtc_l1_m4_operation operation = dtc_l1_m4_operation::CACHEABLE_LOAD;
+    bool source_completed = false;
   };
   struct dtc_l1_io_lower_candidate {
     unsigned inst_uid = 0;
@@ -2175,6 +2188,8 @@ class ldst_unit : public pipelined_simd_unit {
     warp_inst_t inst;
     std::vector<dtc_l1::line_reference> references;
     size_t next_reference = 0;
+    dtc_l1_m4_operation operation = dtc_l1_m4_operation::CACHEABLE_LOAD;
+    bool source_completed = false;
   };
   struct dtc_l1_oo_lower_candidate {
     unsigned inst_uid = 0;
@@ -2201,6 +2216,13 @@ class ldst_unit : public pipelined_simd_unit {
   uint64_t m_dtc_l1_oo_lower_responses = 0;
   uint64_t m_dtc_l1_oo_out_of_order_retires = 0;
   uint64_t m_dtc_l1_oo_ready_but_wb_blocked_cycles = 0;
+  uint64_t m_dtc_l1_m4_store_admits = 0;
+  uint64_t m_dtc_l1_m4_atomic_admits = 0;
+  uint64_t m_dtc_l1_m4_bypass_load_admits = 0;
+  uint64_t m_dtc_l1_m4_proxy_fence_admits = 0;
+  uint64_t m_dtc_l1_m4_source_completions = 0;
+  uint64_t m_dtc_l1_m4_observation_retires = 0;
+  uint64_t m_dtc_l1_m4_oo_fence_blocks = 0;
 
   // For fence
   // Right now just support async fence

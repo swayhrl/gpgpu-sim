@@ -637,5 +637,48 @@ int main() {
   assert(causal_oo.retire_one_ready(703, &causal_retired));
   assert(causal_retired == 1100);
   assert(causal_oo.retires() == 2);
+
+  // M4 lifecycle sidecars represent operations that keep their audited
+  // architectural path. They have no logical Tag, physical allocation, or
+  // read-merge state; completion is an explicit existing-path dependency.
+  config m4_io_cfg = causal_cfg;
+  m4_io_cfg.selected_mode = mode::PAPER_IO;
+  dtc_l1::io_frontend m4_io(m4_io_cfg);
+  assert(m4_io.admit(1200));  // Store / atomic / bypass lifecycle record.
+  m4_io.add_external_dependency(1200);
+  assert(m4_io.admit(1201));  // A later source-completed bypass operation.
+  m4_io.add_external_dependency(1201);
+  m4_io.complete_external_dependency(1201);
+  assert(!m4_io.head_ready());  // A01/A03 IO head cannot pass unresolved op.
+  assert(m4_io.allocated_lines() == 0 && m4_io.new_misses() == 0);
+  m4_io.complete_external_dependency(1200);
+  assert(m4_io.retire_head());
+  assert(m4_io.retire_head());
+
+  config m4_oo_cfg = causal_cfg;
+  m4_oo_cfg.selected_mode = mode::PAPER_OO;
+  dtc_l1::oo_frontend m4_oo(m4_oo_cfg);
+  assert(m4_oo.admit(1300));  // Long atomic/bypass lifecycle dependency.
+  m4_oo.add_external_dependency(1300);
+  assert(m4_oo.admit(1301));  // A ready younger load may retire first.
+  const auto m4_ready = m4_oo.access(704, 1301, 0);
+  assert(m4_ready.kind == dtc_l1::io_access_kind::NEW_MISS);
+  m4_oo.complete(m4_ready.physical);
+  assert(m4_oo.entry_ready_for(1301));
+  assert(m4_oo.retire_ready_uid(705, 1301));
+  assert(m4_oo.out_of_order_retires() == 1);
+  assert(m4_oo.allocated_lines() == 1);  // Tag-resident, not sidecar-owned.
+  m4_oo.complete_external_dependency(1300);
+  assert(m4_oo.retire_ready_uid(706, 1300));
+
+  config m4_sector_cfg = m4_oo_cfg;
+  m4_sector_cfg.selected_mode = mode::MODERN_OO_SECTOR;
+  dtc_l1::sector_oo_frontend m4_sector(m4_sector_cfg);
+  assert(m4_sector.admit(1400));
+  m4_sector.add_external_dependency(1400);  // Proxy fence sidecar.
+  assert(!m4_sector.entry_ready_for(1400));
+  assert(m4_sector.allocated_lines() == 0 && m4_sector.active_refs() == 0);
+  m4_sector.complete_external_dependency(1400);
+  assert(m4_sector.retire_ready_uid(707, 1400));
   return 0;
 }

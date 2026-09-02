@@ -2138,10 +2138,22 @@ void ldst_unit::get_dtc_l1_stats(
     io.io_tag_conflicts = m_dtc_l1_io_frontend->tag_conflicts();
     io.io_tag_requests_per_bank =
         m_dtc_l1_io_frontend->tag_requests_per_bank();
+    io.m4_store_admits = m_dtc_l1_m4_store_admits;
+    io.m4_atomic_admits = m_dtc_l1_m4_atomic_admits;
+    io.m4_bypass_load_admits = m_dtc_l1_m4_bypass_load_admits;
+    io.m4_proxy_fence_admits = m_dtc_l1_m4_proxy_fence_admits;
+    io.m4_source_completions = m_dtc_l1_m4_source_completions;
+    io.m4_observation_retires = m_dtc_l1_m4_observation_retires;
     stats.add(io);
   }
   if (dtc_l1_paper_oo_active()) {
     dtc_l1::paper_frontend_stats oo;
+    oo.m4_store_admits = m_dtc_l1_m4_store_admits;
+    oo.m4_atomic_admits = m_dtc_l1_m4_atomic_admits;
+    oo.m4_bypass_load_admits = m_dtc_l1_m4_bypass_load_admits;
+    oo.m4_proxy_fence_admits = m_dtc_l1_m4_proxy_fence_admits;
+    oo.m4_source_completions = m_dtc_l1_m4_source_completions;
+    oo.m4_observation_retires = m_dtc_l1_m4_observation_retires;
     if (dtc_l1_sector_oo_active()) {
       oo.sector_lower_created = m_dtc_l1_oo_lower_created;
       oo.sector_lower_issued = m_dtc_l1_oo_lower_issued;
@@ -2530,6 +2542,96 @@ ldst_unit::dtc_l1_io_pib_entry *ldst_unit::dtc_l1_io_find_entry(
   return nullptr;
 }
 
+// M4 observes non-cacheable-read operations at their existing architectural
+// completion points.  The sidecar only consumes a DTC PIB slot and one
+// external dependency: it neither changes the request, cache policy, nor the
+// conventional acknowledgement/writeback path selected by the source model.
+bool ldst_unit::dtc_l1_m4_observe_admit(
+    warp_inst_t &inst, dtc_l1_m4_operation operation) {
+  if (!dtc_l1_paper_io_active() && !dtc_l1_paper_oo_active()) return true;
+  const unsigned uid = inst.get_uid();
+  if (dtc_l1_paper_io_active()) {
+    if (dtc_l1_io_find_entry(uid)) return true;
+    if (!m_dtc_l1_io_frontend->admit(uid)) return false;
+    m_dtc_l1_io_frontend->add_external_dependency(uid);
+    m_dtc_l1_io_pib.push_back({inst, {}, 0, operation, false});
+    m_dtc_l1_io_pib_peak = std::max(
+        m_dtc_l1_io_pib_peak, static_cast<uint64_t>(m_dtc_l1_io_pib.size()));
+  } else {
+    if (dtc_l1_oo_find_entry(uid)) return true;
+    const bool admitted = dtc_l1_sector_oo_active()
+                              ? m_dtc_l1_sector_frontend->admit(uid)
+                              : m_dtc_l1_oo_frontend->admit(uid);
+    if (!admitted) return false;
+    if (dtc_l1_sector_oo_active())
+      m_dtc_l1_sector_frontend->add_external_dependency(uid);
+    else
+      m_dtc_l1_oo_frontend->add_external_dependency(uid);
+    m_dtc_l1_oo_pib.push_back({inst, {}, 0, operation, false});
+  }
+  switch (operation) {
+    case dtc_l1_m4_operation::STORE: ++m_dtc_l1_m4_store_admits; break;
+    case dtc_l1_m4_operation::ATOMIC: ++m_dtc_l1_m4_atomic_admits; break;
+    case dtc_l1_m4_operation::BYPASS_LOAD:
+      ++m_dtc_l1_m4_bypass_load_admits;
+      break;
+    case dtc_l1_m4_operation::PROXY_FENCE:
+      ++m_dtc_l1_m4_proxy_fence_admits;
+      break;
+    case dtc_l1_m4_operation::CACHEABLE_LOAD: assert(false); break;
+  }
+  return true;
+}
+
+void ldst_unit::dtc_l1_m4_observe_complete(const warp_inst_t &inst) {
+  const unsigned uid = inst.get_uid();
+  if (dtc_l1_paper_io_active()) {
+    dtc_l1_io_pib_entry *entry = dtc_l1_io_find_entry(uid);
+    if (!entry || entry->operation == dtc_l1_m4_operation::CACHEABLE_LOAD)
+      return;
+    assert(!entry->source_completed);
+    entry->source_completed = true;
+    m_dtc_l1_io_frontend->complete_external_dependency(uid);
+  } else if (dtc_l1_paper_oo_active()) {
+    dtc_l1_oo_pib_entry *entry = dtc_l1_oo_find_entry(uid);
+    if (!entry || entry->operation == dtc_l1_m4_operation::CACHEABLE_LOAD)
+      return;
+    assert(!entry->source_completed);
+    entry->source_completed = true;
+    if (dtc_l1_sector_oo_active())
+      m_dtc_l1_sector_frontend->complete_external_dependency(uid);
+    else
+      m_dtc_l1_oo_frontend->complete_external_dependency(uid);
+  } else {
+    return;
+  }
+  ++m_dtc_l1_m4_source_completions;
+}
+
+bool ldst_unit::dtc_l1_oo_select_ready(uint64_t *uid) const {
+  for (auto candidate = m_dtc_l1_oo_pib.begin();
+       candidate != m_dtc_l1_oo_pib.end(); ++candidate) {
+    const uint64_t candidate_uid = candidate->inst.get_uid();
+    const bool ready = dtc_l1_sector_oo_active()
+                           ? m_dtc_l1_sector_frontend->entry_ready_for(candidate_uid)
+                           : m_dtc_l1_oo_frontend->entry_ready_for(candidate_uid);
+    if (!ready) continue;
+    bool older_same_warp_fence = false;
+    for (auto older = m_dtc_l1_oo_pib.begin(); older != candidate; ++older) {
+      if (older->inst.warp_id() == candidate->inst.warp_id() &&
+          older->operation == dtc_l1_m4_operation::PROXY_FENCE) {
+        older_same_warp_fence = true;
+        break;
+      }
+    }
+    if (!older_same_warp_fence) {
+      if (uid) *uid = candidate_uid;
+      return true;
+    }
+  }
+  return false;
+}
+
 std::vector<dtc_l1::line_reference> ldst_unit::dtc_l1_io_line_references(
     const warp_inst_t &inst) const {
   std::vector<dtc_l1::sector_access> accesses;
@@ -2734,6 +2836,18 @@ bool ldst_unit::dtc_l1_io_writeback_head() {
   ++m_dtc_l1_io_pib_head_ready_cycles;
   dtc_l1_io_pib_entry &entry = m_dtc_l1_io_pib.front();
   assert(m_dtc_l1_io_frontend->head_uid() == entry.inst.get_uid());
+  if (entry.operation != dtc_l1_m4_operation::CACHEABLE_LOAD) {
+    // The architectural path already performed its source-defined completion
+    // (including Store ack accounting, atomic side effect, or bypass
+    // writeback).  Retiring this ready sidecar must never duplicate it.
+    assert(entry.source_completed && entry.references.empty());
+    const bool retired = m_dtc_l1_io_frontend->retire_head(entry.inst.get_uid());
+    assert(retired);
+    m_dtc_l1_io_pib.pop_front();
+    ++m_dtc_l1_io_retire_count;
+    ++m_dtc_l1_m4_observation_retires;
+    return true;
+  }
   m_next_wb = entry.inst;
   if (!m_operand_collector->writeback(m_next_wb)) {
     ++m_dtc_l1_io_ready_but_wb_blocked_cycles;
@@ -2960,12 +3074,32 @@ void ldst_unit::dtc_l1_oo_complete_instruction(const warp_inst_t &inst,
 bool ldst_unit::dtc_l1_oo_writeback_ready() {
   if (!dtc_l1_paper_oo_active()) return false;
   uint64_t uid = 0;
-  const bool ready = dtc_l1_sector_oo_active()
-                         ? m_dtc_l1_sector_frontend->oldest_ready_uid(&uid)
-                         : m_dtc_l1_oo_frontend->oldest_ready_uid(&uid);
+  const bool ready = dtc_l1_oo_select_ready(&uid);
   if (!ready) return false;
   dtc_l1_oo_pib_entry *entry = dtc_l1_oo_find_entry(static_cast<unsigned>(uid));
   assert(entry);
+  const unsigned long long cycle =
+      m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
+  if (entry->operation != dtc_l1_m4_operation::CACHEABLE_LOAD) {
+    assert(entry->source_completed && entry->references.empty());
+    const bool retired_ok = dtc_l1_sector_oo_active()
+                                ? m_dtc_l1_sector_frontend->retire_ready_uid(
+                                      cycle, uid)
+                                : m_dtc_l1_oo_frontend->retire_ready_uid(cycle,
+                                                                         uid);
+    assert(retired_ok);
+    for (auto it = m_dtc_l1_oo_pib.begin(); it != m_dtc_l1_oo_pib.end(); ++it)
+      if (it->inst.get_uid() == uid) {
+        m_dtc_l1_oo_pib.erase(it);
+        break;
+      }
+    ++m_dtc_l1_m4_observation_retires;
+    m_dtc_l1_oo_out_of_order_retires =
+        dtc_l1_sector_oo_active()
+            ? m_dtc_l1_sector_frontend->out_of_order_retires()
+            : m_dtc_l1_oo_frontend->out_of_order_retires();
+    return true;
+  }
   m_next_wb = entry->inst;
   if (!m_operand_collector->writeback(m_next_wb)) {
     ++m_dtc_l1_oo_ready_but_wb_blocked_cycles;
@@ -2975,15 +3109,12 @@ bool ldst_unit::dtc_l1_oo_writeback_ready() {
   const unsigned dependencies = static_cast<unsigned>(entry->references.size());
   dtc_l1_oo_complete_instruction(entry->inst, dependencies);
   uint64_t retired = 0;
-  const unsigned long long cycle =
-      m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
   const bool retired_ok = dtc_l1_sector_oo_active()
-                              ? m_dtc_l1_sector_frontend->retire_one_ready(
-                                    cycle, &retired)
-                              : m_dtc_l1_oo_frontend->retire_one_ready(cycle,
-                                                                       &retired);
+                              ? m_dtc_l1_sector_frontend->retire_ready_uid(
+                                    cycle, uid)
+                              : m_dtc_l1_oo_frontend->retire_ready_uid(cycle,
+                                                                       uid);
   assert(retired_ok);
-  assert(retired == uid);
   for (auto it = m_dtc_l1_oo_pib.begin(); it != m_dtc_l1_oo_pib.end(); ++it) {
     if (it->inst.get_uid() == uid) {
       m_dtc_l1_oo_pib.erase(it);
@@ -3280,10 +3411,28 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
     if (m_core->get_config()->gmem_skip_L1D && (CACHE_L1 != inst.cache_op))
       bypassL1D = true;
   }
-  if (dtc_l1_paper_io_active() && inst.is_load() && !bypassL1D) {
+  // Atomics retain their source-defined architectural route even though the
+  // PTX model classifies them as LOAD_OP.  They are never DTC mergeable reads.
+  dtc_l1_m4_operation observed_operation =
+      dtc_l1_m4_operation::CACHEABLE_LOAD;
+  if (inst.isatomic())
+    observed_operation = dtc_l1_m4_operation::ATOMIC;
+  else if (inst.is_store())
+    observed_operation = dtc_l1_m4_operation::STORE;
+  else if (inst.is_load() && bypassL1D)
+    observed_operation = dtc_l1_m4_operation::BYPASS_LOAD;
+  if (observed_operation != dtc_l1_m4_operation::CACHEABLE_LOAD &&
+      !dtc_l1_m4_observe_admit(inst, observed_operation)) {
+    stall_reason = BK_CONF;
+    access_type = inst.is_store() ? G_MEM_ST : G_MEM_LD;
+    return false;
+  }
+  if (dtc_l1_paper_io_active() && inst.is_load() && !inst.isatomic() &&
+      !bypassL1D) {
     return dtc_l1_io_memory_cycle(inst, stall_reason, access_type);
   }
-  if (dtc_l1_paper_oo_active() && inst.is_load() && !bypassL1D) {
+  if (dtc_l1_paper_oo_active() && inst.is_load() && !inst.isatomic() &&
+      !bypassL1D) {
     return dtc_l1_oo_memory_cycle(inst, stall_reason, access_type);
   }
   if (bypassL1D) {
@@ -3840,7 +3989,8 @@ void ldst_unit::writeback() {
   // process next instruction that is going to writeback
   if (!m_next_wb.empty()) {
     if (m_operand_collector->writeback(m_next_wb)) {
-      writeback_complete(m_next_wb);
+      const bool completed = writeback_complete(m_next_wb);
+      if (completed) dtc_l1_m4_observe_complete(m_next_wb);
       m_next_wb.clear();
       m_last_inst_gpu_sim_cycle = m_core->get_gpu()->gpu_sim_cycle;
       m_last_inst_gpu_tot_sim_cycle = m_core->get_gpu()->gpu_tot_sim_cycle;
@@ -3929,7 +4079,8 @@ void ldst_unit::writeback() {
               m_core->dec_tma_load_req(mf->get_wid());
             }
 
-            writeback_complete(m_next_wb);
+            const bool completed = writeback_complete(m_next_wb);
+            if (completed) dtc_l1_m4_observe_complete(m_next_wb);
 
             LDST_DPRINTF(
                 "Core %u 0x%llx from warp %d writeback after %lld cycles\n",
@@ -4470,7 +4621,12 @@ void ldst_unit::cycle() {
         assert(pipe_reg.is_proxy_fence_async());
 
         // Issue if we have space in the pipeline
-        if (m_pipeline_reg[m_pipeline_depth - 1]->empty()) {
+        if (!dtc_l1_m4_observe_admit(
+                pipe_reg, dtc_l1_m4_operation::PROXY_FENCE)) {
+          // The dispatch register remains occupied, preserving normal
+          // pipeline backpressure while the explicit DTC lifecycle PIB is
+          // full.  No source fence semantics are changed.
+        } else if (m_pipeline_reg[m_pipeline_depth - 1]->empty()) {
           // See would set the fence flag
           this->set_fence(pipe_reg);
           // Move the fence instruction to the end of the pipeline
@@ -4561,6 +4717,7 @@ void ldst_unit::cycle() {
       }
       m_core->dec_inst_in_pipeline(warp_id);
       m_core->warp_inst_complete(*m_dispatch_reg);
+      dtc_l1_m4_observe_complete(*m_dispatch_reg);
       dtc_l1_retire(*m_dispatch_reg);
       m_dispatch_reg->clear();
     }
@@ -4956,6 +5113,21 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
     m_cluster[i]->get_dtc_l1_stats(total);
     m_cluster[i]->get_l1d_cache_stats(l1d_stats);
   }
+  const auto print_m4_lifecycle = [&]() {
+    assert(total.m4_source_completions == total.m4_observation_retires);
+    fprintf(fout, "DTC_L1_m4_store_admits = %llu\n",
+            static_cast<unsigned long long>(total.m4_store_admits));
+    fprintf(fout, "DTC_L1_m4_atomic_admits = %llu\n",
+            static_cast<unsigned long long>(total.m4_atomic_admits));
+    fprintf(fout, "DTC_L1_m4_bypass_load_admits = %llu\n",
+            static_cast<unsigned long long>(total.m4_bypass_load_admits));
+    fprintf(fout, "DTC_L1_m4_proxy_fence_admits = %llu\n",
+            static_cast<unsigned long long>(total.m4_proxy_fence_admits));
+    fprintf(fout, "DTC_L1_m4_source_completions = %llu\n",
+            static_cast<unsigned long long>(total.m4_source_completions));
+    fprintf(fout, "DTC_L1_m4_observation_retires = %llu\n",
+            static_cast<unsigned long long>(total.m4_observation_retires));
+  };
   if (mode == static_cast<unsigned>(dtc_l1::mode::PAPER_IO)) {
     assert(total.io_inflight_current == 0);
     assert(total.io_pib_occupancy == 0);
@@ -5069,6 +5241,7 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
             conventional_mshr_entry_full);
     fprintf(fout, "DTC_L1_conventional_l1d_mshr_merge_full_events = %llu\n",
             conventional_mshr_merge_full);
+    print_m4_lifecycle();
     return;
   }
   if (mode == static_cast<unsigned>(dtc_l1::mode::MODERN_OO_SECTOR)) {
@@ -5121,6 +5294,7 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
             static_cast<unsigned long long>(dtc_l1_lower_requests_released()));
     fprintf(fout, "DTC_L1_lower_outstanding = %u\n",
             dtc_l1_lower_outstanding());
+    print_m4_lifecycle();
     return;
   }
   if (mode == static_cast<unsigned>(dtc_l1::mode::PAPER_OO)) {
@@ -5183,6 +5357,7 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
             static_cast<unsigned long long>(dtc_l1_lower_requests_released()));
     fprintf(fout, "DTC_L1_lower_outstanding = %u\n",
             dtc_l1_lower_outstanding());
+    print_m4_lifecycle();
     return;
   }
   assert(total.admits == total.retires);
