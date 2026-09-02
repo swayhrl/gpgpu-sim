@@ -4591,6 +4591,8 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
             static_cast<unsigned long long>(dtc_l1_lower_requests_released()));
     fprintf(fout, "DTC_L1_lower_outstanding = %u\n",
             dtc_l1_lower_outstanding());
+    fprintf(fout, "DTC_L1_lower_cap_full_events = %llu\n",
+            static_cast<unsigned long long>(dtc_l1_lower_cap_full_events()));
     return;
   }
   assert(total.admits == total.retires);
