@@ -57,6 +57,7 @@
 #include "../utils.h"
 #include "addrdec.h"
 #include "delayqueue.h"
+#include "dtc-l1-common.h"
 #include "dram.h"
 #include "gpu-cache.h"
 #include "mem_fetch.h"
@@ -2041,6 +2042,10 @@ class ldst_unit : public pipelined_simd_unit {
                                                    warp_inst_t &inst);
   mem_stage_stall_type process_memory_access_queue_l1cache(l1_cache *cache,
                                                            warp_inst_t &inst);
+  bool dtc_l1_paper_base_active() const;
+  bool dtc_l1_admit(warp_inst_t &inst);
+  bool dtc_l1_try_tag(new_addr_type address);
+  void dtc_l1_retire(const warp_inst_t &inst);
   gpgpu_sim *m_gpu;
 
   const memory_config *m_memory_config;
@@ -2088,6 +2093,9 @@ class ldst_unit : public pipelined_simd_unit {
 
   std::vector<std::deque<mem_fetch *>> l1_latency_queue;
   void L1_latency_queue_cycle();
+
+  std::unique_ptr<dtc_l1::paper_frontend> m_dtc_l1_frontend;
+  std::set<unsigned> m_dtc_l1_live_instruction_uids;
 
   // For fence
   // Right now just support async fence
@@ -2259,6 +2267,15 @@ class shader_core_config : public core_config {
   mutable cache_config m_L1T_config;
   mutable cache_config m_L1C_config;
   mutable l1d_cache_config m_L1D_config;
+
+  // Default-off DTC-L1 paper front-end controls.  They intentionally do not
+  // reuse the conventional L1 bank/MSHR controls so LEGACY remains untouched.
+  unsigned dtc_l1_mode;
+  unsigned dtc_l1_pib_entries;
+  unsigned dtc_l1_tag_banks;
+  unsigned dtc_l1_tag_requests_per_bank_per_cycle;
+  unsigned dtc_l1_tag_requests_per_cycle;
+  unsigned dtc_l1_logical_sets;
 
   bool gpgpu_dwf_reg_bankconflict;
 

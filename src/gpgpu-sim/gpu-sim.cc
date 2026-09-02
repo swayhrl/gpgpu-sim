@@ -398,6 +398,24 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          "l1 banks hashing function", "0");
   option_parser_register(opp, "-gpgpu_l1_latency", OPT_UINT32,
                          &m_L1D_config.l1_latency, "L1 Hit Latency", "1");
+  option_parser_register(
+      opp, "-gpgpu_dtc_l1_mode", OPT_UINT32, &dtc_l1_mode,
+      "DTC-L1 mode: 0=LEGACY, 1=PAPER_BASE, 2=PAPER_IO, 3=PAPER_OO, "
+      "4=MODERN_OO_SECTOR", "0");
+  option_parser_register(opp, "-gpgpu_dtc_l1_pib_entries", OPT_UINT32,
+                         &dtc_l1_pib_entries,
+                         "DTC-L1 pending-instruction entries", "8");
+  option_parser_register(opp, "-gpgpu_dtc_l1_tag_banks", OPT_UINT32,
+                         &dtc_l1_tag_banks, "DTC-L1 logical Tag banks", "4");
+  option_parser_register(opp, "-gpgpu_dtc_l1_tag_req_per_bank", OPT_UINT32,
+                         &dtc_l1_tag_requests_per_bank_per_cycle,
+                         "DTC-L1 Tag requests per bank per cycle", "1");
+  option_parser_register(opp, "-gpgpu_dtc_l1_tag_req_per_cycle", OPT_UINT32,
+                         &dtc_l1_tag_requests_per_cycle,
+                         "DTC-L1 aggregate Tag requests per cycle", "4");
+  option_parser_register(opp, "-gpgpu_dtc_l1_logical_sets", OPT_UINT32,
+                         &dtc_l1_logical_sets,
+                         "DTC-L1 logical Tag sets", "32");
   option_parser_register(opp, "-gpgpu_smem_latency", OPT_UINT32, &smem_latency,
                          "smem Latency", "3");
   option_parser_register(opp, "-gpgpu_cache:dl1PrefL1", OPT_CSTR,

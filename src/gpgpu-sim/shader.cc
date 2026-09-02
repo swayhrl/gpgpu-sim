@@ -2311,6 +2311,11 @@ mem_stage_stall_type ldst_unit::process_memory_access_queue_l1cache(
 
       if (inst.accessq_empty()) return result;
 
+      if (!dtc_l1_try_tag(inst.accessq_back().get_addr())) {
+        result = BK_CONF;
+        break;
+      }
+
       mem_fetch *mf =
           m_mf_allocator->alloc(inst_ptr, inst.accessq_back(),
                                 m_core->get_gpu()->gpu_sim_cycle +
@@ -2345,6 +2350,7 @@ mem_stage_stall_type ldst_unit::process_memory_access_queue_l1cache(
 
     return result;
   } else {
+    if (!dtc_l1_try_tag(inst.accessq_back().get_addr())) return BK_CONF;
     mem_fetch *mf =
         m_mf_allocator->alloc(inst, inst.accessq_back(),
                               m_core->get_gpu()->gpu_sim_cycle +
@@ -2357,6 +2363,34 @@ mem_stage_stall_type ldst_unit::process_memory_access_queue_l1cache(
     return process_cache_access(cache, mf->get_addr(), inst, events, mf,
                                 status);
   }
+}
+
+bool ldst_unit::dtc_l1_paper_base_active() const {
+  return m_dtc_l1_frontend && m_dtc_l1_frontend->enabled();
+}
+
+bool ldst_unit::dtc_l1_admit(warp_inst_t &inst) {
+  if (!dtc_l1_paper_base_active()) return true;
+  const unsigned uid = inst.get_uid();
+  if (!m_dtc_l1_frontend->try_admit(uid)) return false;
+  m_dtc_l1_live_instruction_uids.insert(uid);
+  return true;
+}
+
+bool ldst_unit::dtc_l1_try_tag(new_addr_type address) {
+  if (!dtc_l1_paper_base_active()) return true;
+  const unsigned long long cycle =
+      m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
+  return m_dtc_l1_frontend->try_serve_tag(
+      cycle, address, m_config->dtc_l1_logical_sets);
+}
+
+void ldst_unit::dtc_l1_retire(const warp_inst_t &inst) {
+  if (!dtc_l1_paper_base_active()) return;
+  const unsigned uid = inst.get_uid();
+  const size_t erased = m_dtc_l1_live_instruction_uids.erase(uid);
+  if (!erased) return;
+  m_dtc_l1_frontend->retire(uid);
 }
 
 void ldst_unit::L1_latency_queue_cycle() {
@@ -2513,6 +2547,12 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
     return true;
   if (inst.active_count() == 0) return true;
   if (inst.accessq_empty()) return true;
+
+  if (!dtc_l1_admit(inst)) {
+    stall_reason = BK_CONF;
+    access_type = inst.is_store() ? G_MEM_ST : G_MEM_LD;
+    return false;
+  }
 
   mem_stage_stall_type stall_cond = NO_RC_FAIL;
   const mem_access_t &access = inst.accessq_back();
@@ -2913,6 +2953,26 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
       l1_latency_queue[j].resize(m_config->m_L1D_config.l1_latency,
                                  (mem_fetch *)NULL);
   }
+  if (m_config->dtc_l1_mode >
+      static_cast<unsigned>(dtc_l1::mode::MODERN_OO_SECTOR)) {
+    fprintf(stderr, "Invalid -gpgpu_dtc_l1_mode value %u\n",
+            m_config->dtc_l1_mode);
+    abort();
+  }
+  dtc_l1::config dtc_config;
+  // M1 attaches the shared admission/Tag layer only to PAPER_BASE.  Later
+  // stages enable IO/OO after their distinct retirement semantics exist.
+  dtc_config.selected_mode =
+      m_config->dtc_l1_mode == static_cast<unsigned>(dtc_l1::mode::PAPER_BASE)
+          ? dtc_l1::mode::PAPER_BASE
+          : dtc_l1::mode::LEGACY;
+  dtc_config.pib_entries = m_config->dtc_l1_pib_entries;
+  dtc_config.tag_banks = m_config->dtc_l1_tag_banks;
+  dtc_config.tag_requests_per_bank_per_cycle =
+      m_config->dtc_l1_tag_requests_per_bank_per_cycle;
+  dtc_config.tag_requests_per_cycle =
+      m_config->dtc_l1_tag_requests_per_cycle;
+  m_dtc_l1_frontend = std::make_unique<dtc_l1::paper_frontend>(dtc_config);
   m_name = "MEM ";
 }
 
@@ -3011,6 +3071,7 @@ bool ldst_unit::writeback_complete(warp_inst_t &inst) {
   }
   if (insn_completed) {
     m_core->warp_inst_complete(inst);
+    dtc_l1_retire(inst);
     if (inst.m_is_ldgsts) {
       // If the LDGSTS instruction is done, we need to erase it from the
       // pending LDGSTS map and unset the DEPBAR
@@ -3584,6 +3645,7 @@ void ldst_unit::cycle() {
         }
         if (!pending_requests) {
           m_core->warp_inst_complete(*m_dispatch_reg);
+          dtc_l1_retire(*m_dispatch_reg);
           m_scoreboard->releaseRegisters(m_dispatch_reg);
 
           // release LDGSTS
@@ -3704,6 +3766,7 @@ void ldst_unit::cycle() {
       }
       m_core->dec_inst_in_pipeline(warp_id);
       m_core->warp_inst_complete(*m_dispatch_reg);
+      dtc_l1_retire(*m_dispatch_reg);
       m_dispatch_reg->clear();
     }
   }
