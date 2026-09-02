@@ -11,6 +11,7 @@
 #include <cassert>
 #include <cstdint>
 #include <map>
+#include <deque>
 #include <set>
 #include <vector>
 
@@ -28,6 +29,124 @@ struct config {
   unsigned tag_requests_per_bank_per_cycle = 1;
   unsigned tag_requests_per_cycle = 4;
   unsigned coalescer_threads_per_cycle = 32;
+  unsigned logical_sets = 32;
+  unsigned logical_ways = 4;
+  unsigned physical_lines = 640;
+  unsigned allocation_width = 4;
+  unsigned io_pib_entries = 256;
+};
+
+enum class io_access_kind { VALID_HIT, PENDING_HIT, NEW_MISS, NO_FREE_LINE };
+
+struct physical_identity {
+  unsigned id = 0;
+  uint64_t generation = 0;
+};
+
+struct io_access_result {
+  io_access_kind kind = io_access_kind::NO_FREE_LINE;
+  physical_identity physical;
+};
+
+// Deterministic whole-line IO-DTC model used by M2 directed tests and by the
+// later LD/ST integration.  It deliberately owns no conventional MSHR state.
+class io_frontend {
+ public:
+  explicit io_frontend(config cfg) : m_cfg(cfg), m_tags(cfg.logical_sets * cfg.logical_ways), m_phys(cfg.physical_lines) {
+    assert(cfg.logical_sets && cfg.logical_ways && cfg.physical_lines);
+    assert(cfg.allocation_width && cfg.io_pib_entries);
+  }
+
+  void begin_cycle(uint64_t cycle) {
+    if (cycle == m_cycle) return;
+    m_cycle = cycle;
+    m_allocations_this_cycle = 0;
+  }
+
+  bool admit(uint64_t uid) {
+    if (m_entries.size() >= m_cfg.io_pib_entries) return false;
+    m_entries.push_back({uid, {}, {}});
+    return true;
+  }
+
+  io_access_result access(uint64_t cycle, uint64_t uid, uint64_t address) {
+    begin_cycle(cycle);
+    entry *owner = find_entry(uid);
+    assert(owner);
+    const uint64_t line = address & ~(kLogicalLineBytes - 1);
+    tag_entry *tag = find_tag(line);
+    if (tag) {
+      owner->references.push_back(tag->physical);
+      return {m_phys[tag->physical.id].ready ? io_access_kind::VALID_HIT
+                                              : io_access_kind::PENDING_HIT,
+              tag->physical};
+    }
+    if (m_allocations_this_cycle >= m_cfg.allocation_width) {
+      return {io_access_kind::NO_FREE_LINE, {}};
+    }
+    const int free_id = find_free_physical();
+    if (free_id < 0) return {io_access_kind::NO_FREE_LINE, {}};
+    tag_entry *victim = select_victim(line);
+    if (victim->valid) owner->release_on_retire.push_back(victim->physical);
+    physical_identity identity{static_cast<unsigned>(free_id), ++m_phys[free_id].generation};
+    m_phys[free_id].allocated = true;
+    m_phys[free_id].ready = false;
+    *victim = {true, line, identity, ++m_lru_clock};
+    owner->references.push_back(identity);
+    ++m_allocations_this_cycle;
+    ++m_new_misses;
+    return {io_access_kind::NEW_MISS, identity};
+  }
+
+  void complete(physical_identity identity) {
+    assert(identity.id < m_phys.size());
+    physical_line &line = m_phys[identity.id];
+    assert(line.allocated && line.generation == identity.generation);
+    line.ready = true;
+  }
+
+  bool retire_head() {
+    if (m_entries.empty() || !entry_ready(m_entries.front())) return false;
+    for (const physical_identity identity : m_entries.front().release_on_retire)
+      release(identity);
+    m_entries.pop_front();
+    ++m_retires;
+    return true;
+  }
+
+  size_t occupancy() const { return m_entries.size(); }
+  uint64_t new_misses() const { return m_new_misses; }
+  uint64_t retires() const { return m_retires; }
+  size_t free_lines() const {
+    size_t result = 0;
+    for (const physical_line &line : m_phys) result += !line.allocated;
+    return result;
+  }
+
+ private:
+  struct physical_line { bool allocated = false; bool ready = false; uint64_t generation = 0; };
+  struct tag_entry { bool valid = false; uint64_t line = 0; physical_identity physical; uint64_t lru = 0; };
+  struct entry { uint64_t uid; std::vector<physical_identity> references; std::vector<physical_identity> release_on_retire; };
+  entry *find_entry(uint64_t uid) { for (entry &e : m_entries) if (e.uid == uid) return &e; return nullptr; }
+  tag_entry *find_tag(uint64_t line) {
+    const unsigned set = static_cast<unsigned>((line / kLogicalLineBytes) % m_cfg.logical_sets);
+    for (unsigned way = 0; way < m_cfg.logical_ways; ++way) { tag_entry &t = m_tags[set * m_cfg.logical_ways + way]; if (t.valid && t.line == line) { t.lru = ++m_lru_clock; return &t; } }
+    return nullptr;
+  }
+  tag_entry *select_victim(uint64_t line) {
+    const unsigned set = static_cast<unsigned>((line / kLogicalLineBytes) % m_cfg.logical_sets);
+    tag_entry *victim = &m_tags[set * m_cfg.logical_ways];
+    for (unsigned way = 0; way < m_cfg.logical_ways; ++way) { tag_entry &t = m_tags[set * m_cfg.logical_ways + way]; if (!t.valid) return &t; if (t.lru < victim->lru) victim = &t; }
+    return victim;
+  }
+  int find_free_physical() {
+    for (unsigned offset = 0; offset < m_phys.size(); ++offset) { const unsigned id = (m_rr_next + offset) % m_phys.size(); if (!m_phys[id].allocated) { m_rr_next = (id + 1) % m_phys.size(); return id; } }
+    return -1;
+  }
+  bool entry_ready(const entry &e) const { for (const physical_identity id : e.references) if (!m_phys[id.id].ready || m_phys[id.id].generation != id.generation) return false; return true; }
+  void release(physical_identity identity) { physical_line &line = m_phys[identity.id]; assert(line.generation == identity.generation); line.allocated = false; line.ready = false; }
+  config m_cfg; std::vector<tag_entry> m_tags; std::vector<physical_line> m_phys; std::deque<entry> m_entries;
+  uint64_t m_cycle = UINT64_MAX, m_lru_clock = 0, m_new_misses = 0, m_retires = 0; unsigned m_allocations_this_cycle = 0, m_rr_next = 0;
 };
 
 // A value snapshot lets the normal SM/cluster aggregation path emit a compact

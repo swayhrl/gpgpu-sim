@@ -89,5 +89,35 @@ int main() {
   assert(hit_completion.try_admit(200));
   hit_completion.retire(200);
   hit_completion.assert_drained();
+
+  // M2 unit foundation: a pending hit merges onto one physical allocation;
+  // FIFO retirement waits for its fill and releases a replaced line only when
+  // the replacing entry reaches the head.
+  config io_cfg;
+  io_cfg.selected_mode = mode::PAPER_IO;
+  io_cfg.logical_sets = 1;
+  io_cfg.logical_ways = 1;
+  io_cfg.physical_lines = 2;
+  io_cfg.allocation_width = 1;
+  io_cfg.io_pib_entries = 4;
+  dtc_l1::io_frontend io(io_cfg);
+  assert(io.admit(1));
+  const auto first = io.access(1, 1, 0);
+  assert(first.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(io.admit(2));
+  const auto merge = io.access(2, 2, 0);
+  assert(merge.kind == dtc_l1::io_access_kind::PENDING_HIT);
+  assert(merge.physical.id == first.physical.id);
+  assert(io.new_misses() == 1);
+  assert(!io.retire_head());
+  io.complete(first.physical);
+  assert(io.retire_head());
+  assert(io.retire_head());
+  assert(io.admit(3));
+  const auto replacement = io.access(3, 3, 128);
+  assert(replacement.kind == dtc_l1::io_access_kind::NEW_MISS);
+  io.complete(replacement.physical);
+  assert(io.retire_head());
+  assert(io.free_lines() == 1);
   return 0;
 }
