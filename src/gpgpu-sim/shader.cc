@@ -2082,6 +2082,29 @@ void ldst_unit::get_cache_stats(cache_stats &cs) {
 void ldst_unit::get_dtc_l1_stats(
     dtc_l1::paper_frontend_stats &stats) const {
   if (dtc_l1_paper_base_active()) stats.add(m_dtc_l1_frontend->stats());
+  if (dtc_l1_paper_io_active()) {
+    dtc_l1::paper_frontend_stats io;
+    io.io_lower_created = m_dtc_l1_io_lower_created;
+    io.io_lower_issued = m_dtc_l1_io_lower_issued;
+    io.io_lower_responses = m_dtc_l1_io_lower_responses;
+    io.io_inflight_current = m_dtc_l1_io_inflight.size();
+    io.io_inflight_peak = m_dtc_l1_io_inflight_peak;
+    io.io_inflight_identity_mismatch = m_dtc_l1_io_inflight_identity_mismatch;
+    io.io_responses_routed_dtc = m_dtc_l1_io_responses_routed_dtc;
+    io.io_responses_routed_conventional =
+        m_dtc_l1_io_responses_routed_conventional;
+    io.io_pib_occupancy = m_dtc_l1_io_pib.size();
+    io.io_pib_peak = m_dtc_l1_io_pib_peak;
+    io.io_pib_head_ready_cycles = m_dtc_l1_io_pib_head_ready_cycles;
+    io.io_head_not_ready_cycles = m_dtc_l1_io_head_not_ready_cycles;
+    io.io_retire_count = m_dtc_l1_io_retire_count;
+    io.io_ready_but_writeback_blocked_cycles =
+        m_dtc_l1_io_ready_but_wb_blocked_cycles;
+    io.io_completion_dependencies = m_dtc_l1_io_completion_dependencies;
+    io.io_completion_dependencies_closed =
+        m_dtc_l1_io_completion_dependencies_closed;
+    stats.add(io);
+  }
 }
 
 void ldst_unit::get_l1d_cache_stats(cache_stats &cs) const {
@@ -2379,6 +2402,225 @@ bool ldst_unit::dtc_l1_paper_base_active() const {
   return m_dtc_l1_frontend && m_dtc_l1_frontend->enabled();
 }
 
+bool ldst_unit::dtc_l1_paper_io_active() const {
+  return m_dtc_l1_io_frontend != nullptr;
+}
+
+ldst_unit::dtc_l1_io_pib_entry *ldst_unit::dtc_l1_io_find_entry(
+    unsigned uid) {
+  for (dtc_l1_io_pib_entry &entry : m_dtc_l1_io_pib) {
+    if (entry.inst.get_uid() == uid) return &entry;
+  }
+  return nullptr;
+}
+
+std::vector<dtc_l1::line_reference> ldst_unit::dtc_l1_io_line_references(
+    const warp_inst_t &inst) const {
+  std::vector<dtc_l1::sector_access> accesses;
+  accesses.reserve(inst.accessq().size());
+  for (const mem_access_t &access : inst.accessq()) {
+    accesses.push_back(
+        {access.get_addr(), static_cast<uint8_t>(access.get_sector_mask().to_ulong())});
+  }
+  return dtc_l1::group_128b_references(accesses);
+}
+
+// PAPER_IO consumes the already-coalesced access queue as a set of whole-line
+// references.  It deliberately never calls l1_cache::access(): physical
+// state, merge state, and lower ownership live in io_frontend and the queues
+// below, not in the conventional L1D MSHR.
+bool ldst_unit::dtc_l1_io_memory_cycle(
+    warp_inst_t &inst, mem_stage_stall_type &stall_reason,
+    mem_stage_access_type &access_type) {
+  const unsigned uid = inst.get_uid();
+  dtc_l1_io_pib_entry *entry = dtc_l1_io_find_entry(uid);
+  if (!entry) {
+    if (!m_dtc_l1_io_frontend->admit(uid)) {
+      stall_reason = BK_CONF;
+      access_type = G_MEM_LD;
+      return false;
+    }
+    m_dtc_l1_io_pib.push_back(
+        {inst, dtc_l1_io_line_references(inst), 0});
+    m_dtc_l1_io_pib_peak =
+        std::max(m_dtc_l1_io_pib_peak,
+                 static_cast<uint64_t>(m_dtc_l1_io_pib.size()));
+    entry = &m_dtc_l1_io_pib.back();
+    assert(!entry->references.empty());
+  }
+
+  if (entry->next_reference < entry->references.size()) {
+    const dtc_l1::line_reference reference =
+        entry->references[entry->next_reference];
+    const unsigned long long cycle =
+        m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
+    const dtc_l1::io_access_result result =
+        m_dtc_l1_io_frontend->access(cycle, uid, reference.line_address);
+    if (result.kind == dtc_l1::io_access_kind::NO_FREE_LINE) {
+      stall_reason = BK_CONF;
+      access_type = G_MEM_LD;
+      return false;
+    }
+    if (result.kind == dtc_l1::io_access_kind::NEW_MISS) {
+      assert(m_dtc_l1_io_lower_create_queue.size() <
+             m_config->dtc_l1_io_pib_entries);
+      m_dtc_l1_io_lower_create_queue.push_back(
+          {uid, result.physical, reference.line_address});
+    }
+    ++entry->next_reference;
+  }
+
+  if (entry->next_reference != entry->references.size()) {
+    stall_reason = COAL_STALL;
+    access_type = G_MEM_LD;
+    return false;
+  }
+
+  while (!inst.accessq_empty()) inst.accessq_pop_back();
+  return true;
+}
+
+void ldst_unit::dtc_l1_io_issue_lower_requests() {
+  if (!dtc_l1_paper_io_active()) return;
+  const unsigned long long cycle =
+      m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
+
+  // Credit acquisition and mem_fetch creation are one atomic ownership step.
+  // If the global cap is full, retain the DTC-owned candidate and retry; the
+  // physical allocation remains Pending and cannot be mistaken for a fill.
+  if (!m_dtc_l1_io_lower_create_queue.empty() &&
+      m_core->get_gpu()->dtc_l1_try_acquire_lower_request()) {
+    const dtc_l1_io_lower_candidate candidate =
+        m_dtc_l1_io_lower_create_queue.front();
+    dtc_l1_io_pib_entry *entry = dtc_l1_io_find_entry(candidate.inst_uid);
+    assert(entry);
+    mem_access_byte_mask_t byte_mask;
+    mem_access_sector_mask_t sector_mask;
+    byte_mask.set();
+    sector_mask.set();
+    mem_access_t whole_line(GLOBAL_ACC_R, candidate.line_address,
+                            dtc_l1::kLogicalLineBytes, false,
+                            entry->inst.get_warp_active_mask(), byte_mask,
+                            sector_mask, m_memory_config->gpgpu_ctx);
+    mem_fetch *mf = m_mf_allocator->alloc(entry->inst, whole_line, cycle);
+    const unsigned request_uid = mf->get_request_uid();
+    const bool inserted = m_dtc_l1_io_inflight
+                              .emplace(request_uid,
+                                       dtc_l1_io_inflight{candidate.physical,
+                                                           candidate.line_address,
+                                                           candidate.inst_uid})
+                              .second;
+    assert(inserted && "IO request identity must be unique while live");
+    dtc_l1_io_identity_event("IO_LOWER_CREATED", *mf);
+    m_dtc_l1_io_lower_issue_queue.push_back(mf);
+    m_dtc_l1_io_lower_create_queue.pop_front();
+    ++m_dtc_l1_io_lower_created;
+    m_dtc_l1_io_inflight_peak =
+        std::max(m_dtc_l1_io_inflight_peak,
+                 static_cast<uint64_t>(m_dtc_l1_io_inflight.size()));
+  }
+
+  // The DTC path has a distinct bounded queue and a fixed one-request/SM
+  // issue width.  Interconnect backpressure leaves the request owned here.
+  if (!m_dtc_l1_io_lower_issue_queue.empty()) {
+    mem_fetch *mf = m_dtc_l1_io_lower_issue_queue.front();
+    if (!m_icnt->full(mf->size(), false)) {
+      mf->set_status(IN_ICNT_TO_MEM, cycle);
+      m_icnt->push(mf);
+      m_dtc_l1_io_lower_issue_queue.pop_front();
+      ++m_dtc_l1_io_lower_issued;
+    }
+  }
+}
+
+bool ldst_unit::dtc_l1_io_consume_response(mem_fetch *mf) {
+  if (!dtc_l1_paper_io_active()) return false;
+  auto it = m_dtc_l1_io_inflight.find(mf->get_request_uid());
+  if (it == m_dtc_l1_io_inflight.end() && mf->get_original_mf()) {
+    it = m_dtc_l1_io_inflight.find(
+        mf->get_original_mf()->get_request_uid());
+  }
+  if (it == m_dtc_l1_io_inflight.end()) return false;
+  dtc_l1_io_inflight &record = it->second;
+  const uint64_t aligned_address =
+      mf->get_addr() & ~(dtc_l1::kLogicalLineBytes - 1);
+  const unsigned sector =
+      static_cast<unsigned>((mf->get_addr() - record.line_address) / 32);
+  if (mf->get_is_write() || aligned_address != record.line_address ||
+      sector >= dtc_l1::kSectorsPerLogicalLine ||
+      (record.response_sector_mask & (1U << sector))) {
+    ++m_dtc_l1_io_inflight_identity_mismatch;
+    assert(false && "IO response identity/address mismatch");
+  }
+  record.response_sector_mask |= static_cast<uint8_t>(1U << sector);
+  mem_fetch *original = mf->get_original_mf();
+  const bool whole_line_complete = record.response_sector_mask == 0xFU;
+  if (whole_line_complete) {
+    m_dtc_l1_io_frontend->complete(record.physical);
+    m_core->get_gpu()->dtc_l1_complete_lower_request();
+    m_dtc_l1_io_inflight.erase(it);
+    ++m_dtc_l1_io_lower_responses;
+  }
+  ++m_dtc_l1_io_responses_routed_dtc;
+  delete mf;
+  // baseline_cache::fill() normally replaces the final sector child with its
+  // original request before disposing of it.  IO intentionally bypasses that
+  // cache ownership path, so it must release the root explicitly once all
+  // four sector replies have completed the recorded whole-line request.
+  if (original && whole_line_complete) delete original;
+  return true;
+}
+
+void ldst_unit::dtc_l1_io_complete_instruction(const warp_inst_t &inst,
+                                                unsigned dependencies) {
+  assert(dependencies > 0);
+  for (unsigned r = 0; r < MAX_OUTPUT_VALUES; ++r) {
+    const unsigned reg_id = inst.out[r];
+    if (!reg_id) continue;
+    unsigned &pending = m_pending_writes[inst.warp_id()][reg_id];
+    assert(pending >= dependencies);
+    pending -= dependencies;
+    assert(pending == 0 &&
+           "PAPER_IO uses exactly one pending-write dependency per 128B line");
+    m_pending_writes[inst.warp_id()].erase(reg_id);
+    m_scoreboard->releaseRegister(inst.warp_id(), reg_id);
+  }
+  if (inst.m_is_ldgsts) {
+    unsigned &pending = m_pending_ldgsts[inst.warp_id()][inst.get_uid()];
+    assert(pending >= dependencies);
+    pending -= dependencies;
+    assert(pending == 0);
+    m_pending_ldgsts[inst.warp_id()].erase(inst.get_uid());
+    m_core->unset_depbar(inst);
+  }
+  m_dtc_l1_io_completion_dependencies_closed += dependencies;
+  m_core->warp_inst_complete(inst);
+}
+
+bool ldst_unit::dtc_l1_io_writeback_head() {
+  if (!dtc_l1_paper_io_active() || m_dtc_l1_io_pib.empty() ||
+      !m_dtc_l1_io_frontend->head_ready()) {
+    return false;
+  }
+  ++m_dtc_l1_io_pib_head_ready_cycles;
+  dtc_l1_io_pib_entry &entry = m_dtc_l1_io_pib.front();
+  assert(m_dtc_l1_io_frontend->head_uid() == entry.inst.get_uid());
+  m_next_wb = entry.inst;
+  if (!m_operand_collector->writeback(m_next_wb)) {
+    ++m_dtc_l1_io_ready_but_wb_blocked_cycles;
+    m_next_wb.clear();
+    return false;
+  }
+  dtc_l1_io_complete_instruction(entry.inst,
+                                  static_cast<unsigned>(entry.references.size()));
+  const bool retired = m_dtc_l1_io_frontend->retire_head(entry.inst.get_uid());
+  assert(retired);
+  m_dtc_l1_io_pib.pop_front();
+  ++m_dtc_l1_io_retire_count;
+  m_next_wb.clear();
+  return true;
+}
+
 bool ldst_unit::dtc_l1_admit(warp_inst_t &inst) {
   if (!dtc_l1_paper_base_active()) return true;
   const unsigned uid = inst.get_uid();
@@ -2430,6 +2672,27 @@ void ldst_unit::dtc_l1_debug_event(const char *event, const warp_inst_t &inst,
   fprintf(stderr, "\n");
 }
 
+// PAPER_IO requests travel through the existing sector L2/NoC machinery.  A
+// bounded trace is intentionally kept separate from the Paper-Base trace so
+// R2.0 can establish the response identity contract without enabling any
+// Paper-Base admission or conventional-L1 behavior in PAPER_IO mode.
+void ldst_unit::dtc_l1_io_identity_event(const char *event,
+                                         mem_fetch &mf) {
+  if (!m_dtc_l1_io_frontend || !m_dtc_l1_io_identity_events_left) return;
+  --m_dtc_l1_io_identity_events_left;
+  const mem_fetch *original = mf.get_original_mf();
+  fprintf(stderr,
+          "DTC_L1_IO_IDENTITY cycle=%llu sm=%u event=%s request_uid=%u "
+          "inst_uid=%u addr=0x%llx access_type=%u original_uid=%u "
+          "original_same=%u\n",
+          m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle,
+          m_sid, event, mf.get_request_uid(), mf.get_inst().get_uid(),
+          static_cast<unsigned long long>(mf.get_addr()),
+          static_cast<unsigned>(mf.get_access_type()),
+          original ? original->get_request_uid() : 0U,
+          original == &mf ? 1U : 0U);
+}
+
 void ldst_unit::print_dtc_l1_stats(FILE *fp) const {
   if (!dtc_l1_paper_base_active()) return;
   const dtc_l1::paper_frontend &front_end = *m_dtc_l1_frontend;
@@ -2469,6 +2732,7 @@ void ldst_unit::L1_latency_queue_cycle() {
                         events);
       dtc_l1_debug_event("L1_ACCESS", mf_next->get_inst(),
                          mf_next->get_addr(), cache_request_status_str(status));
+      dtc_l1_io_identity_event("ISSUE_L1_ACCESS", *mf_next);
 
       bool write_sent = was_write_sent(events);
       bool read_sent = was_read_sent(events);
@@ -2638,6 +2902,9 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
     // skip L1 cache if the option is enabled
     if (m_core->get_config()->gmem_skip_L1D && (CACHE_L1 != inst.cache_op))
       bypassL1D = true;
+  }
+  if (dtc_l1_paper_io_active() && inst.is_load() && !bypassL1D) {
+    return dtc_l1_io_memory_cycle(inst, stall_reason, access_type);
   }
   if (bypassL1D) {
     // bypass L1 cache
@@ -3051,6 +3318,7 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
   if (m_config->dtc_l1_mode == static_cast<unsigned>(dtc_l1::mode::PAPER_IO))
     m_dtc_l1_io_frontend = std::make_unique<dtc_l1::io_frontend>(dtc_config);
   m_dtc_l1_debug_events_left = m_config->dtc_l1_debug_event_limit;
+  m_dtc_l1_io_identity_events_left = m_config->dtc_l1_debug_event_limit;
   m_name = "MEM ";
 }
 
@@ -3076,6 +3344,19 @@ void ldst_unit::issue(register_set &reg_set) {
   if (inst->is_load() && inst->space.get_type() != shared_space) {
     unsigned warp_id = inst->warp_id();
     unsigned n_accesses = inst->accessq_count();
+    const bool io_cacheable_read =
+        dtc_l1_paper_io_active() && m_L1D != NULL &&
+        (inst->space.get_type() == global_space ||
+         inst->space.get_type() == local_space ||
+         inst->space.get_type() == param_space_local) &&
+        inst->cache_op != CACHE_GLOBAL &&
+        !(inst->space.is_global() && m_core->get_config()->gmem_skip_L1D &&
+          inst->cache_op != CACHE_L1);
+    if (io_cacheable_read) {
+      n_accesses = static_cast<unsigned>(dtc_l1_io_line_references(*inst).size());
+      assert(n_accesses > 0);
+      m_dtc_l1_io_completion_dependencies += n_accesses;
+    }
     for (unsigned r = 0; r < MAX_OUTPUT_VALUES; r++) {
       unsigned reg_id = inst->out[r];
       if (reg_id > 0) {
@@ -3276,6 +3557,9 @@ void ldst_unit::writeback() {
             break;
           }
         }
+        break;
+      case WB_CLIENT_DTC_IO:
+        if (dtc_l1_io_writeback_head()) serviced_client = next_client;
         break;
       case WB_CLIENT_L1D:
         if (m_L1D && m_L1D->access_ready()) {
@@ -3581,6 +3865,10 @@ void ldst_unit::cycle() {
     m_dtc_l1_frontend->assert_accounting();
   }
   writeback();
+  if (dtc_l1_paper_io_active() && !m_dtc_l1_io_pib.empty() &&
+      !m_dtc_l1_io_frontend->head_ready()) {
+    ++m_dtc_l1_io_head_not_ready_cycles;
+  }
 
   // Move warp in pipeline
   for (unsigned stage = 0; (stage + 1) < m_pipeline_depth; stage++) {
@@ -3597,6 +3885,15 @@ void ldst_unit::cycle() {
   while (m_next_global.size() < m_config->m_L1D_config.l1_banks &&
          !m_response_fifo.empty()) {
     mem_fetch *mf = m_response_fifo.front();
+    dtc_l1_io_identity_event("RESPONSE_FIFO", *mf);
+
+    // This ownership dispatch intentionally precedes every conventional L1D
+    // response path.  A DTC IO response has no baseline_cache MSHR record.
+    if (dtc_l1_io_consume_response(mf)) {
+      m_response_fifo.pop_front();
+      processed_count++;
+      continue;
+    }
 
     // Handle texture access - mutually exclusive with global accesses
     if (mf->get_access_type() == TEXTURE_ACC_R) {
@@ -3663,6 +3960,7 @@ void ldst_unit::cycle() {
       m_response_fifo.pop_front();
       m_next_global.push_back(mf);
     } else {
+      if (dtc_l1_paper_io_active()) ++m_dtc_l1_io_responses_routed_conventional;
       dtc_l1_debug_event("L1_FILL", mf->get_inst(), mf->get_addr());
       m_L1D->fill(mf, m_core->get_gpu()->gpu_sim_cycle +
                           m_core->get_gpu()->gpu_tot_sim_cycle);
@@ -3678,6 +3976,7 @@ void ldst_unit::cycle() {
     m_L1D->cycle();
     if (m_config->m_L1D_config.l1_latency > 0) L1_latency_queue_cycle();
   }
+  dtc_l1_io_issue_lower_requests();
 
   warp_inst_t &pipe_reg = *m_dispatch_reg;
   enum mem_stage_stall_type rc_fail = NO_RC_FAIL;
@@ -4231,8 +4530,9 @@ void gpgpu_sim::shader_print_cache_stats(FILE *fout) const {
 }
 
 void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
-  if (m_shader_config->dtc_l1_mode !=
-      static_cast<unsigned>(dtc_l1::mode::PAPER_BASE)) {
+  const unsigned mode = m_shader_config->dtc_l1_mode;
+  if (mode != static_cast<unsigned>(dtc_l1::mode::PAPER_BASE) &&
+      mode != static_cast<unsigned>(dtc_l1::mode::PAPER_IO)) {
     return;
   }
 
@@ -4241,6 +4541,57 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
   for (unsigned i = 0; i < m_shader_config->n_simt_clusters; ++i) {
     m_cluster[i]->get_dtc_l1_stats(total);
     m_cluster[i]->get_l1d_cache_stats(l1d_stats);
+  }
+  if (mode == static_cast<unsigned>(dtc_l1::mode::PAPER_IO)) {
+    assert(total.io_inflight_current == 0);
+    assert(total.io_pib_occupancy == 0);
+    assert(total.io_lower_created == total.io_lower_issued);
+    assert(total.io_lower_created == total.io_lower_responses);
+    assert(total.io_completion_dependencies ==
+           total.io_completion_dependencies_closed);
+    assert(dtc_l1_lower_outstanding() == 0);
+    assert(dtc_l1_lower_requests_acquired() ==
+           dtc_l1_lower_requests_released());
+    fprintf(fout, "DTC_L1_mode = PAPER_IO\n");
+    fprintf(fout, "DTC_L1_io_lower_created = %llu\n",
+            static_cast<unsigned long long>(total.io_lower_created));
+    fprintf(fout, "DTC_L1_io_lower_issued = %llu\n",
+            static_cast<unsigned long long>(total.io_lower_issued));
+    fprintf(fout, "DTC_L1_io_lower_responses = %llu\n",
+            static_cast<unsigned long long>(total.io_lower_responses));
+    fprintf(fout, "DTC_L1_io_inflight_current = %llu\n",
+            static_cast<unsigned long long>(total.io_inflight_current));
+    fprintf(fout, "DTC_L1_io_inflight_peak_per_sm = %llu\n",
+            static_cast<unsigned long long>(total.io_inflight_peak));
+    fprintf(fout, "DTC_L1_io_inflight_identity_mismatch = %llu\n",
+            static_cast<unsigned long long>(total.io_inflight_identity_mismatch));
+    fprintf(fout, "DTC_L1_io_responses_routed_dtc = %llu\n",
+            static_cast<unsigned long long>(total.io_responses_routed_dtc));
+    fprintf(fout, "DTC_L1_io_responses_routed_conventional = %llu\n",
+            static_cast<unsigned long long>(total.io_responses_routed_conventional));
+    fprintf(fout, "DTC_L1_io_pib_occupancy = %llu\n",
+            static_cast<unsigned long long>(total.io_pib_occupancy));
+    fprintf(fout, "DTC_L1_io_pib_peak_per_sm = %llu\n",
+            static_cast<unsigned long long>(total.io_pib_peak));
+    fprintf(fout, "DTC_L1_io_pib_head_ready_cycles = %llu\n",
+            static_cast<unsigned long long>(total.io_pib_head_ready_cycles));
+    fprintf(fout, "DTC_L1_io_head_not_ready_cycles = %llu\n",
+            static_cast<unsigned long long>(total.io_head_not_ready_cycles));
+    fprintf(fout, "DTC_L1_io_retire_count = %llu\n",
+            static_cast<unsigned long long>(total.io_retire_count));
+    fprintf(fout, "DTC_L1_io_ready_but_writeback_blocked_cycles = %llu\n",
+            static_cast<unsigned long long>(total.io_ready_but_writeback_blocked_cycles));
+    fprintf(fout, "DTC_L1_io_completion_dependency_count = %llu\n",
+            static_cast<unsigned long long>(total.io_completion_dependencies));
+    fprintf(fout, "DTC_L1_io_completion_dependency_closed = %llu\n",
+            static_cast<unsigned long long>(total.io_completion_dependencies_closed));
+    fprintf(fout, "DTC_L1_lower_credit_acquired = %llu\n",
+            static_cast<unsigned long long>(dtc_l1_lower_requests_acquired()));
+    fprintf(fout, "DTC_L1_lower_credit_released = %llu\n",
+            static_cast<unsigned long long>(dtc_l1_lower_requests_released()));
+    fprintf(fout, "DTC_L1_lower_outstanding = %u\n",
+            dtc_l1_lower_outstanding());
+    return;
   }
   assert(total.admits == total.retires);
   assert(total.pib_occupancy == 0);

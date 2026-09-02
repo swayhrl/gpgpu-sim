@@ -1320,8 +1320,9 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
 }
 
 bool gpgpu_sim::dtc_l1_try_acquire_lower_request() {
-  if (m_shader_config->dtc_l1_mode !=
-      static_cast<unsigned>(dtc_l1::mode::PAPER_BASE)) {
+  const unsigned mode = m_shader_config->dtc_l1_mode;
+  if (mode != static_cast<unsigned>(dtc_l1::mode::PAPER_BASE) &&
+      mode != static_cast<unsigned>(dtc_l1::mode::PAPER_IO)) {
     return true;
   }
   const unsigned cap = m_shader_config->dtc_l1_lower_outstanding_cap;
@@ -1338,8 +1339,9 @@ bool gpgpu_sim::dtc_l1_try_acquire_lower_request() {
 }
 
 void gpgpu_sim::dtc_l1_complete_lower_request() {
-  if (m_shader_config->dtc_l1_mode !=
-      static_cast<unsigned>(dtc_l1::mode::PAPER_BASE)) {
+  const unsigned mode = m_shader_config->dtc_l1_mode;
+  if (mode != static_cast<unsigned>(dtc_l1::mode::PAPER_BASE) &&
+      mode != static_cast<unsigned>(dtc_l1::mode::PAPER_IO)) {
     return;
   }
   assert(m_dtc_l1_lower_outstanding > 0);

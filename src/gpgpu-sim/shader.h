@@ -2045,12 +2045,24 @@ class ldst_unit : public pipelined_simd_unit {
   mem_stage_stall_type process_memory_access_queue_l1cache(l1_cache *cache,
                                                            warp_inst_t &inst);
   bool dtc_l1_paper_base_active() const;
+  bool dtc_l1_paper_io_active() const;
   bool dtc_l1_admit(warp_inst_t &inst);
   bool dtc_l1_try_tag(new_addr_type address);
   void dtc_l1_retire(const warp_inst_t &inst);
   void dtc_l1_debug_event(const char *event, const warp_inst_t &inst,
                           new_addr_type address,
                           const char *cache_status = NULL);
+  void dtc_l1_io_identity_event(const char *event, mem_fetch &mf);
+  std::vector<dtc_l1::line_reference> dtc_l1_io_line_references(
+      const warp_inst_t &inst) const;
+  bool dtc_l1_io_memory_cycle(warp_inst_t &inst,
+                              mem_stage_stall_type &stall_reason,
+                              mem_stage_access_type &access_type);
+  void dtc_l1_io_issue_lower_requests();
+  bool dtc_l1_io_consume_response(mem_fetch *mf);
+  bool dtc_l1_io_writeback_head();
+  void dtc_l1_io_complete_instruction(const warp_inst_t &inst,
+                                      unsigned dependencies);
   void print_dtc_l1_stats(FILE *fp) const;
   gpgpu_sim *m_gpu;
 
@@ -2082,6 +2094,7 @@ class ldst_unit : public pipelined_simd_unit {
     WB_CLIENT_L1T,
     WB_CLIENT_L1C,
     WB_CLIENT_GLOBAL,
+    WB_CLIENT_DTC_IO,
     WB_CLIENT_L1D,
     WB_CLIENT_FENCE,
     WB_CLIENT_SYNCS,
@@ -2102,8 +2115,44 @@ class ldst_unit : public pipelined_simd_unit {
 
   std::unique_ptr<dtc_l1::paper_frontend> m_dtc_l1_frontend;
   std::unique_ptr<dtc_l1::io_frontend> m_dtc_l1_io_frontend;
+  struct dtc_l1_io_pib_entry {
+    warp_inst_t inst;
+    std::vector<dtc_l1::line_reference> references;
+    size_t next_reference = 0;
+  };
+  struct dtc_l1_io_lower_candidate {
+    unsigned inst_uid = 0;
+    dtc_l1::physical_identity physical;
+    uint64_t line_address = 0;
+  };
+  struct dtc_l1_io_inflight {
+    dtc_l1::physical_identity physical;
+    uint64_t line_address = 0;
+    unsigned inst_uid = 0;
+    uint8_t response_sector_mask = 0;
+  };
+  dtc_l1_io_pib_entry *dtc_l1_io_find_entry(unsigned uid);
+  std::deque<dtc_l1_io_pib_entry> m_dtc_l1_io_pib;
+  std::deque<dtc_l1_io_lower_candidate> m_dtc_l1_io_lower_create_queue;
+  std::deque<mem_fetch *> m_dtc_l1_io_lower_issue_queue;
+  std::unordered_map<unsigned, dtc_l1_io_inflight> m_dtc_l1_io_inflight;
+  uint64_t m_dtc_l1_io_lower_created = 0;
+  uint64_t m_dtc_l1_io_lower_issued = 0;
+  uint64_t m_dtc_l1_io_lower_responses = 0;
+  uint64_t m_dtc_l1_io_inflight_peak = 0;
+  uint64_t m_dtc_l1_io_pib_peak = 0;
+  uint64_t m_dtc_l1_io_inflight_identity_mismatch = 0;
+  uint64_t m_dtc_l1_io_responses_routed_dtc = 0;
+  uint64_t m_dtc_l1_io_responses_routed_conventional = 0;
+  uint64_t m_dtc_l1_io_pib_head_ready_cycles = 0;
+  uint64_t m_dtc_l1_io_head_not_ready_cycles = 0;
+  uint64_t m_dtc_l1_io_retire_count = 0;
+  uint64_t m_dtc_l1_io_ready_but_wb_blocked_cycles = 0;
+  uint64_t m_dtc_l1_io_completion_dependencies = 0;
+  uint64_t m_dtc_l1_io_completion_dependencies_closed = 0;
   std::set<unsigned> m_dtc_l1_live_instruction_uids;
   unsigned m_dtc_l1_debug_events_left = 0;
+  unsigned m_dtc_l1_io_identity_events_left = 0;
 
   // For fence
   // Right now just support async fence

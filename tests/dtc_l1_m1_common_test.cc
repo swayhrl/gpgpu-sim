@@ -143,6 +143,31 @@ int main() {
   partial.complete(held.physical);
   assert(!partial.retire_head());
 
+  // R2.4: an allocation block records only the unresolved line.  Once a
+  // later retry finds that line Pending, the historical block cannot keep the
+  // FIFO head permanently non-retirable.
+  config transient_cfg;
+  transient_cfg.selected_mode = mode::PAPER_IO;
+  transient_cfg.logical_sets = 2;
+  transient_cfg.logical_ways = 1;
+  transient_cfg.physical_lines = 2;
+  transient_cfg.allocation_width = 1;
+  dtc_l1::io_frontend transient(transient_cfg);
+  assert(transient.admit(40));
+  const auto transient_first = transient.access(1, 40, 0);
+  assert(transient_first.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(transient.access(1, 40, 128).kind ==
+         dtc_l1::io_access_kind::NO_FREE_LINE);
+  assert(transient.admit(41));
+  const auto transient_second = transient.access(2, 41, 128);
+  assert(transient_second.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(transient.access(3, 40, 128).kind ==
+         dtc_l1::io_access_kind::PENDING_HIT);
+  transient.complete(transient_first.physical);
+  transient.complete(transient_second.physical);
+  assert(transient.retire_head());
+  assert(transient.retire_head());
+
   config width_cfg;
   width_cfg.selected_mode = mode::PAPER_IO;
   width_cfg.logical_sets = 2;
@@ -155,6 +180,40 @@ int main() {
   assert(width.access(20, 20, 128).kind ==
          dtc_l1::io_access_kind::NO_FREE_LINE);
   assert(width.access(21, 20, 128).kind == dtc_l1::io_access_kind::NEW_MISS);
+
+  // I02/I04/I05: ready lines never generate a lower miss, width four admits
+  // four independent allocations in one cycle, and an eighth request waits
+  // for a later allocation cycle.
+  config width4_cfg;
+  width4_cfg.selected_mode = mode::PAPER_IO;
+  width4_cfg.logical_sets = 8;
+  width4_cfg.logical_ways = 1;
+  width4_cfg.physical_lines = 16;
+  width4_cfg.allocation_width = 4;
+  dtc_l1::io_frontend width4(width4_cfg);
+  for (unsigned uid = 0; uid < 4; ++uid) {
+    assert(width4.admit(100 + uid));
+    const auto miss = width4.access(50, 100 + uid, uid * 128);
+    assert(miss.kind == dtc_l1::io_access_kind::NEW_MISS);
+    width4.complete(miss.physical);
+  }
+  assert(width4.admit(104));
+  assert(width4.access(51, 104, 0).kind ==
+         dtc_l1::io_access_kind::VALID_HIT);
+  assert(width4.new_misses() == 4);
+
+  config width8_cfg = width4_cfg;
+  dtc_l1::io_frontend width8(width8_cfg);
+  for (unsigned uid = 0; uid < 4; ++uid) {
+    assert(width8.admit(200 + uid));
+    assert(width8.access(60, 200 + uid, uid * 128).kind ==
+           dtc_l1::io_access_kind::NEW_MISS);
+  }
+  assert(width8.admit(204));
+  assert(width8.access(60, 204, 4 * 128).kind ==
+         dtc_l1::io_access_kind::NO_FREE_LINE);
+  assert(width8.access(61, 204, 4 * 128).kind ==
+         dtc_l1::io_access_kind::NEW_MISS);
 
   // M2 identity/LRU basis: replacing a ready logical Tag holds its old
   // physical allocation through FIFO retirement, then a later allocation may
