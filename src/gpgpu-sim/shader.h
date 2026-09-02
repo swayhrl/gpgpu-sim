@@ -1641,6 +1641,10 @@ class shader_core_config : public core_config {
 
   bool gpgpu_dwf_reg_bankconflict;
 
+  // VM-core M1 modes: 0=disabled, 1=ideal identity, 2=future functional.
+  unsigned gpgpu_vm_mode;
+  unsigned gpgpu_vm_page_size;
+
   unsigned gpgpu_num_sched_per_core;
   int gpgpu_max_insn_issue_per_warp;
   bool gpgpu_dual_issue_diff_exec_units;
@@ -1785,6 +1789,11 @@ struct shader_core_stats_pod {
   unsigned gpgpu_n_param_insn;
   unsigned gpgpu_n_shmem_bkconflict;
   unsigned gpgpu_n_l1cache_bkconflict;
+  unsigned long long vm_requests;
+  unsigned long long vm_disabled_bypasses;
+  unsigned long long vm_ideal_translations;
+  unsigned long long vm_identity_equal;
+  unsigned long long vm_translation_stall_cycles;
   int gpgpu_n_intrawarp_mshr_merge;
   unsigned gpgpu_n_cmem_portconflict;
   unsigned gpu_stall_shd_mem_breakdown[N_MEM_STAGE_ACCESS_TYPE]

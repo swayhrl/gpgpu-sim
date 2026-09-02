@@ -815,6 +815,8 @@ class mem_access_t {
     init(ctx);
     m_type = type;
     m_addr = address;
+    m_sim_va = address;
+    m_sim_pa = address;
     m_req_size = size;
     m_write = wr;
   }
@@ -828,12 +830,23 @@ class mem_access_t {
     init(ctx);
     m_type = type;
     m_addr = address;
+    m_sim_va = address;
+    m_sim_pa = address;
     m_req_size = size;
     m_write = wr;
   }
 
   new_addr_type get_addr() const { return m_addr; }
   void set_addr(new_addr_type addr) { m_addr = addr; }
+  new_addr_type get_sim_va() const { return m_sim_va; }
+  new_addr_type get_sim_pa() const { return m_sim_pa; }
+  bool vm_translation_applied() const { return m_vm_translation_applied; }
+  void set_sim_pa(new_addr_type sim_pa) {
+    m_sim_pa = sim_pa;
+    m_addr = sim_pa;
+    m_vm_translation_applied = true;
+  }
+  void bypass_vm_translation() { m_vm_translation_applied = true; }
   unsigned get_size() const { return m_req_size; }
   const active_mask_t &get_warp_mask() const { return m_warp_mask; }
   bool is_write() const { return m_write; }
@@ -885,6 +898,9 @@ class mem_access_t {
 
   unsigned m_uid;
   new_addr_type m_addr;  // request address
+  new_addr_type m_sim_va;
+  new_addr_type m_sim_pa;
+  bool m_vm_translation_applied;
   bool m_write;
   unsigned m_req_size;  // bytes
   mem_access_type m_type;
@@ -1222,7 +1238,7 @@ class warp_inst_t : public inst_t {
 
   bool accessq_empty() const { return m_accessq.empty(); }
   unsigned accessq_count() const { return m_accessq.size(); }
-  const mem_access_t &accessq_back() { return m_accessq.back(); }
+  mem_access_t &accessq_back() { return m_accessq.back(); }
   void accessq_pop_back() { m_accessq.pop_back(); }
 
   bool dispatch_delay() {

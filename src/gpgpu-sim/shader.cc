@@ -31,6 +31,7 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 #include "shader.h"
+#include "vm_core.h"
 #include <float.h>
 #include <limits.h>
 #include <string.h>
@@ -645,6 +646,12 @@ void shader_core_stats::print(FILE *fout) const {
   fprintf(fout, "gpgpu_n_shmem_bkconflict = %d\n", gpgpu_n_shmem_bkconflict);
   fprintf(fout, "gpgpu_n_l1cache_bkconflict = %d\n",
           gpgpu_n_l1cache_bkconflict);
+  fprintf(fout, "vm_requests = %llu\n", vm_requests);
+  fprintf(fout, "vm_disabled_bypasses = %llu\n", vm_disabled_bypasses);
+  fprintf(fout, "vm_ideal_translations = %llu\n", vm_ideal_translations);
+  fprintf(fout, "vm_identity_equal = %llu\n", vm_identity_equal);
+  fprintf(fout, "vm_translation_stall_cycles = %llu\n",
+          vm_translation_stall_cycles);
 
   fprintf(fout, "gpgpu_n_intrawarp_mshr_merge = %d\n",
           gpgpu_n_intrawarp_mshr_merge);
@@ -2269,7 +2276,31 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
   if (inst.accessq_empty()) return true;
 
   mem_stage_stall_type stall_cond = NO_RC_FAIL;
-  const mem_access_t &access = inst.accessq_back();
+  mem_access_t &access = inst.accessq_back();
+  if (!access.vm_translation_applied()) {
+    ++m_stats->vm_requests;
+    if (m_config->gpgpu_vm_mode == 0) {
+      ++m_stats->vm_disabled_bypasses;
+      access.bypass_vm_translation();
+    } else if (m_config->gpgpu_vm_mode == 1) {
+      assert(vm_core::valid_page_size(m_config->gpgpu_vm_page_size));
+      assert(!vm_core::transaction_crosses_page(
+          access.get_sim_va(), access.get_size(),
+          m_config->gpgpu_vm_page_size));
+      const new_addr_type sim_pa = vm_core::identity_translate(
+          access.get_sim_va(), m_config->gpgpu_vm_page_size);
+      access.set_sim_pa(sim_pa);
+      ++m_stats->vm_ideal_translations;
+      assert(access.get_sim_va() == access.get_sim_pa());
+      ++m_stats->vm_identity_equal;
+    } else {
+      fprintf(stderr,
+              "ERROR: -gpgpu_vm_mode=%u requires the M2 functional "
+              "translation pipeline\n",
+              m_config->gpgpu_vm_mode);
+      abort();
+    }
+  }
 
   bool bypassL1D = false;
   if (CACHE_GLOBAL == inst.cache_op || (m_L1D == NULL)) {

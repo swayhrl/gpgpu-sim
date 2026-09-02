@@ -390,6 +390,12 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          "global memory access skip L1D cache (implements "
                          "-Xptxas -dlcm=cg, default=no skip)",
                          "0");
+  option_parser_register(opp, "-gpgpu_vm_mode", OPT_UINT32, &gpgpu_vm_mode,
+                         "VM core mode: 0=disabled, 1=ideal identity, "
+                         "2=future functional (unsupported in M1)", "0");
+  option_parser_register(opp, "-gpgpu_vm_page_size", OPT_UINT32,
+                         &gpgpu_vm_page_size,
+                         "VM core base page size in bytes", "65536");
 
   option_parser_register(opp, "-gpgpu_perfect_mem", OPT_BOOL,
                          &gpgpu_perfect_mem,
