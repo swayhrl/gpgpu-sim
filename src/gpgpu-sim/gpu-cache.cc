@@ -670,6 +670,15 @@ void cache_stats::clear_pw() {
   m_stats_pw.clear();
 }
 
+unsigned long long cache_stats::get_aggregated_fail_stats(
+    int access_type, int fail_outcome) const {
+  unsigned long long total = 0;
+  for (const auto &stream : m_fail_stats) {
+    total += stream.second.at(access_type).at(fail_outcome);
+  }
+  return total;
+}
+
 void cache_stats::inc_stats(int access_type, int access_outcome,
                             unsigned long long streamID) {
   ///

@@ -40,6 +40,10 @@ struct paper_frontend_stats {
   uint64_t pib_full_events = 0;
   uint64_t pib_full_stall_cycles = 0;
   uint64_t tag_conflict_stall_cycles = 0;
+  // Kept separate from primary accounting so later stages can observe several
+  // unavailable resources in one cycle without changing the primary reason.
+  uint64_t nonexclusive_pib_full_cycles = 0;
+  uint64_t nonexclusive_tag_conflict_cycles = 0;
   uint64_t frontend_stall_cycles = 0;
   uint64_t pib_occupancy_cycle_sum = 0;
   uint64_t pib_occupancy_sample_cycles = 0;
@@ -55,6 +59,8 @@ struct paper_frontend_stats {
     pib_full_events += other.pib_full_events;
     pib_full_stall_cycles += other.pib_full_stall_cycles;
     tag_conflict_stall_cycles += other.tag_conflict_stall_cycles;
+    nonexclusive_pib_full_cycles += other.nonexclusive_pib_full_cycles;
+    nonexclusive_tag_conflict_cycles += other.nonexclusive_tag_conflict_cycles;
     frontend_stall_cycles += other.frontend_stall_cycles;
     pib_occupancy_cycle_sum += other.pib_occupancy_cycle_sum;
     pib_occupancy_sample_cycles += other.pib_occupancy_sample_cycles;
@@ -121,6 +127,7 @@ class paper_frontend {
     if (m_live_instructions.size() >= m_cfg.pib_entries) {
       ++m_pib_full_events;
       ++m_pib_full_stall_cycles;
+      ++m_nonexclusive_pib_full_cycles;
       ++m_frontend_stall_cycles;
       return false;
     }
@@ -169,6 +176,7 @@ class paper_frontend {
         m_served_per_bank[bank] >= m_cfg.tag_requests_per_bank_per_cycle) {
       ++m_tag_conflicts;
       ++m_tag_conflict_stall_cycles;
+      ++m_nonexclusive_tag_conflict_cycles;
       ++m_frontend_stall_cycles;
       return false;
     }
@@ -188,6 +196,12 @@ class paper_frontend {
   uint64_t pib_full_stall_cycles() const { return m_pib_full_stall_cycles; }
   uint64_t tag_conflict_stall_cycles() const {
     return m_tag_conflict_stall_cycles;
+  }
+  uint64_t nonexclusive_pib_full_cycles() const {
+    return m_nonexclusive_pib_full_cycles;
+  }
+  uint64_t nonexclusive_tag_conflict_cycles() const {
+    return m_nonexclusive_tag_conflict_cycles;
   }
   uint64_t frontend_stall_cycles() const { return m_frontend_stall_cycles; }
   size_t pib_peak() const { return m_pib_peak; }
@@ -210,6 +224,9 @@ class paper_frontend {
     result.pib_full_events = m_pib_full_events;
     result.pib_full_stall_cycles = m_pib_full_stall_cycles;
     result.tag_conflict_stall_cycles = m_tag_conflict_stall_cycles;
+    result.nonexclusive_pib_full_cycles = m_nonexclusive_pib_full_cycles;
+    result.nonexclusive_tag_conflict_cycles =
+        m_nonexclusive_tag_conflict_cycles;
     result.frontend_stall_cycles = m_frontend_stall_cycles;
     result.pib_occupancy_cycle_sum = m_pib_occupancy_cycle_sum;
     result.pib_occupancy_sample_cycles = m_pib_occupancy_sample_cycles;
@@ -248,6 +265,8 @@ class paper_frontend {
   uint64_t m_pib_full_events = 0;
   uint64_t m_pib_full_stall_cycles = 0;
   uint64_t m_tag_conflict_stall_cycles = 0;
+  uint64_t m_nonexclusive_pib_full_cycles = 0;
+  uint64_t m_nonexclusive_tag_conflict_cycles = 0;
   uint64_t m_frontend_stall_cycles = 0;
   size_t m_pib_peak = 0;
   uint64_t m_last_occupancy_sample_cycle = UINT64_MAX;

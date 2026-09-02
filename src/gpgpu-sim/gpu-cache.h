@@ -1269,6 +1269,12 @@ class cache_stats {
   unsigned long long &get_tot_fail_stats(int access_type, int fail_outcome) {
     return m_tot_fail_stats[access_type][fail_outcome];
   }
+  const unsigned long long &get_tot_fail_stats(int access_type,
+                                                int fail_outcome) const {
+    return m_tot_fail_stats[access_type][fail_outcome];
+  }
+  unsigned long long get_aggregated_fail_stats(int access_type,
+                                                int fail_outcome) const;
 
  private:
   bool check_valid(int type, int status) const;

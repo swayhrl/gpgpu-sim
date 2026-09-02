@@ -2084,6 +2084,10 @@ void ldst_unit::get_dtc_l1_stats(
   if (dtc_l1_paper_base_active()) stats.add(m_dtc_l1_frontend->stats());
 }
 
+void ldst_unit::get_l1d_cache_stats(cache_stats &cs) const {
+  if (m_L1D) cs += m_L1D->get_stats();
+}
+
 void ldst_unit::get_L1D_sub_stats(struct cache_sub_stats &css) const {
   if (m_L1D) m_L1D->get_sub_stats(css);
 }
@@ -4226,8 +4230,10 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
   }
 
   dtc_l1::paper_frontend_stats total;
+  cache_stats l1d_stats;
   for (unsigned i = 0; i < m_shader_config->n_simt_clusters; ++i) {
     m_cluster[i]->get_dtc_l1_stats(total);
+    m_cluster[i]->get_l1d_cache_stats(l1d_stats);
   }
   assert(total.admits == total.retires);
   assert(total.pib_occupancy == 0);
@@ -4247,6 +4253,11 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
           static_cast<unsigned long long>(total.pib_full_stall_cycles));
   fprintf(fout, "DTC_L1_primary_stall_tag_bank = %llu\n",
           static_cast<unsigned long long>(total.tag_conflict_stall_cycles));
+  fprintf(fout, "DTC_L1_nonexclusive_pib_full_cycles = %llu\n",
+          static_cast<unsigned long long>(total.nonexclusive_pib_full_cycles));
+  fprintf(fout, "DTC_L1_nonexclusive_tag_bank_conflict_cycles = %llu\n",
+          static_cast<unsigned long long>(
+              total.nonexclusive_tag_conflict_cycles));
   fprintf(fout, "DTC_L1_pib_occupancy_cycle_sum = %llu\n",
           static_cast<unsigned long long>(total.pib_occupancy_cycle_sum));
   fprintf(fout, "DTC_L1_pib_occupancy_sample_cycles = %llu\n",
@@ -4263,6 +4274,24 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
           static_cast<unsigned long long>(dtc_l1_lower_cap_full_events()));
   fprintf(fout, "DTC_L1_primary_stall_lower_cap = %llu\n",
           static_cast<unsigned long long>(dtc_l1_lower_cap_full_events()));
+  fprintf(fout, "DTC_L1_nonexclusive_lower_cap_full_cycles = %llu\n",
+          static_cast<unsigned long long>(dtc_l1_lower_cap_full_events()));
+  unsigned long long mshr_entry_full = 0;
+  unsigned long long mshr_merge_full = 0;
+  for (unsigned access = 0; access < NUM_MEM_ACCESS_TYPE; ++access) {
+    mshr_entry_full +=
+        l1d_stats.get_aggregated_fail_stats(access, MSHR_ENRTY_FAIL);
+    mshr_merge_full +=
+        l1d_stats.get_aggregated_fail_stats(access, MSHR_MERGE_ENRTY_FAIL);
+  }
+  fprintf(fout, "DTC_L1_baseline_mshr_entry_full_events = %llu\n",
+          mshr_entry_full);
+  fprintf(fout, "DTC_L1_baseline_mshr_merge_full_events = %llu\n",
+          mshr_merge_full);
+  fprintf(fout, "DTC_L1_nonexclusive_mshr_entry_full_cycles = %llu\n",
+          mshr_entry_full);
+  fprintf(fout, "DTC_L1_nonexclusive_mshr_merge_full_cycles = %llu\n",
+          mshr_merge_full);
   fprintf(fout, "DTC_L1_lower_requests_acquired = %llu\n",
           static_cast<unsigned long long>(dtc_l1_lower_requests_acquired()));
   fprintf(fout, "DTC_L1_lower_requests_released = %llu\n",
@@ -5183,6 +5212,10 @@ void shader_core_ctx::get_dtc_l1_stats(
   m_ldst_unit->get_dtc_l1_stats(stats);
 }
 
+void shader_core_ctx::get_l1d_cache_stats(cache_stats &cs) const {
+  m_ldst_unit->get_l1d_cache_stats(cs);
+}
+
 void shader_core_ctx::get_cache_stats(cache_stats &cs) {
   // Adds stats from each cache to 'cs'
   cs += m_L1I->get_stats();          // Get L1I stats
@@ -6016,6 +6049,12 @@ void simt_core_cluster::get_dtc_l1_stats(
     dtc_l1::paper_frontend_stats &stats) const {
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i) {
     m_core[i]->get_dtc_l1_stats(stats);
+  }
+}
+
+void simt_core_cluster::get_l1d_cache_stats(cache_stats &cs) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i) {
+    m_core[i]->get_l1d_cache_stats(cs);
   }
 }
 
