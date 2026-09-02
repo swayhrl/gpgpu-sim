@@ -86,18 +86,26 @@ class io_frontend {
               tag->physical};
     }
     if (m_allocations_this_cycle >= m_cfg.allocation_width) {
+      if (!owner->has_unresolved_line) ++m_partial_allocation_events;
       owner->has_unresolved_line = true;
       owner->unresolved_line = line;
       return {io_access_kind::NO_FREE_LINE, {}};
     }
     const int free_id = find_free_physical();
     if (free_id < 0) {
+      if (!owner->has_unresolved_line) ++m_partial_allocation_events;
       owner->has_unresolved_line = true;
       owner->unresolved_line = line;
       return {io_access_kind::NO_FREE_LINE, {}};
     }
     tag_entry *victim = select_victim(line);
-    if (victim->valid) owner->release_on_retire.push_back(victim->physical);
+    if (victim->valid) {
+      ++m_tag_evictions;
+      if (!m_phys[victim->physical.id].ready)
+        m_evicted_pending_lines.insert(victim->line);
+      owner->release_on_retire.push_back(victim->physical);
+    }
+    if (m_evicted_pending_lines.erase(line)) ++m_duplicate_after_eviction;
     physical_identity identity{static_cast<unsigned>(free_id), ++m_phys[free_id].generation};
     m_phys[free_id].allocated = true;
     m_phys[free_id].ready = false;
@@ -141,6 +149,15 @@ class io_frontend {
   size_t occupancy() const { return m_entries.size(); }
   uint64_t new_misses() const { return m_new_misses; }
   uint64_t retires() const { return m_retires; }
+  uint64_t tag_evictions() const { return m_tag_evictions; }
+  uint64_t duplicate_after_eviction() const { return m_duplicate_after_eviction; }
+  uint64_t partial_allocation_events() const { return m_partial_allocation_events; }
+  bool younger_ready_exists() const {
+    if (m_entries.size() < 2) return false;
+    for (size_t i = 1; i < m_entries.size(); ++i)
+      if (entry_ready(m_entries[i])) return true;
+    return false;
+  }
   size_t free_lines() const {
     size_t result = 0;
     for (const physical_line &line : m_phys) result += !line.allocated;
@@ -176,7 +193,11 @@ class io_frontend {
   bool entry_ready(const entry &e) const { if (e.has_unresolved_line) return false; for (const physical_identity id : e.references) if (!m_phys[id.id].ready || m_phys[id.id].generation != id.generation) return false; return true; }
   void release(physical_identity identity) { physical_line &line = m_phys[identity.id]; assert(line.generation == identity.generation); line.allocated = false; line.ready = false; }
   config m_cfg; std::vector<tag_entry> m_tags; std::vector<physical_line> m_phys; std::deque<entry> m_entries;
-  uint64_t m_cycle = UINT64_MAX, m_lru_clock = 0, m_new_misses = 0, m_retires = 0; unsigned m_allocations_this_cycle = 0, m_rr_next = 0;
+  uint64_t m_cycle = UINT64_MAX, m_lru_clock = 0, m_new_misses = 0, m_retires = 0;
+  uint64_t m_tag_evictions = 0, m_duplicate_after_eviction = 0,
+           m_partial_allocation_events = 0;
+  std::set<uint64_t> m_evicted_pending_lines;
+  unsigned m_allocations_this_cycle = 0, m_rr_next = 0;
 };
 
 // A value snapshot lets the normal SM/cluster aggregation path emit a compact

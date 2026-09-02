@@ -238,5 +238,75 @@ int main() {
   const auto reused = eviction.access(32, 32, 256);
   assert(reused.physical.id == old.physical.id);
   assert(reused.physical.generation > old.physical.generation);
+
+  // I07: a hit refreshes exact 4-way LRU, so the untouched oldest Tag is the
+  // eviction victim when a fifth line arrives.
+  config lru_cfg;
+  lru_cfg.selected_mode = mode::PAPER_IO;
+  lru_cfg.logical_sets = 1;
+  lru_cfg.logical_ways = 4;
+  lru_cfg.physical_lines = 6;
+  dtc_l1::io_frontend lru(lru_cfg);
+  for (unsigned line = 0; line < 4; ++line) {
+    assert(lru.admit(300 + line));
+    const auto miss = lru.access(70 + line, 300 + line, line * 128);
+    lru.complete(miss.physical);
+    assert(lru.retire_head());
+  }
+  assert(lru.admit(304));
+  assert(lru.access(80, 304, 0).kind == dtc_l1::io_access_kind::VALID_HIT);
+  assert(lru.retire_head());
+  assert(lru.admit(305));
+  assert(lru.access(81, 305, 4 * 128).kind ==
+         dtc_l1::io_access_kind::NEW_MISS);
+  assert(lru.access(82, 305, 128).kind ==
+         dtc_l1::io_access_kind::NEW_MISS);
+  assert(lru.tag_evictions() == 2);
+
+  // I08/I09: evicting a Pending logical Tag does not redirect its fill; a
+  // later access to that evicted line allocates a distinct request/identity.
+  config pending_evict_cfg;
+  pending_evict_cfg.selected_mode = mode::PAPER_IO;
+  pending_evict_cfg.logical_sets = 1;
+  pending_evict_cfg.logical_ways = 1;
+  pending_evict_cfg.physical_lines = 3;
+  dtc_l1::io_frontend pending_evict(pending_evict_cfg);
+  assert(pending_evict.admit(400));
+  const auto pending_old = pending_evict.access(90, 400, 0);
+  assert(pending_evict.admit(401));
+  const auto replacement_pending = pending_evict.access(91, 401, 128);
+  assert(pending_evict.admit(402));
+  const auto duplicate = pending_evict.access(92, 402, 0);
+  assert(duplicate.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(duplicate.physical.id != pending_old.physical.id);
+  assert(pending_evict.duplicate_after_eviction() == 1);
+  pending_evict.complete(pending_old.physical);
+  pending_evict.complete(replacement_pending.physical);
+  pending_evict.complete(duplicate.physical);
+  assert(pending_evict.retire_head());
+  assert(pending_evict.retire_head());
+  assert(pending_evict.retire_head());
+
+  // I10/I11: a ready younger entry cannot retire before an unready FIFO head;
+  // retiring an eviction releases its old physical line for same-cycle reuse.
+  config hol_cfg;
+  hol_cfg.selected_mode = mode::PAPER_IO;
+  hol_cfg.logical_sets = 1;
+  hol_cfg.logical_ways = 2;
+  hol_cfg.physical_lines = 3;
+  dtc_l1::io_frontend hol(hol_cfg);
+  assert(hol.admit(500));
+  const auto valid_seed = hol.access(100, 500, 0);
+  hol.complete(valid_seed.physical);
+  assert(hol.retire_head());
+  assert(hol.admit(501));
+  const auto hol_head = hol.access(101, 501, 128);
+  assert(hol.admit(502));
+  assert(hol.access(102, 502, 0).kind == dtc_l1::io_access_kind::VALID_HIT);
+  assert(hol.younger_ready_exists());
+  assert(!hol.retire_head());
+  hol.complete(hol_head.physical);
+  assert(hol.retire_head());
+  assert(hol.retire_head());
   return 0;
 }
