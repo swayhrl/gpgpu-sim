@@ -242,6 +242,8 @@ lookup_result translation_controller::allocate_or_merge(
     existing->waiters.push_back(waiter(sid, waiter_uid));
     ++m_stats.mshr_merges;
     ++m_stats.waiter_registrations;
+    if (existing->waiters.size() > m_stats.mshr_waiter_depth_max)
+      m_stats.mshr_waiter_depth_max = existing->waiters.size();
     return TRANSLATION_PENDING;
   }
   if (m_mshrs.size() >= m_config.mshr_entries) {
@@ -258,7 +260,15 @@ lookup_result translation_controller::allocate_or_merge(
   m_pwq.push_back(key);
   ++m_stats.mshr_allocations;
   ++m_stats.waiter_registrations;
+  note_mshr_occupancy();
+  if (m_mshrs.back().waiters.size() > m_stats.mshr_waiter_depth_max)
+    m_stats.mshr_waiter_depth_max = m_mshrs.back().waiters.size();
   return TRANSLATION_PENDING;
+}
+
+void translation_controller::note_mshr_occupancy() {
+  if (m_mshrs.size() > m_stats.mshr_occupancy_high_watermark)
+    m_stats.mshr_occupancy_high_watermark = m_mshrs.size();
 }
 
 lookup_result translation_controller::translate(unsigned sid, unsigned asid,
@@ -269,6 +279,16 @@ lookup_result translation_controller::translate(unsigned sid, unsigned asid,
   assert(sid < m_l1s.size());
   translation_key key(asid, vm_core::vpn(sim_va, m_config.page_size),
                       m_config.page_size);
+  // A previously accepted waiter is already represented by this active MSHR.
+  // It must wait without competing for either TLB lookup resource or
+  // polluting probe/miss statistics.  A distinct UID deliberately falls
+  // through to the normal first lookup and may then merge below.
+  const mshr_entry *existing = find_mshr(key);
+  if (existing != 0 && existing->has_waiter(waiter_uid)) {
+    ++m_stats.pending_waiter_bypasses;
+    return TRANSLATION_PENDING;
+  }
+  ++m_stats.lookup_requests;
   set_associative_tlb &l1_tlb = m_l1s[sid];
   if (!l1_tlb.try_consume_port(cycle)) return L1_PORT_STALL;
   uint64_t ppn = 0;
@@ -297,6 +317,15 @@ bool translation_controller::complete_translation(const translation_key &key,
       m_l1s[entry_waiter.sid].fill(key, ppn, cycle);
       ++m_stats.waiter_wakeups;
     }
+    const uint64_t waiter_depth = m_mshrs[index].waiters.size();
+    const uint64_t lifetime = cycle - m_mshrs[index].enqueue_cycle;
+    ++m_stats.mshr_entries_completed;
+    m_stats.mshr_waiter_depth_total += waiter_depth;
+    if (waiter_depth > m_stats.mshr_waiter_depth_max)
+      m_stats.mshr_waiter_depth_max = waiter_depth;
+    m_stats.mshr_lifetime_cycles_total += lifetime;
+    if (lifetime > m_stats.mshr_lifetime_cycles_max)
+      m_stats.mshr_lifetime_cycles_max = lifetime;
     m_mshrs.erase(m_mshrs.begin() + index);
     for (unsigned queued = 0; queued < m_pwq.size(); ++queued) {
       if (m_pwq[queued] == key) {
@@ -383,6 +412,12 @@ void translation_controller::print_stats(FILE *fout) const {
     l1_occupancy += m_l1s[sid].occupancy();
   }
   const tlb_stats &l2_stats = m_l2.stats();
+  fprintf(fout, "vm_translation_page_size_bytes = %llu\n",
+          (unsigned long long)m_config.page_size);
+  fprintf(fout, "vm_translation_lookup_requests = %llu\n",
+          (unsigned long long)m_stats.lookup_requests);
+  fprintf(fout, "vm_translation_pending_waiter_bypasses = %llu\n",
+          (unsigned long long)m_stats.pending_waiter_bypasses);
   fprintf(fout, "vm_functional_mapper_lookups = %llu\n",
           (unsigned long long)m_stats.mapper_lookups);
   fprintf(fout, "vm_functional_completed = %llu\n",
@@ -394,6 +429,18 @@ void translation_controller::print_stats(FILE *fout) const {
   fprintf(fout, "vm_translation_mshr_full_events = %llu\n",
           (unsigned long long)m_stats.mshr_full_events);
   fprintf(fout, "vm_translation_mshr_active = %u\n", active_mshrs());
+  fprintf(fout, "vm_translation_mshr_occupancy_high_watermark = %llu\n",
+          (unsigned long long)m_stats.mshr_occupancy_high_watermark);
+  fprintf(fout, "vm_translation_mshr_entries_completed = %llu\n",
+          (unsigned long long)m_stats.mshr_entries_completed);
+  fprintf(fout, "vm_translation_mshr_waiter_depth_total = %llu\n",
+          (unsigned long long)m_stats.mshr_waiter_depth_total);
+  fprintf(fout, "vm_translation_mshr_waiter_depth_max = %llu\n",
+          (unsigned long long)m_stats.mshr_waiter_depth_max);
+  fprintf(fout, "vm_translation_mshr_lifetime_cycles_total = %llu\n",
+          (unsigned long long)m_stats.mshr_lifetime_cycles_total);
+  fprintf(fout, "vm_translation_mshr_lifetime_cycles_max = %llu\n",
+          (unsigned long long)m_stats.mshr_lifetime_cycles_max);
   fprintf(fout, "vm_translation_pwq_occupancy = %u\n", (unsigned)m_pwq.size());
   fprintf(fout, "vm_translation_pwq_full_events = %llu\n",
           (unsigned long long)m_stats.pwq_full_events);

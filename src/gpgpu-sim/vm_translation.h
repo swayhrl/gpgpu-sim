@@ -181,6 +181,13 @@ enum lookup_result {
 };
 
 struct translation_stats {
+  // A request that is not already registered in an active MSHR and therefore
+  // proceeds to normal finite-resource lookup arbitration.  This is distinct
+  // from TLB probe counters and from pending-waiter retries below.
+  uint64_t lookup_requests;
+  // Same (key, UID) retry found before either TLB port/probe.  These retries
+  // intentionally do not contribute to L1/L2 TLB access or miss counters.
+  uint64_t pending_waiter_bypasses;
   uint64_t mapper_lookups;
   uint64_t completed;
   uint64_t mshr_allocations;
@@ -194,12 +201,21 @@ struct translation_stats {
   uint64_t walk_completions;
   uint64_t pwq_wait_cycles;
   uint64_t walk_service_cycles;
+  uint64_t mshr_occupancy_high_watermark;
+  uint64_t mshr_entries_completed;
+  uint64_t mshr_waiter_depth_total;
+  uint64_t mshr_waiter_depth_max;
+  uint64_t mshr_lifetime_cycles_total;
+  uint64_t mshr_lifetime_cycles_max;
   translation_stats()
-      : mapper_lookups(0), completed(0), mshr_allocations(0),
-        mshr_merges(0), mshr_full_events(0), waiter_registrations(0),
-        waiter_wakeups(0), mshr_releases(0), pwq_full_events(0),
-        walk_starts(0), walk_completions(0), pwq_wait_cycles(0),
-        walk_service_cycles(0) {}
+      : lookup_requests(0), pending_waiter_bypasses(0), mapper_lookups(0),
+        completed(0), mshr_allocations(0), mshr_merges(0),
+        mshr_full_events(0), waiter_registrations(0), waiter_wakeups(0),
+        mshr_releases(0), pwq_full_events(0), walk_starts(0),
+        walk_completions(0), pwq_wait_cycles(0), walk_service_cycles(0),
+        mshr_occupancy_high_watermark(0), mshr_entries_completed(0),
+        mshr_waiter_depth_total(0), mshr_waiter_depth_max(0),
+        mshr_lifetime_cycles_total(0), mshr_lifetime_cycles_max(0) {}
 };
 
 // G2-1 controller: hit latency is zero, but both TLBs have finite lookup
@@ -254,6 +270,7 @@ class translation_controller {
   };
   lookup_result allocate_or_merge(unsigned sid, uint64_t waiter_uid,
                                   const translation_key &key, uint64_t cycle);
+  void note_mshr_occupancy();
   translation_config m_config;
   radix_page_table_backend m_default_page_table;
   page_table_backend *m_page_table;
