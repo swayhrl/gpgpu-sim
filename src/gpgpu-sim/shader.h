@@ -1661,6 +1661,11 @@ class shader_core_config : public core_config {
   uint64_t gpgpu_vm_application_physical_limit;
   uint64_t gpgpu_vm_pte_physical_base;
   uint64_t gpgpu_vm_pte_physical_bytes;
+  // Generic M3 PWC: 0=OFF, 1=FINITE LRU, 2=IDEAL.  This is intentionally
+  // separate from the TLBs and only caches intermediate PTE identities.
+  unsigned gpgpu_vm_pwc_mode;
+  unsigned gpgpu_vm_pwc_entries;
+  unsigned gpgpu_vm_pwc_lookup_latency;
 
   unsigned gpgpu_num_sched_per_core;
   int gpgpu_max_insn_issue_per_warp;

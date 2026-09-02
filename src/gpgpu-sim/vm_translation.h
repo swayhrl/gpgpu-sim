@@ -81,6 +81,19 @@ class page_table_backend {
                                        unsigned level,
                                        uint64_t request_id) const = 0;
   virtual bool owns_pte_physical_address(uint64_t pa) const = 0;
+  // Intermediate-cache clients need the logical radix identity, never a
+  // synthetic physical PTE address.  Backends that do not expose a radix
+  // hierarchy deliberately return false; the generic M3 backend overrides
+  // this contract below.
+  virtual bool pte_prefix_identity(const translation_key &key, unsigned level,
+                                   unsigned *page_class,
+                                   uint64_t *prefix) const {
+    (void)key;
+    (void)level;
+    (void)page_class;
+    (void)prefix;
+    return false;
+  }
 };
 
 class radix_page_table_backend : public page_table_backend {
@@ -97,6 +110,15 @@ class radix_page_table_backend : public page_table_backend {
   // PTE path asserts this predicate rather than rewriting a raw SimVA.
   bool supports_key(const translation_key &key) const;
   const page_table_config &config() const { return m_config; }
+  // These accessors make the frozen radix decomposition directly testable.
+  // Prefixes are the high prefix_bits_for_level() bits of the configured VPN.
+  unsigned level_width(uint64_t page_size, unsigned level) const;
+  unsigned prefix_bits_for_level(uint64_t page_size, unsigned level) const;
+  uint64_t vpn_prefix(const translation_key &key, unsigned level) const;
+  uint64_t pte_namespace_offset(uint64_t page_size, unsigned level) const;
+  bool pte_prefix_identity(const translation_key &key, unsigned level,
+                           unsigned *page_class,
+                           uint64_t *prefix) const;
 
  private:
   unsigned page_size_class(uint64_t page_size) const;
@@ -113,6 +135,22 @@ struct tlb_config {
       : entries(e), assoc(a), ports_per_cycle(p) {}
   bool valid() const;
   unsigned sets() const;
+};
+
+enum pwc_mode { PWC_OFF = 0, PWC_FINITE = 1, PWC_IDEAL = 2 };
+
+// This is a generic M3 modeling decision.  FINITE defaults to the 128-entry
+// organization used for the project baseline; it is not a target-paper or
+// hardware reconstruction.  A lookup has one configured service cycle and
+// intentionally has sufficient logical bandwidth for active walkers.
+struct pwc_config {
+  unsigned mode;
+  unsigned entries;
+  unsigned lookup_latency;
+  pwc_config(unsigned cache_mode = PWC_FINITE, unsigned entry_count = 128,
+             unsigned service_latency = 1)
+      : mode(cache_mode), entries(entry_count), lookup_latency(service_latency) {}
+  bool valid() const;
 };
 
 struct tlb_stats {
@@ -164,6 +202,7 @@ struct translation_config {
   // active walker wait for a real, physical PTE_ACC_R response from G3-2.
   unsigned ptw_mode;
   page_table_config page_table;
+  pwc_config pwc;
   translation_config(unsigned sms = 1,
                      uint64_t page = vm_core::kDefaultBasePageSize,
                      const tlb_config &l1_config = tlb_config(),
@@ -172,11 +211,12 @@ struct translation_config {
                      unsigned walker_count = 16, unsigned latency = 100,
                      const page_table_config &page_table_config_value =
                          page_table_config(),
-                     unsigned page_table_walk_mode = 0)
+                     unsigned page_table_walk_mode = 0,
+                     const pwc_config &pwc_config_value = pwc_config())
       : num_sms(sms), page_size(page), l1(l1_config), l2(l2_config),
         mshr_entries(mshr_count), pwq_entries(pwq_count), walkers(walker_count),
         walk_latency(latency), ptw_mode(page_table_walk_mode),
-        page_table(page_table_config_value) {}
+        page_table(page_table_config_value), pwc(pwc_config_value) {}
   bool valid() const;
 };
 
@@ -221,6 +261,18 @@ struct translation_stats {
   uint64_t pte_l2_only_responses;
   uint64_t pte_dram_responses;
   uint64_t pte_response_misassociations;
+  uint64_t pwc_accesses;
+  uint64_t pwc_hits;
+  uint64_t pwc_misses;
+  uint64_t pwc_inserts;
+  uint64_t pwc_evictions;
+  uint64_t pwc_occupancy;
+  uint64_t pwc_occupancy_high_watermark;
+  uint64_t pwc_service_cycles;
+  std::vector<uint64_t> pwc_accesses_by_level;
+  std::vector<uint64_t> pwc_hits_by_level;
+  std::vector<uint64_t> pwc_misses_by_level;
+  std::vector<uint64_t> pwc_pte_requests_skipped_by_level;
   translation_stats()
       : lookup_requests(0), pending_waiter_bypasses(0), mapper_lookups(0),
         completed(0), mshr_allocations(0), mshr_merges(0),
@@ -231,7 +283,11 @@ struct translation_stats {
         mshr_waiter_depth_total(0), mshr_waiter_depth_max(0),
         mshr_lifetime_cycles_total(0), mshr_lifetime_cycles_max(0),
         pte_requests(0), pte_responses(0), pte_l2_only_responses(0),
-        pte_dram_responses(0), pte_response_misassociations(0) {}
+        pte_dram_responses(0), pte_response_misassociations(0),
+        pwc_accesses(0), pwc_hits(0), pwc_misses(0), pwc_inserts(0),
+        pwc_evictions(0), pwc_occupancy(0), pwc_occupancy_high_watermark(0),
+        pwc_service_cycles(0), pwc_accesses_by_level(), pwc_hits_by_level(),
+        pwc_misses_by_level(), pwc_pte_requests_skipped_by_level() {}
 };
 
 // G2-1 controller: hit latency is zero, but both TLBs have finite lookup
@@ -292,13 +348,37 @@ class translation_controller {
     unsigned next_level;
     bool pte_outstanding;
     uint64_t pte_request_id;
+    bool pwc_probe_scheduled;
+    uint64_t pwc_probe_ready_cycle;
+    bool pwc_miss_ready;
     active_walk(const translation_key &k, uint64_t start, uint64_t ready)
         : key(k), start_cycle(start), ready_cycle(ready), next_level(0),
-          pte_outstanding(false), pte_request_id(0) {}
+          pte_outstanding(false), pte_request_id(0),
+          pwc_probe_scheduled(false), pwc_probe_ready_cycle(0),
+          pwc_miss_ready(false) {}
+  };
+  struct pwc_entry {
+    unsigned asid;
+    unsigned page_class;
+    unsigned level;
+    uint64_t prefix;
+    uint64_t last_touch;
+    pwc_entry(unsigned a, unsigned c, unsigned l, uint64_t p, uint64_t touch)
+        : asid(a), page_class(c), level(l), prefix(p), last_touch(touch) {}
   };
   lookup_result allocate_or_merge(unsigned sid, uint64_t waiter_uid,
                                   const translation_key &key, uint64_t cycle);
   void note_mshr_occupancy();
+  bool pwc_enabled() const { return m_config.pwc.mode != PWC_OFF; }
+  bool pwc_is_leaf(unsigned level) const {
+    return level + 1 == m_page_table->levels();
+  }
+  bool pwc_lookup(const active_walk &walk);
+  void pwc_insert(const translation_key &key, unsigned level);
+  void service_pwc(uint64_t cycle);
+  bool pwc_identity(const translation_key &key, unsigned level,
+                    unsigned *page_class, uint64_t *prefix) const;
+  void initialize_pwc_stats();
   translation_config m_config;
   radix_page_table_backend m_default_page_table;
   page_table_backend *m_page_table;
@@ -307,8 +387,10 @@ class translation_controller {
   std::vector<mshr_entry> m_mshrs;
   std::vector<translation_key> m_pwq;
   std::vector<active_walk> m_active_walks;
+  std::vector<pwc_entry> m_pwc;
   translation_stats m_stats;
   uint64_t m_next_pte_request_id;
+  uint64_t m_pwc_touch_clock;
 };
 
 }  // namespace vm_translation

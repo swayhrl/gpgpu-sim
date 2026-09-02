@@ -21,6 +21,37 @@ unsigned log2_exact(uint64_t value) {
   return result;
 }
 
+bool add_no_overflow(uint64_t left, uint64_t right, uint64_t *result) {
+  if (left > ~0ULL - right) return false;
+  *result = left + right;
+  return true;
+}
+
+// The generic hierarchy is deliberately balanced by VPN bits, not by an
+// NVIDIA-specific page-table format: r=ceil(B/L), then [top,r,...,r].
+bool hierarchy_namespace_bytes(unsigned levels, unsigned va_bits,
+                               uint64_t *required_bytes) {
+  const uint64_t page_sizes[] = {kBasePage64KB, kLargePage2MB};
+  uint64_t total = 0;
+  for (unsigned page_class = 0; page_class < 2; ++page_class) {
+    const unsigned vpn_bits = va_bits - log2_exact(page_sizes[page_class]);
+    if (levels == 0 || levels > vpn_bits) return false;
+    const unsigned radix_bits = (vpn_bits + levels - 1) / levels;
+    const unsigned top_bits = vpn_bits - radix_bits * (levels - 1);
+    if (top_bits == 0) return false;
+    for (unsigned level = 0; level < levels; ++level) {
+      const unsigned prefix_bits = top_bits + level * radix_bits;
+      // The generic VA cap keeps this below 64, but retain the explicit
+      // bound so a future wider configuration cannot silently overflow.
+      if (prefix_bits > 60) return false;
+      const uint64_t bytes = 1ULL << (prefix_bits + 3);
+      if (!add_no_overflow(total, bytes, &total)) return false;
+    }
+  }
+  *required_bytes = total;
+  return true;
+}
+
 }  // namespace
 
 uint64_t present_page_mapper::translate(const translation_key &key) const {
@@ -40,15 +71,14 @@ bool page_table_config::valid() const {
       pte_physical_base > ~0ULL - pte_physical_bytes)
     return false;
 
-  // The largest supported key class is 64KB.  Keep the arithmetic explicit:
-  // for the 56-bit generic baseline this is
-  // 4 levels * 2 classes * 2^(56-16) entries * 8B = 2^46 bytes.
-  const unsigned max_vpn_bits = virtual_address_bits - base_page_bits;
-  const uint64_t namespace_count = uint64_t(levels) * 2ULL;
-  if (namespace_count > (~0ULL >> max_vpn_bits)) return false;
-  const uint64_t slots = namespace_count << max_vpn_bits;
-  if (slots > (~0ULL / kPteBytes)) return false;
-  const uint64_t required_bytes = slots * kPteBytes;
+  (void)base_page_bits;
+  // Prefix namespaces are sized exactly by their radix level.  The current
+  // 56-bit generic reservation remains 2^46 bytes (larger than required),
+  // but validity must not depend on the old flat full-VPN encoding.
+  uint64_t required_bytes = 0;
+  if (!hierarchy_namespace_bytes(levels, virtual_address_bits,
+                                 &required_bytes))
+    return false;
   return pte_physical_bytes >= required_bytes;
 }
 
@@ -74,6 +104,63 @@ unsigned radix_page_table_backend::vpn_bits(uint64_t page_size) const {
   return m_config.virtual_address_bits - shift;
 }
 
+unsigned radix_page_table_backend::level_width(uint64_t page_size,
+                                                unsigned level) const {
+  assert(level < m_config.levels);
+  const unsigned bits = vpn_bits(page_size);
+  const unsigned radix_bits = (bits + m_config.levels - 1) / m_config.levels;
+  if (level == 0) return bits - radix_bits * (m_config.levels - 1);
+  return radix_bits;
+}
+
+unsigned radix_page_table_backend::prefix_bits_for_level(
+    uint64_t page_size, unsigned level) const {
+  assert(level < m_config.levels);
+  unsigned result = 0;
+  for (unsigned index = 0; index <= level; ++index)
+    result += level_width(page_size, index);
+  return result;
+}
+
+uint64_t radix_page_table_backend::vpn_prefix(const translation_key &key,
+                                               unsigned level) const {
+  assert(supports_key(key));
+  const unsigned bits = vpn_bits(key.page_size);
+  const unsigned prefix_bits = prefix_bits_for_level(key.page_size, level);
+  assert(prefix_bits <= bits);
+  return key.vpn >> (bits - prefix_bits);
+}
+
+uint64_t radix_page_table_backend::pte_namespace_offset(
+    uint64_t page_size, unsigned level) const {
+  assert(level < m_config.levels);
+  const unsigned target_class = page_size_class(page_size);
+  const uint64_t page_sizes[] = {kBasePage64KB, kLargePage2MB};
+  uint64_t offset = 0;
+  for (unsigned page_class = 0; page_class <= target_class; ++page_class) {
+    const unsigned final_level =
+        page_class == target_class ? level : m_config.levels;
+    for (unsigned index = 0; index < final_level; ++index) {
+      const unsigned prefix_bits =
+          prefix_bits_for_level(page_sizes[page_class], index);
+      const uint64_t bytes = 1ULL << (prefix_bits + 3);
+      assert(add_no_overflow(offset, bytes, &offset));
+    }
+  }
+  return offset;
+}
+
+bool radix_page_table_backend::pte_prefix_identity(
+    const translation_key &key, unsigned level, unsigned *page_class,
+    uint64_t *prefix) const {
+  if (!supports_key(key) || level >= m_config.levels || page_class == 0 ||
+      prefix == 0)
+    return false;
+  *page_class = page_size_class(key.page_size);
+  *prefix = vpn_prefix(key, level);
+  return true;
+}
+
 bool radix_page_table_backend::supports_key(const translation_key &key) const {
   if (!valid() || (key.page_size != kBasePage64KB &&
                    key.page_size != kLargePage2MB))
@@ -87,17 +174,12 @@ uint64_t radix_page_table_backend::pte_address(const translation_key &key,
   assert(valid());
   assert(level < m_config.levels);
   assert(supports_key(key));
-  // Every supported class shares one fixed namespace width.  Encoding this
-  // with key_vpn_bits would make the class namespace shift 33 bits for 64KB
-  // but 28 bits for 2MB, allowing a high 64KB VPN to alias a 2MB namespace.
-  // The configured PTE range is sized for this maximum (64KB) VPN width.
-  const unsigned max_vpn_bits =
-      m_config.virtual_address_bits - log2_exact(kBasePage64KB);
-  const uint64_t slot =
-      (uint64_t(page_size_class(key.page_size) * m_config.levels + level)
-       << max_vpn_bits) |
-      key.vpn;
-  const uint64_t offset = slot * kPteBytes;
+  // Physical PTE identities use the radix prefix at each level, never the
+  // full VPN.  This gives upper-level PTE locality exactly where two VPNs
+  // share their hierarchy prefix, while the leaf remains unique.
+  const uint64_t offset =
+      pte_namespace_offset(key.page_size, level) +
+      vpn_prefix(key, level) * kPteBytes;
   assert(offset <= m_config.pte_physical_bytes - kPteBytes);
   const uint64_t result = m_config.pte_physical_base + offset;
   assert(owns_pte_physical_address(result));
@@ -128,6 +210,13 @@ bool tlb_config::valid() const {
 unsigned tlb_config::sets() const {
   assert(valid());
   return entries / assoc;
+}
+
+bool pwc_config::valid() const {
+  if (mode > PWC_IDEAL || lookup_latency == 0) return false;
+  if (mode == PWC_OFF) return entries == 0;
+  if (mode == PWC_FINITE) return entries != 0;
+  return true;  // IDEAL is intentionally unbounded; entries is ignored.
 }
 
 set_associative_tlb::set_associative_tlb(const tlb_config &config)
@@ -212,14 +301,17 @@ unsigned set_associative_tlb::occupancy() const {
 bool translation_config::valid() const {
   return num_sms != 0 && vm_core::valid_page_size(page_size) && l1.valid() &&
          l2.valid() && mshr_entries != 0 && pwq_entries != 0 && walkers != 0 &&
-         walk_latency != 0 && ptw_mode <= 1 && page_table.valid();
+         walk_latency != 0 && ptw_mode <= 1 && page_table.valid() &&
+         pwc.valid();
 }
 
 translation_controller::translation_controller(const translation_config &config)
     : m_config(config), m_default_page_table(config.page_table),
       m_page_table(&m_default_page_table), m_l1s(), m_l2(config.l2), m_mshrs(),
-      m_pwq(), m_active_walks(), m_stats(), m_next_pte_request_id(1) {
+      m_pwq(), m_active_walks(), m_pwc(), m_stats(),
+      m_next_pte_request_id(1), m_pwc_touch_clock(0) {
   assert(m_config.valid());
+  initialize_pwc_stats();
   for (unsigned sid = 0; sid < m_config.num_sms; ++sid)
     m_l1s.push_back(set_associative_tlb(m_config.l1));
 }
@@ -228,11 +320,108 @@ translation_controller::translation_controller(const translation_config &config,
                                                page_table_backend *backend)
     : m_config(config), m_default_page_table(config.page_table),
       m_page_table(backend), m_l1s(), m_l2(config.l2), m_mshrs(), m_pwq(),
-      m_active_walks(), m_stats(), m_next_pte_request_id(1) {
+      m_active_walks(), m_pwc(), m_stats(), m_next_pte_request_id(1),
+      m_pwc_touch_clock(0) {
   assert(m_config.valid());
   assert(m_page_table != 0 && m_page_table->valid());
+  initialize_pwc_stats();
   for (unsigned sid = 0; sid < m_config.num_sms; ++sid)
     m_l1s.push_back(set_associative_tlb(m_config.l1));
+}
+
+void translation_controller::initialize_pwc_stats() {
+  const unsigned levels = m_page_table->levels();
+  m_stats.pwc_accesses_by_level.assign(levels, 0);
+  m_stats.pwc_hits_by_level.assign(levels, 0);
+  m_stats.pwc_misses_by_level.assign(levels, 0);
+  m_stats.pwc_pte_requests_skipped_by_level.assign(levels, 0);
+}
+
+bool translation_controller::pwc_identity(const translation_key &key,
+                                          unsigned level,
+                                          unsigned *page_class,
+                                          uint64_t *prefix) const {
+  assert(page_class != 0 && prefix != 0);
+  return m_page_table->pte_prefix_identity(key, level, page_class, prefix);
+}
+
+bool translation_controller::pwc_lookup(const active_walk &walk) {
+  assert(pwc_enabled() && !pwc_is_leaf(walk.next_level));
+  unsigned page_class = 0;
+  uint64_t prefix = 0;
+  assert(pwc_identity(walk.key, walk.next_level, &page_class, &prefix));
+  const unsigned level = walk.next_level;
+  ++m_stats.pwc_accesses;
+  ++m_stats.pwc_accesses_by_level[level];
+  m_stats.pwc_service_cycles += m_config.pwc.lookup_latency;
+  for (unsigned index = 0; index < m_pwc.size(); ++index) {
+    pwc_entry &entry = m_pwc[index];
+    if (entry.asid == walk.key.asid && entry.page_class == page_class &&
+        entry.level == level && entry.prefix == prefix) {
+      entry.last_touch = ++m_pwc_touch_clock;
+      ++m_stats.pwc_hits;
+      ++m_stats.pwc_hits_by_level[level];
+      ++m_stats.pwc_pte_requests_skipped_by_level[level];
+      return true;
+    }
+  }
+  ++m_stats.pwc_misses;
+  ++m_stats.pwc_misses_by_level[level];
+  return false;
+}
+
+void translation_controller::pwc_insert(const translation_key &key,
+                                        unsigned level) {
+  if (!pwc_enabled() || pwc_is_leaf(level)) return;
+  unsigned page_class = 0;
+  uint64_t prefix = 0;
+  assert(pwc_identity(key, level, &page_class, &prefix));
+  for (unsigned index = 0; index < m_pwc.size(); ++index) {
+    pwc_entry &entry = m_pwc[index];
+    if (entry.asid == key.asid && entry.page_class == page_class &&
+        entry.level == level && entry.prefix == prefix) {
+      entry.last_touch = ++m_pwc_touch_clock;
+      return;
+    }
+  }
+  if (m_config.pwc.mode == PWC_FINITE &&
+      m_pwc.size() >= m_config.pwc.entries) {
+    unsigned victim = 0;
+    for (unsigned index = 1; index < m_pwc.size(); ++index)
+      if (m_pwc[index].last_touch < m_pwc[victim].last_touch) victim = index;
+    m_pwc[victim] = pwc_entry(key.asid, page_class, level, prefix,
+                              ++m_pwc_touch_clock);
+    ++m_stats.pwc_evictions;
+  } else {
+    m_pwc.push_back(pwc_entry(key.asid, page_class, level, prefix,
+                              ++m_pwc_touch_clock));
+  }
+  ++m_stats.pwc_inserts;
+  m_stats.pwc_occupancy = m_pwc.size();
+  if (m_stats.pwc_occupancy > m_stats.pwc_occupancy_high_watermark)
+    m_stats.pwc_occupancy_high_watermark = m_stats.pwc_occupancy;
+}
+
+void translation_controller::service_pwc(uint64_t cycle) {
+  if (!pwc_enabled()) return;
+  for (unsigned index = 0; index < m_active_walks.size(); ++index) {
+    active_walk &walk = m_active_walks[index];
+    if (walk.pte_outstanding || walk.pwc_miss_ready ||
+        pwc_is_leaf(walk.next_level))
+      continue;
+    if (!walk.pwc_probe_scheduled) {
+      walk.pwc_probe_scheduled = true;
+      walk.pwc_probe_ready_cycle = cycle + m_config.pwc.lookup_latency;
+      continue;
+    }
+    if (walk.pwc_probe_ready_cycle > cycle) continue;
+    walk.pwc_probe_scheduled = false;
+    if (pwc_lookup(walk)) {
+      ++walk.next_level;
+    } else {
+      walk.pwc_miss_ready = true;
+    }
+  }
 }
 
 bool translation_controller::mshr_entry::has_waiter(uint64_t uid) const {
@@ -372,6 +561,10 @@ void translation_controller::cycle(uint64_t cycle) {
       m_active_walks.push_back(active_walk(key, cycle, 0));
       ++m_stats.walk_starts;
     }
+    // A PWC probe is a one-cycle generic service, with no modeled port
+    // contention.  A hit advances exactly one intermediate level; a miss
+    // makes that level available to the existing physical PTE path below.
+    service_pwc(cycle);
     assert(m_active_walks.size() <= m_config.walkers);
     return;
   }
@@ -406,6 +599,9 @@ bool translation_controller::next_pte_request(pte_request *request) const {
     const active_walk &walk = m_active_walks[index];
     if (walk.pte_outstanding) continue;
     assert(walk.next_level < m_page_table->levels());
+    if (pwc_enabled() && !pwc_is_leaf(walk.next_level) &&
+        !walk.pwc_miss_ready)
+      continue;
     const uint64_t request_id =
         walk.pte_request_id ? walk.pte_request_id : m_next_pte_request_id;
     *request =
@@ -428,8 +624,12 @@ bool translation_controller::pte_request_issued(const pte_request &request,
     if (walk.key == request.key && !walk.pte_outstanding &&
         walk.next_level == request.level &&
         (walk.pte_request_id == 0 || walk.pte_request_id == request.request_id)) {
+      if (pwc_enabled() && !pwc_is_leaf(walk.next_level) &&
+          !walk.pwc_miss_ready)
+        return false;
       walk.pte_outstanding = true;
       walk.pte_request_id = request.request_id;
+      walk.pwc_miss_ready = false;
       if (request.request_id == m_next_pte_request_id) ++m_next_pte_request_id;
       ++m_stats.pte_requests;
       return true;
@@ -459,8 +659,10 @@ bool translation_controller::complete_pte_response(uint64_t request_id,
       ++m_stats.pte_dram_responses;
     else
       ++m_stats.pte_l2_only_responses;
+    const unsigned completed_level = walk.next_level;
     walk.pte_outstanding = false;
     walk.pte_request_id = 0;
+    pwc_insert(walk.key, completed_level);
     ++walk.next_level;
     if (walk.next_level < m_page_table->levels()) return true;
     assert(complete_translation(walk.key, cycle));
@@ -478,7 +680,10 @@ bool translation_controller::invariants_hold() const {
       m_stats.mshr_allocations - m_stats.mshr_releases != m_mshrs.size() ||
       m_stats.waiter_registrations < m_stats.waiter_wakeups ||
       m_stats.walk_starts < m_stats.walk_completions ||
-      m_active_walks.size() > m_config.walkers)
+      m_active_walks.size() > m_config.walkers ||
+      m_stats.pwc_occupancy != m_pwc.size() ||
+      (m_config.pwc.mode == PWC_FINITE &&
+       m_pwc.size() > m_config.pwc.entries))
     return false;
   uint64_t active_waiters = 0;
   for (unsigned i = 0; i < m_mshrs.size(); ++i) {
@@ -499,6 +704,13 @@ bool translation_controller::invariants_hold() const {
         (uses_real_memory_ptw() &&
          m_active_walks[i].next_level >= m_page_table->levels()))
       return false;
+  for (unsigned i = 0; i < m_pwc.size(); ++i)
+    for (unsigned j = i + 1; j < m_pwc.size(); ++j)
+      if (m_pwc[i].asid == m_pwc[j].asid &&
+          m_pwc[i].page_class == m_pwc[j].page_class &&
+          m_pwc[i].level == m_pwc[j].level &&
+          m_pwc[i].prefix == m_pwc[j].prefix)
+        return false;
   return true;
 }
 
@@ -571,6 +783,37 @@ void translation_controller::print_stats(FILE *fout) const {
           (unsigned long long)m_stats.pte_dram_responses);
   fprintf(fout, "vm_pte_response_misassociations = %llu\n",
           (unsigned long long)m_stats.pte_response_misassociations);
+  fprintf(fout, "vm_pwc_mode = %u\n", m_config.pwc.mode);
+  fprintf(fout, "vm_pwc_entries_configured = %u\n", m_config.pwc.entries);
+  fprintf(fout, "vm_pwc_lookup_latency_cycles = %u\n",
+          m_config.pwc.lookup_latency);
+  fprintf(fout, "vm_pwc_accesses = %llu\n",
+          (unsigned long long)m_stats.pwc_accesses);
+  fprintf(fout, "vm_pwc_hits = %llu\n",
+          (unsigned long long)m_stats.pwc_hits);
+  fprintf(fout, "vm_pwc_misses = %llu\n",
+          (unsigned long long)m_stats.pwc_misses);
+  fprintf(fout, "vm_pwc_inserts = %llu\n",
+          (unsigned long long)m_stats.pwc_inserts);
+  fprintf(fout, "vm_pwc_evictions = %llu\n",
+          (unsigned long long)m_stats.pwc_evictions);
+  fprintf(fout, "vm_pwc_occupancy = %llu\n",
+          (unsigned long long)m_stats.pwc_occupancy);
+  fprintf(fout, "vm_pwc_occupancy_high_watermark = %llu\n",
+          (unsigned long long)m_stats.pwc_occupancy_high_watermark);
+  fprintf(fout, "vm_pwc_service_cycles = %llu\n",
+          (unsigned long long)m_stats.pwc_service_cycles);
+  for (unsigned level = 0; level < m_stats.pwc_accesses_by_level.size();
+       ++level) {
+    fprintf(fout, "vm_pwc_level_%u_accesses = %llu\n", level,
+            (unsigned long long)m_stats.pwc_accesses_by_level[level]);
+    fprintf(fout, "vm_pwc_level_%u_hits = %llu\n", level,
+            (unsigned long long)m_stats.pwc_hits_by_level[level]);
+    fprintf(fout, "vm_pwc_level_%u_misses = %llu\n", level,
+            (unsigned long long)m_stats.pwc_misses_by_level[level]);
+    fprintf(fout, "vm_pwc_level_%u_pte_requests_skipped = %llu\n", level,
+            (unsigned long long)m_stats.pwc_pte_requests_skipped_by_level[level]);
+  }
   fprintf(fout, "vm_translation_waiter_registrations = %llu\n",
           (unsigned long long)m_stats.waiter_registrations);
   fprintf(fout, "vm_translation_waiter_wakeups = %llu\n",

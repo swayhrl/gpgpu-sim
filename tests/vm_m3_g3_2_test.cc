@@ -19,7 +19,8 @@ int main() {
       vm_translation::translation_config(
           2, page, vm_translation::tlb_config(2, 2, 2),
           vm_translation::tlb_config(4, 2, 2), 4, 4, 2, 1,
-          vm_translation::page_table_config(), 1));
+          vm_translation::page_table_config(), 1,
+          vm_translation::pwc_config(vm_translation::PWC_OFF, 0, 1)));
 
   uint64_t pa_a = 0;
   uint64_t pa_b = 0;
