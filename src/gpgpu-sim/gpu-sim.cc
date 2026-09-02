@@ -1646,6 +1646,12 @@ void gpgpu_sim::deadlock_check() {
       printf("GPGPU-Sim uArch DEADLOCK:  iterconnect contains traffic\n");
       icnt_display_state(stdout);
     }
+    if (m_shader_config->dtc_l1_mode ==
+        static_cast<unsigned>(dtc_l1::mode::PAPER_IO)) {
+      printf("DTC_L1_IO_RESOURCE_DEADLOCK diagnostic state:\n");
+      for (unsigned i = 0; i < m_shader_config->n_simt_clusters; ++i)
+        m_cluster[i]->print_dtc_l1_io_deadlock(stdout);
+    }
     printf(
         "\nRe-run the simulator in gdb and use debug routines in .gdbinit to "
         "debug this\n");

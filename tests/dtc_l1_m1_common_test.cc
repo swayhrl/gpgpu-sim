@@ -101,6 +101,25 @@ int main() {
   io_cfg.allocation_width = 1;
   io_cfg.io_pib_entries = 4;
   dtc_l1::io_frontend io(io_cfg);
+  // M2 inherits the frozen logical Tag service limits without touching the
+  // conventional L1D Tag/MSHR path: same-bank references serialize while four
+  // different banks can be served in one cycle.
+  config io_tag_cfg;
+  io_tag_cfg.selected_mode = mode::PAPER_IO;
+  io_tag_cfg.logical_sets = 32;
+  io_tag_cfg.tag_banks = 4;
+  io_tag_cfg.tag_requests_per_bank_per_cycle = 1;
+  io_tag_cfg.tag_requests_per_cycle = 4;
+  dtc_l1::io_frontend io_tag(io_tag_cfg);
+  assert(io_tag.try_serve_tag(1, 0));
+  assert(!io_tag.try_serve_tag(1, 4 * 128));
+  assert(io_tag.try_serve_tag(1, 128));
+  assert(io_tag.try_serve_tag(1, 2 * 128));
+  assert(io_tag.try_serve_tag(1, 3 * 128));
+  assert(!io_tag.try_serve_tag(1, 5 * 128));
+  assert(io_tag.try_serve_tag(2, 4 * 128));
+  assert(io_tag.tag_requests() == 5);
+  assert(io_tag.tag_conflicts() == 2);
   assert(io.admit(1));
   const auto first = io.access(1, 1, 0);
   assert(first.kind == dtc_l1::io_access_kind::NEW_MISS);
@@ -287,6 +306,19 @@ int main() {
   assert(pending_evict.retire_head());
   assert(pending_evict.retire_head());
 
+  // A completed evicted allocation is no longer duplicate in-flight traffic.
+  // Evict the ready duplicate and re-access the original address: the fresh
+  // cold miss must not inflate I09 after its original fill already completed.
+  assert(pending_evict.admit(403));
+  const auto post_fill_eviction = pending_evict.access(93, 403, 256);
+  assert(post_fill_eviction.kind == dtc_l1::io_access_kind::NEW_MISS);
+  pending_evict.complete(post_fill_eviction.physical);
+  assert(pending_evict.retire_head());
+  assert(pending_evict.admit(404));
+  const auto post_fill_reaccess = pending_evict.access(94, 404, 0);
+  assert(post_fill_reaccess.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(pending_evict.duplicate_after_eviction() == 1);
+
   // I10/I11: a ready younger entry cannot retire before an unready FIFO head;
   // retiring an eviction releases its old physical line for same-cycle reuse.
   config hol_cfg;
@@ -308,5 +340,59 @@ int main() {
   hol.complete(hol_head.physical);
   assert(hol.retire_head());
   assert(hol.retire_head());
+
+  // I11: the logical replacement retains its old physical allocation until
+  // the replacing FIFO entry retires. Its release is visible to a new
+  // allocator attempt in that same modeled cycle.
+  config release_cfg;
+  release_cfg.selected_mode = mode::PAPER_IO;
+  release_cfg.logical_sets = 1;
+  release_cfg.logical_ways = 1;
+  release_cfg.physical_lines = 2;
+  dtc_l1::io_frontend same_cycle_release(release_cfg);
+  assert(same_cycle_release.admit(503));
+  const auto release_seed = same_cycle_release.access(110, 503, 0);
+  same_cycle_release.complete(release_seed.physical);
+  assert(same_cycle_release.retire_head());
+  assert(same_cycle_release.admit(504));
+  const auto release_replacing = same_cycle_release.access(111, 504, 128);
+  same_cycle_release.complete(release_replacing.physical);
+  assert(same_cycle_release.retire_head());
+  assert(same_cycle_release.admit(505));
+  const auto same_cycle_reuse = same_cycle_release.access(111, 505, 256);
+  assert(same_cycle_reuse.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(same_cycle_reuse.physical.id == release_seed.physical.id);
+  assert(same_cycle_reuse.physical.generation > release_seed.physical.generation);
+
+  // No-MSHR high-MLP basis: the IO model can hold 64 independent pending
+  // whole-line dependencies (above Baseline PIB=8 and MSHR=32) while a
+  // second reader merges without creating another physical/lower miss.
+  config high_mlp_cfg;
+  high_mlp_cfg.selected_mode = mode::PAPER_IO;
+  high_mlp_cfg.logical_sets = 64;
+  high_mlp_cfg.logical_ways = 2;
+  high_mlp_cfg.physical_lines = 96;
+  high_mlp_cfg.allocation_width = 4;
+  high_mlp_cfg.io_pib_entries = 64;
+  dtc_l1::io_frontend high_mlp(high_mlp_cfg);
+  std::vector<dtc_l1::physical_identity> outstanding;
+  for (unsigned uid = 0; uid < 64; ++uid) {
+    assert(high_mlp.admit(600 + uid));
+    const auto miss = high_mlp.access(200 + uid / 4, 600 + uid, uid * 128);
+    assert(miss.kind == dtc_l1::io_access_kind::NEW_MISS);
+    outstanding.push_back(miss.physical);
+  }
+  assert(high_mlp.occupancy() == 64);
+  assert(high_mlp.new_misses() == 64);
+  assert(high_mlp.admit(700) == false);
+  assert(high_mlp.access(217, 600, 0).kind ==
+         dtc_l1::io_access_kind::PENDING_HIT);
+  assert(high_mlp.new_misses() == 64);
+  assert(high_mlp.pending_hits() == 1);
+  for (const auto physical : outstanding) high_mlp.complete(physical);
+  for (unsigned uid = 0; uid < 64; ++uid) assert(high_mlp.retire_head());
+  assert(high_mlp.retires() == 64);
+  assert(high_mlp.allocated_lines_peak() >= 64);
+  assert(high_mlp.partial_allocation_events() == 0);
   return 0;
 }

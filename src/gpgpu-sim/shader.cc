@@ -2103,8 +2103,66 @@ void ldst_unit::get_dtc_l1_stats(
     io.io_completion_dependencies = m_dtc_l1_io_completion_dependencies;
     io.io_completion_dependencies_closed =
         m_dtc_l1_io_completion_dependencies_closed;
+    io.io_valid_hits = m_dtc_l1_io_frontend->valid_hits();
+    io.io_pending_hits = m_dtc_l1_io_frontend->pending_hits();
+    io.io_physical_allocations = m_dtc_l1_io_frontend->new_misses();
+    io.io_physical_releases = m_dtc_l1_io_frontend->releases();
+    io.io_tag_evictions = m_dtc_l1_io_frontend->tag_evictions();
+    io.io_duplicate_after_eviction =
+        m_dtc_l1_io_frontend->duplicate_after_eviction();
+    io.io_partial_allocation_events =
+        m_dtc_l1_io_frontend->partial_allocation_events();
+    io.io_allocation_width_limited_events =
+        m_dtc_l1_io_frontend->allocation_width_limited_events();
+    io.io_no_free_physical_events =
+        m_dtc_l1_io_frontend->no_free_physical_events();
+    io.io_physical_allocated_current =
+        m_dtc_l1_io_frontend->allocated_lines();
+    io.io_physical_allocated_peak =
+        m_dtc_l1_io_frontend->allocated_lines_peak();
+    io.io_physical_free_current = m_dtc_l1_io_frontend->free_lines();
+    io.io_physical_free_minimum =
+        m_dtc_l1_io_frontend->minimum_free_lines();
+    io.io_partial_entries_current = m_dtc_l1_io_frontend->partial_entries();
+    io.io_partial_entries_peak =
+        m_dtc_l1_io_frontend->partial_entries_peak();
+    io.io_partial_lines_held_current =
+        m_dtc_l1_io_frontend->partial_lines_held();
+    io.io_partial_lines_held_peak =
+        m_dtc_l1_io_frontend->partial_lines_held_peak();
+    io.io_hol_ready_younger_cycles = m_dtc_l1_io_hol_ready_younger_cycles;
+    io.io_hol_ready_younger_count_sum =
+        m_dtc_l1_io_hol_ready_younger_count_sum;
+    io.io_hol_ready_younger_peak = m_dtc_l1_io_hol_ready_younger_peak;
+    io.io_tag_requests = m_dtc_l1_io_frontend->tag_requests();
+    io.io_tag_conflicts = m_dtc_l1_io_frontend->tag_conflicts();
+    io.io_tag_requests_per_bank =
+        m_dtc_l1_io_frontend->tag_requests_per_bank();
     stats.add(io);
   }
+}
+
+void ldst_unit::print_dtc_l1_io_deadlock(FILE *fp) const {
+  if (!dtc_l1_paper_io_active()) return;
+  if (m_dtc_l1_io_pib.empty() && m_dtc_l1_io_lower_create_queue.empty() &&
+      m_dtc_l1_io_lower_issue_queue.empty() && m_dtc_l1_io_inflight.empty())
+    return;
+  const dtc_l1::io_frontend &front_end = *m_dtc_l1_io_frontend;
+  fprintf(fp,
+          "DTC_L1_IO_DEADLOCK sm=%u pib=%zu frontend=%zu head_uid=%llu "
+          "head_ready=%u free_phys=%zu allocated_phys=%zu partial_entries=%zu "
+          "partial_lines_held=%zu lower_create=%zu lower_issue=%zu inflight=%zu "
+          "last_progress_cycle=%llu\n",
+          m_sid, m_dtc_l1_io_pib.size(), front_end.occupancy(),
+          static_cast<unsigned long long>(m_dtc_l1_io_pib.empty()
+                                              ? 0
+                                              : front_end.head_uid()),
+          static_cast<unsigned>(front_end.head_ready()), front_end.free_lines(),
+          front_end.allocated_lines(), front_end.partial_entries(),
+          front_end.partial_lines_held(),
+          m_dtc_l1_io_lower_create_queue.size(),
+          m_dtc_l1_io_lower_issue_queue.size(), m_dtc_l1_io_inflight.size(),
+          static_cast<unsigned long long>(m_dtc_l1_io_last_progress_cycle));
 }
 
 void ldst_unit::get_l1d_cache_stats(cache_stats &cs) const {
@@ -2447,6 +2505,8 @@ bool ldst_unit::dtc_l1_io_memory_cycle(
                  static_cast<uint64_t>(m_dtc_l1_io_pib.size()));
     entry = &m_dtc_l1_io_pib.back();
     assert(!entry->references.empty());
+    m_dtc_l1_io_last_progress_cycle =
+        m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
   }
 
   if (entry->next_reference < entry->references.size()) {
@@ -2454,6 +2514,12 @@ bool ldst_unit::dtc_l1_io_memory_cycle(
         entry->references[entry->next_reference];
     const unsigned long long cycle =
         m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
+    if (!m_dtc_l1_io_frontend->try_serve_tag(cycle,
+                                              reference.line_address)) {
+      stall_reason = BK_CONF;
+      access_type = G_MEM_LD;
+      return false;
+    }
     const dtc_l1::io_access_result result =
         m_dtc_l1_io_frontend->access(cycle, uid, reference.line_address);
     if (result.kind == dtc_l1::io_access_kind::NO_FREE_LINE) {
@@ -2461,6 +2527,7 @@ bool ldst_unit::dtc_l1_io_memory_cycle(
       access_type = G_MEM_LD;
       return false;
     }
+    m_dtc_l1_io_last_progress_cycle = cycle;
     if (result.kind == dtc_l1::io_access_kind::NEW_MISS) {
       assert(m_dtc_l1_io_lower_create_queue.size() <
              m_config->dtc_l1_io_pib_entries);
@@ -2515,6 +2582,7 @@ void ldst_unit::dtc_l1_io_issue_lower_requests() {
     m_dtc_l1_io_lower_issue_queue.push_back(mf);
     m_dtc_l1_io_lower_create_queue.pop_front();
     ++m_dtc_l1_io_lower_created;
+    m_dtc_l1_io_last_progress_cycle = cycle;
     m_dtc_l1_io_inflight_peak =
         std::max(m_dtc_l1_io_inflight_peak,
                  static_cast<uint64_t>(m_dtc_l1_io_inflight.size()));
@@ -2529,6 +2597,7 @@ void ldst_unit::dtc_l1_io_issue_lower_requests() {
       m_icnt->push(mf);
       m_dtc_l1_io_lower_issue_queue.pop_front();
       ++m_dtc_l1_io_lower_issued;
+      m_dtc_l1_io_last_progress_cycle = cycle;
     }
   }
 }
@@ -2560,6 +2629,8 @@ bool ldst_unit::dtc_l1_io_consume_response(mem_fetch *mf) {
     m_core->get_gpu()->dtc_l1_complete_lower_request();
     m_dtc_l1_io_inflight.erase(it);
     ++m_dtc_l1_io_lower_responses;
+    m_dtc_l1_io_last_progress_cycle =
+        m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
   }
   ++m_dtc_l1_io_responses_routed_dtc;
   delete mf;
@@ -2617,6 +2688,8 @@ bool ldst_unit::dtc_l1_io_writeback_head() {
   assert(retired);
   m_dtc_l1_io_pib.pop_front();
   ++m_dtc_l1_io_retire_count;
+  m_dtc_l1_io_last_progress_cycle =
+      m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
   m_next_wb.clear();
   return true;
 }
@@ -3868,6 +3941,14 @@ void ldst_unit::cycle() {
   if (dtc_l1_paper_io_active() && !m_dtc_l1_io_pib.empty() &&
       !m_dtc_l1_io_frontend->head_ready()) {
     ++m_dtc_l1_io_head_not_ready_cycles;
+    const size_t ready_younger = m_dtc_l1_io_frontend->ready_younger_count();
+    if (ready_younger) {
+      ++m_dtc_l1_io_hol_ready_younger_cycles;
+      m_dtc_l1_io_hol_ready_younger_count_sum += ready_younger;
+      m_dtc_l1_io_hol_ready_younger_peak = std::max(
+          m_dtc_l1_io_hol_ready_younger_peak,
+          static_cast<uint64_t>(ready_younger));
+    }
   }
 
   // Move warp in pipeline
@@ -4585,6 +4666,56 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
             static_cast<unsigned long long>(total.io_completion_dependencies));
     fprintf(fout, "DTC_L1_io_completion_dependency_closed = %llu\n",
             static_cast<unsigned long long>(total.io_completion_dependencies_closed));
+    fprintf(fout, "DTC_L1_io_valid_hits = %llu\n",
+            static_cast<unsigned long long>(total.io_valid_hits));
+    fprintf(fout, "DTC_L1_io_pending_hits = %llu\n",
+            static_cast<unsigned long long>(total.io_pending_hits));
+    fprintf(fout, "DTC_L1_io_physical_allocations = %llu\n",
+            static_cast<unsigned long long>(total.io_physical_allocations));
+    fprintf(fout, "DTC_L1_io_physical_releases = %llu\n",
+            static_cast<unsigned long long>(total.io_physical_releases));
+    fprintf(fout, "DTC_L1_io_tag_evictions = %llu\n",
+            static_cast<unsigned long long>(total.io_tag_evictions));
+    fprintf(fout, "DTC_L1_io_duplicate_after_eviction = %llu\n",
+            static_cast<unsigned long long>(total.io_duplicate_after_eviction));
+    fprintf(fout, "DTC_L1_io_partial_allocation_events = %llu\n",
+            static_cast<unsigned long long>(total.io_partial_allocation_events));
+    fprintf(fout, "DTC_L1_io_allocation_width_limited_events = %llu\n",
+            static_cast<unsigned long long>(total.io_allocation_width_limited_events));
+    fprintf(fout, "DTC_L1_io_no_free_physical_events = %llu\n",
+            static_cast<unsigned long long>(total.io_no_free_physical_events));
+    fprintf(fout, "DTC_L1_io_physical_allocated_current = %llu\n",
+            static_cast<unsigned long long>(total.io_physical_allocated_current));
+    fprintf(fout, "DTC_L1_io_physical_allocated_peak_per_sm = %llu\n",
+            static_cast<unsigned long long>(total.io_physical_allocated_peak));
+    fprintf(fout, "DTC_L1_io_physical_free_current = %llu\n",
+            static_cast<unsigned long long>(total.io_physical_free_current));
+    fprintf(fout, "DTC_L1_io_physical_free_minimum_per_sm = %llu\n",
+            static_cast<unsigned long long>(total.io_physical_free_minimum));
+    fprintf(fout, "DTC_L1_io_partial_entries_current = %llu\n",
+            static_cast<unsigned long long>(total.io_partial_entries_current));
+    fprintf(fout, "DTC_L1_io_partial_entries_peak_per_sm = %llu\n",
+            static_cast<unsigned long long>(total.io_partial_entries_peak));
+    fprintf(fout, "DTC_L1_io_partial_lines_held_current = %llu\n",
+            static_cast<unsigned long long>(total.io_partial_lines_held_current));
+    fprintf(fout, "DTC_L1_io_partial_lines_held_peak_per_sm = %llu\n",
+            static_cast<unsigned long long>(total.io_partial_lines_held_peak));
+    fprintf(fout, "DTC_L1_io_hol_ready_younger_cycles = %llu\n",
+            static_cast<unsigned long long>(total.io_hol_ready_younger_cycles));
+    fprintf(fout, "DTC_L1_io_hol_ready_younger_count_sum = %llu\n",
+            static_cast<unsigned long long>(total.io_hol_ready_younger_count_sum));
+    fprintf(fout, "DTC_L1_io_hol_ready_younger_peak_per_sm = %llu\n",
+            static_cast<unsigned long long>(total.io_hol_ready_younger_peak));
+    fprintf(fout, "DTC_L1_io_tag_requests = %llu\n",
+            static_cast<unsigned long long>(total.io_tag_requests));
+    fprintf(fout, "DTC_L1_io_tag_conflicts = %llu\n",
+            static_cast<unsigned long long>(total.io_tag_conflicts));
+    for (size_t bank = 0; bank < total.io_tag_requests_per_bank.size();
+         ++bank) {
+      fprintf(fout, "DTC_L1_io_tag_bank_%zu_requests = %llu\n", bank,
+              static_cast<unsigned long long>(
+                  total.io_tag_requests_per_bank[bank]));
+    }
     fprintf(fout, "DTC_L1_lower_credit_acquired = %llu\n",
             static_cast<unsigned long long>(dtc_l1_lower_requests_acquired()));
     fprintf(fout, "DTC_L1_lower_credit_released = %llu\n",
@@ -4593,6 +4724,18 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
             dtc_l1_lower_outstanding());
     fprintf(fout, "DTC_L1_lower_cap_full_events = %llu\n",
             static_cast<unsigned long long>(dtc_l1_lower_cap_full_events()));
+    unsigned long long conventional_mshr_entry_full = 0;
+    unsigned long long conventional_mshr_merge_full = 0;
+    for (int access = 0; access < NUM_MEM_ACCESS_TYPE; ++access) {
+      conventional_mshr_entry_full += l1d_stats.get_aggregated_fail_stats(
+          static_cast<mem_access_type>(access), MSHR_ENRTY_FAIL);
+      conventional_mshr_merge_full += l1d_stats.get_aggregated_fail_stats(
+          static_cast<mem_access_type>(access), MSHR_MERGE_ENRTY_FAIL);
+    }
+    fprintf(fout, "DTC_L1_conventional_l1d_mshr_entry_full_events = %llu\n",
+            conventional_mshr_entry_full);
+    fprintf(fout, "DTC_L1_conventional_l1d_mshr_merge_full_events = %llu\n",
+            conventional_mshr_merge_full);
     return;
   }
   assert(total.admits == total.retires);
@@ -5572,6 +5715,10 @@ void shader_core_ctx::get_dtc_l1_stats(
   m_ldst_unit->get_dtc_l1_stats(stats);
 }
 
+void shader_core_ctx::print_dtc_l1_io_deadlock(FILE *fp) const {
+  m_ldst_unit->print_dtc_l1_io_deadlock(fp);
+}
+
 void shader_core_ctx::get_l1d_cache_stats(cache_stats &cs) const {
   m_ldst_unit->get_l1d_cache_stats(cs);
 }
@@ -6410,6 +6557,11 @@ void simt_core_cluster::get_dtc_l1_stats(
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i) {
     m_core[i]->get_dtc_l1_stats(stats);
   }
+}
+
+void simt_core_cluster::print_dtc_l1_io_deadlock(FILE *fp) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i)
+    m_core[i]->print_dtc_l1_io_deadlock(fp);
 }
 
 void simt_core_cluster::get_l1d_cache_stats(cache_stats &cs) const {
