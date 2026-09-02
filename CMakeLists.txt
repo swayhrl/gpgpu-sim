@@ -80,6 +80,12 @@ if(GPGPUSIM_BUILD_DTC_L1_TESTS)
     target_include_directories(dtc_l1_m1_common_test PRIVATE
                                ${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim)
     add_test(NAME dtc_l1_m1_common_test COMMAND dtc_l1_m1_common_test)
+    add_executable(dtc_l1_bad_generation_test
+                   tests/dtc_l1_bad_generation_test.cc)
+    target_include_directories(dtc_l1_bad_generation_test PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim)
+    add_test(NAME dtc_l1_bad_generation_test
+             COMMAND dtc_l1_bad_generation_test)
 endif()
 
 # Set linker option for libcudart.so
