@@ -2310,6 +2310,9 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
       if (result != vm_translation::READY) {
         ++m_stats->vm_translation_stall_cycles;
         stall_reason = COAL_STALL;
+        const bool iswrite = inst.is_store();
+        access_type = inst.space.is_local() ? (iswrite ? L_MEM_ST : L_MEM_LD)
+                                            : (iswrite ? G_MEM_ST : G_MEM_LD);
         return false;
       }
       access.set_sim_pa(static_cast<new_addr_type>(translated_pa));
