@@ -16,6 +16,8 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # GPGPU-Sim build option
 option(GPGPUSIM_ENABLE_TRACE "Whether to enable GPGPU-Sim debug tracing" ON)
+option(GPGPUSIM_BUILD_DTC_L1_TESTS
+       "Build deterministic Decoupled-Tag L1 directed tests" OFF)
 
 # GPGPU-Sim conditional build variable
 set(GPGPUSIM_USE_POWER_MODEL OFF)
@@ -71,6 +73,14 @@ endif()
 add_subdirectory(src)
 add_subdirectory(libcuda)
 add_subdirectory(libopencl)
+
+if(GPGPUSIM_BUILD_DTC_L1_TESTS)
+    enable_testing()
+    add_executable(dtc_l1_m1_common_test tests/dtc_l1_m1_common_test.cc)
+    target_include_directories(dtc_l1_m1_common_test PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim)
+    add_test(NAME dtc_l1_m1_common_test COMMAND dtc_l1_m1_common_test)
+endif()
 
 # Set linker option for libcudart.so
 if(APPLE)
