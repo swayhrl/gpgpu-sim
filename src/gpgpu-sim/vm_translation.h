@@ -82,13 +82,18 @@ struct translation_config {
   tlb_config l1;
   tlb_config l2;
   unsigned mshr_entries;
+  unsigned pwq_entries;
+  unsigned walkers;
+  unsigned walk_latency;
   translation_config(unsigned sms = 1,
                      uint64_t page = vm_core::kDefaultBasePageSize,
                      const tlb_config &l1_config = tlb_config(),
                      const tlb_config &l2_config = tlb_config(768, 16, 1),
-                     unsigned mshr_count = 32)
+                     unsigned mshr_count = 32, unsigned pwq_count = 32,
+                     unsigned walker_count = 16, unsigned latency = 100)
       : num_sms(sms), page_size(page), l1(l1_config), l2(l2_config),
-        mshr_entries(mshr_count) {}
+        mshr_entries(mshr_count), pwq_entries(pwq_count), walkers(walker_count),
+        walk_latency(latency) {}
   bool valid() const;
 };
 
@@ -98,6 +103,7 @@ enum lookup_result {
   L2_PORT_STALL,
   TRANSLATION_PENDING,
   MSHR_FULL
+  , PWQ_FULL
 };
 
 struct translation_stats {
@@ -109,10 +115,17 @@ struct translation_stats {
   uint64_t waiter_registrations;
   uint64_t waiter_wakeups;
   uint64_t mshr_releases;
+  uint64_t pwq_full_events;
+  uint64_t walk_starts;
+  uint64_t walk_completions;
+  uint64_t pwq_wait_cycles;
+  uint64_t walk_service_cycles;
   translation_stats()
       : mapper_lookups(0), completed(0), mshr_allocations(0),
         mshr_merges(0), mshr_full_events(0), waiter_registrations(0),
-        waiter_wakeups(0), mshr_releases(0) {}
+        waiter_wakeups(0), mshr_releases(0), pwq_full_events(0),
+        walk_starts(0), walk_completions(0), pwq_wait_cycles(0),
+        walk_service_cycles(0) {}
 };
 
 // G2-1 controller: hit latency is zero, but both TLBs have finite lookup
@@ -126,9 +139,11 @@ class translation_controller {
                           uint64_t *sim_pa);
   // G2-2 test hook and G2-3 walker completion entry point.
   bool complete_translation(const translation_key &key, uint64_t cycle);
+  void cycle(uint64_t cycle);
   bool invariants_hold() const;
   bool quiescent_invariants_hold() const;
   unsigned active_mshrs() const { return m_mshrs.size(); }
+  unsigned active_walkers() const { return m_active_walks.size(); }
   const translation_config &config() const { return m_config; }
   const set_associative_tlb &l1(unsigned sid) const;
   const set_associative_tlb &l2() const { return m_l2; }
@@ -144,18 +159,29 @@ class translation_controller {
   struct mshr_entry {
     translation_key key;
     std::vector<waiter> waiters;
-    mshr_entry(const translation_key &k) : key(k), waiters() {}
+    uint64_t enqueue_cycle;
+    mshr_entry(const translation_key &k, uint64_t enqueue)
+        : key(k), waiters(), enqueue_cycle(enqueue) {}
     bool has_waiter(uint64_t uid) const;
   };
   mshr_entry *find_mshr(const translation_key &key);
   const mshr_entry *find_mshr(const translation_key &key) const;
+  struct active_walk {
+    translation_key key;
+    uint64_t start_cycle;
+    uint64_t ready_cycle;
+    active_walk(const translation_key &k, uint64_t start, uint64_t ready)
+        : key(k), start_cycle(start), ready_cycle(ready) {}
+  };
   lookup_result allocate_or_merge(unsigned sid, uint64_t waiter_uid,
-                                  const translation_key &key);
+                                  const translation_key &key, uint64_t cycle);
   translation_config m_config;
   present_page_mapper m_mapper;
   std::vector<set_associative_tlb> m_l1s;
   set_associative_tlb m_l2;
   std::vector<mshr_entry> m_mshrs;
+  std::vector<translation_key> m_pwq;
+  std::vector<active_walk> m_active_walks;
   translation_stats m_stats;
 };
 

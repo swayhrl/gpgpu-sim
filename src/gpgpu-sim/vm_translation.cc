@@ -100,12 +100,13 @@ unsigned set_associative_tlb::occupancy() const {
 
 bool translation_config::valid() const {
   return num_sms != 0 && vm_core::valid_page_size(page_size) && l1.valid() &&
-         l2.valid() && mshr_entries != 0;
+         l2.valid() && mshr_entries != 0 && pwq_entries != 0 && walkers != 0 &&
+         walk_latency != 0;
 }
 
 translation_controller::translation_controller(const translation_config &config)
     : m_config(config), m_mapper(), m_l1s(), m_l2(config.l2), m_mshrs(),
-      m_stats() {
+      m_pwq(), m_active_walks(), m_stats() {
   assert(m_config.valid());
   for (unsigned sid = 0; sid < m_config.num_sms; ++sid)
     m_l1s.push_back(set_associative_tlb(m_config.l1));
@@ -132,7 +133,8 @@ const translation_controller::mshr_entry *translation_controller::find_mshr(
 }
 
 lookup_result translation_controller::allocate_or_merge(
-    unsigned sid, uint64_t waiter_uid, const translation_key &key) {
+    unsigned sid, uint64_t waiter_uid, const translation_key &key,
+    uint64_t cycle) {
   mshr_entry *existing = find_mshr(key);
   if (existing != 0) {
     if (existing->has_waiter(waiter_uid)) return TRANSLATION_PENDING;
@@ -145,9 +147,14 @@ lookup_result translation_controller::allocate_or_merge(
     ++m_stats.mshr_full_events;
     return MSHR_FULL;
   }
+  if (m_pwq.size() >= m_config.pwq_entries) {
+    ++m_stats.pwq_full_events;
+    return PWQ_FULL;
+  }
   assert(find_mshr(key) == 0);
-  m_mshrs.push_back(mshr_entry(key));
+  m_mshrs.push_back(mshr_entry(key, cycle));
   m_mshrs.back().waiters.push_back(waiter(sid, waiter_uid));
+  m_pwq.push_back(key);
   ++m_stats.mshr_allocations;
   ++m_stats.waiter_registrations;
   return TRANSLATION_PENDING;
@@ -167,7 +174,7 @@ lookup_result translation_controller::translate(unsigned sid, unsigned asid,
   if (!l1_tlb.probe(key, cycle, &ppn)) {
     if (!m_l2.try_consume_port(cycle)) return L2_PORT_STALL;
     if (!m_l2.probe(key, cycle, &ppn))
-      return allocate_or_merge(sid, waiter_uid, key);
+      return allocate_or_merge(sid, waiter_uid, key, cycle);
     l1_tlb.fill(key, ppn, cycle);
   }
   *sim_pa = ppn * key.page_size + vm_core::page_offset(sim_va, key.page_size);
@@ -190,16 +197,49 @@ bool translation_controller::complete_translation(const translation_key &key,
       ++m_stats.waiter_wakeups;
     }
     m_mshrs.erase(m_mshrs.begin() + index);
+    for (unsigned queued = 0; queued < m_pwq.size(); ++queued) {
+      if (m_pwq[queued] == key) {
+        m_pwq.erase(m_pwq.begin() + queued);
+        break;
+      }
+    }
     ++m_stats.mshr_releases;
     return true;
   }
   return false;
 }
 
+void translation_controller::cycle(uint64_t cycle) {
+  for (unsigned index = 0; index < m_active_walks.size();) {
+    if (m_active_walks[index].ready_cycle > cycle) {
+      ++index;
+      continue;
+    }
+    const active_walk finished = m_active_walks[index];
+    assert(complete_translation(finished.key, cycle));
+    ++m_stats.walk_completions;
+    m_stats.walk_service_cycles += cycle - finished.start_cycle;
+    m_active_walks.erase(m_active_walks.begin() + index);
+  }
+  while (!m_pwq.empty() && m_active_walks.size() < m_config.walkers) {
+    const translation_key key = m_pwq.front();
+    m_pwq.erase(m_pwq.begin());
+    mshr_entry *entry = find_mshr(key);
+    assert(entry != 0);
+    m_stats.pwq_wait_cycles += cycle - entry->enqueue_cycle;
+    m_active_walks.push_back(
+        active_walk(key, cycle, cycle + m_config.walk_latency));
+    ++m_stats.walk_starts;
+  }
+  assert(m_active_walks.size() <= m_config.walkers);
+}
+
 bool translation_controller::invariants_hold() const {
   if (m_stats.mshr_allocations < m_stats.mshr_releases ||
       m_stats.mshr_allocations - m_stats.mshr_releases != m_mshrs.size() ||
-      m_stats.waiter_registrations < m_stats.waiter_wakeups)
+      m_stats.waiter_registrations < m_stats.waiter_wakeups ||
+      m_stats.walk_starts < m_stats.walk_completions ||
+      m_active_walks.size() > m_config.walkers)
     return false;
   uint64_t active_waiters = 0;
   for (unsigned i = 0; i < m_mshrs.size(); ++i) {
@@ -211,8 +251,13 @@ bool translation_controller::invariants_hold() const {
         if (m_mshrs[i].waiters[a].uid == m_mshrs[i].waiters[b].uid)
           return false;
   }
-  return m_stats.waiter_registrations - m_stats.waiter_wakeups ==
-         active_waiters;
+  if (m_stats.waiter_registrations - m_stats.waiter_wakeups != active_waiters)
+    return false;
+  for (unsigned i = 0; i < m_pwq.size(); ++i)
+    if (find_mshr(m_pwq[i]) == 0) return false;
+  for (unsigned i = 0; i < m_active_walks.size(); ++i)
+    if (find_mshr(m_active_walks[i].key) == 0) return false;
+  return true;
 }
 
 bool translation_controller::quiescent_invariants_hold() const {
@@ -248,6 +293,14 @@ void translation_controller::print_stats(FILE *fout) const {
   fprintf(fout, "vm_translation_mshr_full_events = %llu\n",
           (unsigned long long)m_stats.mshr_full_events);
   fprintf(fout, "vm_translation_mshr_active = %u\n", active_mshrs());
+  fprintf(fout, "vm_translation_pwq_occupancy = %u\n", (unsigned)m_pwq.size());
+  fprintf(fout, "vm_translation_pwq_full_events = %llu\n",
+          (unsigned long long)m_stats.pwq_full_events);
+  fprintf(fout, "vm_translation_walkers_active = %u\n", active_walkers());
+  fprintf(fout, "vm_translation_walk_starts = %llu\n",
+          (unsigned long long)m_stats.walk_starts);
+  fprintf(fout, "vm_translation_walk_completions = %llu\n",
+          (unsigned long long)m_stats.walk_completions);
   fprintf(fout, "vm_translation_waiter_registrations = %llu\n",
           (unsigned long long)m_stats.waiter_registrations);
   fprintf(fout, "vm_translation_waiter_wakeups = %llu\n",

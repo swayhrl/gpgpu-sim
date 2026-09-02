@@ -1651,6 +1651,9 @@ class shader_core_config : public core_config {
   unsigned gpgpu_vm_l2_tlb_assoc;
   unsigned gpgpu_vm_l2_tlb_ports;
   unsigned gpgpu_vm_translation_mshr_entries;
+  unsigned gpgpu_vm_pwq_entries;
+  unsigned gpgpu_vm_walkers;
+  unsigned gpgpu_vm_walk_latency;
 
   unsigned gpgpu_num_sched_per_core;
   int gpgpu_max_insn_issue_per_warp;

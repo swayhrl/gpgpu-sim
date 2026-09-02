@@ -418,6 +418,13 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_vm_translation_mshr_entries",
                          OPT_UINT32, &gpgpu_vm_translation_mshr_entries,
                          "functional translation MSHR entries", "32");
+  option_parser_register(opp, "-gpgpu_vm_pwq_entries", OPT_UINT32,
+                         &gpgpu_vm_pwq_entries, "functional PWQ entries", "32");
+  option_parser_register(opp, "-gpgpu_vm_walkers", OPT_UINT32,
+                         &gpgpu_vm_walkers, "functional page walkers", "16");
+  option_parser_register(opp, "-gpgpu_vm_walk_latency", OPT_UINT32,
+                         &gpgpu_vm_walk_latency,
+                         "M2 fixed page-walk latency in core cycles", "100");
 
   option_parser_register(opp, "-gpgpu_perfect_mem", OPT_BOOL,
                          &gpgpu_perfect_mem,
@@ -1014,7 +1021,9 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
         vm_translation::tlb_config(m_shader_config->gpgpu_vm_l2_tlb_entries,
                                    m_shader_config->gpgpu_vm_l2_tlb_assoc,
                                    m_shader_config->gpgpu_vm_l2_tlb_ports),
-        m_shader_config->gpgpu_vm_translation_mshr_entries);
+        m_shader_config->gpgpu_vm_translation_mshr_entries,
+        m_shader_config->gpgpu_vm_pwq_entries, m_shader_config->gpgpu_vm_walkers,
+        m_shader_config->gpgpu_vm_walk_latency);
     if (!vm_config.valid()) {
       fprintf(stderr, "ERROR: invalid functional VM TLB configuration\n");
       abort();
@@ -2017,6 +2026,8 @@ unsigned long long g_single_step =
     0;  // set this in gdb to single step the pipeline
 
 void gpgpu_sim::cycle() {
+  if (m_vm_translation != NULL)
+    m_vm_translation->cycle(gpu_sim_cycle + gpu_tot_sim_cycle);
   int clock_mask = next_clock_domain();
 
   if (clock_mask & CORE) {
