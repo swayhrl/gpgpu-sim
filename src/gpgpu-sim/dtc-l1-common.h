@@ -76,7 +76,8 @@ class io_frontend {
     const uint64_t line = address & ~(kLogicalLineBytes - 1);
     tag_entry *tag = find_tag(line);
     if (tag) {
-      owner->references.push_back(tag->physical);
+      if (!has_reference(*owner, tag->physical))
+        owner->references.push_back(tag->physical);
       return {m_phys[tag->physical.id].ready ? io_access_kind::VALID_HIT
                                               : io_access_kind::PENDING_HIT,
               tag->physical};
@@ -133,6 +134,12 @@ class io_frontend {
   struct tag_entry { bool valid = false; uint64_t line = 0; physical_identity physical; uint64_t lru = 0; };
   struct entry { uint64_t uid; std::vector<physical_identity> references; std::vector<physical_identity> release_on_retire; bool allocation_blocked; };
   entry *find_entry(uint64_t uid) { for (entry &e : m_entries) if (e.uid == uid) return &e; return nullptr; }
+  static bool has_reference(const entry &e, physical_identity identity) {
+    for (const physical_identity &existing : e.references)
+      if (existing.id == identity.id && existing.generation == identity.generation)
+        return true;
+    return false;
+  }
   tag_entry *find_tag(uint64_t line) {
     const unsigned set = static_cast<unsigned>((line / kLogicalLineBytes) % m_cfg.logical_sets);
     for (unsigned way = 0; way < m_cfg.logical_ways; ++way) { tag_entry &t = m_tags[set * m_cfg.logical_ways + way]; if (t.valid && t.line == line) { t.lru = ++m_lru_clock; return &t; } }

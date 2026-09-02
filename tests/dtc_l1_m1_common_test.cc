@@ -108,6 +108,11 @@ int main() {
   const auto merge = io.access(2, 2, 0);
   assert(merge.kind == dtc_l1::io_access_kind::PENDING_HIT);
   assert(merge.physical.id == first.physical.id);
+  // Existing 32B-sector accesses of one 128B logical line must not turn into
+  // additional DTC line references or lower reads.
+  const auto same_line_sector = io.access(2, 2, 96);
+  assert(same_line_sector.kind == dtc_l1::io_access_kind::PENDING_HIT);
+  assert(same_line_sector.physical.id == first.physical.id);
   assert(io.new_misses() == 1);
   assert(!io.retire_head());
   io.complete(first.physical);
