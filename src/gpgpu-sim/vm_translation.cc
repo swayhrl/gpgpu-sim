@@ -71,9 +71,15 @@ uint64_t radix_page_table_backend::pte_address(const translation_key &key,
   assert(level < m_config.levels);
   const unsigned key_vpn_bits = vpn_bits(key.page_size);
   assert(key.vpn < (1ULL << key_vpn_bits));
+  // Every supported class shares one fixed namespace width.  Encoding this
+  // with key_vpn_bits would make the class namespace shift 33 bits for 64KB
+  // but 28 bits for 2MB, allowing a high 64KB VPN to alias a 2MB namespace.
+  // The configured PTE range is sized for this maximum (64KB) VPN width.
+  const unsigned max_vpn_bits =
+      m_config.virtual_address_bits - log2_exact(kBasePage64KB);
   const uint64_t slot =
       (uint64_t(page_size_class(key.page_size) * m_config.levels + level)
-       << key_vpn_bits) |
+       << max_vpn_bits) |
       key.vpn;
   const uint64_t offset = slot * kPteBytes;
   assert(offset <= m_config.pte_physical_bytes - kPteBytes);

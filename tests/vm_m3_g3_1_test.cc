@@ -50,6 +50,45 @@ int main() {
   // range; this is the no-overlap half of the M3 physical contract.
   assert(!backend.owns_pte_physical_address((1ULL << 49) - 1));
 
+  // This was the review-found collision under the old page-size-dependent
+  // shift.  The fixed 33-bit namespace width keeps both requests distinct.
+  const uint64_t collision_x = 0x12345;
+  const vm_translation::translation_key collision64k(
+      3, (4ULL << 28) | collision_x, page64k);
+  const vm_translation::translation_key collision2m(3, collision_x, page2m);
+  const vm_translation::pte_request collision64k_pte =
+      backend.make_pte_request(collision64k, 0, 104);
+  const vm_translation::pte_request collision2m_pte =
+      backend.make_pte_request(collision2m, 0, 105);
+  assert(collision64k_pte.physical_address !=
+         collision2m_pte.physical_address);
+
+  // Each (page-size class, level) namespace is ordered by a shared 33-bit
+  // slot width.  Test min/max valid VPN values for all eight namespaces and
+  // assert every completed interval lies below the next one.
+  uint64_t previous_max = 0;
+  bool have_previous_namespace = false;
+  for (unsigned page_class = 0; page_class < 2; ++page_class) {
+    const uint64_t page_size = page_class == 0 ? page64k : page2m;
+    const unsigned vpn_bits = page_class == 0 ? 33 : 28;
+    const uint64_t max_vpn = (1ULL << vpn_bits) - 1;
+    for (unsigned level = 0; level < backend.levels(); ++level) {
+      const vm_translation::translation_key min_key(3, 0, page_size);
+      const vm_translation::translation_key max_key(3, max_vpn, page_size);
+      const vm_translation::pte_request min_pte =
+          backend.make_pte_request(min_key, level, 200 + level + 10 * page_class);
+      const vm_translation::pte_request max_pte =
+          backend.make_pte_request(max_key, level, 300 + level + 10 * page_class);
+      assert(min_pte.physical_address <= max_pte.physical_address);
+      assert(backend.owns_pte_physical_address(min_pte.physical_address));
+      assert(backend.owns_pte_physical_address(max_pte.physical_address));
+      if (have_previous_namespace)
+        assert(previous_max < min_pte.physical_address);
+      previous_max = max_pte.physical_address;
+      have_previous_namespace = true;
+    }
+  }
+
   // A replacement backend changes only mapping policy; the MSHR/replay path
   // remains the M2 controller contract.
   replacement_backend replacement;
