@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <map>
 #include <deque>
+#include <list>
 #include <set>
 #include <vector>
 
@@ -34,6 +35,8 @@ struct config {
   unsigned physical_lines = 640;
   unsigned allocation_width = 4;
   unsigned io_pib_entries = 256;
+  unsigned oo_pib_entries = 128;
+  unsigned ref_count_bits = 13;
 };
 
 enum class io_access_kind { VALID_HIT, PENDING_HIT, NEW_MISS, NO_FREE_LINE };
@@ -300,6 +303,347 @@ class io_frontend {
   std::vector<uint64_t> m_tag_requests_per_bank =
       std::vector<uint64_t>(m_cfg.tag_banks, 0);
   unsigned m_total_tag_requests_this_cycle = 0;
+};
+
+// Whole-line OO-DTC model.  Unlike io_frontend, physical-line lifetime is
+// protected by one Ref per live coalesced 128B reference, and any oldest-ready
+// PIB entry may retire.  It has no dependency on conventional L1D MSHRs.
+class oo_frontend {
+ public:
+  explicit oo_frontend(config cfg)
+      : m_cfg(cfg),
+        m_tags(cfg.logical_sets * cfg.logical_ways),
+        m_phys(cfg.physical_lines),
+        m_slots(cfg.oo_pib_entries) {
+    assert(cfg.logical_sets && cfg.logical_ways && cfg.physical_lines);
+    assert(cfg.allocation_width && cfg.oo_pib_entries);
+    assert(cfg.ref_count_bits && cfg.ref_count_bits < 32);
+  }
+
+  void begin_cycle(uint64_t cycle) {
+    if (cycle == m_cycle) return;
+    m_cycle = cycle;
+    m_allocations_this_cycle = 0;
+  }
+
+  bool admit(uint64_t uid) {
+    if (find_entry(uid)) return true;
+    if (m_entries.size() >= m_cfg.oo_pib_entries) return false;
+    unsigned slot = 0;
+    for (; slot < m_slots.size(); ++slot)
+      if (!m_slots[slot].active) break;
+    assert(slot < m_slots.size());
+    slot_state &state = m_slots[slot];
+    state.active = true;
+    state.uid = uid;
+    ++state.generation;
+    m_entries.push_back({uid, slot, state.generation, {}, 0});
+    assert_shadow_refs();
+    return true;
+  }
+
+  io_access_result access(uint64_t cycle, uint64_t uid, uint64_t address) {
+    begin_cycle(cycle);
+    entry *owner = find_entry(uid);
+    assert(owner);
+    const uint64_t line = address & ~(kLogicalLineBytes - 1);
+    tag_entry *tag = find_tag(line);
+    if (tag) {
+      attach_reference(*owner, tag->physical);
+      ++(m_phys[tag->physical.id].ready ? m_valid_hits : m_pending_hits);
+      assert_shadow_refs();
+      return {m_phys[tag->physical.id].ready ? io_access_kind::VALID_HIT
+                                              : io_access_kind::PENDING_HIT,
+              tag->physical};
+    }
+    if (m_allocations_this_cycle >= m_cfg.allocation_width) {
+      ++m_allocation_width_limited_events;
+      return {io_access_kind::NO_FREE_LINE, {}};
+    }
+
+    tag_entry *victim = select_victim(line);
+    int free_id = find_free_physical();
+    const bool can_reclaim_victim =
+        victim->valid && m_phys[victim->physical.id].ref_count == 0;
+    if (free_id < 0 && !can_reclaim_victim) {
+      ++m_no_free_physical_events;
+      return {io_access_kind::NO_FREE_LINE, {}};
+    }
+    if (victim->valid) {
+      physical_line &old = m_phys[victim->physical.id];
+      assert(old.allocated && old.tag_valid);
+      old.tag_valid = false;
+      ++m_tag_evictions;
+      if (old.ref_count == 0) {
+        release(victim->physical);
+        ++m_immediate_reclaims;
+      } else {
+        ++m_deferred_reclaims;
+      }
+    }
+    if (free_id < 0) free_id = find_free_physical();
+    assert(free_id >= 0);
+    physical_line &physical = m_phys[free_id];
+    physical.allocated = true;
+    physical.ready = false;
+    physical.tag_valid = true;
+    physical.ref_count = 0;
+    physical.waiters.clear();
+    physical_identity identity{static_cast<unsigned>(free_id),
+                               ++physical.generation};
+    *victim = {true, line, identity, ++m_lru_clock};
+    attach_reference(*owner, identity);
+    ++m_allocations_this_cycle;
+    ++m_new_misses;
+    assert_shadow_refs();
+    return {io_access_kind::NEW_MISS, identity};
+  }
+
+  // Returns false for a stale/recycled physical allocation.  The consuming
+  // integration must treat false as fatal; this query also supports O13's
+  // explicit negative test without relying on process-abort test harnesses.
+  bool fill_identity_matches(physical_identity identity) const {
+    return identity.id < m_phys.size() && m_phys[identity.id].allocated &&
+           m_phys[identity.id].generation == identity.generation;
+  }
+
+  void complete(physical_identity identity) {
+    assert(fill_identity_matches(identity) &&
+           "OO fill must match the original physical generation");
+    physical_line &physical = m_phys[identity.id];
+    assert(!physical.ready && "OO fill must wake each waiter exactly once");
+    physical.ready = true;
+    for (const waiter &waiting : physical.waiters) {
+      entry *owner = find_entry_by_slot(waiting.slot, waiting.slot_generation);
+      assert(owner && has_reference(*owner, identity) &&
+             "stale fill cannot wake a reused OO PIB slot");
+      assert(owner->pending_dependencies);
+      --owner->pending_dependencies;
+      ++m_wakeups;
+    }
+    physical.waiters.clear();
+    assert_shadow_refs();
+  }
+
+  bool retire_one_ready(uint64_t cycle, uint64_t *retired_uid = nullptr) {
+    if (cycle == m_retire_cycle) return false;  // frozen width: one/cycle
+    auto selected = m_entries.end();
+    for (auto it = m_entries.begin(); it != m_entries.end(); ++it) {
+      if (entry_ready(*it)) {
+        selected = it;
+        break;
+      }
+    }
+    if (selected == m_entries.end()) return false;
+    bool older_unready = false;
+    for (auto it = m_entries.begin(); it != selected; ++it)
+      older_unready |= !entry_ready(*it);
+    if (older_unready) ++m_out_of_order_retires;
+    for (const physical_identity identity : selected->references) {
+      physical_line &physical = m_phys[identity.id];
+      assert(physical.allocated && physical.generation == identity.generation &&
+             physical.ref_count);
+      --physical.ref_count;
+      if (!physical.tag_valid && physical.ref_count == 0) {
+        release(identity);
+        ++m_final_ref_reclaims;
+      }
+    }
+    m_slots[selected->slot].active = false;
+    if (retired_uid) *retired_uid = selected->uid;
+    m_entries.erase(selected);
+    m_retire_cycle = cycle;
+    ++m_retires;
+    assert_shadow_refs();
+    return true;
+  }
+
+  size_t occupancy() const { return m_entries.size(); }
+  uint64_t new_misses() const { return m_new_misses; }
+  uint64_t valid_hits() const { return m_valid_hits; }
+  uint64_t pending_hits() const { return m_pending_hits; }
+  uint64_t retires() const { return m_retires; }
+  uint64_t out_of_order_retires() const { return m_out_of_order_retires; }
+  uint64_t wakeups() const { return m_wakeups; }
+  uint64_t tag_evictions() const { return m_tag_evictions; }
+  uint64_t immediate_reclaims() const { return m_immediate_reclaims; }
+  uint64_t deferred_reclaims() const { return m_deferred_reclaims; }
+  uint64_t final_ref_reclaims() const { return m_final_ref_reclaims; }
+  uint64_t no_free_physical_events() const { return m_no_free_physical_events; }
+  uint64_t allocation_width_limited_events() const {
+    return m_allocation_width_limited_events;
+  }
+  uint64_t ref_count(physical_identity identity) const {
+    assert(fill_identity_matches(identity));
+    return m_phys[identity.id].ref_count;
+  }
+  bool tag_visible(physical_identity identity) const {
+    assert(fill_identity_matches(identity));
+    return m_phys[identity.id].tag_valid;
+  }
+  bool is_allocated(physical_identity identity) const {
+    return fill_identity_matches(identity);
+  }
+  bool entry_ready_for(uint64_t uid) const {
+    const entry *owner = find_entry_const(uid);
+    return owner && entry_ready(*owner);
+  }
+  uint64_t entry_slot_generation(uint64_t uid) const {
+    const entry *owner = find_entry_const(uid);
+    assert(owner);
+    return owner->slot_generation;
+  }
+  unsigned entry_slot(uint64_t uid) const {
+    const entry *owner = find_entry_const(uid);
+    assert(owner);
+    return owner->slot;
+  }
+
+  void assert_shadow_refs() const {
+    std::vector<uint64_t> shadow(m_phys.size(), 0);
+    for (const entry &owner : m_entries)
+      for (const physical_identity identity : owner.references) {
+        assert(identity.id < m_phys.size());
+        assert(m_phys[identity.id].allocated &&
+               m_phys[identity.id].generation == identity.generation);
+        ++shadow[identity.id];
+      }
+    for (size_t id = 0; id < m_phys.size(); ++id) {
+      const physical_line &physical = m_phys[id];
+      assert(physical.ref_count == shadow[id]);
+      if (!physical.allocated) {
+        assert(!physical.ready && !physical.tag_valid && !physical.ref_count);
+      }
+    }
+    for (const tag_entry &tag : m_tags)
+      if (tag.valid) {
+        assert(fill_identity_matches(tag.physical));
+        assert(m_phys[tag.physical.id].tag_valid);
+      }
+  }
+
+ private:
+  struct waiter { unsigned slot; uint64_t slot_generation; };
+  struct physical_line {
+    bool allocated = false;
+    bool ready = false;
+    bool tag_valid = false;
+    uint64_t generation = 0;
+    uint64_t ref_count = 0;
+    std::vector<waiter> waiters;
+  };
+  struct tag_entry {
+    bool valid = false;
+    uint64_t line = 0;
+    physical_identity physical;
+    uint64_t lru = 0;
+  };
+  struct entry {
+    uint64_t uid;
+    unsigned slot;
+    uint64_t slot_generation;
+    std::vector<physical_identity> references;
+    unsigned pending_dependencies;
+  };
+  struct slot_state { bool active = false; uint64_t uid = 0; uint64_t generation = 0; };
+
+  entry *find_entry(uint64_t uid) {
+    for (entry &owner : m_entries)
+      if (owner.uid == uid) return &owner;
+    return nullptr;
+  }
+  const entry *find_entry_const(uint64_t uid) const {
+    for (const entry &owner : m_entries)
+      if (owner.uid == uid) return &owner;
+    return nullptr;
+  }
+  entry *find_entry_by_slot(unsigned slot, uint64_t generation) {
+    if (slot >= m_slots.size() || !m_slots[slot].active ||
+        m_slots[slot].generation != generation)
+      return nullptr;
+    return find_entry(m_slots[slot].uid);
+  }
+  static bool has_reference(const entry &owner, physical_identity identity) {
+    for (const physical_identity existing : owner.references)
+      if (existing.id == identity.id && existing.generation == identity.generation)
+        return true;
+    return false;
+  }
+  void attach_reference(entry &owner, physical_identity identity) {
+    if (has_reference(owner, identity)) return;
+    physical_line &physical = m_phys[identity.id];
+    assert(physical.allocated && physical.generation == identity.generation);
+    const uint64_t max_ref_count = (1ULL << m_cfg.ref_count_bits) - 1;
+    assert(physical.ref_count < max_ref_count);
+    ++physical.ref_count;
+    owner.references.push_back(identity);
+    if (!physical.ready) {
+      physical.waiters.push_back({owner.slot, owner.slot_generation});
+      ++owner.pending_dependencies;
+    }
+  }
+  bool entry_ready(const entry &owner) const {
+    if (owner.pending_dependencies) return false;
+    for (const physical_identity identity : owner.references)
+      if (!fill_identity_matches(identity) || !m_phys[identity.id].ready)
+        return false;
+    return true;
+  }
+  tag_entry *find_tag(uint64_t line) {
+    const unsigned set = static_cast<unsigned>(
+        (line / kLogicalLineBytes) % m_cfg.logical_sets);
+    for (unsigned way = 0; way < m_cfg.logical_ways; ++way) {
+      tag_entry &tag = m_tags[set * m_cfg.logical_ways + way];
+      if (tag.valid && tag.line == line) {
+        tag.lru = ++m_lru_clock;
+        return &tag;
+      }
+    }
+    return nullptr;
+  }
+  tag_entry *select_victim(uint64_t line) {
+    const unsigned set = static_cast<unsigned>(
+        (line / kLogicalLineBytes) % m_cfg.logical_sets);
+    tag_entry *victim = &m_tags[set * m_cfg.logical_ways];
+    for (unsigned way = 0; way < m_cfg.logical_ways; ++way) {
+      tag_entry &tag = m_tags[set * m_cfg.logical_ways + way];
+      if (!tag.valid) return &tag;
+      if (tag.lru < victim->lru) victim = &tag;
+    }
+    return victim;
+  }
+  int find_free_physical() {
+    for (unsigned offset = 0; offset < m_phys.size(); ++offset) {
+      const unsigned id = (m_rr_next + offset) % m_phys.size();
+      if (!m_phys[id].allocated) {
+        m_rr_next = (id + 1) % m_phys.size();
+        return id;
+      }
+    }
+    return -1;
+  }
+  void release(physical_identity identity) {
+    physical_line &physical = m_phys[identity.id];
+    assert(physical.allocated && physical.generation == identity.generation &&
+           !physical.tag_valid && !physical.ref_count);
+    physical.allocated = false;
+    physical.ready = false;
+    physical.waiters.clear();
+  }
+
+  config m_cfg;
+  std::vector<tag_entry> m_tags;
+  std::vector<physical_line> m_phys;
+  std::vector<slot_state> m_slots;
+  std::list<entry> m_entries;
+  uint64_t m_cycle = UINT64_MAX, m_retire_cycle = UINT64_MAX,
+           m_lru_clock = 0, m_new_misses = 0, m_valid_hits = 0,
+           m_pending_hits = 0, m_retires = 0, m_out_of_order_retires = 0,
+           m_wakeups = 0, m_tag_evictions = 0, m_immediate_reclaims = 0,
+           m_deferred_reclaims = 0, m_final_ref_reclaims = 0,
+           m_no_free_physical_events = 0,
+           m_allocation_width_limited_events = 0;
+  unsigned m_allocations_this_cycle = 0, m_rr_next = 0;
 };
 
 // A value snapshot lets the normal SM/cluster aggregation path emit a compact

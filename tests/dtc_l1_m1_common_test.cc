@@ -394,5 +394,120 @@ int main() {
   assert(high_mlp.retires() == 64);
   assert(high_mlp.allocated_lines_peak() >= 64);
   assert(high_mlp.partial_allocation_events() == 0);
+
+  // M3 whole-line O01-O13 foundation.  The OO PIB chooses the oldest ready
+  // entry (not FIFO head), while physical lifetime is guarded by exactly one
+  // line Ref per live coalesced 128B reference.
+  config oo_cfg;
+  oo_cfg.selected_mode = mode::PAPER_OO;
+  oo_cfg.logical_sets = 1;
+  oo_cfg.logical_ways = 1;
+  oo_cfg.physical_lines = 3;
+  oo_cfg.allocation_width = 4;
+  oo_cfg.oo_pib_entries = 4;
+  dtc_l1::oo_frontend oo(oo_cfg);
+  assert(oo.admit(800));
+  const auto old_pending = oo.access(300, 800, 0);
+  assert(old_pending.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(oo.ref_count(old_pending.physical) == 1);
+  assert(oo.admit(801));
+  const auto younger_ready = oo.access(300, 801, 128);
+  assert(younger_ready.kind == dtc_l1::io_access_kind::NEW_MISS);
+  // O07: replacement clears only logical visibility while the old live Ref
+  // keeps its pending physical allocation valid for its original fill.
+  assert(!oo.tag_visible(old_pending.physical));
+  assert(oo.is_allocated(old_pending.physical));
+  assert(oo.ref_count(old_pending.physical) == 1);
+  oo.complete(younger_ready.physical);
+  uint64_t retired_uid = 0;
+  assert(oo.retire_one_ready(301, &retired_uid));
+  assert(retired_uid == 801);  // O01 oldest ready bypasses unready 800.
+  assert(oo.out_of_order_retires() == 1);
+  assert(!oo.retire_one_ready(301));  // O02 width one/cycle.
+  oo.complete(old_pending.physical);
+  assert(oo.retire_one_ready(302, &retired_uid));
+  assert(retired_uid == 800);
+  // O08: final Ref after Tag eviction immediately reclaims the old line.
+  assert(!oo.is_allocated(old_pending.physical));
+  assert(oo.final_ref_reclaims() == 1);
+
+  // O03/O04/O10/O11: a valid hit and two pending readers each add exactly one
+  // Ref; one fill wakes every pending dependency exactly once.
+  assert(oo.admit(802));
+  const auto valid_ref = oo.access(303, 802, 128);
+  assert(valid_ref.kind == dtc_l1::io_access_kind::VALID_HIT);
+  assert(oo.ref_count(valid_ref.physical) == 1);
+  assert(oo.retire_one_ready(303, &retired_uid));
+  assert(retired_uid == 802);
+  assert(oo.ref_count(valid_ref.physical) == 0);
+  assert(oo.admit(803));
+  const auto merged_pending = oo.access(304, 803, 256);
+  assert(merged_pending.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(oo.admit(804));
+  const auto second_waiter = oo.access(304, 804, 256);
+  assert(second_waiter.kind == dtc_l1::io_access_kind::PENDING_HIT);
+  assert(oo.new_misses() == 3);
+  assert(oo.ref_count(merged_pending.physical) == 2);
+  oo.complete(merged_pending.physical);
+  assert(oo.wakeups() == 4);  // 800/801 plus both merged waiters.
+  assert(oo.entry_ready_for(803) && oo.entry_ready_for(804));
+  assert(oo.retire_one_ready(305, &retired_uid));
+  assert(retired_uid == 803);
+  assert(oo.retire_one_ready(306, &retired_uid));
+  assert(retired_uid == 804);
+
+  // O09: a zero-Ref logical victim reclaims immediately and is allocator
+  // visible in the same modeled cycle.
+  assert(oo.admit(805));
+  const auto immediate_reuse = oo.access(307, 805, 384);
+  assert(immediate_reuse.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(oo.immediate_reclaims() >= 1);
+
+  // O05/O06: one divergent instruction owns one Ref for each of four unique
+  // 128B lines; shadow verification runs at every transition.
+  config divergent_cfg;
+  divergent_cfg.selected_mode = mode::PAPER_OO;
+  divergent_cfg.logical_sets = 4;
+  divergent_cfg.logical_ways = 1;
+  divergent_cfg.physical_lines = 8;
+  divergent_cfg.allocation_width = 4;
+  divergent_cfg.oo_pib_entries = 4;
+  dtc_l1::oo_frontend divergent(divergent_cfg);
+  assert(divergent.admit(900));
+  std::vector<dtc_l1::physical_identity> divergent_refs;
+  for (unsigned line = 0; line < 4; ++line) {
+    const auto miss = divergent.access(400, 900, line * 128);
+    assert(miss.kind == dtc_l1::io_access_kind::NEW_MISS);
+    assert(divergent.ref_count(miss.physical) == 1);
+    divergent_refs.push_back(miss.physical);
+  }
+  for (const auto identity : divergent_refs) divergent.complete(identity);
+  assert(divergent.retire_one_ready(401));
+  for (const auto identity : divergent_refs)
+    assert(divergent.ref_count(identity) == 0);
+
+  // O12/O13: a reused PIB slot gets a fresh slot generation, while a delayed
+  // fill with an old physical generation is rejected by the invariant query.
+  config slot_cfg;
+  slot_cfg.selected_mode = mode::PAPER_OO;
+  slot_cfg.logical_sets = 1;
+  slot_cfg.logical_ways = 1;
+  slot_cfg.physical_lines = 1;
+  slot_cfg.oo_pib_entries = 1;
+  dtc_l1::oo_frontend slot_reuse(slot_cfg);
+  assert(slot_reuse.admit(910));
+  const auto slot_old = slot_reuse.access(500, 910, 0);
+  const unsigned old_slot = slot_reuse.entry_slot(910);
+  const uint64_t old_slot_generation = slot_reuse.entry_slot_generation(910);
+  slot_reuse.complete(slot_old.physical);
+  assert(slot_reuse.retire_one_ready(501));
+  assert(slot_reuse.admit(911));
+  const auto slot_new = slot_reuse.access(502, 911, 128);
+  assert(slot_reuse.entry_slot(911) == old_slot);
+  assert(slot_reuse.entry_slot_generation(911) != old_slot_generation);
+  assert(slot_new.physical.id == slot_old.physical.id);
+  assert(!slot_reuse.fill_identity_matches(slot_old.physical));
+  assert(!slot_reuse.fill_identity_matches(
+      {slot_new.physical.id, slot_new.physical.generation + 1}));
   return 0;
 }
