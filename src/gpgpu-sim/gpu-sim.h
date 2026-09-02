@@ -671,6 +671,9 @@ class gpgpu_sim : public gpgpu_t {
   vm_translation::translation_controller *vm_translation() const {
     return m_vm_translation;
   }
+  // PTE_ACC_R returns arrive through the regular response interconnect, but
+  // terminate at the walker rather than a shader L1/LDST response queue.
+  void complete_vm_pte_response(class mem_fetch *mf, uint64_t cycle);
 
   // backward pointer
   class gpgpu_context *gpgpu_ctx;
@@ -731,6 +734,7 @@ class gpgpu_sim : public gpgpu_t {
   class power_stat_t *m_power_stats;
   class gpgpu_sim_wrapper *m_gpgpusim_wrapper;
   vm_translation::translation_controller *m_vm_translation;
+  std::map<unsigned, vm_translation::pte_request> m_vm_pte_requests;
   unsigned long long last_gpu_sim_insn;
 
   unsigned long long last_liveness_message_time;

@@ -531,6 +531,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
                               events);
         bool write_sent = was_write_sent(events);
         bool read_sent = was_read_sent(events);
+        if (mf->get_access_type() == PTE_ACC_R && read_sent)
+          mf->set_vm_pte_reached_dram();
         MEM_SUBPART_DPRINTF("Probing L2 cache Address=%llx, status=%u\n",
                             mf->get_addr(), status);
 
@@ -578,6 +580,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       }
     } else {
       // L2 is disabled or non-texture access to texture-only L2
+      if (mf->get_access_type() == PTE_ACC_R) mf->set_vm_pte_reached_dram();
       mf->set_status(IN_PARTITION_L2_TO_DRAM_QUEUE,
                      m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
       m_L2_dram_queue->push(mf);

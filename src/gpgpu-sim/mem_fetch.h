@@ -100,6 +100,11 @@ class mem_fetch {
   bool isconst() const;
   enum mf_type get_type() const { return m_type; }
   bool isatomic() const;
+  // Set only by the L2/lower-memory path for the M3 physical PTE class.
+  // It is not a translation flag: PTE_ACC_R is already physical and never
+  // re-enters VM lookup.
+  void set_vm_pte_reached_dram() { m_vm_pte_reached_dram = true; }
+  bool vm_pte_reached_dram() const { return m_vm_pte_reached_dram; }
 
   void set_return_timestamp(unsigned t) { m_timestamp2 = t; }
   void set_icnt_receive_time(unsigned t) { m_icnt_receive_time = t; }
@@ -171,6 +176,7 @@ class mem_fetch {
 
   const memory_config *m_mem_config;
   unsigned icnt_flit_size;
+  bool m_vm_pte_reached_dram;
 
   mem_fetch
       *original_mf;  // this pointer is set up when a request is divided into

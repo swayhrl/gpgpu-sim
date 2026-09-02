@@ -31,21 +31,22 @@ class present_page_mapper {
   uint64_t translate(const translation_key &key) const;
 };
 
-// M3's PTE addresses are a simulator modeling contract.  The defaults reserve
-// a 1-TiB physical range above the 49-bit identity-mapped application range;
-// they are neither a hardware claim nor a Segmentation-paper implementation
-// detail.  M3 requires 64KB and 2MB translation keys, so the generic v0
-// backend deliberately rejects other PTE page-size classes.
+// M3's PTE addresses are a simulator modeling contract.  The generic defaults
+// reserve a configuration-derived range above the identity-like application
+// range; they are neither a hardware claim nor a Segmentation-paper detail.
+// The current generic trace baseline is 56 bits.  A 49-bit configuration
+// remains supported for later paper-specific work.  M3 requires 64KB and 2MB
+// translation keys, so the generic v0 backend rejects other PTE classes.
 struct page_table_config {
   unsigned levels;
   unsigned virtual_address_bits;
   uint64_t application_physical_limit;
   uint64_t pte_physical_base;
   uint64_t pte_physical_bytes;
-  page_table_config(unsigned level_count = 4, unsigned va_bits = 49,
-                    uint64_t app_limit = 1ULL << 49,
-                    uint64_t pte_base = 1ULL << 52,
-                    uint64_t pte_bytes = 1ULL << 40)
+  page_table_config(unsigned level_count = 4, unsigned va_bits = 56,
+                    uint64_t app_limit = 1ULL << 56,
+                    uint64_t pte_base = 1ULL << 56,
+                    uint64_t pte_bytes = 1ULL << 46)
       : levels(level_count), virtual_address_bits(va_bits),
         application_physical_limit(app_limit), pte_physical_base(pte_base),
         pte_physical_bytes(pte_bytes) {}
@@ -92,6 +93,9 @@ class radix_page_table_backend : public page_table_backend {
   pte_request make_pte_request(const translation_key &key, unsigned level,
                                uint64_t request_id) const;
   bool owns_pte_physical_address(uint64_t pa) const;
+  // A false result is an explicit configuration-width rejection.  The real
+  // PTE path asserts this predicate rather than rewriting a raw SimVA.
+  bool supports_key(const translation_key &key) const;
   const page_table_config &config() const { return m_config; }
 
  private:
@@ -156,6 +160,9 @@ struct translation_config {
   unsigned pwq_entries;
   unsigned walkers;
   unsigned walk_latency;
+  // 0 retains the accepted M2 fixed-latency diagnostic path.  1 makes each
+  // active walker wait for a real, physical PTE_ACC_R response from G3-2.
+  unsigned ptw_mode;
   page_table_config page_table;
   translation_config(unsigned sms = 1,
                      uint64_t page = vm_core::kDefaultBasePageSize,
@@ -164,10 +171,12 @@ struct translation_config {
                      unsigned mshr_count = 32, unsigned pwq_count = 32,
                      unsigned walker_count = 16, unsigned latency = 100,
                      const page_table_config &page_table_config_value =
-                         page_table_config())
+                         page_table_config(),
+                     unsigned page_table_walk_mode = 0)
       : num_sms(sms), page_size(page), l1(l1_config), l2(l2_config),
         mshr_entries(mshr_count), pwq_entries(pwq_count), walkers(walker_count),
-        walk_latency(latency), page_table(page_table_config_value) {}
+        walk_latency(latency), ptw_mode(page_table_walk_mode),
+        page_table(page_table_config_value) {}
   bool valid() const;
 };
 
@@ -207,6 +216,11 @@ struct translation_stats {
   uint64_t mshr_waiter_depth_max;
   uint64_t mshr_lifetime_cycles_total;
   uint64_t mshr_lifetime_cycles_max;
+  uint64_t pte_requests;
+  uint64_t pte_responses;
+  uint64_t pte_l2_only_responses;
+  uint64_t pte_dram_responses;
+  uint64_t pte_response_misassociations;
   translation_stats()
       : lookup_requests(0), pending_waiter_bypasses(0), mapper_lookups(0),
         completed(0), mshr_allocations(0), mshr_merges(0),
@@ -215,7 +229,9 @@ struct translation_stats {
         walk_completions(0), pwq_wait_cycles(0), walk_service_cycles(0),
         mshr_occupancy_high_watermark(0), mshr_entries_completed(0),
         mshr_waiter_depth_total(0), mshr_waiter_depth_max(0),
-        mshr_lifetime_cycles_total(0), mshr_lifetime_cycles_max(0) {}
+        mshr_lifetime_cycles_total(0), mshr_lifetime_cycles_max(0),
+        pte_requests(0), pte_responses(0), pte_l2_only_responses(0),
+        pte_dram_responses(0), pte_response_misassociations(0) {}
 };
 
 // G2-1 controller: hit latency is zero, but both TLBs have finite lookup
@@ -235,6 +251,14 @@ class translation_controller {
   // G2-2 test hook and G2-3 walker completion entry point.
   bool complete_translation(const translation_key &key, uint64_t cycle);
   void cycle(uint64_t cycle);
+  bool uses_real_memory_ptw() const { return m_config.ptw_mode == 1; }
+  // A request remains available until pte_request_issued() commits it to the
+  // real interconnect.  This makes injection backpressure explicit without
+  // letting a stalled injection advance a walker.
+  bool next_pte_request(pte_request *request) const;
+  bool pte_request_issued(const pte_request &request, uint64_t cycle);
+  bool complete_pte_response(uint64_t request_id, uint64_t physical_address,
+                             bool reached_dram, uint64_t cycle);
   bool invariants_hold() const;
   bool quiescent_invariants_hold() const;
   unsigned active_mshrs() const { return m_mshrs.size(); }
@@ -265,8 +289,12 @@ class translation_controller {
     translation_key key;
     uint64_t start_cycle;
     uint64_t ready_cycle;
+    unsigned next_level;
+    bool pte_outstanding;
+    uint64_t pte_request_id;
     active_walk(const translation_key &k, uint64_t start, uint64_t ready)
-        : key(k), start_cycle(start), ready_cycle(ready) {}
+        : key(k), start_cycle(start), ready_cycle(ready), next_level(0),
+          pte_outstanding(false), pte_request_id(0) {}
   };
   lookup_result allocate_or_merge(unsigned sid, uint64_t waiter_uid,
                                   const translation_key &key, uint64_t cycle);
@@ -280,6 +308,7 @@ class translation_controller {
   std::vector<translation_key> m_pwq;
   std::vector<active_walk> m_active_walks;
   translation_stats m_stats;
+  uint64_t m_next_pte_request_id;
 };
 
 }  // namespace vm_translation

@@ -1654,7 +1654,10 @@ class shader_core_config : public core_config {
   unsigned gpgpu_vm_pwq_entries;
   unsigned gpgpu_vm_walkers;
   unsigned gpgpu_vm_walk_latency;
+  // 0=M2 fixed-latency diagnostic PTW; 1=M3 physical PTE traffic PTW.
+  unsigned gpgpu_vm_ptw_mode;
   unsigned gpgpu_vm_pt_levels;
+  unsigned gpgpu_vm_virtual_address_bits;
   uint64_t gpgpu_vm_application_physical_limit;
   uint64_t gpgpu_vm_pte_physical_base;
   uint64_t gpgpu_vm_pte_physical_bytes;

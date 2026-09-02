@@ -425,21 +425,29 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_vm_walk_latency", OPT_UINT32,
                          &gpgpu_vm_walk_latency,
                          "M2 fixed page-walk latency in core cycles", "100");
+  option_parser_register(opp, "-gpgpu_vm_ptw_mode", OPT_UINT32,
+                         &gpgpu_vm_ptw_mode,
+                         "VM PTW mode: 0=M2 fixed latency, 1=M3 real PTE "
+                         "L2/DRAM traffic", "0");
   option_parser_register(opp, "-gpgpu_vm_pt_levels", OPT_UINT32,
                          &gpgpu_vm_pt_levels,
                          "generic M3 radix page-table levels", "4");
+  option_parser_register(opp, "-gpgpu_vm_virtual_address_bits", OPT_UINT32,
+                         &gpgpu_vm_virtual_address_bits,
+                         "generic M3 SimVA/backend width; 49 and 56 are "
+                         "directed-tested", "56");
   option_parser_register(opp, "-gpgpu_vm_application_physical_limit",
                          OPT_UINT64, &gpgpu_vm_application_physical_limit,
                          "exclusive identity-mapped application physical limit",
-                         "562949953421312");
+                         "72057594037927936");
   option_parser_register(opp, "-gpgpu_vm_pte_physical_base", OPT_UINT64,
                          &gpgpu_vm_pte_physical_base,
                          "generic M3 reserved PTE physical range base",
-                         "4503599627370496");
+                         "72057594037927936");
   option_parser_register(opp, "-gpgpu_vm_pte_physical_bytes", OPT_UINT64,
                          &gpgpu_vm_pte_physical_bytes,
                          "generic M3 reserved PTE physical range size",
-                         "1099511627776");
+                         "70368744177664");
 
   option_parser_register(opp, "-gpgpu_perfect_mem", OPT_BOOL,
                          &gpgpu_perfect_mem,
@@ -1040,10 +1048,12 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
         m_shader_config->gpgpu_vm_pwq_entries, m_shader_config->gpgpu_vm_walkers,
         m_shader_config->gpgpu_vm_walk_latency,
         vm_translation::page_table_config(
-            m_shader_config->gpgpu_vm_pt_levels, 49,
+            m_shader_config->gpgpu_vm_pt_levels,
+            m_shader_config->gpgpu_vm_virtual_address_bits,
             m_shader_config->gpgpu_vm_application_physical_limit,
             m_shader_config->gpgpu_vm_pte_physical_base,
-            m_shader_config->gpgpu_vm_pte_physical_bytes));
+            m_shader_config->gpgpu_vm_pte_physical_bytes),
+        m_shader_config->gpgpu_vm_ptw_mode);
     if (!vm_config.valid()) {
       fprintf(stderr, "ERROR: invalid functional VM TLB configuration\n");
       abort();
@@ -2045,10 +2055,71 @@ void gpgpu_sim::issue_block2core() {
 unsigned long long g_single_step =
     0;  // set this in gdb to single step the pipeline
 
+void gpgpu_sim::complete_vm_pte_response(mem_fetch *mf, uint64_t cycle) {
+  assert(mf != NULL);
+  assert(mf->get_access_type() == PTE_ACC_R);
+  assert(mf->get_type() == READ_REPLY);
+  assert(m_vm_translation != NULL && m_vm_translation->uses_real_memory_ptw());
+  std::map<unsigned, vm_translation::pte_request>::iterator it =
+      m_vm_pte_requests.find(mf->get_request_uid());
+  // An unknown response is a provenance/correctness failure, never a benign
+  // cache reply.  The map carries the original PTE address because L2 may
+  // temporarily rewrite mem_fetch::addr to its line/MSHR address.
+  assert(it != m_vm_pte_requests.end());
+  const vm_translation::pte_request pte = it->second;
+  assert(pte.is_physical && pte.bypass_translation);
+  assert(m_vm_translation->complete_pte_response(
+      pte.request_id, pte.physical_address, mf->vm_pte_reached_dram(), cycle));
+  m_vm_pte_requests.erase(it);
+  delete mf;
+}
+
 void gpgpu_sim::cycle() {
   if (m_vm_translation != NULL)
     m_vm_translation->cycle(gpu_sim_cycle + gpu_tot_sim_cycle);
   int clock_mask = next_clock_domain();
+
+  // M3 PTE reads bypass all shader L1 paths, but are injected at a real
+  // cluster terminal so they consume the request interconnect, L2 queues/
+  // ports/MSHRs, lower-memory bandwidth, and the response interconnect.
+  // A walker is marked issued only after that injection succeeds.
+  if ((clock_mask & ICNT) && m_vm_translation != NULL &&
+      m_vm_translation->uses_real_memory_ptw()) {
+    while (true) {
+      vm_translation::pte_request pte;
+      if (!m_vm_translation->next_pte_request(&pte)) break;
+      assert(pte.is_physical && pte.bypass_translation);
+      const unsigned source =
+          unsigned(pte.request_id % m_shader_config->n_simt_clusters);
+      if (!::icnt_has_buffer(source, READ_PACKET_SIZE)) break;
+      // The sector-L2 request splitter requires an explicit sector mask.  A
+      // PTE is logically eight bytes but traverses the normal 32-byte cache
+      // sector transaction, exactly as an aligned lower-level read does.
+      active_mask_t active_mask;
+      active_mask.reset();
+      mem_access_byte_mask_t byte_mask;
+      byte_mask.reset();
+      mem_access_sector_mask_t sector_mask;
+      sector_mask.reset();
+      const unsigned sector = unsigned(
+          (pte.physical_address / SECTOR_SIZE) % SECTOR_CHUNCK_SIZE);
+      sector_mask.set(sector);
+      for (unsigned byte = sector * SECTOR_SIZE;
+           byte < (sector + 1) * SECTOR_SIZE; ++byte)
+        byte_mask.set(byte);
+      mem_access_t access(PTE_ACC_R, pte.physical_address, SECTOR_SIZE, false,
+                          active_mask, byte_mask, sector_mask, gpgpu_ctx);
+      mem_fetch *mf = new mem_fetch(
+          access, NULL, 0, READ_PACKET_SIZE, 0, 0, source, m_memory_config,
+          gpu_sim_cycle + gpu_tot_sim_cycle);
+      const unsigned uid = mf->get_request_uid();
+      assert(m_vm_pte_requests.find(uid) == m_vm_pte_requests.end());
+      m_vm_pte_requests[uid] = pte;
+      m_cluster[source]->icnt_inject_request_packet(mf);
+      assert(m_vm_translation->pte_request_issued(
+          pte, gpu_sim_cycle + gpu_tot_sim_cycle));
+    }
+  }
 
   if (clock_mask & CORE) {
     // shader core loading (pop from ICNT into core) follows CORE clock

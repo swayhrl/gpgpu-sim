@@ -25,7 +25,11 @@ class replacement_backend : public vm_translation::page_table_backend {
 int main() {
   const uint64_t page64k = 64ULL * 1024ULL;
   const uint64_t page2m = 2ULL * 1024ULL * 1024ULL;
-  vm_translation::radix_page_table_backend backend;
+  // Preserve the original paper-facing 49-bit namespace proof explicitly;
+  // the generic runtime default is now independently configured at 56 bits.
+  vm_translation::radix_page_table_backend backend(
+      vm_translation::page_table_config(4, 49, 1ULL << 49, 1ULL << 49,
+                                         1ULL << 39));
   assert(backend.valid());
   assert(backend.levels() == 4);
 

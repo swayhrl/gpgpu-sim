@@ -9,6 +9,7 @@ namespace {
 const uint64_t kPteBytes = 8;
 const uint64_t kBasePage64KB = 64ULL * 1024ULL;
 const uint64_t kLargePage2MB = 2ULL * 1024ULL * 1024ULL;
+const unsigned kMaximumGenericVirtualAddressBits = 56;
 
 unsigned log2_exact(uint64_t value) {
   assert(value != 0 && (value & (value - 1)) == 0);
@@ -28,18 +29,26 @@ uint64_t present_page_mapper::translate(const translation_key &key) const {
 }
 
 bool page_table_config::valid() const {
-  if (levels == 0 || virtual_address_bits != 49 ||
+  const unsigned base_page_bits = log2_exact(kBasePage64KB);
+  const unsigned large_page_bits = log2_exact(kLargePage2MB);
+  if (levels == 0 || virtual_address_bits <= large_page_bits ||
+      virtual_address_bits > kMaximumGenericVirtualAddressBits ||
+      application_physical_limit < (1ULL << virtual_address_bits) ||
       application_physical_limit > pte_physical_base ||
       (pte_physical_base % kBasePage64KB) != 0 ||
       pte_physical_bytes == 0 ||
       pte_physical_base > ~0ULL - pte_physical_bytes)
     return false;
 
-  // The largest supported key class is 64KB: four levels x two classes x
-  // 2^(49-16) entries x 8 bytes = 512 GiB for the generic default.
-  const unsigned max_vpn_bits = virtual_address_bits - log2_exact(kBasePage64KB);
-  const uint64_t required_bytes =
-      uint64_t(levels) * 2ULL * (1ULL << max_vpn_bits) * kPteBytes;
+  // The largest supported key class is 64KB.  Keep the arithmetic explicit:
+  // for the 56-bit generic baseline this is
+  // 4 levels * 2 classes * 2^(56-16) entries * 8B = 2^46 bytes.
+  const unsigned max_vpn_bits = virtual_address_bits - base_page_bits;
+  const uint64_t namespace_count = uint64_t(levels) * 2ULL;
+  if (namespace_count > (~0ULL >> max_vpn_bits)) return false;
+  const uint64_t slots = namespace_count << max_vpn_bits;
+  if (slots > (~0ULL / kPteBytes)) return false;
+  const uint64_t required_bytes = slots * kPteBytes;
   return pte_physical_bytes >= required_bytes;
 }
 
@@ -65,12 +74,19 @@ unsigned radix_page_table_backend::vpn_bits(uint64_t page_size) const {
   return m_config.virtual_address_bits - shift;
 }
 
+bool radix_page_table_backend::supports_key(const translation_key &key) const {
+  if (!valid() || (key.page_size != kBasePage64KB &&
+                   key.page_size != kLargePage2MB))
+    return false;
+  const unsigned key_vpn_bits = vpn_bits(key.page_size);
+  return key.vpn < (1ULL << key_vpn_bits);
+}
+
 uint64_t radix_page_table_backend::pte_address(const translation_key &key,
                                                 unsigned level) const {
   assert(valid());
   assert(level < m_config.levels);
-  const unsigned key_vpn_bits = vpn_bits(key.page_size);
-  assert(key.vpn < (1ULL << key_vpn_bits));
+  assert(supports_key(key));
   // Every supported class shares one fixed namespace width.  Encoding this
   // with key_vpn_bits would make the class namespace shift 33 bits for 64KB
   // but 28 bits for 2MB, allowing a high 64KB VPN to alias a 2MB namespace.
@@ -196,13 +212,13 @@ unsigned set_associative_tlb::occupancy() const {
 bool translation_config::valid() const {
   return num_sms != 0 && vm_core::valid_page_size(page_size) && l1.valid() &&
          l2.valid() && mshr_entries != 0 && pwq_entries != 0 && walkers != 0 &&
-         walk_latency != 0 && page_table.valid();
+         walk_latency != 0 && ptw_mode <= 1 && page_table.valid();
 }
 
 translation_controller::translation_controller(const translation_config &config)
     : m_config(config), m_default_page_table(config.page_table),
       m_page_table(&m_default_page_table), m_l1s(), m_l2(config.l2), m_mshrs(),
-      m_pwq(), m_active_walks(), m_stats() {
+      m_pwq(), m_active_walks(), m_stats(), m_next_pte_request_id(1) {
   assert(m_config.valid());
   for (unsigned sid = 0; sid < m_config.num_sms; ++sid)
     m_l1s.push_back(set_associative_tlb(m_config.l1));
@@ -212,7 +228,7 @@ translation_controller::translation_controller(const translation_config &config,
                                                page_table_backend *backend)
     : m_config(config), m_default_page_table(config.page_table),
       m_page_table(backend), m_l1s(), m_l2(config.l2), m_mshrs(), m_pwq(),
-      m_active_walks(), m_stats() {
+      m_active_walks(), m_stats(), m_next_pte_request_id(1) {
   assert(m_config.valid());
   assert(m_page_table != 0 && m_page_table->valid());
   for (unsigned sid = 0; sid < m_config.num_sms; ++sid)
@@ -346,6 +362,19 @@ bool translation_controller::complete_translation(const translation_key &key,
 }
 
 void translation_controller::cycle(uint64_t cycle) {
+  if (uses_real_memory_ptw()) {
+    while (!m_pwq.empty() && m_active_walks.size() < m_config.walkers) {
+      const translation_key key = m_pwq.front();
+      m_pwq.erase(m_pwq.begin());
+      mshr_entry *entry = find_mshr(key);
+      assert(entry != 0);
+      m_stats.pwq_wait_cycles += cycle - entry->enqueue_cycle;
+      m_active_walks.push_back(active_walk(key, cycle, 0));
+      ++m_stats.walk_starts;
+    }
+    assert(m_active_walks.size() <= m_config.walkers);
+    return;
+  }
   for (unsigned index = 0; index < m_active_walks.size();) {
     if (m_active_walks[index].ready_cycle > cycle) {
       ++index;
@@ -370,6 +399,80 @@ void translation_controller::cycle(uint64_t cycle) {
   assert(m_active_walks.size() <= m_config.walkers);
 }
 
+bool translation_controller::next_pte_request(pte_request *request) const {
+  assert(request != 0);
+  if (!uses_real_memory_ptw()) return false;
+  for (unsigned index = 0; index < m_active_walks.size(); ++index) {
+    const active_walk &walk = m_active_walks[index];
+    if (walk.pte_outstanding) continue;
+    assert(walk.next_level < m_page_table->levels());
+    const uint64_t request_id =
+        walk.pte_request_id ? walk.pte_request_id : m_next_pte_request_id;
+    *request =
+        m_page_table->make_pte_request(walk.key, walk.next_level, request_id);
+    assert(request->is_physical && request->bypass_translation);
+    return true;
+  }
+  return false;
+}
+
+bool translation_controller::pte_request_issued(const pte_request &request,
+                                                 uint64_t cycle) {
+  (void)cycle;
+  if (!uses_real_memory_ptw() || !request.is_physical ||
+      !request.bypass_translation ||
+      !m_page_table->owns_pte_physical_address(request.physical_address))
+    return false;
+  for (unsigned index = 0; index < m_active_walks.size(); ++index) {
+    active_walk &walk = m_active_walks[index];
+    if (walk.key == request.key && !walk.pte_outstanding &&
+        walk.next_level == request.level &&
+        (walk.pte_request_id == 0 || walk.pte_request_id == request.request_id)) {
+      walk.pte_outstanding = true;
+      walk.pte_request_id = request.request_id;
+      if (request.request_id == m_next_pte_request_id) ++m_next_pte_request_id;
+      ++m_stats.pte_requests;
+      return true;
+    }
+  }
+  return false;
+}
+
+bool translation_controller::complete_pte_response(uint64_t request_id,
+                                                    uint64_t physical_address,
+                                                    bool reached_dram,
+                                                    uint64_t cycle) {
+  if (!uses_real_memory_ptw() ||
+      !m_page_table->owns_pte_physical_address(physical_address))
+    return false;
+  for (unsigned index = 0; index < m_active_walks.size(); ++index) {
+    active_walk &walk = m_active_walks[index];
+    if (!walk.pte_outstanding || walk.pte_request_id != request_id) continue;
+    const pte_request expected =
+        m_page_table->make_pte_request(walk.key, walk.next_level, request_id);
+    if (expected.physical_address != physical_address) {
+      ++m_stats.pte_response_misassociations;
+      return false;
+    }
+    ++m_stats.pte_responses;
+    if (reached_dram)
+      ++m_stats.pte_dram_responses;
+    else
+      ++m_stats.pte_l2_only_responses;
+    walk.pte_outstanding = false;
+    walk.pte_request_id = 0;
+    ++walk.next_level;
+    if (walk.next_level < m_page_table->levels()) return true;
+    assert(complete_translation(walk.key, cycle));
+    ++m_stats.walk_completions;
+    m_stats.walk_service_cycles += cycle - walk.start_cycle;
+    m_active_walks.erase(m_active_walks.begin() + index);
+    return true;
+  }
+  ++m_stats.pte_response_misassociations;
+  return false;
+}
+
 bool translation_controller::invariants_hold() const {
   if (m_stats.mshr_allocations < m_stats.mshr_releases ||
       m_stats.mshr_allocations - m_stats.mshr_releases != m_mshrs.size() ||
@@ -392,7 +495,10 @@ bool translation_controller::invariants_hold() const {
   for (unsigned i = 0; i < m_pwq.size(); ++i)
     if (find_mshr(m_pwq[i]) == 0) return false;
   for (unsigned i = 0; i < m_active_walks.size(); ++i)
-    if (find_mshr(m_active_walks[i].key) == 0) return false;
+    if (find_mshr(m_active_walks[i].key) == 0 ||
+        (uses_real_memory_ptw() &&
+         m_active_walks[i].next_level >= m_page_table->levels()))
+      return false;
   return true;
 }
 
@@ -455,6 +561,16 @@ void translation_controller::print_stats(FILE *fout) const {
           (unsigned long long)m_stats.walk_starts);
   fprintf(fout, "vm_translation_walk_completions = %llu\n",
           (unsigned long long)m_stats.walk_completions);
+  fprintf(fout, "vm_pte_requests = %llu\n",
+          (unsigned long long)m_stats.pte_requests);
+  fprintf(fout, "vm_pte_responses = %llu\n",
+          (unsigned long long)m_stats.pte_responses);
+  fprintf(fout, "vm_pte_l2_only_responses = %llu\n",
+          (unsigned long long)m_stats.pte_l2_only_responses);
+  fprintf(fout, "vm_pte_dram_responses = %llu\n",
+          (unsigned long long)m_stats.pte_dram_responses);
+  fprintf(fout, "vm_pte_response_misassociations = %llu\n",
+          (unsigned long long)m_stats.pte_response_misassociations);
   fprintf(fout, "vm_translation_waiter_registrations = %llu\n",
           (unsigned long long)m_stats.waiter_registrations);
   fprintf(fout, "vm_translation_waiter_wakeups = %llu\n",

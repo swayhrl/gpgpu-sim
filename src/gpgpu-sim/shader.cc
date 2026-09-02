@@ -34,6 +34,8 @@
 #include "vm_core.h"
 #include <float.h>
 #include <limits.h>
+#include <set>
+#include <stdlib.h>
 #include <string.h>
 #include <array>
 #include "../../libcuda/gpgpu_context.h"
@@ -56,6 +58,144 @@
 #define PRIORITIZE_MSHR_OVER_WB 1
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
+
+// G3-2A diagnostic-only provenance recorder. It is disabled unless
+// GPGPUSIM_VM_PROVENANCE_PREFIX is set. It observes the coalesced transaction
+// at the VM hook and never modifies SimVA, SimPA, translation state, or cache
+// routing. A >=2^49 record forces a compact summary flush so the evidence
+// survives the intentionally retained backend assertion.
+namespace {
+
+struct vm_provenance_bucket {
+  uint64_t transactions;
+  uint64_t high_addresses;
+  uint64_t minimum;
+  uint64_t maximum;
+  unsigned maximum_width;
+  vm_provenance_bucket()
+      : transactions(0), high_addresses(0), minimum(~0ULL), maximum(0),
+        maximum_width(0) {}
+};
+
+class vm_provenance_recorder {
+ public:
+  vm_provenance_recorder()
+      : m_prefix(getenv("GPGPUSIM_VM_PROVENANCE_PREFIX")),
+        m_high_examples(0) {}
+  ~vm_provenance_recorder() { flush(); }
+
+  void record(unsigned mode, const warp_inst_t &inst,
+              const mem_access_t &access, unsigned sid, unsigned tpc,
+              const kernel_info_t *kernel, uint64_t page_size) {
+    if (m_prefix == 0 || !m_seen_uids.insert(access.get_uid()).second) return;
+    unsigned space_index = 3;
+    const char *space = "other";
+    const char *source = "unknown";
+    if (inst.space.is_global()) {
+      space_index = 0;
+      space = "global";
+      source = "trace_raw_coalesced";
+    } else if (inst.space.get_type() == local_space) {
+      space_index = 1;
+      space = "local";
+      source = "simulator_local_linearized";
+    } else if (inst.space.get_type() == param_space_local) {
+      space_index = 2;
+      space = "param_local";
+      source = "simulator_local_linearized";
+    }
+    assert(mode <= 2);
+    vm_provenance_bucket &bucket = m_buckets[mode][space_index];
+    const uint64_t sim_va = access.get_sim_va();
+    ++bucket.transactions;
+    if (sim_va < bucket.minimum) bucket.minimum = sim_va;
+    if (sim_va > bucket.maximum) bucket.maximum = sim_va;
+    const unsigned width = required_width(sim_va);
+    if (width > bucket.maximum_width) bucket.maximum_width = width;
+    if (sim_va < (1ULL << 49)) return;
+
+    ++bucket.high_addresses;
+    if (m_high_examples < 16) {
+      FILE *fout = open(".offenders.tsv", "a");
+      if (m_high_examples == 0)
+        fprintf(fout,
+                "mode\tspace\tsource\tkernel_uid\tkernel_name\tpc_hex\t"
+                "request_uid\tsid\ttpc\twid\toperation\taccess_type\t"
+                "sim_va_hex\tsim_va_dec\tvpn_hex\tvpn_dec\tpage_size\t"
+                "required_width\ttransaction_size\tcrosses_page\n");
+      const uint64_t vpn = sim_va / page_size;
+      fprintf(fout,
+              "%u\t%s\t%s\t%u\t%s\t0x%llx\t%u\t%u\t%u\t%u\t%s\t%s\t"
+              "0x%llx\t%llu\t0x%llx\t%llu\t%llu\t%u\t%u\t%d\n",
+              mode, space, source, kernel ? kernel->get_uid() : 0,
+              kernel ? kernel->name().c_str() : "none",
+              (unsigned long long)inst.pc, access.get_uid(), sid, tpc,
+              inst.warp_id(), operation(inst), mem_access_type_str(access.get_type()),
+              (unsigned long long)sim_va, (unsigned long long)sim_va,
+              (unsigned long long)vpn, (unsigned long long)vpn,
+              (unsigned long long)page_size, width, access.get_size(),
+              vm_core::transaction_crosses_page(sim_va, access.get_size(),
+                                                page_size));
+      fclose(fout);
+      ++m_high_examples;
+    }
+    flush();
+  }
+
+ private:
+  static unsigned required_width(uint64_t value) {
+    unsigned width = 1;
+    while (value >>= 1) ++width;
+    return width;
+  }
+  static const char *operation(const warp_inst_t &inst) {
+    if (inst.isatomic()) return "atomic";
+    return inst.is_store() ? "store" : "load";
+  }
+  FILE *open(const char *suffix, const char *mode) const {
+    std::string path(m_prefix);
+    path += suffix;
+    FILE *fout = fopen(path.c_str(), mode);
+    assert(fout != 0);
+    return fout;
+  }
+  void flush() const {
+    if (m_prefix == 0) return;
+    static const char *spaces[] = {"global", "local", "param_local", "other"};
+    FILE *fout = open(".summary.tsv", "w");
+    fprintf(fout,
+            "mode\tspace\tsource\ttransactions\tmin_sim_va_hex\t"
+            "max_sim_va_hex\thigh_ge_2pow49\tmax_required_width\n");
+    for (unsigned mode = 0; mode < 3; ++mode)
+      for (unsigned space = 0; space < 4; ++space) {
+        const vm_provenance_bucket &bucket = m_buckets[mode][space];
+        if (bucket.transactions == 0) continue;
+        const char *source = space == 0 ? "trace_raw_coalesced"
+                             : (space == 1 || space == 2)
+                                   ? "simulator_local_linearized"
+                                   : "unknown";
+        fprintf(fout, "%u\t%s\t%s\t%llu\t0x%llx\t0x%llx\t%llu\t%u\n",
+                mode, spaces[space], source,
+                (unsigned long long)bucket.transactions,
+                (unsigned long long)bucket.minimum,
+                (unsigned long long)bucket.maximum,
+                (unsigned long long)bucket.high_addresses,
+                bucket.maximum_width);
+      }
+    fclose(fout);
+  }
+  const char *m_prefix;
+  unsigned m_high_examples;
+  std::set<unsigned> m_seen_uids;
+  vm_provenance_bucket m_buckets[3][4];
+};
+
+vm_provenance_recorder &vm_provenance() {
+  static vm_provenance_recorder recorder;
+  return recorder;
+}
+
+}  // namespace
 
 mem_fetch *shader_core_mem_fetch_allocator::alloc(
     new_addr_type addr, mem_access_type type, unsigned size, bool wr,
@@ -2278,6 +2418,9 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
   mem_stage_stall_type stall_cond = NO_RC_FAIL;
   mem_access_t &access = inst.accessq_back();
   if (!access.vm_translation_applied()) {
+    vm_provenance().record(m_config->gpgpu_vm_mode, inst, access, m_sid, m_tpc,
+                           m_core->get_kernel(),
+                           m_config->gpgpu_vm_page_size);
     ++m_stats->vm_requests;
     if (m_config->gpgpu_vm_mode == 0) {
       ++m_stats->vm_disabled_bypasses;
@@ -4728,6 +4871,10 @@ void simt_core_cluster::update_icnt_stats(class mem_fetch *mf) {
     case L2_WR_ALLOC_R:
       m_stats->gpgpu_n_mem_l2_write_allocate++;
       break;
+    case PTE_ACC_R:
+      // Counted separately by the VM controller and traffic breakdown; do not
+      // fold page-table reads into application global-load statistics.
+      break;
     default:
       assert(0);
   }
@@ -4792,6 +4939,20 @@ void simt_core_cluster::icnt_cycle() {
     if (!mf) return;
     assert(mf->get_tpc() == m_cluster_id);
     assert(mf->get_type() == READ_REPLY || mf->get_type() == WRITE_ACK);
+
+    // G3-2 PTE responses deliberately terminate at the VM walker after the
+    // normal response-network traversal.  They never enter an L1D, LD/ST
+    // unit, or shader response FIFO, and their physical PTE address therefore
+    // cannot trigger recursive translation.
+    if (mf->get_access_type() == PTE_ACC_R) {
+      assert(mf->get_type() == READ_REPLY);
+      const unsigned int packet_size = mf->size();
+      m_stats->m_incoming_traffic_stats->record_traffic(mf, packet_size);
+      m_stats->n_mem_to_simt[m_cluster_id] += mf->get_num_flits(false);
+      m_gpu->complete_vm_pte_response(
+          mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+      return;
+    }
 
     // The packet size varies depending on the type of request:
     // - For read request and atomic request, the packet contains the data
