@@ -408,6 +408,9 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_dtc_l1_mshr_entries", OPT_UINT32,
                          &dtc_l1_mshr_entries,
                          "DTC-L1 Paper Base traditional MSHR entries", "32");
+  option_parser_register(opp, "-gpgpu_dtc_l1_debug_event_limit", OPT_UINT32,
+                         &dtc_l1_debug_event_limit,
+                         "DTC-L1 bounded diagnostic event limit", "0");
   option_parser_register(opp, "-gpgpu_dtc_l1_lower_outstanding_cap",
                          OPT_UINT32, &dtc_l1_lower_outstanding_cap,
                          "DTC-L1 global lower outstanding-request cap", "256");

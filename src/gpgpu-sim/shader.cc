@@ -2378,8 +2378,12 @@ bool ldst_unit::dtc_l1_paper_base_active() const {
 bool ldst_unit::dtc_l1_admit(warp_inst_t &inst) {
   if (!dtc_l1_paper_base_active()) return true;
   const unsigned uid = inst.get_uid();
-  if (!m_dtc_l1_frontend->try_admit(uid)) return false;
+  if (!m_dtc_l1_frontend->try_admit(uid)) {
+    dtc_l1_debug_event("PIB_BLOCK", inst, 0);
+    return false;
+  }
   m_dtc_l1_live_instruction_uids.insert(uid);
+  dtc_l1_debug_event("ADMIT", inst, 0);
   return true;
 }
 
@@ -2397,7 +2401,29 @@ void ldst_unit::dtc_l1_retire(const warp_inst_t &inst) {
   const size_t erased = m_dtc_l1_live_instruction_uids.erase(uid);
   if (!erased) return;
   m_dtc_l1_frontend->retire(uid);
+  dtc_l1_debug_event("RETIRE", inst, 0);
   m_dtc_l1_frontend->assert_accounting();
+}
+
+void ldst_unit::dtc_l1_debug_event(const char *event, const warp_inst_t &inst,
+                                   new_addr_type address,
+                                   const char *cache_status) {
+  if (!dtc_l1_paper_base_active() || !m_dtc_l1_debug_events_left) return;
+  --m_dtc_l1_debug_events_left;
+  const unsigned long long cycle =
+      m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
+  fprintf(stderr,
+          "DTC_L1_DEBUG cycle=%llu sm=%u event=%s uid=%u addr=0x%llx "
+          "tracked=%u live_count=%zu",
+          cycle, m_sid, event, inst.get_uid(),
+          static_cast<unsigned long long>(address),
+          m_dtc_l1_live_instruction_uids.count(inst.get_uid()) ? 1U : 0U,
+          m_dtc_l1_live_instruction_uids.size());
+  if (cache_status) fprintf(stderr, " cache_status=%s", cache_status);
+  fprintf(stderr, " live_uids=");
+  for (const unsigned uid : m_dtc_l1_live_instruction_uids)
+    fprintf(stderr, "%u,", uid);
+  fprintf(stderr, "\n");
 }
 
 void ldst_unit::print_dtc_l1_stats(FILE *fp) const {
@@ -2437,6 +2463,8 @@ void ldst_unit::L1_latency_queue_cycle() {
                         m_core->get_gpu()->gpu_sim_cycle +
                             m_core->get_gpu()->gpu_tot_sim_cycle,
                         events);
+      dtc_l1_debug_event("L1_ACCESS", mf_next->get_inst(),
+                         mf_next->get_addr(), cache_request_status_str(status));
 
       bool write_sent = was_write_sent(events);
       bool read_sent = was_read_sent(events);
@@ -2458,6 +2486,10 @@ void ldst_unit::L1_latency_queue_cycle() {
                 m_scoreboard->releaseRegister(mf_next->get_inst().warp_id(),
                                               mf_next->get_inst().out[r]);
                 m_core->warp_inst_complete(mf_next->get_inst());
+                dtc_l1_retire(mf_next->get_inst());
+                dtc_l1_debug_event("HIT_TRUE_COMPLETE_RETIRED",
+                                   mf_next->get_inst(), mf_next->get_addr(),
+                                   "HIT");
               }
             }
 
@@ -3007,6 +3039,7 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
   dtc_config.tag_requests_per_cycle =
       m_config->dtc_l1_tag_requests_per_cycle;
   m_dtc_l1_frontend = std::make_unique<dtc_l1::paper_frontend>(dtc_config);
+  m_dtc_l1_debug_events_left = m_config->dtc_l1_debug_event_limit;
   m_name = "MEM ";
 }
 
@@ -3619,6 +3652,7 @@ void ldst_unit::cycle() {
       m_response_fifo.pop_front();
       m_next_global.push_back(mf);
     } else {
+      dtc_l1_debug_event("L1_FILL", mf->get_inst(), mf->get_addr());
       m_L1D->fill(mf, m_core->get_gpu()->gpu_sim_cycle +
                           m_core->get_gpu()->gpu_tot_sim_cycle);
       m_response_fifo.pop_front();
@@ -4195,6 +4229,8 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
   for (unsigned i = 0; i < m_shader_config->n_simt_clusters; ++i) {
     m_cluster[i]->get_dtc_l1_stats(total);
   }
+  assert(total.admits == total.retires);
+  assert(total.pib_occupancy == 0);
 
   fprintf(fout, "DTC_L1_mode = PAPER_BASE\n");
   fprintf(fout, "DTC_L1_pib_admits = %llu\n",

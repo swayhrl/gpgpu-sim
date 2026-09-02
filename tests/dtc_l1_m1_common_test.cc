@@ -80,5 +80,14 @@ int main() {
   for (unsigned bank = 0; bank < 4; ++bank)
     assert(total.requests_per_bank[bank] == 2 * one_sm.requests_per_bank[bank]);
   front_end.assert_accounting();
+
+  // R07.3: a tracked instruction that reaches true L1-hit completion must
+  // release its PIB state exactly once; the completed kernel then drains.
+  config hit_cfg;
+  hit_cfg.selected_mode = mode::PAPER_BASE;
+  paper_frontend hit_completion(hit_cfg);
+  assert(hit_completion.try_admit(200));
+  hit_completion.retire(200);
+  hit_completion.assert_drained();
   return 0;
 }

@@ -2047,6 +2047,9 @@ class ldst_unit : public pipelined_simd_unit {
   bool dtc_l1_admit(warp_inst_t &inst);
   bool dtc_l1_try_tag(new_addr_type address);
   void dtc_l1_retire(const warp_inst_t &inst);
+  void dtc_l1_debug_event(const char *event, const warp_inst_t &inst,
+                          new_addr_type address,
+                          const char *cache_status = NULL);
   void print_dtc_l1_stats(FILE *fp) const;
   gpgpu_sim *m_gpu;
 
@@ -2098,6 +2101,7 @@ class ldst_unit : public pipelined_simd_unit {
 
   std::unique_ptr<dtc_l1::paper_frontend> m_dtc_l1_frontend;
   std::set<unsigned> m_dtc_l1_live_instruction_uids;
+  unsigned m_dtc_l1_debug_events_left = 0;
 
   // For fence
   // Right now just support async fence
@@ -2278,6 +2282,7 @@ class shader_core_config : public core_config {
   unsigned dtc_l1_mode;
   unsigned dtc_l1_pib_entries;
   unsigned dtc_l1_mshr_entries;
+  unsigned dtc_l1_debug_event_limit;
   unsigned dtc_l1_lower_outstanding_cap;
   unsigned dtc_l1_tag_banks;
   unsigned dtc_l1_tag_requests_per_bank_per_cycle;

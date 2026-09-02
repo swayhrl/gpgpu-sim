@@ -227,6 +227,11 @@ class paper_frontend {
            m_frontend_stall_cycles);
   }
 
+  void assert_drained() const {
+    assert_accounting();
+    assert(m_live_instructions.empty());
+  }
+
  private:
   config m_cfg;
   std::set<uint64_t> m_live_instructions;
