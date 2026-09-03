@@ -1359,6 +1359,8 @@ class baseline_cache : public cache_t {
   void invalidate() { m_tag_array->invalidate(); }
   void print(FILE *fp, unsigned &accesses, unsigned &misses) const;
   void display_state(FILE *fp) const;
+  void display_set_state(FILE *fp, new_addr_type addr) const;
+  void display_access_diagnostic(FILE *fp, const mem_fetch *mf) const;
 
   // Stat collection
   const cache_stats &get_stats() const { return m_stats; }

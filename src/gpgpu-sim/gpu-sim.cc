@@ -1662,6 +1662,12 @@ void gpgpu_sim::deadlock_check() {
       for (unsigned i = 0; i < m_shader_config->n_simt_clusters; ++i)
         m_cluster[i]->print_dtc_l1_io_deadlock(stdout);
     }
+    // This is reached only after the existing deadlock decision.  Capture the
+    // live conventional pipeline/MSHR/scoreboard state before aborting so a
+    // configuration-sensitive failure can be source-localized without
+    // changing any successful-run timing or semantics.
+    printf("GPGPU-Sim uArch DEADLOCK: pipeline diagnostic state:\n");
+    dump_pipeline(0x1, -1, -1);
     printf(
         "\nRe-run the simulator in gdb and use debug routines in .gdbinit to "
         "debug this\n");

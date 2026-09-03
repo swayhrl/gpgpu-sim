@@ -1316,7 +1316,42 @@ void baseline_cache::print(FILE *fp, unsigned &accesses,
 void baseline_cache::display_state(FILE *fp) const {
   fprintf(fp, "Cache %s:\n", m_name.c_str());
   m_mshrs.display(fp);
+  fprintf(fp, "Miss queue (%zu entries):\n", m_miss_queue.size());
+  for (const mem_fetch *mf : m_miss_queue) mf->print(fp);
   fprintf(fp, "\n");
+}
+
+void baseline_cache::display_set_state(FILE *fp, new_addr_type addr) const {
+  const unsigned set = m_config.set_index(addr);
+  const unsigned assoc = m_config.get_num_lines() / m_config.get_nset();
+  fprintf(fp, "Cache %s set %u for addr=0x%llx:\n", m_name.c_str(), set,
+          static_cast<unsigned long long>(addr));
+  for (unsigned way = 0; way < assoc; ++way) {
+    cache_block_t *line = m_tag_array->get_block(set * assoc + way);
+    const char *state = line->is_reserved_line()
+                            ? "RESERVED"
+                            : (line->is_modified_line()
+                                   ? "MODIFIED"
+                                   : (line->is_valid_line() ? "VALID" : "INVALID"));
+    fprintf(fp, "  way %u: %s tag=0x%llx block=0x%llx\n", way, state,
+            static_cast<unsigned long long>(line->m_tag),
+            static_cast<unsigned long long>(line->m_block_addr));
+  }
+}
+
+void baseline_cache::display_access_diagnostic(FILE *fp,
+                                               const mem_fetch *mf) const {
+  unsigned index = (unsigned)-1;
+  mem_fetch *mutable_mf = const_cast<mem_fetch *>(mf);
+  const enum cache_request_status probe = m_tag_array->probe(
+      mf->get_addr(), index, mutable_mf, mutable_mf->is_write(), true);
+  const new_addr_type mshr_addr = m_config.mshr_addr(mf->get_addr());
+  fprintf(fp,
+          "Cache %s retry diagnostic: probe=%s index=%u mshr_hit=%d "
+          "mshr_full=%d miss_queue=%zu/%u lower_level=%u\n",
+          m_name.c_str(), cache_request_status_str(probe), index,
+          m_mshrs.probe(mshr_addr), m_mshrs.full(mshr_addr),
+          m_miss_queue.size(), m_config.m_miss_queue_size, m_level);
 }
 
 void baseline_cache::inc_aggregated_stats(cache_request_status status,

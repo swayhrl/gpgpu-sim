@@ -1992,6 +1992,7 @@ class ldst_unit : public pipelined_simd_unit {
   void print(FILE *fout) const;
   void print_cache_stats(FILE *fp, unsigned &dl1_accesses,
                          unsigned &dl1_misses);
+  void display_l1d_deadlock_state(FILE *fp) const;
   void get_dtc_l1_stats(dtc_l1::paper_frontend_stats &stats) const;
   void print_dtc_l1_io_deadlock(FILE *fp) const;
   void get_l1d_cache_stats(cache_stats &cs) const;

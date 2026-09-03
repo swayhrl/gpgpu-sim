@@ -2072,6 +2072,28 @@ void ldst_unit::print_cache_stats(FILE *fp, unsigned &dl1_accesses,
   print_dtc_l1_stats(fp);
 }
 
+void ldst_unit::display_l1d_deadlock_state(FILE *fp) const {
+  // This is reached only through the fatal deadlock diagnostic.  The cache
+  // object may still carry outstanding state after a per-kernel preference
+  // transition marks its config disabled, so inspect the object whenever it
+  // exists rather than filtering on the mutable config flag.
+  if (m_L1D) m_L1D->display_state(fp);
+  fprintf(fp, "L1D latency queues:\n");
+  for (unsigned bank = 0; bank < l1_latency_queue.size(); ++bank) {
+    fprintf(fp, "  bank %u:\n", bank);
+    for (unsigned stage = 0; stage < l1_latency_queue[bank].size(); ++stage) {
+      const mem_fetch *mf = l1_latency_queue[bank][stage];
+      if (!mf) continue;
+      fprintf(fp, "    stage %u: ", stage);
+      mf->print(fp);
+      if (stage == 0) {
+        m_L1D->display_set_state(fp, mf->get_addr());
+        m_L1D->display_access_diagnostic(fp, mf);
+      }
+    }
+  }
+}
+
 void ldst_unit::get_cache_stats(cache_stats &cs) {
   // Adds stats to 'cs' from each cache
   if (m_L1D) cs += m_L1D->get_stats();
@@ -6031,6 +6053,7 @@ void shader_core_ctx::display_pipeline(FILE *fout, int print_mem,
   fprintf(fout, "\n");
 
   m_L1I->display_state(fout);
+  m_ldst_unit->display_l1d_deadlock_state(fout);
 
   fprintf(fout, "IF/ID       = ");
   if (!m_inst_fetch_buffer.m_valid)
