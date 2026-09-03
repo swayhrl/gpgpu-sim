@@ -5781,6 +5781,10 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
     fprintf(fout, "DTC_L1_tag_bank_%zu_requests = %llu\n", bank,
             static_cast<unsigned long long>(total.requests_per_bank[bank]));
   }
+  // PAPER_BASE participates in the same source-domain M4 comparison as IO
+  // and OO.  Its load/store/atomic/fence counters are observational only,
+  // but must be emitted so a workload triplet can prove exact parity.
+  print_m4_lifecycle();
 }
 
 void gpgpu_sim::shader_print_l1_miss_stat(FILE *fout) const {
