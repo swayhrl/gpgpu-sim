@@ -46,7 +46,8 @@ int main() {
   for (unsigned level = 0; level < 4; ++level) {
     assert(b.level == level);
     assert(controller.complete_pte_response(b.request_id, b.physical_address,
-                                            (level & 1) != 0, 10 + level));
+                                            (level & 1) != 0,
+                                            level == 0 ? 10 : 20 + level));
     if (level + 1 < 4) b = issue_next(&controller, 20 + level);
   }
   assert(controller.translate(1, 0, 2 * page + 7, 30, 12, &pa_b) ==
@@ -58,7 +59,7 @@ int main() {
   for (unsigned level = 0; level < 4; ++level) {
     assert(a.level == level);
     assert(controller.complete_pte_response(a.request_id, a.physical_address,
-                                            (level & 1) == 0, 40 + level));
+                                            (level & 1) == 0, 50 + level));
     if (level + 1 < 4) a = issue_next(&controller, 50 + level);
   }
   assert(controller.translate(0, 0, page + 3, 60, 11, &pa_a) ==

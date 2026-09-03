@@ -198,6 +198,10 @@ struct translation_config {
   unsigned pwq_entries;
   unsigned walkers;
   unsigned walk_latency;
+  // Zero preserves accepted M2 functional diagnostics.  The simulator-facing
+  // generic M3 configuration supplies explicit non-zero lookup latencies.
+  unsigned l1_lookup_latency;
+  unsigned l2_lookup_latency;
   // 0 retains the accepted M2 fixed-latency diagnostic path.  1 makes each
   // active walker wait for a real, physical PTE_ACC_R response from G3-2.
   unsigned ptw_mode;
@@ -212,10 +216,12 @@ struct translation_config {
                      const page_table_config &page_table_config_value =
                          page_table_config(),
                      unsigned page_table_walk_mode = 0,
-                     const pwc_config &pwc_config_value = pwc_config())
+                     const pwc_config &pwc_config_value = pwc_config(),
+                     unsigned l1_latency = 0, unsigned l2_latency = 0)
       : num_sms(sms), page_size(page), l1(l1_config), l2(l2_config),
         mshr_entries(mshr_count), pwq_entries(pwq_count), walkers(walker_count),
-        walk_latency(latency), ptw_mode(page_table_walk_mode),
+        walk_latency(latency), l1_lookup_latency(l1_latency),
+        l2_lookup_latency(l2_latency), ptw_mode(page_table_walk_mode),
         page_table(page_table_config_value), pwc(pwc_config_value) {}
   bool valid() const;
 };
@@ -237,6 +243,33 @@ struct translation_stats {
   // Same (key, UID) retry found before either TLB port/probe.  These retries
   // intentionally do not contribute to L1/L2 TLB access or miss counters.
   uint64_t pending_waiter_bypasses;
+  uint64_t lookup_inflight_bypasses;
+  uint64_t l1_lookup_launches;
+  uint64_t l1_lookup_completions;
+  uint64_t l1_lookup_service_cycles;
+  uint64_t l2_lookup_launches;
+  uint64_t l2_lookup_completions;
+  uint64_t l2_lookup_service_cycles;
+  // Per-requester, critical-path state intervals.  These are deliberately
+  // not summed into a fabricated global latency: merged requesters share a
+  // single MSHR/walk while retaining their own entry and wakeup times.
+  uint64_t requester_completions;
+  uint64_t requester_latency_cycles_total;
+  uint64_t requester_latency_cycles_max;
+  uint64_t requester_l1_queue_cycles_total;
+  uint64_t requester_l1_queue_cycles_max;
+  uint64_t requester_l1_service_cycles_total;
+  uint64_t requester_l1_service_cycles_max;
+  uint64_t requester_l2_queue_cycles_total;
+  uint64_t requester_l2_queue_cycles_max;
+  uint64_t requester_l2_service_cycles_total;
+  uint64_t requester_l2_service_cycles_max;
+  uint64_t requester_mshr_wait_cycles_total;
+  uint64_t requester_mshr_wait_cycles_max;
+  // Per-unique-PTE-request memory interval; it is never multiplied by MSHR
+  // merge depth.
+  uint64_t pte_memory_wait_cycles_total;
+  uint64_t pte_memory_wait_cycles_max;
   uint64_t mapper_lookups;
   uint64_t completed;
   uint64_t mshr_allocations;
@@ -274,7 +307,20 @@ struct translation_stats {
   std::vector<uint64_t> pwc_misses_by_level;
   std::vector<uint64_t> pwc_pte_requests_skipped_by_level;
   translation_stats()
-      : lookup_requests(0), pending_waiter_bypasses(0), mapper_lookups(0),
+      : lookup_requests(0), pending_waiter_bypasses(0),
+        lookup_inflight_bypasses(0), l1_lookup_launches(0),
+        l1_lookup_completions(0), l1_lookup_service_cycles(0),
+        l2_lookup_launches(0), l2_lookup_completions(0),
+        l2_lookup_service_cycles(0), requester_completions(0),
+        requester_latency_cycles_total(0), requester_latency_cycles_max(0),
+        requester_l1_queue_cycles_total(0), requester_l1_queue_cycles_max(0),
+        requester_l1_service_cycles_total(0),
+        requester_l1_service_cycles_max(0),
+        requester_l2_queue_cycles_total(0), requester_l2_queue_cycles_max(0),
+        requester_l2_service_cycles_total(0),
+        requester_l2_service_cycles_max(0), requester_mshr_wait_cycles_total(0),
+        requester_mshr_wait_cycles_max(0), pte_memory_wait_cycles_total(0),
+        pte_memory_wait_cycles_max(0), mapper_lookups(0),
         completed(0), mshr_allocations(0), mshr_merges(0),
         mshr_full_events(0), waiter_registrations(0), waiter_wakeups(0),
         mshr_releases(0), pwq_full_events(0), walk_starts(0),
@@ -329,7 +375,21 @@ class translation_controller {
   struct waiter {
     unsigned sid;
     uint64_t uid;
-    waiter(unsigned s, uint64_t u) : sid(s), uid(u) {}
+    uint64_t entry_cycle;
+    uint64_t l1_launch_cycle;
+    uint64_t l1_complete_cycle;
+    bool l2_issued;
+    uint64_t l2_launch_cycle;
+    uint64_t l2_complete_cycle;
+    uint64_t mshr_join_cycle;
+    waiter(unsigned s, uint64_t u, uint64_t entry, uint64_t l1_launch,
+           uint64_t l1_complete, bool l2_issued, uint64_t l2_launch,
+           uint64_t l2_complete,
+           uint64_t mshr_join)
+        : sid(s), uid(u), entry_cycle(entry), l1_launch_cycle(l1_launch),
+          l1_complete_cycle(l1_complete), l2_issued(l2_issued),
+          l2_launch_cycle(l2_launch),
+          l2_complete_cycle(l2_complete), mshr_join_cycle(mshr_join) {}
   };
   struct mshr_entry {
     translation_key key;
@@ -341,6 +401,38 @@ class translation_controller {
   };
   mshr_entry *find_mshr(const translation_key &key);
   const mshr_entry *find_mshr(const translation_key &key) const;
+  enum lookup_stage {
+    LOOKUP_L1_SERVICE,
+    LOOKUP_L2_LAUNCH,
+    LOOKUP_L2_SERVICE,
+    LOOKUP_MSHR_HANDOFF,
+    LOOKUP_READY
+  };
+  struct lookup_operation {
+    unsigned sid;
+    uint64_t uid;
+    translation_key key;
+    lookup_stage stage;
+    uint64_t entry_cycle;
+    uint64_t l1_launch_cycle;
+    uint64_t l1_complete_cycle;
+    bool l2_issued;
+    uint64_t l2_launch_cycle;
+    uint64_t l2_complete_cycle;
+    uint64_t ready_cycle;
+    uint64_t ppn;
+    lookup_operation(unsigned s, uint64_t u, const translation_key &k,
+                     uint64_t entry, uint64_t ready)
+        : sid(s), uid(u), key(k), stage(LOOKUP_L1_SERVICE),
+          entry_cycle(entry), l1_launch_cycle(entry), l1_complete_cycle(0),
+          l2_issued(false),
+          l2_launch_cycle(0), l2_complete_cycle(0), ready_cycle(ready),
+          ppn(0) {}
+  };
+  lookup_operation *find_lookup(unsigned sid, uint64_t uid,
+                                const translation_key &key);
+  const lookup_operation *find_lookup(unsigned sid, uint64_t uid,
+                                      const translation_key &key) const;
   struct active_walk {
     translation_key key;
     uint64_t start_cycle;
@@ -348,12 +440,13 @@ class translation_controller {
     unsigned next_level;
     bool pte_outstanding;
     uint64_t pte_request_id;
+    uint64_t pte_issue_cycle;
     bool pwc_probe_scheduled;
     uint64_t pwc_probe_ready_cycle;
     bool pwc_miss_ready;
     active_walk(const translation_key &k, uint64_t start, uint64_t ready)
         : key(k), start_cycle(start), ready_cycle(ready), next_level(0),
-          pte_outstanding(false), pte_request_id(0),
+          pte_outstanding(false), pte_request_id(0), pte_issue_cycle(0),
           pwc_probe_scheduled(false), pwc_probe_ready_cycle(0),
           pwc_miss_ready(false) {}
   };
@@ -367,8 +460,18 @@ class translation_controller {
         : asid(a), page_class(c), level(l), prefix(p), last_touch(touch) {}
   };
   lookup_result allocate_or_merge(unsigned sid, uint64_t waiter_uid,
-                                  const translation_key &key, uint64_t cycle);
+                                  const translation_key &key, uint64_t cycle,
+                                  const lookup_operation *lookup);
   void note_mshr_occupancy();
+  void note_requester_completion(uint64_t entry_cycle,
+                                 uint64_t l1_launch_cycle,
+                                 uint64_t l1_complete_cycle,
+                                 bool l2_issued,
+                                 uint64_t l2_launch_cycle,
+                                 uint64_t l2_complete_cycle,
+                                 uint64_t mshr_join_cycle, bool used_mshr,
+                                 uint64_t ready_cycle);
+  void service_lookups(uint64_t cycle);
   bool pwc_enabled() const { return m_config.pwc.mode != PWC_OFF; }
   bool pwc_is_leaf(unsigned level) const {
     return level + 1 == m_page_table->levels();
@@ -385,6 +488,7 @@ class translation_controller {
   std::vector<set_associative_tlb> m_l1s;
   set_associative_tlb m_l2;
   std::vector<mshr_entry> m_mshrs;
+  std::vector<lookup_operation> m_lookups;
   std::vector<translation_key> m_pwq;
   std::vector<active_walk> m_active_walks;
   std::vector<pwc_entry> m_pwc;

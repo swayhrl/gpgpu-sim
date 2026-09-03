@@ -406,6 +406,9 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_vm_l1_tlb_ports", OPT_UINT32,
                          &gpgpu_vm_l1_tlb_ports,
                          "per-SM functional L1 TLB lookups/cycle", "1");
+  option_parser_register(opp, "-gpgpu_vm_l1_tlb_lookup_latency", OPT_UINT32,
+                         &gpgpu_vm_l1_tlb_lookup_latency,
+                         "generic M3 L1 TLB lookup service cycles", "10");
   option_parser_register(opp, "-gpgpu_vm_l2_tlb_entries", OPT_UINT32,
                          &gpgpu_vm_l2_tlb_entries,
                          "shared functional L2 TLB entries", "768");
@@ -415,6 +418,9 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_vm_l2_tlb_ports", OPT_UINT32,
                          &gpgpu_vm_l2_tlb_ports,
                          "shared functional L2 TLB lookups/cycle", "1");
+  option_parser_register(opp, "-gpgpu_vm_l2_tlb_lookup_latency", OPT_UINT32,
+                         &gpgpu_vm_l2_tlb_lookup_latency,
+                         "generic M3 L2 TLB lookup service cycles", "80");
   option_parser_register(opp, "-gpgpu_vm_translation_mshr_entries",
                          OPT_UINT32, &gpgpu_vm_translation_mshr_entries,
                          "functional translation MSHR entries", "32");
@@ -1070,7 +1076,9 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
             m_shader_config->gpgpu_vm_pwc_mode == vm_translation::PWC_OFF
                 ? 0
                 : m_shader_config->gpgpu_vm_pwc_entries,
-            m_shader_config->gpgpu_vm_pwc_lookup_latency));
+            m_shader_config->gpgpu_vm_pwc_lookup_latency),
+        m_shader_config->gpgpu_vm_l1_tlb_lookup_latency,
+        m_shader_config->gpgpu_vm_l2_tlb_lookup_latency);
     if (!vm_config.valid()) {
       fprintf(stderr, "ERROR: invalid functional VM TLB configuration\n");
       abort();

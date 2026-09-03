@@ -308,7 +308,7 @@ bool translation_config::valid() const {
 translation_controller::translation_controller(const translation_config &config)
     : m_config(config), m_default_page_table(config.page_table),
       m_page_table(&m_default_page_table), m_l1s(), m_l2(config.l2), m_mshrs(),
-      m_pwq(), m_active_walks(), m_pwc(), m_stats(),
+      m_lookups(), m_pwq(), m_active_walks(), m_pwc(), m_stats(),
       m_next_pte_request_id(1), m_pwc_touch_clock(0) {
   assert(m_config.valid());
   initialize_pwc_stats();
@@ -319,8 +319,9 @@ translation_controller::translation_controller(const translation_config &config)
 translation_controller::translation_controller(const translation_config &config,
                                                page_table_backend *backend)
     : m_config(config), m_default_page_table(config.page_table),
-      m_page_table(backend), m_l1s(), m_l2(config.l2), m_mshrs(), m_pwq(),
-      m_active_walks(), m_pwc(), m_stats(), m_next_pte_request_id(1),
+      m_page_table(backend), m_l1s(), m_l2(config.l2), m_mshrs(), m_lookups(),
+      m_pwq(), m_active_walks(), m_pwc(), m_stats(),
+      m_next_pte_request_id(1),
       m_pwc_touch_clock(0) {
   assert(m_config.valid());
   assert(m_page_table != 0 && m_page_table->valid());
@@ -444,13 +445,114 @@ const translation_controller::mshr_entry *translation_controller::find_mshr(
   return 0;
 }
 
+translation_controller::lookup_operation *translation_controller::find_lookup(
+    unsigned sid, uint64_t uid, const translation_key &key) {
+  for (unsigned i = 0; i < m_lookups.size(); ++i)
+    if (m_lookups[i].sid == sid && m_lookups[i].uid == uid &&
+        m_lookups[i].key == key)
+      return &m_lookups[i];
+  return 0;
+}
+
+const translation_controller::lookup_operation *
+translation_controller::find_lookup(unsigned sid, uint64_t uid,
+                                    const translation_key &key) const {
+  for (unsigned i = 0; i < m_lookups.size(); ++i)
+    if (m_lookups[i].sid == sid && m_lookups[i].uid == uid &&
+        m_lookups[i].key == key)
+      return &m_lookups[i];
+  return 0;
+}
+
+void translation_controller::service_lookups(uint64_t cycle) {
+  // A stage transition may be zero-cycle in the legacy diagnostic setting.
+  // Iterate to a fixed point at this cycle, but never probe a completed stage
+  // twice: each operation advances monotonically or waits for a resource.
+  bool progress = true;
+  while (progress) {
+    progress = false;
+    for (unsigned index = 0; index < m_lookups.size();) {
+      lookup_operation &lookup = m_lookups[index];
+      if (lookup.stage == LOOKUP_L1_SERVICE && lookup.ready_cycle <= cycle) {
+        uint64_t ppn = 0;
+        const bool hit = m_l1s[lookup.sid].probe(lookup.key, cycle, &ppn);
+        ++m_stats.l1_lookup_completions;
+        m_stats.l1_lookup_service_cycles += m_config.l1_lookup_latency;
+        lookup.l1_complete_cycle = cycle;
+        if (hit) {
+          lookup.ppn = ppn;
+          lookup.stage = LOOKUP_READY;
+        } else {
+          lookup.stage = LOOKUP_L2_LAUNCH;
+        }
+        progress = true;
+        ++index;
+        continue;
+      }
+      if (lookup.stage == LOOKUP_L2_LAUNCH) {
+        if (!m_l2.try_consume_port(cycle)) {
+          ++index;
+          continue;
+        }
+        ++m_stats.l2_lookup_launches;
+        lookup.l2_issued = true;
+        lookup.l2_launch_cycle = cycle;
+        lookup.stage = LOOKUP_L2_SERVICE;
+        lookup.ready_cycle = cycle + m_config.l2_lookup_latency;
+        progress = true;
+        ++index;
+        continue;
+      }
+      if (lookup.stage == LOOKUP_L2_SERVICE && lookup.ready_cycle <= cycle) {
+        uint64_t ppn = 0;
+        const bool hit = m_l2.probe(lookup.key, cycle, &ppn);
+        ++m_stats.l2_lookup_completions;
+        m_stats.l2_lookup_service_cycles += m_config.l2_lookup_latency;
+        lookup.l2_complete_cycle = cycle;
+        if (hit) {
+          m_l1s[lookup.sid].fill(lookup.key, ppn, cycle);
+          lookup.ppn = ppn;
+          lookup.stage = LOOKUP_READY;
+        } else {
+          lookup.stage = LOOKUP_MSHR_HANDOFF;
+        }
+        progress = true;
+        ++index;
+        continue;
+      }
+      if (lookup.stage == LOOKUP_MSHR_HANDOFF) {
+        const lookup_result result =
+            allocate_or_merge(lookup.sid, lookup.uid, lookup.key, cycle,
+                              &lookup);
+        if (result == TRANSLATION_PENDING) {
+          m_lookups.erase(m_lookups.begin() + index);
+          progress = true;
+          continue;
+        }
+        // Capacity backpressure waits at a completed handoff; it never
+        // returns to an L1/L2 probe or consumes another lookup port.
+        assert(result == MSHR_FULL || result == PWQ_FULL);
+      }
+      ++index;
+    }
+  }
+}
+
 lookup_result translation_controller::allocate_or_merge(
     unsigned sid, uint64_t waiter_uid, const translation_key &key,
-    uint64_t cycle) {
+    uint64_t cycle, const lookup_operation *lookup) {
+  const uint64_t entry = lookup ? lookup->entry_cycle : cycle;
+  const uint64_t l1_launch = lookup ? lookup->l1_launch_cycle : cycle;
+  const uint64_t l1_complete = lookup ? lookup->l1_complete_cycle : cycle;
+  const bool l2_issued = lookup ? lookup->l2_issued : false;
+  const uint64_t l2_launch = lookup ? lookup->l2_launch_cycle : cycle;
+  const uint64_t l2_complete = lookup ? lookup->l2_complete_cycle : cycle;
   mshr_entry *existing = find_mshr(key);
   if (existing != 0) {
     if (existing->has_waiter(waiter_uid)) return TRANSLATION_PENDING;
-    existing->waiters.push_back(waiter(sid, waiter_uid));
+    existing->waiters.push_back(waiter(sid, waiter_uid, entry, l1_launch,
+                                       l1_complete, l2_issued, l2_launch,
+                                       l2_complete, cycle));
     ++m_stats.mshr_merges;
     ++m_stats.waiter_registrations;
     if (existing->waiters.size() > m_stats.mshr_waiter_depth_max)
@@ -467,7 +569,9 @@ lookup_result translation_controller::allocate_or_merge(
   }
   assert(find_mshr(key) == 0);
   m_mshrs.push_back(mshr_entry(key, cycle));
-  m_mshrs.back().waiters.push_back(waiter(sid, waiter_uid));
+  m_mshrs.back().waiters.push_back(waiter(sid, waiter_uid, entry, l1_launch,
+                                         l1_complete, l2_issued, l2_launch,
+                                         l2_complete, cycle));
   m_pwq.push_back(key);
   ++m_stats.mshr_allocations;
   ++m_stats.waiter_registrations;
@@ -480,6 +584,54 @@ lookup_result translation_controller::allocate_or_merge(
 void translation_controller::note_mshr_occupancy() {
   if (m_mshrs.size() > m_stats.mshr_occupancy_high_watermark)
     m_stats.mshr_occupancy_high_watermark = m_mshrs.size();
+}
+
+void translation_controller::note_requester_completion(
+    uint64_t entry_cycle, uint64_t l1_launch_cycle,
+    uint64_t l1_complete_cycle, bool l2_issued, uint64_t l2_launch_cycle,
+    uint64_t l2_complete_cycle, uint64_t mshr_join_cycle, bool used_mshr,
+    uint64_t ready_cycle) {
+  assert(entry_cycle <= l1_launch_cycle);
+  assert(l1_launch_cycle <= l1_complete_cycle);
+  assert(l1_complete_cycle <= ready_cycle);
+  if (l2_issued) {
+    assert(l1_complete_cycle <= l2_launch_cycle);
+    assert(l2_launch_cycle <= l2_complete_cycle);
+    assert(l2_complete_cycle <= ready_cycle);
+  }
+  if (used_mshr) {
+    assert(l2_complete_cycle <= mshr_join_cycle);
+    assert(mshr_join_cycle <= ready_cycle);
+  }
+  const uint64_t total = ready_cycle - entry_cycle;
+  const uint64_t l1_queue = l1_launch_cycle - entry_cycle;
+  const uint64_t l1_service = l1_complete_cycle - l1_launch_cycle;
+  const uint64_t l2_queue =
+      l2_issued ? l2_launch_cycle - l1_complete_cycle : 0;
+  const uint64_t l2_service =
+      l2_issued ? l2_complete_cycle - l2_launch_cycle : 0;
+  ++m_stats.requester_completions;
+  m_stats.requester_latency_cycles_total += total;
+  if (total > m_stats.requester_latency_cycles_max)
+    m_stats.requester_latency_cycles_max = total;
+  m_stats.requester_l1_queue_cycles_total += l1_queue;
+  if (l1_queue > m_stats.requester_l1_queue_cycles_max)
+    m_stats.requester_l1_queue_cycles_max = l1_queue;
+  m_stats.requester_l1_service_cycles_total += l1_service;
+  if (l1_service > m_stats.requester_l1_service_cycles_max)
+    m_stats.requester_l1_service_cycles_max = l1_service;
+  m_stats.requester_l2_queue_cycles_total += l2_queue;
+  if (l2_queue > m_stats.requester_l2_queue_cycles_max)
+    m_stats.requester_l2_queue_cycles_max = l2_queue;
+  m_stats.requester_l2_service_cycles_total += l2_service;
+  if (l2_service > m_stats.requester_l2_service_cycles_max)
+    m_stats.requester_l2_service_cycles_max = l2_service;
+  if (used_mshr) {
+    const uint64_t mshr_wait = ready_cycle - mshr_join_cycle;
+    m_stats.requester_mshr_wait_cycles_total += mshr_wait;
+    if (mshr_wait > m_stats.requester_mshr_wait_cycles_max)
+      m_stats.requester_mshr_wait_cycles_max = mshr_wait;
+  }
 }
 
 lookup_result translation_controller::translate(unsigned sid, unsigned asid,
@@ -499,19 +651,57 @@ lookup_result translation_controller::translate(unsigned sid, unsigned asid,
     ++m_stats.pending_waiter_bypasses;
     return TRANSLATION_PENDING;
   }
+  lookup_operation *inflight = find_lookup(sid, waiter_uid, key);
+  if (inflight != 0) {
+    if (inflight->stage != LOOKUP_READY) {
+      ++m_stats.lookup_inflight_bypasses;
+      return TRANSLATION_PENDING;
+    }
+    const uint64_t ppn = inflight->ppn;
+    note_requester_completion(
+        inflight->entry_cycle, inflight->l1_launch_cycle,
+        inflight->l1_complete_cycle, inflight->l2_issued,
+        inflight->l2_launch_cycle, inflight->l2_complete_cycle, 0, false,
+        cycle);
+    for (unsigned index = 0; index < m_lookups.size(); ++index)
+      if (&m_lookups[index] == inflight) {
+        m_lookups.erase(m_lookups.begin() + index);
+        break;
+      }
+    *sim_pa =
+        ppn * key.page_size + vm_core::page_offset(sim_va, key.page_size);
+    ++m_stats.completed;
+    return READY;
+  }
   ++m_stats.lookup_requests;
   set_associative_tlb &l1_tlb = m_l1s[sid];
   if (!l1_tlb.try_consume_port(cycle)) return L1_PORT_STALL;
-  uint64_t ppn = 0;
-  if (!l1_tlb.probe(key, cycle, &ppn)) {
-    if (!m_l2.try_consume_port(cycle)) return L2_PORT_STALL;
-    if (!m_l2.probe(key, cycle, &ppn))
-      return allocate_or_merge(sid, waiter_uid, key, cycle);
-    l1_tlb.fill(key, ppn, cycle);
+  ++m_stats.l1_lookup_launches;
+  m_lookups.push_back(
+      lookup_operation(sid, waiter_uid, key, cycle,
+                       cycle + m_config.l1_lookup_latency));
+  // Preserve the accepted zero-latency diagnostic behavior without making the
+  // non-zero model poll or re-probe.  service_lookups() completes only stages
+  // whose modeled service interval ends at this cycle.
+  if (m_config.l1_lookup_latency == 0) service_lookups(cycle);
+  inflight = find_lookup(sid, waiter_uid, key);
+  if (inflight != 0 && inflight->stage == LOOKUP_READY)
+    return translate(sid, asid, sim_va, cycle, waiter_uid, sim_pa);
+  // Legacy zero-latency diagnostics historically surface MSHR/PWQ fullness
+  // synchronously.  Preserve that contract without allowing the non-zero
+  // service path to re-probe either TLB while a handoff is stalled.
+  if (m_config.l1_lookup_latency == 0 && inflight != 0 &&
+      inflight->stage == LOOKUP_MSHR_HANDOFF) {
+    const lookup_result result =
+        m_mshrs.size() >= m_config.mshr_entries ? MSHR_FULL : PWQ_FULL;
+    for (unsigned index = 0; index < m_lookups.size(); ++index)
+      if (&m_lookups[index] == inflight) {
+        m_lookups.erase(m_lookups.begin() + index);
+        break;
+      }
+    return result;
   }
-  *sim_pa = ppn * key.page_size + vm_core::page_offset(sim_va, key.page_size);
-  ++m_stats.completed;
-  return READY;
+  return TRANSLATION_PENDING;
 }
 
 bool translation_controller::complete_translation(const translation_key &key,
@@ -526,6 +716,11 @@ bool translation_controller::complete_translation(const translation_key &key,
       const waiter &entry_waiter = m_mshrs[index].waiters[waiter_index];
       assert(entry_waiter.sid < m_l1s.size());
       m_l1s[entry_waiter.sid].fill(key, ppn, cycle);
+      note_requester_completion(
+          entry_waiter.entry_cycle, entry_waiter.l1_launch_cycle,
+          entry_waiter.l1_complete_cycle, entry_waiter.l2_issued,
+          entry_waiter.l2_launch_cycle, entry_waiter.l2_complete_cycle,
+          entry_waiter.mshr_join_cycle, true, cycle);
       ++m_stats.waiter_wakeups;
     }
     const uint64_t waiter_depth = m_mshrs[index].waiters.size();
@@ -551,6 +746,7 @@ bool translation_controller::complete_translation(const translation_key &key,
 }
 
 void translation_controller::cycle(uint64_t cycle) {
+  service_lookups(cycle);
   if (uses_real_memory_ptw()) {
     while (!m_pwq.empty() && m_active_walks.size() < m_config.walkers) {
       const translation_key key = m_pwq.front();
@@ -614,7 +810,6 @@ bool translation_controller::next_pte_request(pte_request *request) const {
 
 bool translation_controller::pte_request_issued(const pte_request &request,
                                                  uint64_t cycle) {
-  (void)cycle;
   if (!uses_real_memory_ptw() || !request.is_physical ||
       !request.bypass_translation ||
       !m_page_table->owns_pte_physical_address(request.physical_address))
@@ -629,6 +824,7 @@ bool translation_controller::pte_request_issued(const pte_request &request,
         return false;
       walk.pte_outstanding = true;
       walk.pte_request_id = request.request_id;
+      walk.pte_issue_cycle = cycle;
       walk.pwc_miss_ready = false;
       if (request.request_id == m_next_pte_request_id) ++m_next_pte_request_id;
       ++m_stats.pte_requests;
@@ -655,6 +851,11 @@ bool translation_controller::complete_pte_response(uint64_t request_id,
       return false;
     }
     ++m_stats.pte_responses;
+    assert(walk.pte_issue_cycle <= cycle);
+    const uint64_t pte_memory_wait = cycle - walk.pte_issue_cycle;
+    m_stats.pte_memory_wait_cycles_total += pte_memory_wait;
+    if (pte_memory_wait > m_stats.pte_memory_wait_cycles_max)
+      m_stats.pte_memory_wait_cycles_max = pte_memory_wait;
     if (reached_dram)
       ++m_stats.pte_dram_responses;
     else
@@ -662,6 +863,7 @@ bool translation_controller::complete_pte_response(uint64_t request_id,
     const unsigned completed_level = walk.next_level;
     walk.pte_outstanding = false;
     walk.pte_request_id = 0;
+    walk.pte_issue_cycle = 0;
     pwc_insert(walk.key, completed_level);
     ++walk.next_level;
     if (walk.next_level < m_page_table->levels()) return true;
@@ -697,6 +899,16 @@ bool translation_controller::invariants_hold() const {
   }
   if (m_stats.waiter_registrations - m_stats.waiter_wakeups != active_waiters)
     return false;
+  for (unsigned i = 0; i < m_lookups.size(); ++i) {
+    if (m_lookups[i].sid >= m_l1s.size() ||
+        m_lookups[i].stage > LOOKUP_READY)
+      return false;
+    for (unsigned j = i + 1; j < m_lookups.size(); ++j)
+      if (m_lookups[i].sid == m_lookups[j].sid &&
+          m_lookups[i].uid == m_lookups[j].uid &&
+          m_lookups[i].key == m_lookups[j].key)
+        return false;
+  }
   for (unsigned i = 0; i < m_pwq.size(); ++i)
     if (find_mshr(m_pwq[i]) == 0) return false;
   for (unsigned i = 0; i < m_active_walks.size(); ++i)
@@ -715,7 +927,7 @@ bool translation_controller::invariants_hold() const {
 }
 
 bool translation_controller::quiescent_invariants_hold() const {
-  return m_mshrs.empty() && invariants_hold();
+  return m_mshrs.empty() && m_lookups.empty() && invariants_hold();
 }
 
 const set_associative_tlb &translation_controller::l1(unsigned sid) const {
@@ -742,6 +954,50 @@ void translation_controller::print_stats(FILE *fout) const {
           (unsigned long long)m_stats.lookup_requests);
   fprintf(fout, "vm_translation_pending_waiter_bypasses = %llu\n",
           (unsigned long long)m_stats.pending_waiter_bypasses);
+  fprintf(fout, "vm_translation_lookup_inflight_bypasses = %llu\n",
+          (unsigned long long)m_stats.lookup_inflight_bypasses);
+  fprintf(fout, "vm_l1_tlb_lookup_latency_cycles = %u\n",
+          m_config.l1_lookup_latency);
+  fprintf(fout, "vm_l1_tlb_lookup_launches = %llu\n",
+          (unsigned long long)m_stats.l1_lookup_launches);
+  fprintf(fout, "vm_l1_tlb_lookup_completions = %llu\n",
+          (unsigned long long)m_stats.l1_lookup_completions);
+  fprintf(fout, "vm_l1_tlb_lookup_service_cycles = %llu\n",
+          (unsigned long long)m_stats.l1_lookup_service_cycles);
+  fprintf(fout, "vm_l2_tlb_lookup_latency_cycles = %u\n",
+          m_config.l2_lookup_latency);
+  fprintf(fout, "vm_l2_tlb_lookup_launches = %llu\n",
+          (unsigned long long)m_stats.l2_lookup_launches);
+  fprintf(fout, "vm_l2_tlb_lookup_completions = %llu\n",
+          (unsigned long long)m_stats.l2_lookup_completions);
+  fprintf(fout, "vm_l2_tlb_lookup_service_cycles = %llu\n",
+          (unsigned long long)m_stats.l2_lookup_service_cycles);
+  fprintf(fout, "vm_translation_requester_completions = %llu\n",
+          (unsigned long long)m_stats.requester_completions);
+  fprintf(fout, "vm_translation_requester_latency_cycles_total = %llu\n",
+          (unsigned long long)m_stats.requester_latency_cycles_total);
+  fprintf(fout, "vm_translation_requester_latency_cycles_max = %llu\n",
+          (unsigned long long)m_stats.requester_latency_cycles_max);
+  fprintf(fout, "vm_translation_requester_l1_queue_cycles_total = %llu\n",
+          (unsigned long long)m_stats.requester_l1_queue_cycles_total);
+  fprintf(fout, "vm_translation_requester_l1_queue_cycles_max = %llu\n",
+          (unsigned long long)m_stats.requester_l1_queue_cycles_max);
+  fprintf(fout, "vm_translation_requester_l1_service_cycles_total = %llu\n",
+          (unsigned long long)m_stats.requester_l1_service_cycles_total);
+  fprintf(fout, "vm_translation_requester_l1_service_cycles_max = %llu\n",
+          (unsigned long long)m_stats.requester_l1_service_cycles_max);
+  fprintf(fout, "vm_translation_requester_l2_queue_cycles_total = %llu\n",
+          (unsigned long long)m_stats.requester_l2_queue_cycles_total);
+  fprintf(fout, "vm_translation_requester_l2_queue_cycles_max = %llu\n",
+          (unsigned long long)m_stats.requester_l2_queue_cycles_max);
+  fprintf(fout, "vm_translation_requester_l2_service_cycles_total = %llu\n",
+          (unsigned long long)m_stats.requester_l2_service_cycles_total);
+  fprintf(fout, "vm_translation_requester_l2_service_cycles_max = %llu\n",
+          (unsigned long long)m_stats.requester_l2_service_cycles_max);
+  fprintf(fout, "vm_translation_requester_mshr_wait_cycles_total = %llu\n",
+          (unsigned long long)m_stats.requester_mshr_wait_cycles_total);
+  fprintf(fout, "vm_translation_requester_mshr_wait_cycles_max = %llu\n",
+          (unsigned long long)m_stats.requester_mshr_wait_cycles_max);
   fprintf(fout, "vm_functional_mapper_lookups = %llu\n",
           (unsigned long long)m_stats.mapper_lookups);
   fprintf(fout, "vm_functional_completed = %llu\n",
@@ -783,6 +1039,10 @@ void translation_controller::print_stats(FILE *fout) const {
           (unsigned long long)m_stats.pte_dram_responses);
   fprintf(fout, "vm_pte_response_misassociations = %llu\n",
           (unsigned long long)m_stats.pte_response_misassociations);
+  fprintf(fout, "vm_pte_memory_wait_cycles_total = %llu\n",
+          (unsigned long long)m_stats.pte_memory_wait_cycles_total);
+  fprintf(fout, "vm_pte_memory_wait_cycles_max = %llu\n",
+          (unsigned long long)m_stats.pte_memory_wait_cycles_max);
   fprintf(fout, "vm_pwc_mode = %u\n", m_config.pwc.mode);
   fprintf(fout, "vm_pwc_entries_configured = %u\n", m_config.pwc.entries);
   fprintf(fout, "vm_pwc_lookup_latency_cycles = %u\n",
