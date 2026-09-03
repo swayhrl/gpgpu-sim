@@ -2081,6 +2081,12 @@ void ldst_unit::get_cache_stats(cache_stats &cs) {
 
 void ldst_unit::get_dtc_l1_stats(
     dtc_l1::paper_frontend_stats &stats) const {
+  // Statistics are collected only after the simulator has drained.  A live
+  // cacheable-load ledger here would mean that a DTC instruction escaped its
+  // exactly-once completion path, so make that terminal condition fatal.
+  if (dtc_l1_paper_io_active() || dtc_l1_paper_oo_active())
+    assert(m_dtc_l1_r4c0_completion_trace.empty());
+
   // These counts cover the frozen source-reachable operation domain in every
   // paper mode, including PAPER_BASE which has no M4 sidecar. They make the
   // Base/IO/OO comparison explicit without changing routing or fence meaning.
@@ -2410,7 +2416,13 @@ mem_stage_stall_type ldst_unit::process_cache_access(
     inst.accessq_pop_back();
     if (inst.is_load()) {
       for (unsigned r = 0; r < MAX_OUTPUT_VALUES; r++)
-        if (inst.out[r] > 0) m_pending_writes[inst.warp_id()][inst.out[r]]--;
+        if (inst.out[r] > 0) {
+          unsigned &pending = m_pending_writes[inst.warp_id()][inst.out[r]];
+          const unsigned before = pending;
+          --pending;
+          dtc_l1_r4c2_trace_pending_mutation(
+              inst, inst.out[r], before, -1, pending, "CONVENTIONAL_L1_HIT");
+        }
 
       // release LDGSTS
       if (inst.m_is_ldgsts) {
@@ -2623,6 +2635,9 @@ void ldst_unit::dtc_l1_m4_observe_complete(const warp_inst_t &inst) {
 bool ldst_unit::dtc_l1_oo_select_ready(uint64_t *uid) const {
   for (auto candidate = m_dtc_l1_oo_pib.begin();
        candidate != m_dtc_l1_oo_pib.end(); ++candidate) {
+    if (candidate->operation == dtc_l1_m4_operation::CACHEABLE_LOAD &&
+        candidate->next_reference != candidate->references.size())
+      continue;
     const uint64_t candidate_uid = candidate->inst.get_uid();
     const bool ready = dtc_l1_sector_oo_active()
                            ? m_dtc_l1_sector_frontend->entry_ready_for(candidate_uid)
@@ -2655,6 +2670,236 @@ std::vector<dtc_l1::line_reference> ldst_unit::dtc_l1_io_line_references(
   return dtc_l1::group_128b_references(accesses);
 }
 
+void ldst_unit::dtc_l1_r4c0_record_issue(
+    const warp_inst_t &inst,
+    const std::vector<dtc_l1::line_reference> &references,
+    unsigned registered_dependencies) {
+  dtc_l1_r4c0_entry entry;
+  entry.issue_cycle =
+      m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
+  entry.warp_id = inst.warp_id();
+  entry.pc = inst.pc;
+  entry.accessq_count = inst.accessq_count();
+  entry.registered_dependencies = registered_dependencies;
+  entry.accounting.register_dependencies(registered_dependencies);
+  entry.issue_references = references;
+  for (unsigned r = 0; r < MAX_OUTPUT_VALUES; ++r) {
+    const unsigned reg_id = inst.out[r];
+    if (!reg_id) continue;
+    entry.output_registers.push_back(reg_id);
+    entry.pending_after_issue.push_back(m_pending_writes[inst.warp_id()][reg_id]);
+  }
+  const bool inserted =
+      m_dtc_l1_r4c0_completion_trace.emplace(inst.get_uid(), std::move(entry))
+          .second;
+  assert(inserted && "DTC R4C.0 completion trace UID must be unique while live");
+}
+
+void ldst_unit::dtc_l1_r4c0_record_pib(
+    const warp_inst_t &inst,
+    const std::vector<dtc_l1::line_reference> &references,
+    const char *mode) {
+  auto it = m_dtc_l1_r4c0_completion_trace.find(inst.get_uid());
+  if (it == m_dtc_l1_r4c0_completion_trace.end()) {
+    const auto retired = m_dtc_l1_r4c1_retired_history.find(inst.get_uid());
+    if (retired != m_dtc_l1_r4c1_retired_history.end()) {
+      const dtc_l1_r4c0_entry &entry = retired->second;
+      fprintf(stderr,
+              "DTC_L1_R4C1_DUPLICATE_PIB_AFTER_RETIRE mode=%s sm=%u uid=%u "
+              "pc=0x%llx references=%zu registered=%u pib=%u closed=%u\n",
+              mode, m_sid, inst.get_uid(),
+              static_cast<unsigned long long>(inst.pc), references.size(),
+              entry.registered_dependencies, entry.pib_dependencies,
+              entry.closed_dependencies);
+      for (const dtc_l1_r4c0_entry::pending_mutation &event :
+           entry.pending_mutations)
+        fprintf(stderr,
+                "DTC_L1_R4C2_PENDING cycle=%llu tracked_uid=%u "
+                "mutator_uid=%u reg=%u before=%u delta=%d after=%u reason=%s\n",
+                event.cycle, inst.get_uid(), event.mutator_uid, event.reg_id,
+                event.before, event.delta, event.after, event.reason);
+    }
+    return;
+  }
+  dtc_l1_r4c0_entry &entry = it->second;
+  if (entry.pib_recorded)
+    fprintf(stderr,
+            "DTC_L1_R4C1_DUPLICATE_PIB mode=%s sm=%u uid=%u pc=0x%llx\n",
+            mode, m_sid, inst.get_uid(),
+            static_cast<unsigned long long>(entry.pc));
+  entry.pib_recorded = true;
+  entry.pib_dependencies = static_cast<unsigned>(references.size());
+  entry.pib_references = references;
+  entry.accounting.own_pib_dependencies(entry.pib_dependencies);
+  entry.state = dtc_l1_r4c0_entry::lifecycle::PIB_OWNED;
+  if (entry.registered_dependencies != entry.pib_dependencies) {
+    fprintf(stderr,
+            "DTC_L1_R4C0_CARDINALITY_MISMATCH mode=%s sm=%u uid=%u "
+            "pc=0x%llx registered=%u pib=%u\n",
+            mode, m_sid, inst.get_uid(),
+            static_cast<unsigned long long>(entry.pc),
+            entry.registered_dependencies, entry.pib_dependencies);
+  }
+}
+
+void ldst_unit::dtc_l1_r4c1_record_ready(const warp_inst_t &inst,
+                                          unsigned pib_next_reference,
+                                          unsigned pib_dependencies,
+                                          const char *mode) {
+  auto it = m_dtc_l1_r4c0_completion_trace.find(inst.get_uid());
+  if (it == m_dtc_l1_r4c0_completion_trace.end()) return;
+  dtc_l1_r4c0_entry &entry = it->second;
+  if (entry.registered_dependencies != pib_dependencies ||
+      pib_next_reference != pib_dependencies)
+    fprintf(stderr,
+            "DTC_L1_R4C1_READY_WITH_INCOMPLETE_OWNERSHIP mode=%s sm=%u "
+            "uid=%u pc=0x%llx registered=%u pib=%u admitted=%u\n",
+            mode, m_sid, inst.get_uid(),
+            static_cast<unsigned long long>(entry.pc),
+            entry.registered_dependencies, pib_dependencies,
+            pib_next_reference);
+  entry.state = dtc_l1_r4c0_entry::lifecycle::READY;
+  entry.accounting.mark_ready(pib_next_reference);
+}
+
+void ldst_unit::dtc_l1_r4c1_record_close(const warp_inst_t &inst,
+                                          unsigned dependencies,
+                                          const char *mode) {
+  auto it = m_dtc_l1_r4c0_completion_trace.find(inst.get_uid());
+  if (it == m_dtc_l1_r4c0_completion_trace.end()) return;
+  dtc_l1_r4c0_entry &entry = it->second;
+  ++entry.completion_attempts;
+  entry.closed_dependencies += dependencies;
+  assert(entry.accounting.close_once(dependencies) == dependencies);
+  if (entry.registered_dependencies != entry.pib_dependencies ||
+      entry.closed_dependencies != entry.registered_dependencies)
+    fprintf(stderr,
+            "DTC_L1_R4C1_CLOSE_CARDINALITY_MISMATCH mode=%s sm=%u uid=%u "
+            "pc=0x%llx registered=%u pib=%u closed=%u attempts=%u\n",
+            mode, m_sid, inst.get_uid(),
+            static_cast<unsigned long long>(entry.pc),
+            entry.registered_dependencies, entry.pib_dependencies,
+            entry.closed_dependencies, entry.completion_attempts);
+}
+
+void ldst_unit::dtc_l1_r4c2_trace_pending_mutation(
+    const warp_inst_t &inst, unsigned reg_id, unsigned before, int delta,
+    unsigned after, const char *reason) {
+  const unsigned long long cycle =
+      m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
+  for (auto &item : m_dtc_l1_r4c0_completion_trace) {
+    dtc_l1_r4c0_entry &entry = item.second;
+    if (entry.warp_id != inst.warp_id()) continue;
+    bool tracks_reg = false;
+    for (unsigned output : entry.output_registers)
+      if (output == reg_id) tracks_reg = true;
+    if (!tracks_reg) continue;
+    if (entry.pending_mutations.size() == 64) {
+      entry.pending_mutations_truncated = true;
+      continue;
+    }
+    entry.pending_mutations.push_back(
+        {cycle, inst.get_uid(), reg_id, before, delta, after, reason});
+  }
+}
+
+unsigned ldst_unit::dtc_l1_r4c3_registered_dependencies(
+    const warp_inst_t &inst) const {
+  const auto it = m_dtc_l1_r4c0_completion_trace.find(inst.get_uid());
+  assert(it != m_dtc_l1_r4c0_completion_trace.end());
+  const dtc_l1_r4c0_entry &entry = it->second;
+  assert(entry.state == dtc_l1_r4c0_entry::lifecycle::READY);
+  assert(entry.pib_recorded);
+  assert(entry.registered_dependencies == entry.pib_dependencies);
+  assert(entry.closed_dependencies == 0);
+  assert(entry.accounting.state() == dtc_l1::completion_accounting::lifecycle::READY);
+  assert(entry.accounting.registered() == entry.registered_dependencies);
+  return entry.registered_dependencies;
+}
+
+void ldst_unit::dtc_l1_r4c0_report_completion_failure(
+    const warp_inst_t &inst, unsigned dependencies, unsigned pending,
+    unsigned reg_id, const char *mode, const char *reason) {
+  auto it = m_dtc_l1_r4c0_completion_trace.find(inst.get_uid());
+  if (it == m_dtc_l1_r4c0_completion_trace.end()) {
+    fprintf(stderr,
+            "DTC_L1_R4C0_FAILURE mode=%s sm=%u uid=%u pc=0x%llx reg=%u "
+            "pending=%u dependencies=%u reason=%s trace=missing\n",
+            mode, m_sid, inst.get_uid(),
+            static_cast<unsigned long long>(inst.pc), reg_id, pending,
+            dependencies, reason);
+    return;
+  }
+  dtc_l1_r4c0_entry &entry = it->second;
+  ++entry.completion_attempts;
+  if (entry.failure_reported) return;
+  entry.failure_reported = true;
+  const unsigned long long cycle =
+      m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
+  fprintf(stderr,
+          "DTC_L1_R4C0_FAILURE cycle=%llu mode=%s sm=%u uid=%u warp=%u "
+          "pc=0x%llx reg=%u reason=%s issue_cycle=%llu accessq=%u "
+          "registered=%u pib=%u closed_attempt=%u pending_after_issue=",
+          cycle, mode, m_sid, inst.get_uid(), entry.warp_id,
+          static_cast<unsigned long long>(entry.pc), reg_id, reason,
+          entry.issue_cycle, entry.accessq_count, entry.registered_dependencies,
+          entry.pib_dependencies, dependencies);
+  for (size_t i = 0; i < entry.output_registers.size(); ++i)
+    fprintf(stderr, "%sreg%u:%u", i ? "," : "", entry.output_registers[i],
+            entry.pending_after_issue[i]);
+  fprintf(stderr, " pending_pre_retire=%u attempts=%u pib_recorded=%u\n",
+          pending, entry.completion_attempts,
+          static_cast<unsigned>(entry.pib_recorded));
+  for (size_t i = 0; i < entry.issue_references.size(); ++i)
+    fprintf(stderr,
+            "DTC_L1_R4C0_REF stage=issue uid=%u index=%zu line=0x%llx "
+            "sector_mask=0x%x\n",
+            inst.get_uid(), i,
+            static_cast<unsigned long long>(entry.issue_references[i].line_address),
+            static_cast<unsigned>(entry.issue_references[i].sector_mask));
+  for (size_t i = 0; i < entry.pib_references.size(); ++i)
+    fprintf(stderr,
+            "DTC_L1_R4C0_REF stage=pib uid=%u index=%zu line=0x%llx "
+            "sector_mask=0x%x\n",
+            inst.get_uid(), i,
+            static_cast<unsigned long long>(entry.pib_references[i].line_address),
+            static_cast<unsigned>(entry.pib_references[i].sector_mask));
+  for (const dtc_l1_r4c0_entry::pending_mutation &event :
+       entry.pending_mutations)
+    fprintf(stderr,
+            "DTC_L1_R4C2_PENDING cycle=%llu tracked_uid=%u mutator_uid=%u "
+            "reg=%u before=%u delta=%d after=%u reason=%s\n",
+            event.cycle, inst.get_uid(), event.mutator_uid, event.reg_id,
+            event.before, event.delta, event.after, event.reason);
+  if (entry.pending_mutations_truncated)
+    fprintf(stderr, "DTC_L1_R4C2_PENDING_TRUNCATED uid=%u limit=64\n",
+            inst.get_uid());
+}
+
+void ldst_unit::dtc_l1_r4c0_retire(const warp_inst_t &inst) {
+  auto it = m_dtc_l1_r4c0_completion_trace.find(inst.get_uid());
+  if (it != m_dtc_l1_r4c0_completion_trace.end()) {
+    dtc_l1_r4c0_entry &entry = it->second;
+    if (entry.registered_dependencies != entry.pib_dependencies ||
+        entry.closed_dependencies != entry.registered_dependencies)
+      fprintf(stderr,
+              "DTC_L1_R4C1_RETIRE_CARDINALITY_MISMATCH sm=%u uid=%u "
+              "pc=0x%llx registered=%u pib=%u closed=%u\n",
+              m_sid, inst.get_uid(), static_cast<unsigned long long>(entry.pc),
+              entry.registered_dependencies, entry.pib_dependencies,
+              entry.closed_dependencies);
+    assert(entry.accounting.state() ==
+           dtc_l1::completion_accounting::lifecycle::CLOSED);
+    assert(entry.accounting.closed() == entry.closed_dependencies);
+    entry.state = dtc_l1_r4c0_entry::lifecycle::RETIRED;
+    // Retired entries are retained only for bounded duplicate-after-retire
+    // diagnostics; live ownership remains in the active ledger above.
+    if (m_dtc_l1_r4c1_retired_history.size() < 128)
+      m_dtc_l1_r4c1_retired_history.emplace(inst.get_uid(), std::move(entry));
+    m_dtc_l1_r4c0_completion_trace.erase(it);
+  }
+}
+
 // PAPER_IO consumes the already-coalesced access queue as a set of whole-line
 // references.  It deliberately never calls l1_cache::access(): physical
 // state, merge state, and lower ownership live in io_frontend and the queues
@@ -2677,6 +2922,7 @@ bool ldst_unit::dtc_l1_io_memory_cycle(
                  static_cast<uint64_t>(m_dtc_l1_io_pib.size()));
     entry = &m_dtc_l1_io_pib.back();
     assert(!entry->references.empty());
+    dtc_l1_r4c0_record_pib(entry->inst, entry->references, "IO");
     m_dtc_l1_io_last_progress_cycle =
         m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
   }
@@ -2817,12 +3063,23 @@ bool ldst_unit::dtc_l1_io_consume_response(mem_fetch *mf) {
 void ldst_unit::dtc_l1_io_complete_instruction(const warp_inst_t &inst,
                                                 unsigned dependencies) {
   assert(dependencies > 0);
+  dtc_l1_r4c1_record_close(inst, dependencies, "IO");
   for (unsigned r = 0; r < MAX_OUTPUT_VALUES; ++r) {
     const unsigned reg_id = inst.out[r];
     if (!reg_id) continue;
     unsigned &pending = m_pending_writes[inst.warp_id()][reg_id];
+    if (pending < dependencies)
+      dtc_l1_r4c0_report_completion_failure(
+          inst, dependencies, pending, reg_id, "IO", "PENDING_LT_CLOSED");
     assert(pending >= dependencies);
+    const unsigned before = pending;
     pending -= dependencies;
+    dtc_l1_r4c2_trace_pending_mutation(inst, reg_id, before,
+                                       -static_cast<int>(dependencies), pending,
+                                       "DTC_IO_COMPLETE");
+    if (pending != 0)
+      dtc_l1_r4c0_report_completion_failure(
+          inst, dependencies, pending, reg_id, "IO", "PENDING_NOT_ZERO");
     assert(pending == 0 &&
            "PAPER_IO uses exactly one pending-write dependency per 128B line");
     m_pending_writes[inst.warp_id()].erase(reg_id);
@@ -2838,6 +3095,7 @@ void ldst_unit::dtc_l1_io_complete_instruction(const warp_inst_t &inst,
   }
   m_dtc_l1_io_completion_dependencies_closed += dependencies;
   m_core->warp_inst_complete(inst);
+  dtc_l1_r4c0_retire(inst);
 }
 
 bool ldst_unit::dtc_l1_io_writeback_head() {
@@ -2860,14 +3118,23 @@ bool ldst_unit::dtc_l1_io_writeback_head() {
     ++m_dtc_l1_m4_observation_retires;
     return true;
   }
+  // A frontend head may become ready after its first admitted line. The
+  // source instruction is not drained until every coalesced 128B reference
+  // in its PIB entry has been handed to that frontend.
+  if (entry.next_reference != entry.references.size()) return false;
   m_next_wb = entry.inst;
   if (!m_operand_collector->writeback(m_next_wb)) {
     ++m_dtc_l1_io_ready_but_wb_blocked_cycles;
     m_next_wb.clear();
     return false;
   }
-  dtc_l1_io_complete_instruction(entry.inst,
-                                  static_cast<unsigned>(entry.references.size()));
+  // A READY ledger transition denotes the one successful completion attempt,
+  // not a frontend-ready observation that may retry while writeback is busy.
+  dtc_l1_r4c1_record_ready(entry.inst,
+                            static_cast<unsigned>(entry.next_reference),
+                            static_cast<unsigned>(entry.references.size()), "IO");
+  dtc_l1_io_complete_instruction(
+      entry.inst, dtc_l1_r4c3_registered_dependencies(entry.inst));
   const bool retired = m_dtc_l1_io_frontend->retire_head(entry.inst.get_uid());
   assert(retired);
   m_dtc_l1_io_pib.pop_front();
@@ -2905,6 +3172,7 @@ bool ldst_unit::dtc_l1_oo_memory_cycle(
     m_dtc_l1_oo_pib.push_back({inst, dtc_l1_io_line_references(inst), 0});
     entry = &m_dtc_l1_oo_pib.back();
     assert(!entry->references.empty());
+    dtc_l1_r4c0_record_pib(entry->inst, entry->references, "OO");
   }
   if (entry->next_reference < entry->references.size()) {
     const dtc_l1::line_reference reference =
@@ -3061,12 +3329,23 @@ bool ldst_unit::dtc_l1_oo_consume_response(mem_fetch *mf) {
 void ldst_unit::dtc_l1_oo_complete_instruction(const warp_inst_t &inst,
                                                 unsigned dependencies) {
   assert(dependencies > 0);
+  dtc_l1_r4c1_record_close(inst, dependencies, "OO");
   for (unsigned r = 0; r < MAX_OUTPUT_VALUES; ++r) {
     const unsigned reg_id = inst.out[r];
     if (!reg_id) continue;
     unsigned &pending = m_pending_writes[inst.warp_id()][reg_id];
+    if (pending < dependencies)
+      dtc_l1_r4c0_report_completion_failure(
+          inst, dependencies, pending, reg_id, "OO", "PENDING_LT_CLOSED");
     assert(pending >= dependencies);
+    const unsigned before = pending;
     pending -= dependencies;
+    dtc_l1_r4c2_trace_pending_mutation(inst, reg_id, before,
+                                       -static_cast<int>(dependencies), pending,
+                                       "DTC_OO_COMPLETE");
+    if (pending != 0)
+      dtc_l1_r4c0_report_completion_failure(
+          inst, dependencies, pending, reg_id, "OO", "PENDING_NOT_ZERO");
     assert(pending == 0 && "PAPER_OO closes all 128B dependencies at retirement");
     m_pending_writes[inst.warp_id()].erase(reg_id);
     m_scoreboard->releaseRegister(inst.warp_id(), reg_id);
@@ -3081,6 +3360,7 @@ void ldst_unit::dtc_l1_oo_complete_instruction(const warp_inst_t &inst,
   }
   m_dtc_l1_oo_completion_dependencies_closed += dependencies;
   m_core->warp_inst_complete(inst);
+  dtc_l1_r4c0_retire(inst);
 }
 
 bool ldst_unit::dtc_l1_oo_writeback_ready() {
@@ -3118,7 +3398,13 @@ bool ldst_unit::dtc_l1_oo_writeback_ready() {
     m_next_wb.clear();
     return false;
   }
-  const unsigned dependencies = static_cast<unsigned>(entry->references.size());
+  // Mirror IO: readiness becomes a non-retryable ledger transition only on
+  // the successful shared-operand-collector grant.
+  dtc_l1_r4c1_record_ready(entry->inst,
+                            static_cast<unsigned>(entry->next_reference),
+                            static_cast<unsigned>(entry->references.size()), "OO");
+  const unsigned dependencies =
+      dtc_l1_r4c3_registered_dependencies(entry->inst);
   dtc_l1_oo_complete_instruction(entry->inst, dependencies);
   uint64_t retired = 0;
   const bool retired_ok = dtc_l1_sector_oo_active()
@@ -3265,9 +3551,15 @@ void ldst_unit::L1_latency_queue_cycle() {
             if (mf_next->get_inst().out[r] > 0) {
               assert(m_pending_writes[mf_next->get_inst().warp_id()]
                                      [mf_next->get_inst().out[r]] > 0);
+              const unsigned before =
+                  m_pending_writes[mf_next->get_inst().warp_id()]
+                                  [mf_next->get_inst().out[r]];
               unsigned still_pending =
                   --m_pending_writes[mf_next->get_inst().warp_id()]
                                     [mf_next->get_inst().out[r]];
+              dtc_l1_r4c2_trace_pending_mutation(
+                  mf_next->get_inst(), mf_next->get_inst().out[r], before, -1,
+                  still_pending, "CONVENTIONAL_L1_LATENCY_HIT");
               if (!still_pending) {
                 m_pending_writes[mf_next->get_inst().warp_id()].erase(
                     mf_next->get_inst().out[r]);
@@ -3361,8 +3653,14 @@ bool ldst_unit::constant_cycle(warp_inst_t &inst, mem_stage_stall_type &rc_fail,
     while (inst.accessq_count() > 0) inst.accessq_pop_back();
     if (inst.is_load()) {
       for (unsigned r = 0; r < MAX_OUTPUT_VALUES; r++)
-        if (inst.out[r] > 0)
-          m_pending_writes[inst.warp_id()][inst.out[r]] -= access_count;
+        if (inst.out[r] > 0) {
+          unsigned &pending = m_pending_writes[inst.warp_id()][inst.out[r]];
+          const unsigned before = pending;
+          pending -= access_count;
+          dtc_l1_r4c2_trace_pending_mutation(
+              inst, inst.out[r], before, -static_cast<int>(access_count), pending,
+              "CONVENTIONAL_L1_ACCESS_ACCOUNTING");
+        }
     }
   } else {
     fail = process_memory_access_queue(m_L1C, inst);
@@ -3918,8 +4216,10 @@ void ldst_unit::issue(register_set &reg_set) {
         inst->cache_op != CACHE_GLOBAL &&
         !(inst->space.is_global() && m_core->get_config()->gmem_skip_L1D &&
           inst->cache_op != CACHE_L1);
+    std::vector<dtc_l1::line_reference> dtc_references;
     if (dtc_cacheable_read) {
-      n_accesses = static_cast<unsigned>(dtc_l1_io_line_references(*inst).size());
+      dtc_references = dtc_l1_io_line_references(*inst);
+      n_accesses = static_cast<unsigned>(dtc_references.size());
       assert(n_accesses > 0);
       if (dtc_l1_paper_io_active())
         m_dtc_l1_io_completion_dependencies += n_accesses;
@@ -3934,6 +4234,17 @@ void ldst_unit::issue(register_set &reg_set) {
     }
     if (inst->m_is_ldgsts) {
       m_pending_ldgsts[warp_id][inst->get_uid()] += n_accesses;
+    }
+    if (dtc_cacheable_read && !inst->isatomic()) {
+      dtc_l1_r4c0_record_issue(*inst, dtc_references, n_accesses);
+      for (unsigned r = 0; r < MAX_OUTPUT_VALUES; ++r) {
+        const unsigned reg_id = inst->out[r];
+        if (!reg_id) continue;
+        const unsigned after = m_pending_writes[warp_id][reg_id];
+        dtc_l1_r4c2_trace_pending_mutation(
+            *inst, reg_id, after - n_accesses, static_cast<int>(n_accesses),
+            after, "ISSUE_REGISTER");
+      }
     }
   }
 
@@ -3970,8 +4281,12 @@ bool ldst_unit::writeback_complete(warp_inst_t &inst) {
     if (inst.out[r] > 0) {
       if (inst.space.get_type() != shared_space) {
         assert(m_pending_writes[inst.warp_id()][inst.out[r]] > 0);
+        const unsigned before = m_pending_writes[inst.warp_id()][inst.out[r]];
         unsigned still_pending =
             --m_pending_writes[inst.warp_id()][inst.out[r]];
+        dtc_l1_r4c2_trace_pending_mutation(
+            inst, inst.out[r], before, -1, still_pending,
+            "CONVENTIONAL_WRITEBACK_COMPLETE");
         if (!still_pending) {
           m_pending_writes[inst.warp_id()].erase(inst.out[r]);
           m_scoreboard->releaseRegister(inst.warp_id(), inst.out[r]);

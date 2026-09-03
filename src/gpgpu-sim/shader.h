@@ -2058,6 +2058,36 @@ class ldst_unit : public pipelined_simd_unit {
   void dtc_l1_io_identity_event(const char *event, mem_fetch &mf);
   std::vector<dtc_l1::line_reference> dtc_l1_io_line_references(
       const warp_inst_t &inst) const;
+  // R4C.0 is diagnostic-only: retain the issue/PIB cardinalities until the
+  // instruction retires so a completion-accounting assertion identifies the
+  // first concrete UID rather than merely its aggregate pending count.
+  void dtc_l1_r4c0_record_issue(
+      const warp_inst_t &inst,
+      const std::vector<dtc_l1::line_reference> &references,
+      unsigned registered_dependencies);
+  void dtc_l1_r4c0_record_pib(
+      const warp_inst_t &inst,
+      const std::vector<dtc_l1::line_reference> &references,
+      const char *mode);
+  void dtc_l1_r4c0_report_completion_failure(const warp_inst_t &inst,
+                                             unsigned dependencies,
+                                             unsigned pending,
+                                             unsigned reg_id,
+                                             const char *mode,
+                                             const char *reason);
+  void dtc_l1_r4c1_record_ready(const warp_inst_t &inst,
+                                unsigned pib_next_reference,
+                                unsigned pib_dependencies,
+                                const char *mode);
+  void dtc_l1_r4c1_record_close(const warp_inst_t &inst,
+                                unsigned dependencies, const char *mode);
+  void dtc_l1_r4c2_trace_pending_mutation(const warp_inst_t &inst,
+                                           unsigned reg_id, unsigned before,
+                                           int delta, unsigned after,
+                                           const char *reason);
+  unsigned dtc_l1_r4c3_registered_dependencies(
+      const warp_inst_t &inst) const;
+  void dtc_l1_r4c0_retire(const warp_inst_t &inst);
   bool dtc_l1_io_memory_cycle(warp_inst_t &inst,
                               mem_stage_stall_type &stall_reason,
                               mem_stage_access_type &access_type);
@@ -2184,6 +2214,40 @@ class ldst_unit : public pipelined_simd_unit {
   std::set<unsigned> m_dtc_l1_live_instruction_uids;
   unsigned m_dtc_l1_debug_events_left = 0;
   unsigned m_dtc_l1_io_identity_events_left = 0;
+  struct dtc_l1_r4c0_entry {
+    enum class lifecycle : uint8_t { REGISTERED, PIB_OWNED, READY, RETIRED };
+    struct pending_mutation {
+      unsigned long long cycle = 0;
+      unsigned mutator_uid = 0;
+      unsigned reg_id = 0;
+      unsigned before = 0;
+      int delta = 0;
+      unsigned after = 0;
+      const char *reason = "";
+    };
+    unsigned long long issue_cycle = 0;
+    unsigned warp_id = 0;
+    uint64_t pc = 0;
+    unsigned accessq_count = 0;
+    unsigned registered_dependencies = 0;
+    unsigned pib_dependencies = 0;
+    unsigned closed_dependencies = 0;
+    unsigned completion_attempts = 0;
+    bool pib_recorded = false;
+    bool failure_reported = false;
+    lifecycle state = lifecycle::REGISTERED;
+    dtc_l1::completion_accounting accounting;
+    std::vector<unsigned> output_registers;
+    std::vector<unsigned> pending_after_issue;
+    std::vector<dtc_l1::line_reference> issue_references;
+    std::vector<dtc_l1::line_reference> pib_references;
+    std::vector<pending_mutation> pending_mutations;
+    bool pending_mutations_truncated = false;
+  };
+  std::unordered_map<unsigned, dtc_l1_r4c0_entry>
+      m_dtc_l1_r4c0_completion_trace;
+  std::unordered_map<unsigned, dtc_l1_r4c0_entry>
+      m_dtc_l1_r4c1_retired_history;
   struct dtc_l1_oo_pib_entry {
     warp_inst_t inst;
     std::vector<dtc_l1::line_reference> references;

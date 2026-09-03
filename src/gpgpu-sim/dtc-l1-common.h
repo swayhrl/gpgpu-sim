@@ -40,6 +40,54 @@ struct config {
   unsigned ref_count_bits = 13;
 };
 
+// Completion ownership is separate from the frontend's physical-line state.
+// An LD/ST instruction may retire only after its registered 128B dependency
+// count is owned by its PIB entry and every one of those references has been
+// admitted. Closing twice, or closing a count different from registration, is
+// an architectural accounting error rather than a recoverable cache event.
+class completion_accounting {
+ public:
+  enum class lifecycle { EMPTY, REGISTERED, PIB_OWNED, READY, CLOSED };
+
+  void register_dependencies(unsigned dependencies) {
+    assert(dependencies > 0 && m_state == lifecycle::EMPTY);
+    m_registered = dependencies;
+    m_state = lifecycle::REGISTERED;
+  }
+
+  void own_pib_dependencies(unsigned dependencies) {
+    assert(m_state == lifecycle::REGISTERED);
+    assert(dependencies == m_registered);
+    m_pib = dependencies;
+    m_state = lifecycle::PIB_OWNED;
+  }
+
+  void mark_ready(unsigned admitted_dependencies) {
+    assert(m_state == lifecycle::PIB_OWNED);
+    assert(admitted_dependencies == m_pib);
+    m_state = lifecycle::READY;
+  }
+
+  unsigned close_once(unsigned dependencies) {
+    assert(m_state == lifecycle::READY);
+    assert(dependencies == m_registered && dependencies == m_pib);
+    m_closed = dependencies;
+    m_state = lifecycle::CLOSED;
+    return m_closed;
+  }
+
+  unsigned registered() const { return m_registered; }
+  unsigned pib_owned() const { return m_pib; }
+  unsigned closed() const { return m_closed; }
+  lifecycle state() const { return m_state; }
+
+ private:
+  lifecycle m_state = lifecycle::EMPTY;
+  unsigned m_registered = 0;
+  unsigned m_pib = 0;
+  unsigned m_closed = 0;
+};
+
 enum class io_access_kind { VALID_HIT, PENDING_HIT, NEW_MISS, NO_FREE_LINE };
 
 struct physical_identity {
