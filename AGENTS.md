@@ -1,154 +1,102 @@
-# AGENTS.md — Decoupled-Tag L1 Reproduction
+# AGENTS.md — Decoupled-Tag L1 M5 Core Workflow
 
-This repository is the simulator-core implementation repository for the Decoupled-Tag L1 (DTC-L1) reproduction project.
+This repository contains the simulator-core implementation used for M5 mechanism/performance experiments.
 
-## Mandatory read order
-
-Before modifying source/config/tests on `hrl/decoupled-l1-m1m4-v0`, read:
+## Mandatory read order on `hrl/decoupled-l1-m5-v0`
 
 1. `docs/dtc_l1/DTC_L1_SPEC.md` — frozen architecture specification.
 2. `docs/dtc_l1/README.md`.
-3. In `swayhrl/accel-sim-framework@hrl/decoupled-l1-exp-m1m4-v0`:
-   - `AGENTS.md`
-   - `docs/dtc_l1/chatgpt_handoff/CURRENT_STATE.md`
-   - `docs/dtc_l1/codex_handoff/LATEST_REPORT.md`
-   - `docs/dtc_l1/chatgpt_handoff/CODEX_NEXT_STAGE.md`
-   - `docs/dtc_l1/chatgpt_handoff/GOAL_START.md`
-   - `docs/dtc_l1/goal/M4_COMPLETION_ACCOUNTING_RECOVERY.md`
-   - `docs/dtc_l1/implementation/M4_COMPUTE_BRINGUP_FAILURE.md`
-   - `docs/dtc_l1/goal/M4_FENCE_REACHABILITY_RESOLUTION.md`
-   - `docs/dtc_l1/implementation/M4_MEMORY_OP_SEMANTICS.md`
-   - `docs/dtc_l1/goal/VALIDATION_ACCEPTANCE_MATRIX.md`
-   - `docs/dtc_l1/goal/M1_M4_GOAL_PLAN.md`
-   - `docs/dtc_l1/goal/COUNTER_INVARIANT_SPEC.md`
+3. Framework `hrl/decoupled-l1-exp-m5-v0:AGENTS.md`.
+4. Framework `docs/dtc_l1/chatgpt_handoff/CURRENT_STATE.md`.
+5. Framework `docs/dtc_l1/codex_handoff/LATEST_REPORT.md`.
+6. Framework `docs/dtc_l1/chatgpt_handoff/CODEX_NEXT_STAGE.md`.
+7. Framework `docs/dtc_l1/chatgpt_handoff/GOAL_START.md`.
+8. Framework `docs/dtc_l1/m5/M5_EXPERIMENT_MATRIX.md`.
+9. Framework `docs/dtc_l1/m5/M5_PROBLEM_RESOLUTION_POLICY.md`.
+10. Framework `docs/dtc_l1/m5/M5_HANDOFF_CONTRACT.md`.
+11. Framework `docs/dtc_l1/m5/M5_GRAPHICS_PREP.md`.
+12. M4 final review pack as validated historical context.
 
-Specific precedence:
+If Framework status is PLANNING HOLD / DRAFT ONLY, do not begin formal M5 implementation or experiments.
 
-- `M4_COMPLETION_ACCOUNTING_RECOVERY.md` governs the active 2DConv completion blocker;
-- the fence-reachability resolution governs M4 fence/source-domain requirements only.
+## Anchors
 
-For other disagreements, STOP and report.
+Parent validated M1-M4 Core:
 
-## Branch/source anchors
+`cdeec769fd0c1be12b45d58536ecb81074d4b415`
 
-Frozen M0 core anchor:
+M5 Core branch:
 
-- upstream `accel-sim/gpgpu-sim_distribution:dev` at `91880c53383d5a6a6742bfb1be2c5f34e39c7871`;
-- M0 branch `hrl/decoupled-l1-v0`.
+`hrl/decoupled-l1-m5-v0`
 
-Active implementation branch: `hrl/decoupled-l1-m1m4-v0`.
+Do not modify or back-port M5 work to the validated M1-M4 branch.
 
-Do not modify M0 or merge unrelated L1/L2/TLB research branches.
+## Frozen architecture boundary
 
-## Evidence states
+M5 may repair implementation/modeling fidelity bugs discovered by experiments, add source-backed counters, improve workload integration, and parameterize already-frozen knobs.
 
-Use:
+M5 must not silently change frozen DTC architecture semantics to obtain a target result. Preserve at least:
 
-- `VERIFIED_SOURCE`
-- `USER_CONFIRMED`
-- `THESIS_SPEC`
-- `PROVISIONAL_MODEL`
-- `UNKNOWN`
-- `SOURCE_UNREACHABLE_NA` only when the active framework specification explicitly authorizes it from source audit.
+- 128B logical Tag->Physical mapping for paper whole-line modes;
+- paper Base PIB=8 / traditional MSHR=32 defaults;
+- IO FIFO retirement, default PIB 256;
+- OO ready retirement, Ref Count/Shadow Ref semantics, default PIB 128;
+- physical partial allocation/no rollback;
+- IO passive release vs OO active reclaim semantics;
+- 4 Tag banks, 1 request/bank/cycle, max 4/cycle contract;
+- physical allocation width 4;
+- IO/OO retire width 1/cycle;
+- lower issue width 1/SM/cycle;
+- no traditional L1 MSHR as DTC capacity/merge state;
+- exact fill generation/identity;
+- Atomic side effects never merged/lost;
+- architectural `.cg` bypass remains distinct from later optional DTC-native no-Tag policy bypass.
 
-Never guess or silently upgrade uncertainty.
+`MODERN_OO_SECTOR` is an extension and must not contaminate primary Figures 4.2-4.10.
 
-## Current persistent Goal
+## M5 problem resolution
 
-M1, M2, and M3 are closed PASS. M4 is currently blocked by a source-reachable DTC completion-accounting failure on PolyBench 2DConv.
+After Goal activation, ordinary implementation issues are solved in-goal rather than immediately stopping. Follow Framework `M5_PROBLEM_RESOLUTION_POLICY.md`.
 
-Execute the ordered `R4C.0-R4C.8` recovery first. If it fully passes, continue the remaining M4 Goal automatically and stop at `READY_FOR_M5_REVIEW`.
+For a poor performance result, first establish correctness/workload/config identity, then determine whether Base has the intended bottleneck, whether DTC increases common live concurrent misses, whether downstream saturation or duplicate traffic dominates, and whether IO/OO HOL opportunity exists.
 
-Ordinary progress is not a stop condition. Continue after successful localization/tests/builds/checkpoints once safe evidence is preserved.
+Do not tune Core parameters or workload inputs to match thesis speedup numbers.
 
-STOP on an active HARD failure, unresolved dependency-ownership ambiguity requiring human judgment, regression of M1-M3, need to change frozen M0 semantics, scoreboard correctness requiring an unverified shortcut, or final M4 completion.
+## Core-change regression/invalidation
 
-M5 is not authorized.
+Any M5 Core change that can affect behavior/timing invalidates affected downstream FORMAL results and requires the regression set specified by `M5_PROBLEM_RESOLUTION_POLICY.md`.
 
-## Active completion-accounting invariant
+Instrumentation-only changes may preserve old performance cycles only after exact sentinel neutrality.
 
-For every DTC-owned cacheable load, preserve/prove:
+## Figure-4.7 common live-miss metric
 
-```text
-registered DTC dependency count at issue
-== PIB-owned unique 128B line dependency count
-== dependencies closed at retirement
-```
+Formal M5 uses one lifecycle across Base/IO/OO:
 
-with exactly-once dynamic-instruction completion and scoreboard release.
+`new miss committed into lower-request ownership -> final lower response`.
 
-Do NOT:
+Pending-hit merges do not create a new live miss. A distinct duplicate request after Tag eviction does.
 
-- remove/weaken `pending >= dependencies` or related assertions;
-- clamp dependencies to current pending state;
-- force `m_pending_writes` to zero;
-- release scoreboard state without exact ownership closure;
-- change 128B DTC dependency granularity simply to satisfy a failing workload;
-- route DTC reads back through conventional L1D MSHR/fill as a workaround.
+Do not label MSHR occupancy, NoC inflight occupancy, or pending physical lines as the common Figure-4.7 metric.
 
-The recovery may add per-UID diagnostic/ownership ledger state and bounded mutation tracing, provided it does not change frozen cache/NoC/L2/DRAM behavior.
+## Figure-4.2 stall semantics
 
-## Fence source-reachability boundary
+Keep separate:
 
-The current PTX frontend is verified unable to generate the existing dynamic `FENCE_OP` / async proxy-fence path. Do not add frontend semantics in M4.
+- PIB full;
+- true Tag/cacheline allocation failure;
+- MSHR entry/merge capacity failure;
+- miss queue/downstream capacity failure;
+- Tag-bank arbitration conflict as a diagnostic category.
 
-Do NOT add `fence` lexer/parser/static-decode support, map `membar` to `FENCE_OP`, force proxy-fence fields on ordinary instructions, or suppress unsupported regular-fence behavior.
-
-Fence closeout resumes only after the active completion blocker is repaired.
-
-## Core architecture discipline
-
-- Do not change LEGACY or closed M1-M3 semantics.
-- Do not use traditional L1 MSHR as DTC capacity/merge state.
-- Do not fabricate conventional `m_extra_mf_fields`/MSHR state for Paper-IO reads.
-- Do not route IO-owned reads through conventional `baseline_cache::fill()`.
-- Do not keep DTC and conventional L1D read backends active for the same request.
-- Preserve 128B Tag->Physical semantics, partial allocation/no rollback, finite widths, and configured backpressure.
-- Atomic side effects must never be merged/lost by read Pending-hit logic.
-- Preserve architectural bypass; thesis policy bypass remains out of scope.
-- Do not alter L2/NoC/DRAM for DTC benefit in M4.
-- Do not tune to thesis speedup values.
-
-## Parameterization and timing
-
-Frozen values are defaults, not magic constants. Keep configuration controls for mode, logical/physical capacity, line/sector geometry, PIB, Tag banks/throughput, allocation/retire/coalescer widths, lower issue/outstanding, Ref Count, and debug/watchdog controls.
-
-One frozen pipeline box is one simulator cycle. Bounded structures backpressure upstream. IO/OO retire width defaults to 1/cycle. Per-SM lower issue defaults to 1/cycle. Physical partial allocations are retained; no rollback. Same-cycle release visibility is preserved.
-
-## Required invariant families
-
-Preserve/assert as applicable:
-
-- PIB accounting/capacity;
-- valid Tag -> allocated physical line;
-- physical generation/fill identity;
-- no stale fills;
-- exact wakeup/dependency closure;
-- IO head-only ready retirement;
-- OO Ref Count == Shadow Ref in checker mode;
-- reclaim only at `tag_valid==0 && ref_count==0`;
-- 128B Tag->Physical under sector readiness;
-- completion at most once;
-- DTC per-UID dependency cardinality conservation;
-- lower credit/issue-width closure;
-- Atomic side effects not merged/lost;
-- source-reachable operation counts/drain closure.
+Do not silently equate Tag-bank conflict with Tag/cacheline allocation failure.
 
 ## Git/evidence discipline
 
-- Never `git add .` or `git add -A`; stage explicit paths.
+- Never `git add .` or `git add -A`.
+- Stage explicit paths only.
 - Keep semantic commits reviewable.
 - Do not force-push.
 - Record Core/Framework/config/workload identities.
-- Run `git diff --check` and record clean status at closeout.
-- Do not commit raw traces, large logs, build directories, or binaries.
+- Do not commit raw logs/traces/builds/binaries.
 
-M4 workload results are diagnostic bring-up evidence, not final paper performance evidence.
-
-## Long-running jobs
-
-Inspect no-progress jobs around 20 minutes, diagnose/escalate around 40 minutes, and stop/record around 60 minutes unless longer silence is explicitly expected. A job with measurable progress is not a stop condition.
-
-## Final STOP boundary
-
-After recovery and all remaining active M4 HARD gates pass, create/push the M4 review pack, update Framework `LATEST_REPORT.md` to `READY_FOR_M5_REVIEW`, ensure both worktrees are clean, and STOP. Do not begin M5.
+Use the Framework handoff contract at every M5 substage. A substage PASS means checkpoint/push/continue after M5 Goal authorization, not wait for human confirmation.
