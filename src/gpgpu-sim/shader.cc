@@ -2081,6 +2081,18 @@ void ldst_unit::get_cache_stats(cache_stats &cs) {
 
 void ldst_unit::get_dtc_l1_stats(
     dtc_l1::paper_frontend_stats &stats) const {
+  // These counts cover the frozen source-reachable operation domain in every
+  // paper mode, including PAPER_BASE which has no M4 sidecar. They make the
+  // Base/IO/OO comparison explicit without changing routing or fence meaning.
+  if (m_config->dtc_l1_mode != static_cast<unsigned>(dtc_l1::mode::LEGACY)) {
+    dtc_l1::paper_frontend_stats operation_counts;
+    operation_counts.m4_dynamic_loads = m_dtc_l1_m4_dynamic_loads;
+    operation_counts.m4_dynamic_stores = m_dtc_l1_m4_dynamic_stores;
+    operation_counts.m4_dynamic_atomics = m_dtc_l1_m4_dynamic_atomics;
+    operation_counts.m4_source_reachable_fence_ops =
+        m_dtc_l1_m4_source_reachable_fence_ops;
+    stats.add(operation_counts);
+  }
   if (dtc_l1_paper_base_active()) stats.add(m_dtc_l1_frontend->stats());
   if (dtc_l1_paper_io_active()) {
     dtc_l1::paper_frontend_stats io;
@@ -3879,6 +3891,19 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
 void ldst_unit::issue(register_set &reg_set) {
   warp_inst_t *inst = *(reg_set.get_ready());
 
+  // Atomics must be classified before generic loads: source represents
+  // ATOM_OP as LOAD_OP but retains its separate non-mergeable path.
+  if (m_config->dtc_l1_mode != static_cast<unsigned>(dtc_l1::mode::LEGACY)) {
+    if (inst->is_fence())
+      ++m_dtc_l1_m4_source_reachable_fence_ops;
+    else if (inst->isatomic())
+      ++m_dtc_l1_m4_dynamic_atomics;
+    else if (inst->is_store())
+      ++m_dtc_l1_m4_dynamic_stores;
+    else if (inst->is_load())
+      ++m_dtc_l1_m4_dynamic_loads;
+  }
+
   // record how many pending register writes/memory accesses there are for this
   // instruction
   assert(inst->empty() == false);
@@ -5127,6 +5152,15 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
             static_cast<unsigned long long>(total.m4_source_completions));
     fprintf(fout, "DTC_L1_m4_observation_retires = %llu\n",
             static_cast<unsigned long long>(total.m4_observation_retires));
+    fprintf(fout, "DTC_L1_m4_dynamic_loads = %llu\n",
+            static_cast<unsigned long long>(total.m4_dynamic_loads));
+    fprintf(fout, "DTC_L1_m4_dynamic_stores = %llu\n",
+            static_cast<unsigned long long>(total.m4_dynamic_stores));
+    fprintf(fout, "DTC_L1_m4_dynamic_atomics = %llu\n",
+            static_cast<unsigned long long>(total.m4_dynamic_atomics));
+    fprintf(fout, "DTC_L1_m4_source_reachable_fence_ops = %llu\n",
+            static_cast<unsigned long long>(
+                total.m4_source_reachable_fence_ops));
   };
   if (mode == static_cast<unsigned>(dtc_l1::mode::PAPER_IO)) {
     assert(total.io_inflight_current == 0);

@@ -2223,6 +2223,12 @@ class ldst_unit : public pipelined_simd_unit {
   uint64_t m_dtc_l1_m4_source_completions = 0;
   uint64_t m_dtc_l1_m4_observation_retires = 0;
   uint64_t m_dtc_l1_m4_oo_fence_blocks = 0;
+  // Source-domain operation counts are mode-independent observability. They
+  // are sampled at LD/ST issue and do not alter routing or completion.
+  uint64_t m_dtc_l1_m4_dynamic_loads = 0;
+  uint64_t m_dtc_l1_m4_dynamic_stores = 0;
+  uint64_t m_dtc_l1_m4_dynamic_atomics = 0;
+  uint64_t m_dtc_l1_m4_source_reachable_fence_ops = 0;
 
   // For fence
   // Right now just support async fence

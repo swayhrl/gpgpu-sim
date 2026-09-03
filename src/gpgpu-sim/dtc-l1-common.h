@@ -1350,6 +1350,10 @@ struct paper_frontend_stats {
   uint64_t m4_proxy_fence_admits = 0;
   uint64_t m4_source_completions = 0;
   uint64_t m4_observation_retires = 0;
+  uint64_t m4_dynamic_loads = 0;
+  uint64_t m4_dynamic_stores = 0;
+  uint64_t m4_dynamic_atomics = 0;
+  uint64_t m4_source_reachable_fence_ops = 0;
 
   void add(const paper_frontend_stats &other) {
     admits += other.admits;
@@ -1468,6 +1472,10 @@ struct paper_frontend_stats {
     m4_proxy_fence_admits += other.m4_proxy_fence_admits;
     m4_source_completions += other.m4_source_completions;
     m4_observation_retires += other.m4_observation_retires;
+    m4_dynamic_loads += other.m4_dynamic_loads;
+    m4_dynamic_stores += other.m4_dynamic_stores;
+    m4_dynamic_atomics += other.m4_dynamic_atomics;
+    m4_source_reachable_fence_ops += other.m4_source_reachable_fence_ops;
   }
 };
 
