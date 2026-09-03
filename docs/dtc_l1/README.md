@@ -5,10 +5,12 @@ This directory holds the simulator-core specification for reproducing the thesis
 ## Authority
 
 - `DTC_L1_SPEC.md` is the authoritative frozen M0 architecture specification.
-- Cross-repository project state and executable M1-M4 Goal instructions live in:
-  `swayhrl/accel-sim-framework@hrl/decoupled-l1-exp-m1m4-v0/docs/dtc_l1/`.
+- M5 coordination, experiment matrix, problem-resolution policy, and handoffs live in:
+  `swayhrl/accel-sim-framework@hrl/decoupled-l1-exp-m5-v0/docs/dtc_l1/`.
+- Researcher-approved M5 activation/interpretation is:
+  `docs/dtc_l1/m5/M5_V1_APPROVAL.md` in the Framework repository.
 
-Do not duplicate or reinterpret frozen architecture decisions in ad-hoc source comments. If a source-level implementation constraint conflicts with the specification, report it through the Codex handoff and STOP rather than silently changing semantics.
+Do not duplicate or reinterpret frozen architecture decisions in ad-hoc source comments. M5 may repair implementation/modeling fidelity bugs, add counters, parameterize frozen knobs, and improve workload integration, but must not change frozen architecture semantics merely to obtain thesis-like performance.
 
 ## Source anchors
 
@@ -22,14 +24,25 @@ Frozen M0 project anchor:
 - `swayhrl/gpgpu-sim:hrl/decoupled-l1-v0`
 - M0 documentation SHA `5e35de9914f1ad28647ef3a416d054b86f3e44a5`
 
-Active implementation branch:
+Validated M1-M4 parent:
 
 - `swayhrl/gpgpu-sim:hrl/decoupled-l1-m1m4-v0`
+- final SHA `cdeec769fd0c1be12b45d58536ecb81074d4b415`
 
-The M0 branch remains read-only.
+Active M5 implementation branch:
+
+- `swayhrl/gpgpu-sim:hrl/decoupled-l1-m5-v0`
+
+M0 and validated M1-M4 branches remain read-only experimental anchors.
 
 ## Current stage
 
-M0 architecture freeze is complete. M1 through M4 are authorized as one continuous Goal-mode execution on the active implementation branch, with mandatory HARD gates and review packs at each major stage.
+M1-M4 are complete and independently reviewed. M5 v1 is authorized on the dedicated M5 branches.
 
-After M4 closeout, Codex must STOP for M5 review.
+Current progression begins at M5.0A fidelity/reproducibility lock and continues automatically through workload recovery, platform/metric lock, pilot triage, Figures 4.2/4.5/4.7/4.8/4.9/4.10, and causal synthesis.
+
+Terminal compute state:
+
+`M5_COMPUTE_READY_FOR_REVIEW`.
+
+Read `AGENTS.md` before modifying Core source. Ordinary M5 implementation/workload problems are solved under the Framework `M5_PROBLEM_RESOLUTION_POLICY.md`; pause only for a genuine researcher-decision boundary or final compute review.
