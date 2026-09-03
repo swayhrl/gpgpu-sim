@@ -14,13 +14,20 @@ Before modifying source/config/tests on `hrl/decoupled-l1-m1m4-v0`, read:
    - `docs/dtc_l1/codex_handoff/LATEST_REPORT.md`
    - `docs/dtc_l1/chatgpt_handoff/CODEX_NEXT_STAGE.md`
    - `docs/dtc_l1/chatgpt_handoff/GOAL_START.md`
+   - `docs/dtc_l1/goal/M4_COMPLETION_ACCOUNTING_RECOVERY.md`
+   - `docs/dtc_l1/implementation/M4_COMPUTE_BRINGUP_FAILURE.md`
    - `docs/dtc_l1/goal/M4_FENCE_REACHABILITY_RESOLUTION.md`
    - `docs/dtc_l1/implementation/M4_MEMORY_OP_SEMANTICS.md`
    - `docs/dtc_l1/goal/VALIDATION_ACCEPTANCE_MATRIX.md`
    - `docs/dtc_l1/goal/M1_M4_GOAL_PLAN.md`
    - `docs/dtc_l1/goal/COUNTER_INVARIANT_SPEC.md`
 
-For M4 fence-related requirements only, the specific fence-reachability resolution plus the updated validation matrix intentionally refine older generic plan language. For any other disagreement, STOP and report.
+Specific precedence:
+
+- `M4_COMPLETION_ACCOUNTING_RECOVERY.md` governs the active 2DConv completion blocker;
+- the fence-reachability resolution governs M4 fence/source-domain requirements only.
+
+For other disagreements, STOP and report.
 
 ## Branch/source anchors
 
@@ -48,32 +55,50 @@ Never guess or silently upgrade uncertainty.
 
 ## Current persistent Goal
 
-M1, M2, and M3 are closed PASS. Finish M4 only, then STOP at `READY_FOR_M5_REVIEW`.
+M1, M2, and M3 are closed PASS. M4 is currently blocked by a source-reachable DTC completion-accounting failure on PolyBench 2DConv.
 
-Ordinary progress is not a stop condition. Continue after successful tests/builds/workloads/checkpoints once safe evidence is committed/pushed.
+Execute the ordered `R4C.0-R4C.8` recovery first. If it fully passes, continue the remaining M4 Goal automatically and stop at `READY_FOR_M5_REVIEW`.
 
-STOP on an active HARD failure, a source-reachable semantic ambiguity requiring human judgment, regression of M1-M3, need to change frozen M0 semantics, or final M4 completion.
+Ordinary progress is not a stop condition. Continue after successful localization/tests/builds/checkpoints once safe evidence is preserved.
+
+STOP on an active HARD failure, unresolved dependency-ownership ambiguity requiring human judgment, regression of M1-M3, need to change frozen M0 semantics, scoreboard correctness requiring an unverified shortcut, or final M4 completion.
 
 M5 is not authorized.
 
-## M4 source-reachability boundary
+## Active completion-accounting invariant
 
-The current PTX frontend has been verified unable to generate the existing dynamic `FENCE_OP` / async proxy-fence path. This is a source limitation, not permission to add unrelated frontend semantics.
+For every DTC-owned cacheable load, preserve/prove:
+
+```text
+registered DTC dependency count at issue
+== PIB-owned unique 128B line dependency count
+== dependencies closed at retirement
+```
+
+with exactly-once dynamic-instruction completion and scoreboard release.
 
 Do NOT:
 
-- add `fence` lexer/parser/static-decode support in M4;
-- map `membar` to `FENCE_OP`/proxy fence;
-- force `set_proxy_fence()` or `set_fence_proxy_kind()` on ordinary instructions;
-- suppress the source's unsupported regular-fence behavior to make old tests execute.
+- remove/weaken `pending >= dependencies` or related assertions;
+- clamp dependencies to current pending state;
+- force `m_pending_writes` to zero;
+- release scoreboard state without exact ownership closure;
+- change 128B DTC dependency granularity simply to satisfy a failing workload;
+- route DTC reads back through conventional L1D MSHR/fill as a workaround.
 
-Use F00A-F00D and the `SOURCE_UNREACHABLE_NA` disposition for F01-F03 exactly as specified in the framework resolution file.
+The recovery may add per-UID diagnostic/ownership ledger state and bounded mutation tracing, provided it does not change frozen cache/NoC/L2/DRAM behavior.
 
-If a real source-backed PTX path is discovered that produces `FENCE_OP`, STOP and reopen fence validation before continuing.
+## Fence source-reachability boundary
+
+The current PTX frontend is verified unable to generate the existing dynamic `FENCE_OP` / async proxy-fence path. Do not add frontend semantics in M4.
+
+Do NOT add `fence` lexer/parser/static-decode support, map `membar` to `FENCE_OP`, force proxy-fence fields on ordinary instructions, or suppress unsupported regular-fence behavior.
+
+Fence closeout resumes only after the active completion blocker is repaired.
 
 ## Core architecture discipline
 
-- Do not change LEGACY or closed M1-M3 behavior.
+- Do not change LEGACY or closed M1-M3 semantics.
 - Do not use traditional L1 MSHR as DTC capacity/merge state.
 - Do not fabricate conventional `m_extra_mf_fields`/MSHR state for Paper-IO reads.
 - Do not route IO-owned reads through conventional `baseline_cache::fill()`.
@@ -104,10 +129,10 @@ Preserve/assert as applicable:
 - reclaim only at `tag_valid==0 && ref_count==0`;
 - 128B Tag->Physical under sector readiness;
 - completion at most once;
+- DTC per-UID dependency cardinality conservation;
 - lower credit/issue-width closure;
 - Atomic side effects not merged/lost;
-- source-reachable operation counts/drain closure;
-- if a real FENCE_OP producer appears, required ordering must be revalidated before acceptance.
+- source-reachable operation counts/drain closure.
 
 ## Git/evidence discipline
 
@@ -126,4 +151,4 @@ Inspect no-progress jobs around 20 minutes, diagnose/escalate around 40 minutes,
 
 ## Final STOP boundary
 
-After all active M4 HARD gates pass, create/push the M4 review pack, update Framework `LATEST_REPORT.md` to `READY_FOR_M5_REVIEW`, ensure both worktrees are clean, and STOP. Do not begin M5.
+After recovery and all remaining active M4 HARD gates pass, create/push the M4 review pack, update Framework `LATEST_REPORT.md` to `READY_FOR_M5_REVIEW`, ensure both worktrees are clean, and STOP. Do not begin M5.
