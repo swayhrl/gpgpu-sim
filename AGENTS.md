@@ -1,124 +1,133 @@
 # AGENTS.md — Decoupled-Tag L1 M5 Core Workflow
 
-This repository contains the simulator-core implementation used for M5 mechanism/performance experiments.
+This repository contains the simulator-core implementation used for M5 mechanism/performance reproduction.
 
 ## Mandatory read order on `hrl/decoupled-l1-m5-v0`
 
-1. `docs/dtc_l1/DTC_L1_SPEC.md` — frozen architecture specification.
-2. `docs/dtc_l1/README.md`.
-3. Framework `hrl/decoupled-l1-exp-m5-v0:AGENTS.md`.
-4. Framework `docs/dtc_l1/chatgpt_handoff/CURRENT_STATE.md`.
-5. Framework `docs/dtc_l1/m5/M5_V1_APPROVAL.md`.
-6. Framework `docs/dtc_l1/m5/M5_DIRTY_VICTIM_POLICY_RESOLUTION.md`.
-7. Framework `docs/dtc_l1/m5/M5_EXPERIMENT_MATRIX.md`.
-8. Framework `docs/dtc_l1/m5/M5_PROBLEM_RESOLUTION_POLICY.md`.
-9. Framework `docs/dtc_l1/m5/M5_HANDOFF_CONTRACT.md`.
-10. Framework `docs/dtc_l1/m5/M5_GRAPHICS_PREP.md`.
-11. Framework `docs/dtc_l1/chatgpt_handoff/CODEX_NEXT_STAGE.md`.
-12. Framework `docs/dtc_l1/chatgpt_handoff/GOAL_START.md`.
-13. Framework `docs/dtc_l1/codex_handoff/LATEST_REPORT.md`.
-14. Framework `docs/dtc_l1/implementation/M5_ISSUE_LOG.md`.
-15. M4 final review pack as validated historical context.
+1. `docs/dtc_l1/DTC_L1_SPEC.md`
+2. `docs/dtc_l1/README.md`
+3. Framework `hrl/decoupled-l1-exp-m5-v0:AGENTS.md`
+4. Framework `docs/dtc_l1/chatgpt_handoff/CURRENT_STATE.md`
+5. Framework `docs/dtc_l1/m5/M5_V1_APPROVAL.md`
+6. Framework `docs/dtc_l1/m5/M5_DIRTY_VICTIM_POLICY_RESOLUTION.md`
+7. Framework `docs/dtc_l1/m5/M5_V2_GRAPHICS_CONTINUATION_APPROVAL.md`
+8. Framework `docs/dtc_l1/m5/M5_EXPERIMENT_MATRIX.md`
+9. Framework `docs/dtc_l1/m5/M5_PROBLEM_RESOLUTION_POLICY.md`
+10. Framework `docs/dtc_l1/m5/M5_HANDOFF_CONTRACT.md`
+11. Framework `docs/dtc_l1/m5/M5_GRAPHICS_PREP.md`
+12. Framework `docs/dtc_l1/m5/M5_GRAPHICS_POST_COMPUTE_PLAN.md`
+13. Framework `docs/dtc_l1/m5/M5_GRAPHICS_HANDOFF_CONTRACT.md`
+14. Framework `docs/dtc_l1/chatgpt_handoff/CODEX_NEXT_STAGE.md`
+15. Framework `docs/dtc_l1/chatgpt_handoff/GOAL_START.md`
+16. Framework `docs/dtc_l1/codex_handoff/LATEST_REPORT.md`
+17. Framework `docs/dtc_l1/implementation/M5_ISSUE_LOG.md`
+18. M4 final review pack
 
-`M5_DIRTY_VICTIM_POLICY_RESOLUTION.md` is the researcher-approved specific refinement for M5-T005.
+## Anchors and branch roles
 
-## Anchors
-
-Parent validated M1-M4 Core:
+Validated M1-M4 Core anchor:
 
 `cdeec769fd0c1be12b45d58536ecb81074d4b415`
 
-M5 Core branch:
+Active compute M5 Core:
 
 `hrl/decoupled-l1-m5-v0`
 
-Do not modify/back-port M5 work to the validated M1-M4 branch.
+Do not modify/back-port M5 work to validated M1-M4.
+
+After M5.6 PASS, record the exact compute-freeze Core SHA and create:
+
+`hrl/decoupled-l1-m5-graphics-v0`
+
+from that SHA. Post-compute graphics frontend/replay integration belongs on the graphics branch so completed compute FORMAL evidence remains immutable.
 
 ## Current progression
 
-M5.0A is PASS. M5.0B is active.
+M5.0A is PASS. M5.0B is active. Close M5-T005 under the approved ratio-zero policy, then continue compute through M5.6.
 
-M5-T005's researcher decision is resolved. The formal conventional-L1 policy is explicit `-gpgpu_l1_cache_write_ratio 0` for all paper-facing modes/config variants.
+Compute sequence:
 
-Execute the Framework R5DV sequence, close M5-T005, then continue M5.0B and the remaining M5 sequence automatically.
+`M5.0B -> M5.0C -> M5.0D -> M5.0E -> M5.1 -> M5.2 -> M5.3 -> M5.4 -> M5.5 -> M5.6`
 
-Ordinary repairable Core issues remain in-goal problems. Pause only at a new genuine researcher-decision boundary or terminal `M5_COMPUTE_READY_FOR_REVIEW`.
+M5.6 is now a compute freeze boundary, not the persistent Goal terminal state.
 
-## Frozen architecture boundary
+After M5.6, continue on graphics branches:
 
-M5 may repair implementation/modeling fidelity bugs, add source-backed counters, improve workload integration, and parameterize already-frozen knobs.
+`M5.7 -> M5.8 -> M5.9 -> M5.10 -> M5.11 -> M5.12`
 
-M5 must not silently change frozen DTC architecture semantics to obtain a target result. Preserve at least:
+Final M5 state is either `M5_FULL_REPRO_READY_FOR_REVIEW` or, after exhaustive source-backed graphics recovery fails, `M5_COMPUTE_COMPLETE_GRAPHICS_SOURCE_UNAVAILABLE_READY_FOR_REVIEW`.
+
+## Frozen DTC architecture boundary
+
+M5 may repair implementation/modeling fidelity bugs, add source-backed counters, improve workload/graphics integration, and parameterize already-frozen knobs.
+
+Do not silently change frozen DTC semantics to obtain target results. Preserve at least:
 
 - 128B logical Tag->Physical mapping for paper whole-line modes;
-- paper Base PIB=8 / traditional MSHR=32 defaults;
-- IO FIFO retirement, default PIB 256;
-- OO ready retirement, Ref Count/Shadow Ref semantics, default PIB 128;
+- Base PIB=8 / traditional MSHR=32 defaults;
+- IO FIFO retirement, PIB 256;
+- OO ready retirement, Ref Count/Shadow Ref, PIB 128;
 - physical partial allocation/no rollback;
-- IO passive release vs OO active reclaim semantics;
+- IO passive release vs OO active reclaim;
 - 4 Tag banks, 1 request/bank/cycle, max 4/cycle;
-- physical allocation width 4;
+- allocation width 4;
 - IO/OO retire width 1/cycle;
 - lower issue width 1/SM/cycle;
 - no traditional L1 MSHR as DTC capacity/merge state;
 - exact fill generation/identity;
 - Atomic side effects never merged/lost;
-- architectural `.cg` bypass distinct from optional DTC-native no-Tag policy bypass.
+- architectural `.cg` bypass semantics.
 
-`MODERN_OO_SECTOR` is an extension and must not contaminate Figures 4.2-4.10.
+`MODERN_OO_SECTOR` remains an extension and must not contaminate paper Figures 4.2-4.10.
 
-## Researcher-frozen M5 interpretations
+## Researcher-frozen compute policy
 
-### Figure 4.5
+PAPER_BASE: conventional 16 KiB L1, PIB=8, MSHR=32.
 
-PAPER_IO/PAPER_OO primary DTC configuration uses 16 KiB logical Tag/cache capacity + 80 KiB physical Cacheline Array. IO PIB=256; OO PIB=128. PAPER_BASE remains conventional 16 KiB L1, PIB=8, MSHR=32.
+PAPER_IO/PAPER_OO: 16 KiB logical Tag/cache + 80 KiB physical Cacheline Array; IO PIB=256, OO PIB=128.
 
-### Conventional-L1 dirty-victim policy
+All paper-facing formal configurations use explicit:
 
-For every paper-facing formal configuration use explicitly:
+`-gpgpu_l1_cache_write_ratio 0`
 
-`-gpgpu_l1_cache_write_ratio 0`.
+Preserve WRITE_THROUGH, allocation, LRU, geometry, timing, MSHR, scoreboard, and DTC semantics otherwise. Ratio 25 is diagnostic platform policy only.
 
-Keep write policy `WRITE_THROUGH`, write-allocation semantics, LRU, geometry, timing, MSHR, and scoreboard semantics otherwise unchanged.
+Figure 4.7 common live miss = new-miss lower-request commit -> final lower response; primary metric is per-SM cycle average.
 
-Do **not** modify `tag_array::probe` to add a new starvation fallback solely to preserve ratio 25. The inherited ratio 25 is diagnostic platform policy only.
+Figure 4.2 paper categories = PIB full, true Tag/cacheline allocation failure, MSHR capacity/merge, miss queue/downstream capacity; Tag-bank arbitration is diagnostic only.
 
-A directed real-path regression must prove that a set whose ways are locally MODIFIED can legally replace a victim and make forward progress under ratio 0 without weakening assertions or fabricating writeback semantics.
+## Problem-resolution behavior
 
-### Figure 4.7
+Follow Framework `M5_PROBLEM_RESOLUTION_POLICY.md` and graphics continuation rules.
 
-Common live miss: new-miss lower-request commit -> final lower response. Primary plotted metric is per-SM cycle average.
+Do not stop merely for source-backed assertions, missing instrumentation, operation mismatch, weak/negative speedup, absent expected pressure, timeout, build/shader/trace integration failure, or a repairable simulator bug.
 
-### Figure 4.2
+Diagnose -> repair -> regress -> invalidate stale evidence -> continue.
 
-Formal categories: PIB full; true Tag/cacheline allocation failure; MSHR entry/merge failure; miss queue/downstream capacity failure. Tag-bank arbitration is diagnostic only.
+Pause only if the next source-correct step changes frozen DTC architecture semantics, requires a proxy to be claimed as formal graphics reproduction, leaves irreducible scientific ambiguity, or reaches a final review state.
 
-## M5 problem resolution
+## Graphics-specific Core rules
 
-Follow Framework `M5_PROBLEM_RESOLUTION_POLICY.md`.
+The existing `UNAVAILABLE_WITH_CURRENT_INFRA` result is not permission to special-case graphics inside DTC.
 
-Do not stop merely for a source-backed assertion, missing instrumentation, operation mismatch, weak/negative speedup, absent expected pressure, Tag/downstream domination, timeout, repairable simulator bug, or a performance shift after ratio 0.
+If M5.8 finds a source-backed DIRECT or TRACE path, integrate the frontend/replay path around the validated DTC mechanism. Do not add benchmark/scene IDs, magic addresses, or graphics-specific hit/miss behavior inside DTC.
 
-For poor performance, establish correctness/workload/config identity first, then analyze Base bottleneck, DTC live concurrency, downstream saturation, duplicate traffic, and IO/OO HOL opportunity.
+Texture/fixed-function/framebuffer traffic must be routed according to source evidence and separated when outside DTC scope.
 
-Do not tune Core parameters/workload inputs to match thesis speedups.
+A different graphics timing driver must not be declared comparable to compute cycles without the Framework comparability gate.
 
-## Formal-data and regression discipline
+## Formal-data and Git discipline
 
-Any behavior/timing Core change invalidates affected downstream FORMAL results and requires the M5 regression set.
+Any behavior/timing Core change invalidates affected downstream FORMAL data on its branch and requires regression.
 
-The ratio-0 decision is a formal configuration identity change. Ratio-25 runs remain diagnostic and cannot be relabeled as formal ratio-0 results.
-
-Instrumentation-only changes may preserve old performance cycles only after exact neutrality differential.
-
-## Git/evidence discipline
+Compute freeze results remain immutable when graphics branch changes begin.
 
 - Never `git add .` or `git add -A`.
 - Stage explicit paths only.
 - Keep semantic commits reviewable.
 - Do not force-push.
-- Preserve ratio-25 diagnostic evidence.
-- Record Core/Framework/config/workload identities.
+- Preserve diagnostic evidence.
+- Record source/config/workload/asset/trace identities.
 - Do not commit raw logs/traces/builds/binaries.
 
-Use the Framework handoff contract at every M5 substage. A substage PASS means checkpoint/push/continue, not wait for human confirmation.
+Figure 4.6 area/synthesis remains outside M5 and requires separate M6 authorization.
