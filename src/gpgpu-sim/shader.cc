@@ -50,6 +50,7 @@
 #include "icnt_wrapper.h"
 #include "mem_fetch.h"
 #include "mem_latency_stat.h"
+#include "memory_telemetry.h"
 #include "shader_trace.h"
 #include "stat-tool.h"
 #include "traffic_breakdown.h"
@@ -2222,6 +2223,11 @@ mem_stage_stall_type ldst_unit::process_memory_access_queue_l1cache(
           m_mf_allocator->alloc(inst, inst.accessq_back(),
                                 m_core->get_gpu()->gpu_sim_cycle +
                                     m_core->get_gpu()->gpu_tot_sim_cycle);
+      // Bind the exact coalesced-access provenance at the L1D admission
+      // boundary.  This is redundant with the mem_access copy, and makes the
+      // observational cross-layer label explicit across cache-internal paths.
+      mf->set_translation_telemetry_outcome(
+          inst.accessq_back().get_translation_telemetry_outcome());
       unsigned bank_id = m_config->m_L1D_config.set_bank(mf->get_addr());
       assert(bank_id < m_config->m_L1D_config.l1_banks);
 
@@ -2256,11 +2262,17 @@ mem_stage_stall_type ldst_unit::process_memory_access_queue_l1cache(
         m_mf_allocator->alloc(inst, inst.accessq_back(),
                               m_core->get_gpu()->gpu_sim_cycle +
                                   m_core->get_gpu()->gpu_tot_sim_cycle);
+    mf->set_translation_telemetry_outcome(
+        inst.accessq_back().get_translation_telemetry_outcome());
     std::list<cache_event> events;
     enum cache_request_status status = cache->access(
         mf->get_addr(), mf,
         m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle,
         events);
+    m4c_memory_telemetry_instance().record_l1(
+        mf->get_telemetry_class(), status, mf->get_access_size(), m_sid,
+        mf->get_translation_telemetry_outcome());
+    mf->set_l1_telemetry_cache_status(status);
     return process_cache_access(cache, mf->get_addr(), inst, events, mf,
                                 status);
   }
@@ -2276,6 +2288,10 @@ void ldst_unit::L1_latency_queue_cycle() {
                         m_core->get_gpu()->gpu_sim_cycle +
                             m_core->get_gpu()->gpu_tot_sim_cycle,
                         events);
+      m4c_memory_telemetry_instance().record_l1(
+          mf_next->get_telemetry_class(), status, mf_next->get_access_size(),
+          m_sid, mf_next->get_translation_telemetry_outcome());
+      mf_next->set_l1_telemetry_cache_status(status);
 
       bool write_sent = was_write_sent(events);
       bool read_sent = was_read_sent(events);
@@ -2418,6 +2434,8 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
   mem_stage_stall_type stall_cond = NO_RC_FAIL;
   mem_access_t &access = inst.accessq_back();
   if (!access.vm_translation_applied()) {
+    vm_translation::translation_source translation_outcome =
+        vm_translation::TRANSLATION_SOURCE_UNOBSERVED;
     vm_provenance().record(m_config->gpgpu_vm_mode, inst, access, m_sid, m_tpc,
                            m_core->get_kernel(),
                            m_config->gpgpu_vm_page_size);
@@ -2425,6 +2443,7 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
     if (m_config->gpgpu_vm_mode == 0) {
       ++m_stats->vm_disabled_bypasses;
       access.bypass_vm_translation();
+      translation_outcome = vm_translation::TRANSLATION_SOURCE_DISABLED;
     } else if (m_config->gpgpu_vm_mode == 1) {
       assert(vm_core::valid_page_size(m_config->gpgpu_vm_page_size));
       assert(!vm_core::transaction_crosses_page(
@@ -2436,6 +2455,8 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
       ++m_stats->vm_ideal_translations;
       assert(access.get_sim_va() == access.get_sim_pa());
       ++m_stats->vm_identity_equal;
+      translation_outcome =
+          vm_translation::TRANSLATION_SOURCE_IDEAL_IDENTITY;
     } else {
       assert(m_config->gpgpu_vm_mode == 2);
       assert(m_gpu->vm_translation() != NULL);
@@ -2445,11 +2466,11 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
       uint64_t translated_pa = 0;
       const vm_translation::lookup_result result =
           m_gpu->vm_translation()->translate(
-              m_sid, 0, access.get_sim_va(),
+              m_sid, 0, access.get_sim_va(), access.get_size(),
               m_core->get_gpu()->gpu_sim_cycle +
                   m_core->get_gpu()->gpu_tot_sim_cycle,
               access.get_uid(),
-              &translated_pa);
+              &translated_pa, &translation_outcome);
       if (result != vm_translation::READY) {
         ++m_stats->vm_translation_stall_cycles;
         stall_reason = COAL_STALL;
@@ -2458,10 +2479,36 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
                                             : (iswrite ? G_MEM_ST : G_MEM_LD);
         return false;
       }
+      assert(translation_outcome !=
+             vm_translation::TRANSLATION_SOURCE_UNOBSERVED);
       access.set_sim_pa(static_cast<new_addr_type>(translated_pa));
       ++m_stats->vm_ideal_translations;
       assert(access.get_sim_va() == access.get_sim_pa());
     }
+    // The class is captured at the coalesced VM boundary from the frozen map.
+    // It is metadata copied into mem_fetch, never a cache/TLB key component.
+    const vm_translation::object_class object = m_gpu->classify_vm_object(
+        access.get_sim_va(), access.get_size());
+    if (object == vm_translation::OBJECT_WEIGHT)
+      access.set_telemetry_class(M4C_DATA_WEIGHT);
+    else if (object == vm_translation::OBJECT_KV_CACHE)
+      access.set_telemetry_class(M4C_DATA_KV_CACHE);
+    else
+      access.set_telemetry_class(M4C_DATA_UNKNOWN);
+    access.set_translation_telemetry_outcome(translation_outcome);
+  }
+
+  // Count front-end work once for each dynamically issued memory instruction
+  // and each coalesced access object.  The marks are observational fields;
+  // retries through VM or cache backpressure cannot inflate these metrics.
+  if (inst.mark_m4c_frontend_observed())
+    m4c_memory_telemetry_instance().record_frontend_instruction(
+        inst.active_count());
+  if (access.mark_m4c_frontend_transaction_observed()) {
+    const unsigned operation = inst.isatomic() ? 2U : (inst.is_store() ? 1U : 0U);
+    m4c_memory_telemetry_instance().record_frontend_transaction(
+        access.get_telemetry_class(), operation, access.get_byte_mask().count(),
+        access.get_size(), access.get_sector_mask().count());
   }
 
   bool bypassL1D = false;

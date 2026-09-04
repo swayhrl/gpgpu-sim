@@ -1668,6 +1668,13 @@ class shader_core_config : public core_config {
   unsigned gpgpu_vm_pwc_mode;
   unsigned gpgpu_vm_pwc_entries;
   unsigned gpgpu_vm_pwc_lookup_latency;
+  // Optional immutable M4C object-range map.  Empty preserves the accepted
+  // M1-M3 behavior and produces no object-attribution counters.
+  char *gpgpu_vm_object_map;
+  // M4C/M4B bounded telemetry level: 0=off, 1=ROI aggregate, 2=aggregate
+  // plus fixed transaction windows, 3=reserved bounded diagnostics.
+  unsigned gpgpu_memory_telemetry_level;
+  uint64_t gpgpu_memory_telemetry_window_transactions;
 
   unsigned gpgpu_num_sched_per_core;
   int gpgpu_max_insn_issue_per_warp;

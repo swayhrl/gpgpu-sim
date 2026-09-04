@@ -47,6 +47,7 @@
 #include "l2cache_trace.h"
 #include "mem_fetch.h"
 #include "mem_latency_stat.h"
+#include "memory_telemetry.h"
 #include "shader.h"
 
 mem_fetch *partition_mf_allocator::alloc(new_addr_type addr,
@@ -371,6 +372,9 @@ void memory_partition_unit::dram_cycle() {
       !m_dram->full(m_dram_latency_queue.front().req->is_write())) {
     mem_fetch *mf = m_dram_latency_queue.front().req;
     m_dram_latency_queue.pop_front();
+    m4c_memory_telemetry_instance().record_dram(
+        mf->get_telemetry_class(), mf->get_access_size(), mf->get_is_write(),
+        m_id);
     m_dram->push(mf);
   }
 }
@@ -463,6 +467,9 @@ memory_sub_partition::~memory_sub_partition() {
 }
 
 void memory_sub_partition::cache_cycle(unsigned cycle) {
+  m4c_memory_telemetry_instance().record_l2_queue(
+      m_icnt_L2_queue->get_length(), m_L2_dram_queue->get_length(),
+      m_dram_L2_queue->get_length(), m_L2_icnt_queue->get_length(), m_id);
   // L2 fill responses
   if (!m_config->m_L2_config.disabled()) {
     if (m_L2cache->access_ready() && !m_L2_icnt_queue->full()) {
@@ -529,6 +536,17 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
                               m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
                                   m_memcpy_cycle_offset,
                               events);
+        m4c_memory_telemetry_instance().record_l2(
+            mf->get_telemetry_class(), status, mf->get_access_size(), m_id,
+            mf->get_translation_telemetry_outcome(),
+            mf->get_l1_telemetry_cache_status());
+        for (std::list<cache_event>::const_iterator event = events.begin();
+             event != events.end(); ++event) {
+          if (event->m_cache_event_type == EVICTION_OBSERVED)
+            m4c_memory_telemetry_instance().record_l2_replacement(
+                mf->get_telemetry_class(),
+                event->m_evicted_block.m_telemetry_class, m_id);
+        }
         bool write_sent = was_write_sent(events);
         bool read_sent = was_read_sent(events);
         if (mf->get_access_type() == PTE_ACC_R && read_sent)

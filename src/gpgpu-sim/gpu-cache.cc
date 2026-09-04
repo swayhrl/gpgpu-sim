@@ -359,6 +359,10 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
       m_miss++;
       shader_cache_access_log(m_core_id, m_type_id, 1);  // log cache misses
       if (m_config.m_alloc_policy == ON_MISS) {
+        if (!m_lines[idx]->is_invalid_line()) {
+          evicted.m_has_valid_victim = true;
+          evicted.m_telemetry_class = m_lines[idx]->get_telemetry_class();
+        }
         if (m_lines[idx]->is_modified_line()) {
           wb = true;
           // m_lines[idx]->set_byte_mask(mf);
@@ -370,6 +374,7 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
         }
         m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr),
                                time, mf->get_access_sector_mask());
+        m_lines[idx]->set_telemetry_class(mf->get_telemetry_class());
       }
       break;
     case SECTOR_MISS:
@@ -403,6 +408,11 @@ void tag_array::fill(new_addr_type addr, unsigned time, mem_fetch *mf,
                      bool is_write) {
   fill(addr, time, mf->get_access_sector_mask(), mf->get_access_byte_mask(),
        is_write);
+  unsigned idx;
+  enum cache_request_status status =
+      probe(addr, idx, mf, is_write);
+  if (status != RESERVATION_FAIL)
+    m_lines[idx]->set_telemetry_class(mf->get_telemetry_class());
 }
 
 void tag_array::fill(new_addr_type addr, unsigned time,
@@ -441,6 +451,7 @@ void tag_array::fill(unsigned index, unsigned time, mem_fetch *mf) {
   bool before = m_lines[index]->is_modified_line();
   m_lines[index]->fill(time, mf->get_access_sector_mask(),
                        mf->get_access_byte_mask());
+  m_lines[index]->set_telemetry_class(mf->get_telemetry_class());
   if (m_lines[index]->is_modified_line() && !before) {
     m_dirty++;
   }
@@ -1367,6 +1378,9 @@ void baseline_cache::send_read_request(new_addr_type addr,
     else
       m_tag_array->access(block_addr, time, cache_index, wb, evicted, mf);
 
+    if (!read_only && evicted.m_has_valid_victim)
+      events.push_back(cache_event(EVICTION_OBSERVED, evicted));
+
     m_mshrs.add(mshr_addr, mf);
     m_stats.inc_stats(mf->get_access_type(), MSHR_HIT, mf->get_streamID());
     do_miss = true;
@@ -1377,6 +1391,9 @@ void baseline_cache::send_read_request(new_addr_type addr,
       m_tag_array->access(block_addr, time, cache_index, mf);
     else
       m_tag_array->access(block_addr, time, cache_index, wb, evicted, mf);
+
+    if (!read_only && evicted.m_has_valid_victim)
+      events.push_back(cache_event(EVICTION_OBSERVED, evicted));
 
     m_mshrs.add(mshr_addr, mf);
     m_extra_mf_fields[mf] = extra_mf_fields(
@@ -1552,11 +1569,15 @@ enum cache_request_status data_cache::wr_miss_wa_naive(
   // if(!send_write_allocate(mf, addr, block_addr, cache_index, time, events))
   //    return RESERVATION_FAIL;
 
-  const mem_access_t *ma =
+  mem_access_t *ma =
       new mem_access_t(m_wr_alloc_type, mf->get_addr(), m_config.get_atom_sz(),
                        false,  // Now performing a read
                        mf->get_access_warp_mask(), mf->get_access_byte_mask(),
                        mf->get_access_sector_mask(), m_gpu->gpgpu_ctx);
+  ma->set_telemetry_class(mf->get_telemetry_class());
+  ma->set_translation_telemetry_outcome(
+      mf->get_translation_telemetry_outcome());
+  ma->set_l1_telemetry_cache_status(mf->get_l1_telemetry_cache_status());
 
   mem_fetch *n_mf = new mem_fetch(
       *ma, NULL, mf->get_streamID(), mf->get_ctrl_size(), mf->get_wid(),
@@ -1682,11 +1703,15 @@ enum cache_request_status data_cache::wr_miss_wa_fetch_on_write(
       return RESERVATION_FAIL;
     }
 
-    const mem_access_t *ma = new mem_access_t(
+    mem_access_t *ma = new mem_access_t(
         m_wr_alloc_type, mf->get_addr(), m_config.get_atom_sz(),
         false,  // Now performing a read
         mf->get_access_warp_mask(), mf->get_access_byte_mask(),
         mf->get_access_sector_mask(), m_gpu->gpgpu_ctx);
+    ma->set_telemetry_class(mf->get_telemetry_class());
+    ma->set_translation_telemetry_outcome(
+        mf->get_translation_telemetry_outcome());
+    ma->set_l1_telemetry_cache_status(mf->get_l1_telemetry_cache_status());
 
     mem_fetch *n_mf = new mem_fetch(
         *ma, NULL, mf->get_streamID(), mf->get_ctrl_size(), mf->get_wid(),

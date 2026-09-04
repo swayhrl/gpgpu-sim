@@ -6,6 +6,9 @@
 #include <stdio.h>
 
 #include <memory>
+#include <map>
+#include <set>
+#include <string>
 #include <vector>
 
 #include "vm_core.h"
@@ -21,6 +24,11 @@ struct translation_key {
   bool operator==(const translation_key &other) const {
     return asid == other.asid && vpn == other.vpn &&
            page_size == other.page_size;
+  }
+  bool operator<(const translation_key &other) const {
+    if (asid != other.asid) return asid < other.asid;
+    if (vpn != other.vpn) return vpn < other.vpn;
+    return page_size < other.page_size;
   }
 };
 
@@ -137,6 +145,51 @@ struct tlb_config {
   unsigned sets() const;
 };
 
+// M4C object labels are observability metadata.  They are intentionally not
+// part of translation_key, so they cannot affect a TLB match, replacement, or
+// timing decision.
+enum object_class {
+  OBJECT_UNKNOWN = 0,
+  OBJECT_WEIGHT = 1,
+  OBJECT_KV_CACHE = 2,
+  OBJECT_CLASS_COUNT = 3
+};
+
+// Observational completion provenance for cross-layer M4C telemetry.  These
+// values mirror the generic mem_access carrier but remain a VM-local API so
+// the accepted controller is independently testable.
+enum translation_source {
+  TRANSLATION_SOURCE_UNOBSERVED = 0,
+  TRANSLATION_SOURCE_DISABLED,
+  TRANSLATION_SOURCE_IDEAL_IDENTITY,
+  TRANSLATION_SOURCE_L1_TLB_HIT,
+  TRANSLATION_SOURCE_L2_TLB_HIT,
+  TRANSLATION_SOURCE_PTW
+};
+
+const char *object_class_name(object_class object);
+
+// A frozen line-oriented schema replaces per-run ad-hoc metadata parsing.  A
+// non-empty map path must parse and validate in full before simulation starts.
+class object_range_map {
+ public:
+  explicit object_range_map(const std::string &path = "");
+  bool enabled() const { return m_enabled; }
+  object_class classify(uint64_t start, uint64_t bytes) const;
+
+ private:
+  struct range {
+    uint64_t start;
+    uint64_t end;
+    object_class object;
+    range(uint64_t s = 0, uint64_t e = 0,
+          object_class c = OBJECT_UNKNOWN)
+        : start(s), end(e), object(c) {}
+  };
+  bool m_enabled;
+  std::vector<range> m_ranges;
+};
+
 enum pwc_mode { PWC_OFF = 0, PWC_FINITE = 1, PWC_IDEAL = 2 };
 
 // This is a generic M3 modeling decision.  FINITE defaults to the 128-entry
@@ -163,11 +216,21 @@ struct tlb_stats {
       : accesses(0), hits(0), misses(0), evictions(0), port_stalls(0) {}
 };
 
+struct tlb_fill_result {
+  bool evicted;
+  object_class victim_object;
+  tlb_fill_result(bool did_evict = false,
+                  object_class victim = OBJECT_UNKNOWN)
+      : evicted(did_evict), victim_object(victim) {}
+};
+
 class set_associative_tlb {
  public:
   explicit set_associative_tlb(const tlb_config &config = tlb_config());
   bool probe(const translation_key &key, uint64_t cycle, uint64_t *ppn);
-  void fill(const translation_key &key, uint64_t ppn, uint64_t cycle);
+  tlb_fill_result fill(const translation_key &key, uint64_t ppn,
+                       uint64_t cycle,
+                       object_class object = OBJECT_UNKNOWN);
   bool try_consume_port(uint64_t cycle);
   unsigned occupancy() const;
   const tlb_stats &stats() const { return m_stats; }
@@ -178,7 +241,10 @@ class set_associative_tlb {
     translation_key key;
     uint64_t ppn;
     uint64_t last_touch;
-    entry() : valid(false), key(), ppn(0), last_touch(0) {}
+    object_class object;
+    entry()
+        : valid(false), key(), ppn(0), last_touch(0),
+          object(OBJECT_UNKNOWN) {}
   };
   unsigned set_for(const translation_key &key) const;
   tlb_config m_config;
@@ -207,6 +273,7 @@ struct translation_config {
   unsigned ptw_mode;
   page_table_config page_table;
   pwc_config pwc;
+  std::string object_map_path;
   translation_config(unsigned sms = 1,
                      uint64_t page = vm_core::kDefaultBasePageSize,
                      const tlb_config &l1_config = tlb_config(),
@@ -217,12 +284,14 @@ struct translation_config {
                          page_table_config(),
                      unsigned page_table_walk_mode = 0,
                      const pwc_config &pwc_config_value = pwc_config(),
-                     unsigned l1_latency = 0, unsigned l2_latency = 0)
+                     unsigned l1_latency = 0, unsigned l2_latency = 0,
+                     const std::string &object_map = "")
       : num_sms(sms), page_size(page), l1(l1_config), l2(l2_config),
         mshr_entries(mshr_count), pwq_entries(pwq_count), walkers(walker_count),
         walk_latency(latency), l1_lookup_latency(l1_latency),
         l2_lookup_latency(l2_latency), ptw_mode(page_table_walk_mode),
-        page_table(page_table_config_value), pwc(pwc_config_value) {}
+        page_table(page_table_config_value), pwc(pwc_config_value),
+        object_map_path(object_map) {}
   bool valid() const;
 };
 
@@ -306,6 +375,45 @@ struct translation_stats {
   std::vector<uint64_t> pwc_hits_by_level;
   std::vector<uint64_t> pwc_misses_by_level;
   std::vector<uint64_t> pwc_pte_requests_skipped_by_level;
+  struct object_stats {
+    uint64_t translation_requesters;
+    uint64_t l1_lookup_launches;
+    uint64_t l1_hits;
+    uint64_t l1_misses;
+    uint64_t l2_lookup_launches;
+    uint64_t l2_hits;
+    uint64_t l2_misses;
+    uint64_t mshr_allocations;
+    uint64_t mshr_merges;
+    uint64_t walk_starts;
+    uint64_t completed;
+    uint64_t requester_latency_cycles_total;
+    uint64_t requester_latency_cycles_max;
+    uint64_t requester_mshr_wait_cycles_total;
+    uint64_t requester_mshr_wait_cycles_max;
+    uint64_t pwc_accesses;
+    uint64_t pwc_hits;
+    uint64_t pwc_misses;
+    uint64_t pte_requests;
+    uint64_t pte_l2_only_responses;
+    uint64_t pte_dram_responses;
+    uint64_t pte_memory_wait_cycles_total;
+    uint64_t pte_memory_wait_cycles_max;
+    uint64_t l2_fills;
+    object_stats()
+        : translation_requesters(0), l1_lookup_launches(0), l1_hits(0),
+          l1_misses(0), l2_lookup_launches(0), l2_hits(0), l2_misses(0),
+          mshr_allocations(0), mshr_merges(0), walk_starts(0), completed(0),
+          requester_latency_cycles_total(0), requester_latency_cycles_max(0),
+          requester_mshr_wait_cycles_total(0),
+          requester_mshr_wait_cycles_max(0), pwc_accesses(0), pwc_hits(0),
+          pwc_misses(0), pte_requests(0), pte_l2_only_responses(0),
+          pte_dram_responses(0), pte_memory_wait_cycles_total(0),
+          pte_memory_wait_cycles_max(0), l2_fills(0) {}
+  };
+  bool object_attribution_enabled;
+  object_stats object[OBJECT_CLASS_COUNT];
+  uint64_t l2_replacement_matrix[OBJECT_CLASS_COUNT][OBJECT_CLASS_COUNT];
   translation_stats()
       : lookup_requests(0), pending_waiter_bypasses(0),
         lookup_inflight_bypasses(0), l1_lookup_launches(0),
@@ -333,7 +441,8 @@ struct translation_stats {
         pwc_accesses(0), pwc_hits(0), pwc_misses(0), pwc_inserts(0),
         pwc_evictions(0), pwc_occupancy(0), pwc_occupancy_high_watermark(0),
         pwc_service_cycles(0), pwc_accesses_by_level(), pwc_hits_by_level(),
-        pwc_misses_by_level(), pwc_pte_requests_skipped_by_level() {}
+        pwc_misses_by_level(), pwc_pte_requests_skipped_by_level(),
+        object_attribution_enabled(false), object(), l2_replacement_matrix() {}
 };
 
 // G2-1 controller: hit latency is zero, but both TLBs have finite lookup
@@ -348,8 +457,17 @@ class translation_controller {
   translation_controller(const translation_config &config,
                          page_table_backend *backend);
   lookup_result translate(unsigned sid, unsigned asid, uint64_t sim_va,
+                          uint64_t request_bytes, uint64_t cycle,
+                          uint64_t waiter_uid,
+                          uint64_t *sim_pa,
+                          translation_source *source = 0);
+  // Retained for the accepted M1-M3 directed tests.  Simulator callers pass
+  // the real coalesced transaction size through the overload above.
+  lookup_result translate(unsigned sid, unsigned asid, uint64_t sim_va,
                           uint64_t cycle, uint64_t waiter_uid,
-                          uint64_t *sim_pa);
+                          uint64_t *sim_pa) {
+    return translate(sid, asid, sim_va, 1, cycle, waiter_uid, sim_pa, 0);
+  }
   // G2-2 test hook and G2-3 walker completion entry point.
   bool complete_translation(const translation_key &key, uint64_t cycle);
   void cycle(uint64_t cycle);
@@ -369,6 +487,7 @@ class translation_controller {
   const set_associative_tlb &l1(unsigned sid) const;
   const set_associative_tlb &l2() const { return m_l2; }
   const translation_stats &stats() const { return m_stats; }
+  bool object_attribution_conserves() const;
   void print_stats(FILE *fout) const;
 
  private:
@@ -382,21 +501,26 @@ class translation_controller {
     uint64_t l2_launch_cycle;
     uint64_t l2_complete_cycle;
     uint64_t mshr_join_cycle;
+    object_class object;
     waiter(unsigned s, uint64_t u, uint64_t entry, uint64_t l1_launch,
            uint64_t l1_complete, bool l2_issued, uint64_t l2_launch,
-           uint64_t l2_complete,
-           uint64_t mshr_join)
+           uint64_t l2_complete, uint64_t mshr_join,
+           object_class object_classification)
         : sid(s), uid(u), entry_cycle(entry), l1_launch_cycle(l1_launch),
           l1_complete_cycle(l1_complete), l2_issued(l2_issued),
           l2_launch_cycle(l2_launch),
-          l2_complete_cycle(l2_complete), mshr_join_cycle(mshr_join) {}
+          l2_complete_cycle(l2_complete), mshr_join_cycle(mshr_join),
+          object(object_classification) {}
   };
   struct mshr_entry {
     translation_key key;
     std::vector<waiter> waiters;
     uint64_t enqueue_cycle;
-    mshr_entry(const translation_key &k, uint64_t enqueue)
-        : key(k), waiters(), enqueue_cycle(enqueue) {}
+    object_class object;
+    mshr_entry(const translation_key &k, uint64_t enqueue,
+               object_class object_classification)
+        : key(k), waiters(), enqueue_cycle(enqueue),
+          object(object_classification) {}
     bool has_waiter(uint64_t uid) const;
   };
   mshr_entry *find_mshr(const translation_key &key);
@@ -421,13 +545,25 @@ class translation_controller {
     uint64_t l2_complete_cycle;
     uint64_t ready_cycle;
     uint64_t ppn;
+    object_class object;
+    translation_source source;
     lookup_operation(unsigned s, uint64_t u, const translation_key &k,
-                     uint64_t entry, uint64_t ready)
+                     uint64_t entry, uint64_t ready,
+                     object_class object_classification)
         : sid(s), uid(u), key(k), stage(LOOKUP_L1_SERVICE),
           entry_cycle(entry), l1_launch_cycle(entry), l1_complete_cycle(0),
           l2_issued(false),
           l2_launch_cycle(0), l2_complete_cycle(0), ready_cycle(ready),
-          ppn(0) {}
+          ppn(0), object(object_classification),
+          source(TRANSLATION_SOURCE_UNOBSERVED) {}
+  };
+  struct completed_outcome {
+    translation_key key;
+    translation_source source;
+    completed_outcome(const translation_key &completed_key = translation_key(),
+                      translation_source completed_source =
+                          TRANSLATION_SOURCE_UNOBSERVED)
+        : key(completed_key), source(completed_source) {}
   };
   lookup_operation *find_lookup(unsigned sid, uint64_t uid,
                                 const translation_key &key);
@@ -444,11 +580,13 @@ class translation_controller {
     bool pwc_probe_scheduled;
     uint64_t pwc_probe_ready_cycle;
     bool pwc_miss_ready;
-    active_walk(const translation_key &k, uint64_t start, uint64_t ready)
+    object_class object;
+    active_walk(const translation_key &k, uint64_t start, uint64_t ready,
+                object_class object_classification)
         : key(k), start_cycle(start), ready_cycle(ready), next_level(0),
           pte_outstanding(false), pte_request_id(0), pte_issue_cycle(0),
           pwc_probe_scheduled(false), pwc_probe_ready_cycle(0),
-          pwc_miss_ready(false) {}
+          pwc_miss_ready(false), object(object_classification) {}
   };
   struct pwc_entry {
     unsigned asid;
@@ -470,7 +608,7 @@ class translation_controller {
                                  uint64_t l2_launch_cycle,
                                  uint64_t l2_complete_cycle,
                                  uint64_t mshr_join_cycle, bool used_mshr,
-                                 uint64_t ready_cycle);
+                                 uint64_t ready_cycle, object_class object);
   void service_lookups(uint64_t cycle);
   bool pwc_enabled() const { return m_config.pwc.mode != PWC_OFF; }
   bool pwc_is_leaf(unsigned level) const {
@@ -482,6 +620,8 @@ class translation_controller {
   bool pwc_identity(const translation_key &key, unsigned level,
                     unsigned *page_class, uint64_t *prefix) const;
   void initialize_pwc_stats();
+  object_class classify_key(const translation_key &key) const;
+  void note_object_requester(object_class object, const translation_key &key);
   translation_config m_config;
   radix_page_table_backend m_default_page_table;
   page_table_backend *m_page_table;
@@ -492,6 +632,12 @@ class translation_controller {
   std::vector<translation_key> m_pwq;
   std::vector<active_walk> m_active_walks;
   std::vector<pwc_entry> m_pwc;
+  // A PTW-completed requester re-enters through the existing L1 lookup path.
+  // Preserve that source label only until that normal completion is observed;
+  // this map has no timing or flow-control role.
+  std::map<uint64_t, completed_outcome> m_completed_outcomes;
+  object_range_map m_object_map;
+  std::set<translation_key> m_object_unique_keys[OBJECT_CLASS_COUNT];
   translation_stats m_stats;
   uint64_t m_next_pte_request_id;
   uint64_t m_pwc_touch_clock;

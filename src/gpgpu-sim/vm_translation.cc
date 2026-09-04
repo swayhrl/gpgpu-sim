@@ -1,8 +1,128 @@
 #include "vm_translation.h"
 
 #include <assert.h>
+#include <errno.h>
+#include <stdlib.h>
+
+#include <fstream>
+#include <sstream>
 
 namespace vm_translation {
+
+const char *object_class_name(object_class object) {
+  switch (object) {
+    case OBJECT_WEIGHT:
+      return "WEIGHT";
+    case OBJECT_KV_CACHE:
+      return "KV_CACHE";
+    case OBJECT_UNKNOWN:
+      return "UNKNOWN";
+    default:
+      assert(false && "invalid VM object class");
+      return "UNKNOWN";
+  }
+}
+
+namespace {
+
+std::vector<std::string> split_tab_fields(const std::string &line) {
+  std::vector<std::string> fields;
+  std::stringstream stream(line);
+  std::string field;
+  while (std::getline(stream, field, '\t')) fields.push_back(field);
+  return fields;
+}
+
+bool parse_u64(const std::string &text, uint64_t *value) {
+  if (text.empty() || value == 0) return false;
+  errno = 0;
+  char *end = 0;
+  const unsigned long long parsed = strtoull(text.c_str(), &end, 0);
+  if (errno != 0 || end == text.c_str() || *end != '\0') return false;
+  *value = static_cast<uint64_t>(parsed);
+  return true;
+}
+
+object_class parse_object_class(const std::string &text) {
+  if (text == "WEIGHT") return OBJECT_WEIGHT;
+  if (text == "KV_CACHE") return OBJECT_KV_CACHE;
+  assert(false && "object map contains an unsupported object class");
+  return OBJECT_UNKNOWN;
+}
+
+}  // namespace
+
+object_range_map::object_range_map(const std::string &path)
+    : m_enabled(false), m_ranges() {
+  if (path.empty()) return;
+  std::ifstream input(path.c_str());
+  assert(input.good() && "unable to open frozen VM object range map");
+  std::string line;
+  assert(std::getline(input, line));
+  assert(line == "M4C_OBJECT_MAP_V1" &&
+         "unsupported frozen VM object range map schema");
+  bool saw_roi = false;
+  bool saw_source_sha = false;
+  bool saw_archive_sha = false;
+  bool saw_sidecar_sha = false;
+  while (std::getline(input, line)) {
+    if (line.empty() || line[0] == '#') continue;
+    const std::vector<std::string> fields = split_tab_fields(line);
+    assert(!fields.empty());
+    if (fields[0] == "roi") {
+      assert(fields.size() == 2 && !fields[1].empty());
+      saw_roi = true;
+    } else if (fields[0] == "source_sha256") {
+      assert(fields.size() == 2 && fields[1].size() == 64);
+      saw_source_sha = true;
+    } else if (fields[0] == "archive_sha256") {
+      assert(fields.size() == 2 && fields[1].size() == 64);
+      saw_archive_sha = true;
+    } else if (fields[0] == "sidecar_sha256") {
+      assert(fields.size() == 2 && fields[1].size() == 64);
+      saw_sidecar_sha = true;
+    } else {
+      assert(fields[0] == "range" && fields.size() == 4);
+      uint64_t start = 0;
+      uint64_t end = 0;
+      assert(parse_u64(fields[2], &start) && parse_u64(fields[3], &end));
+      assert(start <= end);
+      const object_class object = parse_object_class(fields[1]);
+      if (!m_ranges.empty()) {
+        // The producer must globally sort and make ranges disjoint.  Rejecting
+        // a malformed map is preferable to silently changing provenance.
+        assert(m_ranges.back().start < start && m_ranges.back().end < start);
+      }
+      m_ranges.push_back(range(start, end, object));
+    }
+  }
+  assert(saw_roi && saw_source_sha && saw_archive_sha && saw_sidecar_sha &&
+         !m_ranges.empty());
+  m_enabled = true;
+}
+
+object_class object_range_map::classify(uint64_t start, uint64_t bytes) const {
+  if (!m_enabled) return OBJECT_UNKNOWN;
+  assert(bytes != 0 && start <= ~0ULL - (bytes - 1));
+  const uint64_t end = start + bytes - 1;
+  unsigned intersected_ranges = 0;
+  for (unsigned index = 0; index < m_ranges.size(); ++index) {
+    const range &candidate = m_ranges[index];
+    if (candidate.start > end) break;
+    if (candidate.end < start) continue;
+    ++intersected_ranges;
+    // A request fully inside one recorded range has an unambiguous class.
+    if (start >= candidate.start && end <= candidate.end) {
+      assert(intersected_ranges == 1);
+      return candidate.object;
+    }
+  }
+  // A transaction spanning two known ranges is an object-attribution
+  // ambiguity, not a permissible unknown access.
+  assert(intersected_ranges <= 1 &&
+         "VM request overlaps multiple object ranges");
+  return OBJECT_UNKNOWN;
+}
 
 namespace {
 
@@ -263,8 +383,9 @@ bool set_associative_tlb::probe(const translation_key &key, uint64_t cycle,
   return false;
 }
 
-void set_associative_tlb::fill(const translation_key &key, uint64_t ppn,
-                               uint64_t cycle) {
+tlb_fill_result set_associative_tlb::fill(const translation_key &key,
+                                          uint64_t ppn, uint64_t cycle,
+                                          object_class object) {
   (void)cycle;
   const unsigned begin = set_for(key) * m_config.assoc;
   entry *victim = 0;
@@ -273,7 +394,8 @@ void set_associative_tlb::fill(const translation_key &key, uint64_t ppn,
     if (candidate.valid && candidate.key == key) {
       candidate.ppn = ppn;
       candidate.last_touch = ++m_touch_clock;
-      return;
+      candidate.object = object;
+      return tlb_fill_result();
     }
     if (!candidate.valid && victim == 0) victim = &candidate;
   }
@@ -284,11 +406,20 @@ void set_associative_tlb::fill(const translation_key &key, uint64_t ppn,
       if (candidate.last_touch < victim->last_touch) victim = &candidate;
     }
     ++m_stats.evictions;
+    const object_class victim_object = victim->object;
+    victim->valid = true;
+    victim->key = key;
+    victim->ppn = ppn;
+    victim->last_touch = ++m_touch_clock;
+    victim->object = object;
+    return tlb_fill_result(true, victim_object);
   }
   victim->valid = true;
   victim->key = key;
   victim->ppn = ppn;
   victim->last_touch = ++m_touch_clock;
+  victim->object = object;
+  return tlb_fill_result();
 }
 
 unsigned set_associative_tlb::occupancy() const {
@@ -308,9 +439,11 @@ bool translation_config::valid() const {
 translation_controller::translation_controller(const translation_config &config)
     : m_config(config), m_default_page_table(config.page_table),
       m_page_table(&m_default_page_table), m_l1s(), m_l2(config.l2), m_mshrs(),
-      m_lookups(), m_pwq(), m_active_walks(), m_pwc(), m_stats(),
+      m_lookups(), m_pwq(), m_active_walks(), m_pwc(),
+      m_object_map(config.object_map_path), m_object_unique_keys(), m_stats(),
       m_next_pte_request_id(1), m_pwc_touch_clock(0) {
   assert(m_config.valid());
+  m_stats.object_attribution_enabled = m_object_map.enabled();
   initialize_pwc_stats();
   for (unsigned sid = 0; sid < m_config.num_sms; ++sid)
     m_l1s.push_back(set_associative_tlb(m_config.l1));
@@ -320,11 +453,13 @@ translation_controller::translation_controller(const translation_config &config,
                                                page_table_backend *backend)
     : m_config(config), m_default_page_table(config.page_table),
       m_page_table(backend), m_l1s(), m_l2(config.l2), m_mshrs(), m_lookups(),
-      m_pwq(), m_active_walks(), m_pwc(), m_stats(),
+      m_pwq(), m_active_walks(), m_pwc(), m_object_map(config.object_map_path),
+      m_object_unique_keys(), m_stats(),
       m_next_pte_request_id(1),
       m_pwc_touch_clock(0) {
   assert(m_config.valid());
   assert(m_page_table != 0 && m_page_table->valid());
+  m_stats.object_attribution_enabled = m_object_map.enabled();
   initialize_pwc_stats();
   for (unsigned sid = 0; sid < m_config.num_sms; ++sid)
     m_l1s.push_back(set_associative_tlb(m_config.l1));
@@ -336,6 +471,20 @@ void translation_controller::initialize_pwc_stats() {
   m_stats.pwc_hits_by_level.assign(levels, 0);
   m_stats.pwc_misses_by_level.assign(levels, 0);
   m_stats.pwc_pte_requests_skipped_by_level.assign(levels, 0);
+}
+
+object_class translation_controller::classify_key(
+    const translation_key &key) const {
+  assert(key.page_size != 0 && key.vpn <= ~0ULL / key.page_size);
+  return m_object_map.classify(key.vpn * key.page_size, key.page_size);
+}
+
+void translation_controller::note_object_requester(
+    object_class object, const translation_key &key) {
+  if (!m_stats.object_attribution_enabled) return;
+  assert(object < OBJECT_CLASS_COUNT);
+  ++m_stats.object[object].translation_requesters;
+  m_object_unique_keys[object].insert(key);
 }
 
 bool translation_controller::pwc_identity(const translation_key &key,
@@ -353,6 +502,8 @@ bool translation_controller::pwc_lookup(const active_walk &walk) {
   assert(pwc_identity(walk.key, walk.next_level, &page_class, &prefix));
   const unsigned level = walk.next_level;
   ++m_stats.pwc_accesses;
+  if (m_stats.object_attribution_enabled)
+    ++m_stats.object[walk.object].pwc_accesses;
   ++m_stats.pwc_accesses_by_level[level];
   m_stats.pwc_service_cycles += m_config.pwc.lookup_latency;
   for (unsigned index = 0; index < m_pwc.size(); ++index) {
@@ -361,12 +512,16 @@ bool translation_controller::pwc_lookup(const active_walk &walk) {
         entry.level == level && entry.prefix == prefix) {
       entry.last_touch = ++m_pwc_touch_clock;
       ++m_stats.pwc_hits;
+      if (m_stats.object_attribution_enabled)
+        ++m_stats.object[walk.object].pwc_hits;
       ++m_stats.pwc_hits_by_level[level];
       ++m_stats.pwc_pte_requests_skipped_by_level[level];
       return true;
     }
   }
   ++m_stats.pwc_misses;
+  if (m_stats.object_attribution_enabled)
+    ++m_stats.object[walk.object].pwc_misses;
   ++m_stats.pwc_misses_by_level[level];
   return false;
 }
@@ -477,10 +632,18 @@ void translation_controller::service_lookups(uint64_t cycle) {
         uint64_t ppn = 0;
         const bool hit = m_l1s[lookup.sid].probe(lookup.key, cycle, &ppn);
         ++m_stats.l1_lookup_completions;
+        if (m_stats.object_attribution_enabled) {
+          if (hit)
+            ++m_stats.object[lookup.object].l1_hits;
+          else
+            ++m_stats.object[lookup.object].l1_misses;
+        }
         m_stats.l1_lookup_service_cycles += m_config.l1_lookup_latency;
         lookup.l1_complete_cycle = cycle;
         if (hit) {
           lookup.ppn = ppn;
+          if (lookup.source == TRANSLATION_SOURCE_UNOBSERVED)
+            lookup.source = TRANSLATION_SOURCE_L1_TLB_HIT;
           lookup.stage = LOOKUP_READY;
         } else {
           lookup.stage = LOOKUP_L2_LAUNCH;
@@ -495,6 +658,8 @@ void translation_controller::service_lookups(uint64_t cycle) {
           continue;
         }
         ++m_stats.l2_lookup_launches;
+        if (m_stats.object_attribution_enabled)
+          ++m_stats.object[lookup.object].l2_lookup_launches;
         lookup.l2_issued = true;
         lookup.l2_launch_cycle = cycle;
         lookup.stage = LOOKUP_L2_SERVICE;
@@ -507,11 +672,18 @@ void translation_controller::service_lookups(uint64_t cycle) {
         uint64_t ppn = 0;
         const bool hit = m_l2.probe(lookup.key, cycle, &ppn);
         ++m_stats.l2_lookup_completions;
+        if (m_stats.object_attribution_enabled) {
+          if (hit)
+            ++m_stats.object[lookup.object].l2_hits;
+          else
+            ++m_stats.object[lookup.object].l2_misses;
+        }
         m_stats.l2_lookup_service_cycles += m_config.l2_lookup_latency;
         lookup.l2_complete_cycle = cycle;
         if (hit) {
-          m_l1s[lookup.sid].fill(lookup.key, ppn, cycle);
+          m_l1s[lookup.sid].fill(lookup.key, ppn, cycle, lookup.object);
           lookup.ppn = ppn;
+          lookup.source = TRANSLATION_SOURCE_L2_TLB_HIT;
           lookup.stage = LOOKUP_READY;
         } else {
           lookup.stage = LOOKUP_MSHR_HANDOFF;
@@ -541,6 +713,7 @@ void translation_controller::service_lookups(uint64_t cycle) {
 lookup_result translation_controller::allocate_or_merge(
     unsigned sid, uint64_t waiter_uid, const translation_key &key,
     uint64_t cycle, const lookup_operation *lookup) {
+  assert(lookup != 0);
   const uint64_t entry = lookup ? lookup->entry_cycle : cycle;
   const uint64_t l1_launch = lookup ? lookup->l1_launch_cycle : cycle;
   const uint64_t l1_complete = lookup ? lookup->l1_complete_cycle : cycle;
@@ -552,8 +725,10 @@ lookup_result translation_controller::allocate_or_merge(
     if (existing->has_waiter(waiter_uid)) return TRANSLATION_PENDING;
     existing->waiters.push_back(waiter(sid, waiter_uid, entry, l1_launch,
                                        l1_complete, l2_issued, l2_launch,
-                                       l2_complete, cycle));
+                                       l2_complete, cycle, lookup->object));
     ++m_stats.mshr_merges;
+    if (m_stats.object_attribution_enabled)
+      ++m_stats.object[lookup->object].mshr_merges;
     ++m_stats.waiter_registrations;
     if (existing->waiters.size() > m_stats.mshr_waiter_depth_max)
       m_stats.mshr_waiter_depth_max = existing->waiters.size();
@@ -568,12 +743,14 @@ lookup_result translation_controller::allocate_or_merge(
     return PWQ_FULL;
   }
   assert(find_mshr(key) == 0);
-  m_mshrs.push_back(mshr_entry(key, cycle));
+  m_mshrs.push_back(mshr_entry(key, cycle, lookup->object));
   m_mshrs.back().waiters.push_back(waiter(sid, waiter_uid, entry, l1_launch,
                                          l1_complete, l2_issued, l2_launch,
-                                         l2_complete, cycle));
+                                         l2_complete, cycle, lookup->object));
   m_pwq.push_back(key);
   ++m_stats.mshr_allocations;
+  if (m_stats.object_attribution_enabled)
+    ++m_stats.object[lookup->object].mshr_allocations;
   ++m_stats.waiter_registrations;
   note_mshr_occupancy();
   if (m_mshrs.back().waiters.size() > m_stats.mshr_waiter_depth_max)
@@ -590,7 +767,7 @@ void translation_controller::note_requester_completion(
     uint64_t entry_cycle, uint64_t l1_launch_cycle,
     uint64_t l1_complete_cycle, bool l2_issued, uint64_t l2_launch_cycle,
     uint64_t l2_complete_cycle, uint64_t mshr_join_cycle, bool used_mshr,
-    uint64_t ready_cycle) {
+    uint64_t ready_cycle, object_class object) {
   assert(entry_cycle <= l1_launch_cycle);
   assert(l1_launch_cycle <= l1_complete_cycle);
   assert(l1_complete_cycle <= ready_cycle);
@@ -632,16 +809,32 @@ void translation_controller::note_requester_completion(
     if (mshr_wait > m_stats.requester_mshr_wait_cycles_max)
       m_stats.requester_mshr_wait_cycles_max = mshr_wait;
   }
+  if (!m_stats.object_attribution_enabled) return;
+  translation_stats::object_stats &object_stats = m_stats.object[object];
+  ++object_stats.completed;
+  object_stats.requester_latency_cycles_total += total;
+  if (total > object_stats.requester_latency_cycles_max)
+    object_stats.requester_latency_cycles_max = total;
+  if (used_mshr) {
+    const uint64_t mshr_wait = ready_cycle - mshr_join_cycle;
+    object_stats.requester_mshr_wait_cycles_total += mshr_wait;
+    if (mshr_wait > object_stats.requester_mshr_wait_cycles_max)
+      object_stats.requester_mshr_wait_cycles_max = mshr_wait;
+  }
 }
 
 lookup_result translation_controller::translate(unsigned sid, unsigned asid,
                                                 uint64_t sim_va,
+                                                uint64_t request_bytes,
                                                 uint64_t cycle,
                                                 uint64_t waiter_uid,
-                                                uint64_t *sim_pa) {
+                                                uint64_t *sim_pa,
+                                                translation_source *source) {
   assert(sid < m_l1s.size());
+  if (source != 0) *source = TRANSLATION_SOURCE_UNOBSERVED;
   translation_key key(asid, vm_core::vpn(sim_va, m_config.page_size),
                       m_config.page_size);
+  const object_class object = m_object_map.classify(sim_va, request_bytes);
   // A previously accepted waiter is already represented by this active MSHR.
   // It must wait without competing for either TLB lookup resource or
   // polluting probe/miss statistics.  A distinct UID deliberately falls
@@ -658,11 +851,12 @@ lookup_result translation_controller::translate(unsigned sid, unsigned asid,
       return TRANSLATION_PENDING;
     }
     const uint64_t ppn = inflight->ppn;
+    const translation_source completed_source = inflight->source;
     note_requester_completion(
         inflight->entry_cycle, inflight->l1_launch_cycle,
         inflight->l1_complete_cycle, inflight->l2_issued,
         inflight->l2_launch_cycle, inflight->l2_complete_cycle, 0, false,
-        cycle);
+        cycle, inflight->object);
     for (unsigned index = 0; index < m_lookups.size(); ++index)
       if (&m_lookups[index] == inflight) {
         m_lookups.erase(m_lookups.begin() + index);
@@ -671,22 +865,33 @@ lookup_result translation_controller::translate(unsigned sid, unsigned asid,
     *sim_pa =
         ppn * key.page_size + vm_core::page_offset(sim_va, key.page_size);
     ++m_stats.completed;
+    if (source != 0) *source = completed_source;
     return READY;
   }
   ++m_stats.lookup_requests;
   set_associative_tlb &l1_tlb = m_l1s[sid];
   if (!l1_tlb.try_consume_port(cycle)) return L1_PORT_STALL;
   ++m_stats.l1_lookup_launches;
+  if (m_stats.object_attribution_enabled)
+    ++m_stats.object[object].l1_lookup_launches;
+  note_object_requester(object, key);
   m_lookups.push_back(
       lookup_operation(sid, waiter_uid, key, cycle,
-                       cycle + m_config.l1_lookup_latency));
+                       cycle + m_config.l1_lookup_latency, object));
+  std::map<uint64_t, completed_outcome>::iterator completed =
+      m_completed_outcomes.find(waiter_uid);
+  if (completed != m_completed_outcomes.end() && completed->second.key == key) {
+    m_lookups.back().source = completed->second.source;
+    m_completed_outcomes.erase(completed);
+  }
   // Preserve the accepted zero-latency diagnostic behavior without making the
   // non-zero model poll or re-probe.  service_lookups() completes only stages
   // whose modeled service interval ends at this cycle.
   if (m_config.l1_lookup_latency == 0) service_lookups(cycle);
   inflight = find_lookup(sid, waiter_uid, key);
   if (inflight != 0 && inflight->stage == LOOKUP_READY)
-    return translate(sid, asid, sim_va, cycle, waiter_uid, sim_pa);
+    return translate(sid, asid, sim_va, request_bytes, cycle, waiter_uid,
+                     sim_pa, source);
   // Legacy zero-latency diagnostics historically surface MSHR/PWQ fullness
   // synchronously.  Preserve that contract without allowing the non-zero
   // service path to re-probe either TLB while a handoff is stalled.
@@ -710,17 +915,30 @@ bool translation_controller::complete_translation(const translation_key &key,
     if (!(m_mshrs[index].key == key)) continue;
     const uint64_t ppn = m_page_table->resolve_ppn(key);
     ++m_stats.mapper_lookups;
-    m_l2.fill(key, ppn, cycle);
+    const object_class fill_object = classify_key(key);
+    const tlb_fill_result l2_fill =
+        m_l2.fill(key, ppn, cycle, fill_object);
+    if (m_stats.object_attribution_enabled) {
+      ++m_stats.object[fill_object].l2_fills;
+      if (l2_fill.evicted)
+        ++m_stats.l2_replacement_matrix[fill_object]
+                                      [l2_fill.victim_object];
+    }
     for (unsigned waiter_index = 0;
          waiter_index < m_mshrs[index].waiters.size(); ++waiter_index) {
       const waiter &entry_waiter = m_mshrs[index].waiters[waiter_index];
       assert(entry_waiter.sid < m_l1s.size());
-      m_l1s[entry_waiter.sid].fill(key, ppn, cycle);
+      m_l1s[entry_waiter.sid].fill(key, ppn, cycle, entry_waiter.object);
       note_requester_completion(
           entry_waiter.entry_cycle, entry_waiter.l1_launch_cycle,
           entry_waiter.l1_complete_cycle, entry_waiter.l2_issued,
           entry_waiter.l2_launch_cycle, entry_waiter.l2_complete_cycle,
-          entry_waiter.mshr_join_cycle, true, cycle);
+          entry_waiter.mshr_join_cycle, true, cycle, entry_waiter.object);
+      // The regular requester retry will still perform the accepted L1 probe
+      // and obtain the same SimPA.  This side map preserves only the fact
+      // that its residency originated in a PTW, for later cache correlation.
+      m_completed_outcomes[entry_waiter.uid] =
+          completed_outcome(key, TRANSLATION_SOURCE_PTW);
       ++m_stats.waiter_wakeups;
     }
     const uint64_t waiter_depth = m_mshrs[index].waiters.size();
@@ -754,8 +972,10 @@ void translation_controller::cycle(uint64_t cycle) {
       mshr_entry *entry = find_mshr(key);
       assert(entry != 0);
       m_stats.pwq_wait_cycles += cycle - entry->enqueue_cycle;
-      m_active_walks.push_back(active_walk(key, cycle, 0));
+      m_active_walks.push_back(active_walk(key, cycle, 0, entry->object));
       ++m_stats.walk_starts;
+      if (m_stats.object_attribution_enabled)
+        ++m_stats.object[entry->object].walk_starts;
     }
     // A PWC probe is a one-cycle generic service, with no modeled port
     // contention.  A hit advances exactly one intermediate level; a miss
@@ -781,9 +1001,12 @@ void translation_controller::cycle(uint64_t cycle) {
     mshr_entry *entry = find_mshr(key);
     assert(entry != 0);
     m_stats.pwq_wait_cycles += cycle - entry->enqueue_cycle;
-    m_active_walks.push_back(
-        active_walk(key, cycle, cycle + m_config.walk_latency));
+    m_active_walks.push_back(active_walk(key, cycle,
+                                         cycle + m_config.walk_latency,
+                                         entry->object));
     ++m_stats.walk_starts;
+    if (m_stats.object_attribution_enabled)
+      ++m_stats.object[entry->object].walk_starts;
   }
   assert(m_active_walks.size() <= m_config.walkers);
 }
@@ -828,6 +1051,8 @@ bool translation_controller::pte_request_issued(const pte_request &request,
       walk.pwc_miss_ready = false;
       if (request.request_id == m_next_pte_request_id) ++m_next_pte_request_id;
       ++m_stats.pte_requests;
+      if (m_stats.object_attribution_enabled)
+        ++m_stats.object[walk.object].pte_requests;
       return true;
     }
   }
@@ -856,10 +1081,22 @@ bool translation_controller::complete_pte_response(uint64_t request_id,
     m_stats.pte_memory_wait_cycles_total += pte_memory_wait;
     if (pte_memory_wait > m_stats.pte_memory_wait_cycles_max)
       m_stats.pte_memory_wait_cycles_max = pte_memory_wait;
-    if (reached_dram)
+    if (m_stats.object_attribution_enabled) {
+      translation_stats::object_stats &object_stats =
+          m_stats.object[walk.object];
+      object_stats.pte_memory_wait_cycles_total += pte_memory_wait;
+      if (pte_memory_wait > object_stats.pte_memory_wait_cycles_max)
+        object_stats.pte_memory_wait_cycles_max = pte_memory_wait;
+    }
+    if (reached_dram) {
       ++m_stats.pte_dram_responses;
-    else
+      if (m_stats.object_attribution_enabled)
+        ++m_stats.object[walk.object].pte_dram_responses;
+    } else {
       ++m_stats.pte_l2_only_responses;
+      if (m_stats.object_attribution_enabled)
+        ++m_stats.object[walk.object].pte_l2_only_responses;
+    }
     const unsigned completed_level = walk.next_level;
     walk.pte_outstanding = false;
     walk.pte_request_id = 0;
@@ -927,7 +1164,83 @@ bool translation_controller::invariants_hold() const {
 }
 
 bool translation_controller::quiescent_invariants_hold() const {
-  return m_mshrs.empty() && m_lookups.empty() && invariants_hold();
+  return m_mshrs.empty() && m_lookups.empty() &&
+         m_completed_outcomes.empty() && invariants_hold();
+}
+
+bool translation_controller::object_attribution_conserves() const {
+  if (!m_stats.object_attribution_enabled) return true;
+  uint64_t requesters = 0;
+  uint64_t l1_launches = 0;
+  uint64_t l1_hits = 0;
+  uint64_t l1_misses = 0;
+  uint64_t l2_launches = 0;
+  uint64_t l2_hits = 0;
+  uint64_t l2_misses = 0;
+  uint64_t mshr_allocations = 0;
+  uint64_t mshr_merges = 0;
+  uint64_t walk_starts = 0;
+  uint64_t completed = 0;
+  uint64_t pwc_accesses = 0;
+  uint64_t pwc_hits = 0;
+  uint64_t pwc_misses = 0;
+  uint64_t pte_requests = 0;
+  uint64_t pte_l2_only_responses = 0;
+  uint64_t pte_dram_responses = 0;
+  uint64_t pte_memory_wait = 0;
+  uint64_t l2_fills = 0;
+  uint64_t replacement_evictions = 0;
+  for (unsigned object = 0; object < OBJECT_CLASS_COUNT; ++object) {
+    const translation_stats::object_stats &stats = m_stats.object[object];
+    requesters += stats.translation_requesters;
+    l1_launches += stats.l1_lookup_launches;
+    l1_hits += stats.l1_hits;
+    l1_misses += stats.l1_misses;
+    l2_launches += stats.l2_lookup_launches;
+    l2_hits += stats.l2_hits;
+    l2_misses += stats.l2_misses;
+    mshr_allocations += stats.mshr_allocations;
+    mshr_merges += stats.mshr_merges;
+    walk_starts += stats.walk_starts;
+    completed += stats.completed;
+    pwc_accesses += stats.pwc_accesses;
+    pwc_hits += stats.pwc_hits;
+    pwc_misses += stats.pwc_misses;
+    pte_requests += stats.pte_requests;
+    pte_l2_only_responses += stats.pte_l2_only_responses;
+    pte_dram_responses += stats.pte_dram_responses;
+    pte_memory_wait += stats.pte_memory_wait_cycles_total;
+    l2_fills += stats.l2_fills;
+    for (unsigned victim = 0; victim < OBJECT_CLASS_COUNT; ++victim)
+      replacement_evictions += m_stats.l2_replacement_matrix[object][victim];
+  }
+  tlb_stats l1_total;
+  for (unsigned sid = 0; sid < m_l1s.size(); ++sid) {
+    const tlb_stats &stats = m_l1s[sid].stats();
+    l1_total.accesses += stats.accesses;
+    l1_total.hits += stats.hits;
+    l1_total.misses += stats.misses;
+  }
+  const tlb_stats &l2_stats = m_l2.stats();
+  return requesters == m_stats.l1_lookup_launches &&
+         l1_launches == m_stats.l1_lookup_launches &&
+         l1_hits == l1_total.hits && l1_misses == l1_total.misses &&
+         l1_hits + l1_misses == l1_total.accesses &&
+         l2_launches == m_stats.l2_lookup_launches &&
+         l2_hits == l2_stats.hits && l2_misses == l2_stats.misses &&
+         l2_hits + l2_misses == l2_stats.accesses &&
+         mshr_allocations == m_stats.mshr_allocations &&
+         mshr_merges == m_stats.mshr_merges &&
+         walk_starts == m_stats.walk_starts &&
+         completed == m_stats.requester_completions &&
+         pwc_accesses == m_stats.pwc_accesses && pwc_hits == m_stats.pwc_hits &&
+         pwc_misses == m_stats.pwc_misses &&
+         pte_requests == m_stats.pte_requests &&
+         pte_l2_only_responses == m_stats.pte_l2_only_responses &&
+         pte_dram_responses == m_stats.pte_dram_responses &&
+         pte_memory_wait == m_stats.pte_memory_wait_cycles_total &&
+         l2_fills == m_stats.mapper_lookups &&
+         replacement_evictions == l2_stats.evictions;
 }
 
 const set_associative_tlb &translation_controller::l1(unsigned sid) const {
@@ -1098,6 +1411,70 @@ void translation_controller::print_stats(FILE *fout) const {
   fprintf(fout, "vm_l2_tlb_port_stalls = %llu\n",
           (unsigned long long)l2_stats.port_stalls);
   fprintf(fout, "vm_l2_tlb_occupancy = %u\n", m_l2.occupancy());
+  fprintf(fout, "vm_object_attribution_enabled = %u\n",
+          m_stats.object_attribution_enabled ? 1U : 0U);
+  if (!m_stats.object_attribution_enabled) return;
+  for (unsigned object = 0; object < OBJECT_CLASS_COUNT; ++object) {
+    const translation_stats::object_stats &stats = m_stats.object[object];
+    const char *name = object_class_name(static_cast<object_class>(object));
+    fprintf(fout, "vm_object_%s_translation_requesters = %llu\n", name,
+            (unsigned long long)stats.translation_requesters);
+    fprintf(fout, "vm_object_%s_unique_translation_keys = %llu\n", name,
+            (unsigned long long)m_object_unique_keys[object].size());
+    fprintf(fout, "vm_object_%s_l1_lookup_launches = %llu\n", name,
+            (unsigned long long)stats.l1_lookup_launches);
+    fprintf(fout, "vm_object_%s_l1_hits = %llu\n", name,
+            (unsigned long long)stats.l1_hits);
+    fprintf(fout, "vm_object_%s_l1_misses = %llu\n", name,
+            (unsigned long long)stats.l1_misses);
+    fprintf(fout, "vm_object_%s_l2_lookup_launches = %llu\n", name,
+            (unsigned long long)stats.l2_lookup_launches);
+    fprintf(fout, "vm_object_%s_l2_hits = %llu\n", name,
+            (unsigned long long)stats.l2_hits);
+    fprintf(fout, "vm_object_%s_l2_misses = %llu\n", name,
+            (unsigned long long)stats.l2_misses);
+    fprintf(fout, "vm_object_%s_mshr_allocations = %llu\n", name,
+            (unsigned long long)stats.mshr_allocations);
+    fprintf(fout, "vm_object_%s_mshr_merges = %llu\n", name,
+            (unsigned long long)stats.mshr_merges);
+    fprintf(fout, "vm_object_%s_walk_starts = %llu\n", name,
+            (unsigned long long)stats.walk_starts);
+    fprintf(fout, "vm_object_%s_completed = %llu\n", name,
+            (unsigned long long)stats.completed);
+    fprintf(fout, "vm_object_%s_requester_latency_cycles_total = %llu\n",
+            name, (unsigned long long)stats.requester_latency_cycles_total);
+    fprintf(fout, "vm_object_%s_requester_latency_cycles_max = %llu\n",
+            name, (unsigned long long)stats.requester_latency_cycles_max);
+    fprintf(fout, "vm_object_%s_requester_mshr_wait_cycles_total = %llu\n",
+            name, (unsigned long long)stats.requester_mshr_wait_cycles_total);
+    fprintf(fout, "vm_object_%s_requester_mshr_wait_cycles_max = %llu\n",
+            name, (unsigned long long)stats.requester_mshr_wait_cycles_max);
+    fprintf(fout, "vm_object_%s_pwc_accesses = %llu\n", name,
+            (unsigned long long)stats.pwc_accesses);
+    fprintf(fout, "vm_object_%s_pwc_hits = %llu\n", name,
+            (unsigned long long)stats.pwc_hits);
+    fprintf(fout, "vm_object_%s_pwc_misses = %llu\n", name,
+            (unsigned long long)stats.pwc_misses);
+    fprintf(fout, "vm_object_%s_pte_requests = %llu\n", name,
+            (unsigned long long)stats.pte_requests);
+    fprintf(fout, "vm_object_%s_pte_l2_only_responses = %llu\n", name,
+            (unsigned long long)stats.pte_l2_only_responses);
+    fprintf(fout, "vm_object_%s_pte_dram_responses = %llu\n", name,
+            (unsigned long long)stats.pte_dram_responses);
+    fprintf(fout, "vm_object_%s_pte_memory_wait_cycles_total = %llu\n",
+            name, (unsigned long long)stats.pte_memory_wait_cycles_total);
+    fprintf(fout, "vm_object_%s_pte_memory_wait_cycles_max = %llu\n", name,
+            (unsigned long long)stats.pte_memory_wait_cycles_max);
+    fprintf(fout, "vm_object_%s_l2_fills = %llu\n", name,
+            (unsigned long long)stats.l2_fills);
+    for (unsigned victim = 0; victim < OBJECT_CLASS_COUNT; ++victim)
+      fprintf(fout, "vm_l2_tlb_replacement_incoming_%s_victim_%s = %llu\n",
+              name,
+              object_class_name(static_cast<object_class>(victim)),
+              (unsigned long long)m_stats.l2_replacement_matrix[object][victim]);
+  }
+  fprintf(fout, "vm_object_attribution_conservation_pass = %u\n",
+          object_attribution_conserves() ? 1U : 0U);
 }
 
 }  // namespace vm_translation

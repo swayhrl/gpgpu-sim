@@ -9,6 +9,7 @@ list(APPEND gpgpusim_SRC addrdec.cc
     histogram.cc
     icnt_wrapper.cc
     l2cache.cc
+    memory_telemetry.cc
     local_interconnect.cc
     mem_fetch.cc
     mem_latency_stat.cc

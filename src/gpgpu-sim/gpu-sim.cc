@@ -65,6 +65,7 @@
 #include "../statwrapper.h"
 #include "../trace.h"
 #include "mem_latency_stat.h"
+#include "memory_telemetry.h"
 #include "power_stat.h"
 #include "stats.h"
 #include "visualizer.h"
@@ -465,6 +466,19 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_vm_pwc_lookup_latency", OPT_UINT32,
                          &gpgpu_vm_pwc_lookup_latency,
                          "generic M3 PWC service latency in core cycles", "1");
+  option_parser_register(opp, "-gpgpu_vm_object_map", OPT_CSTR,
+                         &gpgpu_vm_object_map,
+                         "immutable M4C VM object-range map (empty disables)",
+                         "");
+  option_parser_register(opp, "-gpgpu_memory_telemetry_level", OPT_UINT32,
+                         &gpgpu_memory_telemetry_level,
+                         "M4C bounded memory telemetry: 0=off, 1=aggregate, 2=windows, 3=diagnostic",
+                         "0");
+  option_parser_register(opp, "-gpgpu_memory_telemetry_window_transactions",
+                         OPT_UINT64,
+                         &gpgpu_memory_telemetry_window_transactions,
+                         "M4C fixed telemetry window in coalesced transactions",
+                         "1000000");
 
   option_parser_register(opp, "-gpgpu_perfect_mem", OPT_BOOL,
                          &gpgpu_perfect_mem,
@@ -1052,6 +1066,11 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
   m_shader_config = &m_config.m_shader_config;
   m_memory_config = &m_config.m_memory_config;
   m_vm_translation = NULL;
+  m_vm_object_map = new vm_translation::object_range_map(
+      m_shader_config->gpgpu_vm_object_map);
+  m4c_memory_telemetry_instance().configure(
+      m_shader_config->gpgpu_memory_telemetry_level,
+      m_shader_config->gpgpu_memory_telemetry_window_transactions);
   if (m_shader_config->gpgpu_vm_mode == 2) {
     vm_translation::translation_config vm_config(
         m_shader_config->num_shader(), m_shader_config->gpgpu_vm_page_size,
@@ -1078,7 +1097,8 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
                 : m_shader_config->gpgpu_vm_pwc_entries,
             m_shader_config->gpgpu_vm_pwc_lookup_latency),
         m_shader_config->gpgpu_vm_l1_tlb_lookup_latency,
-        m_shader_config->gpgpu_vm_l2_tlb_lookup_latency);
+        m_shader_config->gpgpu_vm_l2_tlb_lookup_latency,
+        m_shader_config->gpgpu_vm_object_map);
     if (!vm_config.valid()) {
       fprintf(stderr, "ERROR: invalid functional VM TLB configuration\n");
       abort();
@@ -1299,6 +1319,7 @@ bool sst_gpgpu_sim::active() {
 void gpgpu_sim::init() {
   // run a CUDA grid on the GPU microarchitecture simulator
   gpu_sim_cycle = 0;
+  m4c_memory_telemetry_instance().reset();
   gpu_sim_insn = 0;
   last_gpu_sim_insn = 0;
   m_total_cta_launched = 0;
@@ -1373,6 +1394,8 @@ void gpgpu_sim::print_stats(unsigned long long streamID) {
   gpgpu_ctx->stats->ptx_file_line_stats_write_file();
   gpu_print_stat(streamID);
   if (m_vm_translation != NULL) m_vm_translation->print_stats(stdout);
+  m4c_memory_telemetry_instance().print(stdout, executed_kernel_name().c_str());
+  m4c_memory_telemetry_instance().finish_kernel();
 
   if (g_network_mode) {
     printf(
@@ -2134,6 +2157,8 @@ void gpgpu_sim::cycle() {
         byte_mask.set(byte);
       mem_access_t access(PTE_ACC_R, pte.physical_address, SECTOR_SIZE, false,
                           active_mask, byte_mask, sector_mask, gpgpu_ctx);
+      assert(pte.level < 4);
+      access.set_telemetry_class(M4C_PTE_L0 + pte.level);
       mem_fetch *mf = new mem_fetch(
           access, NULL, 0, READ_PACKET_SIZE, 0, 0, source, m_memory_config,
           gpu_sim_cycle + gpu_tot_sim_cycle);

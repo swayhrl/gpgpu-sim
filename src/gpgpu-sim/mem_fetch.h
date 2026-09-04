@@ -114,6 +114,21 @@ class mem_fetch {
   unsigned long long get_streamID() const { return m_streamID; }
 
   enum mem_access_type get_access_type() const { return m_access.get_type(); }
+  unsigned get_telemetry_class() const {
+    return m_access.get_telemetry_class();
+  }
+  unsigned get_translation_telemetry_outcome() const {
+    return m_access.get_translation_telemetry_outcome();
+  }
+  void set_translation_telemetry_outcome(unsigned outcome) {
+    m_access.set_translation_telemetry_outcome(outcome);
+  }
+  unsigned get_l1_telemetry_cache_status() const {
+    return m_access.get_l1_telemetry_cache_status();
+  }
+  void set_l1_telemetry_cache_status(unsigned status) {
+    m_access.set_l1_telemetry_cache_status(status);
+  }
   const active_mask_t &get_access_warp_mask() const {
     return m_access.get_warp_mask();
   }

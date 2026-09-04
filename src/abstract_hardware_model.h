@@ -807,6 +807,37 @@ enum cache_operator_type {
   CACHE_WRITE_THROUGH  // .wt
 };
 
+// Observational-only class carried with a coalesced request.  It is not part
+// of any address, cache tag, routing, or arbitration decision.
+enum memory_telemetry_class {
+  M4C_DATA_UNKNOWN = 0,
+  M4C_DATA_WEIGHT = 1,
+  M4C_DATA_KV_CACHE = 2,
+  M4C_PTE_L0 = 3,
+  M4C_PTE_L1 = 4,
+  M4C_PTE_L2 = 5,
+  M4C_PTE_L3 = 6,
+  M4C_OTHER = 7,
+  M4C_MEMORY_CLASS_COUNT = 8
+};
+
+// Observational translation provenance carried beside a coalesced application
+// access.  It is deliberately separate from the request address/type and is
+// never consumed by cache, routing, or scheduling decisions.
+enum memory_translation_telemetry_outcome {
+  M4C_TRANSLATION_UNOBSERVED = 0,
+  M4C_TRANSLATION_DISABLED,
+  M4C_TRANSLATION_IDEAL_IDENTITY,
+  M4C_TRANSLATION_L1_TLB_HIT,
+  M4C_TRANSLATION_L2_TLB_HIT,
+  M4C_TRANSLATION_PTW,
+  M4C_TRANSLATION_OUTCOME_COUNT
+};
+
+// gpu-cache.h owns cache_request_status, so the generic access carrier uses
+// an out-of-range sentinel rather than depending on that simulator header.
+const unsigned M4C_TELEMETRY_L1_STATUS_UNAVAILABLE = ~0U;
+
 class mem_access_t {
  public:
   mem_access_t(gpgpu_context *ctx) { init(ctx); }
@@ -854,6 +885,29 @@ class mem_access_t {
   enum mem_access_type get_type() const { return m_type; }
   mem_access_byte_mask_t get_byte_mask() const { return m_byte_mask; }
   mem_access_sector_mask_t get_sector_mask() const { return m_sector_mask; }
+  unsigned get_telemetry_class() const { return m_telemetry_class; }
+  void set_telemetry_class(unsigned telemetry_class) {
+    assert(telemetry_class < M4C_MEMORY_CLASS_COUNT);
+    m_telemetry_class = telemetry_class;
+  }
+  unsigned get_translation_telemetry_outcome() const {
+    return m_translation_telemetry_outcome;
+  }
+  void set_translation_telemetry_outcome(unsigned outcome) {
+    assert(outcome < M4C_TRANSLATION_OUTCOME_COUNT);
+    m_translation_telemetry_outcome = outcome;
+  }
+  unsigned get_l1_telemetry_cache_status() const {
+    return m_l1_telemetry_cache_status;
+  }
+  void set_l1_telemetry_cache_status(unsigned status) {
+    m_l1_telemetry_cache_status = status;
+  }
+  bool mark_m4c_frontend_transaction_observed() {
+    if (m_m4c_frontend_transaction_observed) return false;
+    m_m4c_frontend_transaction_observed = true;
+    return true;
+  }
 
   void print(FILE *fp) const {
     fprintf(fp, "addr=0x%llx, %s, size=%u, ", m_addr,
@@ -908,6 +962,10 @@ class mem_access_t {
   active_mask_t m_warp_mask;
   mem_access_byte_mask_t m_byte_mask;
   mem_access_sector_mask_t m_sector_mask;
+  unsigned m_telemetry_class;
+  unsigned m_translation_telemetry_outcome;
+  unsigned m_l1_telemetry_cache_status;
+  bool m_m4c_frontend_transaction_observed;
 };
 
 class mem_fetch;
@@ -1084,6 +1142,7 @@ class warp_inst_t : public inst_t {
     m_streamID = (unsigned long long)-1;
     m_empty = true;
     m_config = NULL;
+    m_m4c_frontend_observed = false;
 
     // Ni:
     m_is_ldgsts = false;
@@ -1102,6 +1161,7 @@ class warp_inst_t : public inst_t {
     m_per_scalar_thread_valid = false;
     m_mem_accesses_created = false;
     m_cache_hit = false;
+    m_m4c_frontend_observed = false;
     m_is_printf = false;
     m_is_cdp = 0;
     should_do_atomic = true;
@@ -1249,6 +1309,14 @@ class warp_inst_t : public inst_t {
 
   bool has_dispatch_delay() { return cycles > 0; }
 
+  // Returns true exactly once per dynamically issued warp instruction.  This
+  // is observational metadata for bounded front-end telemetry only.
+  bool mark_m4c_frontend_observed() {
+    if (m_m4c_frontend_observed) return false;
+    m_m4c_frontend_observed = true;
+    return true;
+  }
+
   void print(FILE *fout) const;
   unsigned get_uid() const { return m_uid; }
   unsigned long long get_streamID() const { return m_streamID; }
@@ -1260,6 +1328,7 @@ class warp_inst_t : public inst_t {
   unsigned long long m_streamID;
   bool m_empty;
   bool m_cache_hit;
+  bool m_m4c_frontend_observed;
   unsigned long long issue_cycle;
   unsigned cycles;  // used for implementing initiation interval delay
   bool m_isatomic;

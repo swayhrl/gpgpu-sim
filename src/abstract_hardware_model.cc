@@ -46,6 +46,10 @@
 void mem_access_t::init(gpgpu_context *ctx) {
   gpgpu_ctx = ctx;
   m_uid = ++(gpgpu_ctx->sm_next_access_uid);
+  m_telemetry_class = M4C_DATA_UNKNOWN;
+  m_translation_telemetry_outcome = M4C_TRANSLATION_UNOBSERVED;
+  m_l1_telemetry_cache_status = M4C_TELEMETRY_L1_STATUS_UNAVAILABLE;
+  m_m4c_frontend_transaction_observed = false;
   m_addr = 0;
   m_sim_va = 0;
   m_sim_pa = 0;
@@ -65,6 +69,7 @@ void warp_inst_t::issue(const active_mask_t &mask, unsigned warp_id,
   issue_cycle = cycle;
   cycles = initiation_interval;
   m_cache_hit = false;
+  m_m4c_frontend_observed = false;
   m_empty = false;
   m_scheduler_id = sch_id;
 }

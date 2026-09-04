@@ -74,6 +74,11 @@ mem_fetch::mem_fetch(const mem_access_t &access, const warp_inst_t *inst,
   original_mf = m_original_mf;
   original_wr_mf = m_original_wr_mf;
   if (m_original_mf) {
+    m_access.set_telemetry_class(m_original_mf->get_telemetry_class());
+    m_access.set_translation_telemetry_outcome(
+        m_original_mf->get_translation_telemetry_outcome());
+    m_access.set_l1_telemetry_cache_status(
+        m_original_mf->get_l1_telemetry_cache_status());
     m_raw_addr.chip = m_original_mf->get_tlx_addr().chip;
     m_raw_addr.sub_partition = m_original_mf->get_tlx_addr().sub_partition;
   }

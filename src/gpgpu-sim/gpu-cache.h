@@ -69,7 +69,10 @@ enum cache_event_type {
   WRITE_BACK_REQUEST_SENT,
   READ_REQUEST_SENT,
   WRITE_REQUEST_SENT,
-  WRITE_ALLOCATE_SENT
+  WRITE_ALLOCATE_SENT,
+  // Observation-only notification that a cache replacement selected a valid
+  // victim.  Consumers must not use this event to change cache behavior.
+  EVICTION_OBSERVED
 };
 
 enum cache_gpu_level {
@@ -82,11 +85,15 @@ enum cache_gpu_level {
 struct evicted_block_info {
   new_addr_type m_block_addr;
   unsigned m_modified_size;
+  unsigned m_telemetry_class;
+  bool m_has_valid_victim;
   mem_access_byte_mask_t m_byte_mask;
   mem_access_sector_mask_t m_sector_mask;
   evicted_block_info() {
     m_block_addr = 0;
     m_modified_size = 0;
+    m_telemetry_class = M4C_OTHER;
+    m_has_valid_victim = false;
     m_byte_mask.reset();
     m_sector_mask.reset();
   }
@@ -126,6 +133,8 @@ struct cache_block_t {
   cache_block_t() {
     m_tag = 0;
     m_block_addr = 0;
+    // This is deliberately separate from m_tag and replacement state.
+    m_telemetry_class = M4C_OTHER;
   }
 
   virtual void allocate(new_addr_type tag, new_addr_type block_addr,
@@ -165,8 +174,17 @@ struct cache_block_t {
   virtual void print_status() = 0;
   virtual ~cache_block_t() {}
 
+  unsigned get_telemetry_class() const { return m_telemetry_class; }
+  void set_telemetry_class(unsigned telemetry_class) {
+    assert(telemetry_class < M4C_MEMORY_CLASS_COUNT);
+    m_telemetry_class = telemetry_class;
+  }
+
   new_addr_type m_tag;
   new_addr_type m_block_addr;
+
+ private:
+  unsigned m_telemetry_class;
 };
 
 struct line_cache_block : public cache_block_t {
