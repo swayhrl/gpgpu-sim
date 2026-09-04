@@ -9,21 +9,20 @@ This repository contains the simulator Core used by the Paper-10 and Extended-20
 3. Framework active compute `AGENTS.md`
 4. Framework `docs/dtc_l1/chatgpt_handoff/CURRENT_STATE.md`
 5. Framework `docs/dtc_l1/m5/M5_V3_PARALLEL_TRACKS_APPROVAL.md`
-6. Framework `docs/dtc_l1/m5/M5_DIRTY_VICTIM_POLICY_RESOLUTION.md`
-7. Framework `docs/dtc_l1/m5/M5_V1_APPROVAL.md`
-8. Framework `docs/dtc_l1/m5/M5_EXTENDED20_APPROVAL.md`
-9. Framework `docs/dtc_l1/m5/M5_EXTENDED20_FORMAL_MATRIX.md`
-10. Framework `docs/dtc_l1/m5/M5_PARALLEL_BATCH_POLICY.md`
-11. Framework `docs/dtc_l1/m5/M5_PROBLEM_RESOLUTION_POLICY.md`
-12. Framework `docs/dtc_l1/m5/M5_HANDOFF_CONTRACT.md`
-13. Framework `docs/dtc_l1/m5/M5_EXTENDED20_HANDOFF_CONTRACT.md`
-14. Framework `docs/dtc_l1/m5/M5_BRANCH_OWNERSHIP.md`
-15. Framework `docs/dtc_l1/m5/M5_GRAPHICS_INDEPENDENT_WINDOW_HANDOFF.md`
-16. Framework `docs/dtc_l1/m5/M5_GRAPHICS_HANDOFF_CONTRACT.md`
-17. Framework `docs/dtc_l1/chatgpt_handoff/CODEX_NEXT_STAGE.md`
-18. Framework `docs/dtc_l1/chatgpt_handoff/GOAL_START.md`
-19. Framework `docs/dtc_l1/codex_handoff/LATEST_REPORT.md`
-20. Framework `docs/dtc_l1/implementation/M5_ISSUE_LOG.md`
+6. Framework `docs/dtc_l1/m5/M5_GRAPHICS_RESEARCH_CLOSEOUT_APPROVAL.md`
+7. Framework `docs/dtc_l1/m5/M5_DIRTY_VICTIM_POLICY_RESOLUTION.md`
+8. Framework `docs/dtc_l1/m5/M5_V1_APPROVAL.md`
+9. Framework `docs/dtc_l1/m5/M5_EXTENDED20_APPROVAL.md`
+10. Framework `docs/dtc_l1/m5/M5_EXTENDED20_FORMAL_MATRIX.md`
+11. Framework `docs/dtc_l1/m5/M5_PARALLEL_BATCH_POLICY.md`
+12. Framework `docs/dtc_l1/m5/M5_PROBLEM_RESOLUTION_POLICY.md`
+13. Framework `docs/dtc_l1/m5/M5_HANDOFF_CONTRACT.md`
+14. Framework `docs/dtc_l1/m5/M5_EXTENDED20_HANDOFF_CONTRACT.md`
+15. Framework `docs/dtc_l1/m5/M5_BRANCH_OWNERSHIP.md`
+16. Framework `docs/dtc_l1/chatgpt_handoff/CODEX_NEXT_STAGE.md`
+17. Framework `docs/dtc_l1/chatgpt_handoff/GOAL_START.md`
+18. Framework `docs/dtc_l1/codex_handoff/LATEST_REPORT.md`
+19. Framework `docs/dtc_l1/implementation/M5_ISSUE_LOG.md`
 
 ## Branch ownership
 
@@ -33,19 +32,21 @@ Active compute Core:
 
 Only the compute Codex window writes this branch/worktree before compute freeze.
 
-The separate graphics-research window is Framework-only and must not modify Core during M5.7/M5.8.
+The graphics-research window was Framework-only and has now closed at accepted commit:
 
-Fresh graphics Core branch:
+`hrl/decoupled-l1-exp-m5-graphics-research-v0@ed36abb8f98372dbd1fef11d5b0e8780fb8bf17d`
 
-`hrl/decoupled-l1-m5-graphics-v0`
+with status:
 
-is created only after `M5.COMPUTE_FREEZE`, from exact `COMPUTE_FREEZE_CORE_SHA`.
+`GRAPHICS_SOURCE_BACKED_UNAVAILABLE`
+
+Under current evidence there is no graphics Core integration branch to create after compute freeze. Reopen graphics Core work only if a genuinely new original/source-backed artifact first reopens M5.8 and satisfies the explicit admission contract.
 
 ## Current Paper progression
 
-M5.0A is PASS. M5.0B/R5DV remains active until the approved ratio-zero canonical SpMV validation closes M5-T005.
+M5.0A is PASS. M5-T005/R5DV is CLOSED. Current work is M5.0B workload recovery.
 
-Then continue:
+Continue:
 
 `M5.0B -> M5.0C -> M5.0D -> M5.0E -> M5.1 -> M5.2 -> M5.3 -> M5.4 -> M5.5 -> M5.6`
 
@@ -55,7 +56,7 @@ Selection is already approved. The compute window also owns:
 
 `M5.E1 -> M5.E2 -> M5.E3`
 
-E1 formalizes source/build/PTX/input/output identities.
+E1 formalizes source/build/PTX/input/output identities and may progress when host resource conditions allow without disturbing active Paper jobs.
 
 E2's 60 Base/IO/OO primary runs start only after Paper M5.2 freezes the common formal anchor. They may run in parallel with Paper M5.3-M5.6 using the Framework parallel batch policy.
 
@@ -72,7 +73,7 @@ M5.6 alone is not a freeze.
 - no unresolved correctness/fidelity issue;
 - compute Core/Framework branches pushed/clean.
 
-Only then record immutable compute freeze SHAs and allow graphics Core integration.
+At compute freeze record immutable Core/Framework SHAs. Under the accepted graphics-unavailable closeout, no graphics Core integration follows; Framework proceeds to M5.12 negative-evidence synthesis.
 
 ## Frozen DTC architecture boundary
 
@@ -119,11 +120,13 @@ Reproduce -> classify -> repair -> regress -> invalidate affected formal identit
 
 Do not tune Core/workload parameters to thesis bars.
 
-## Graphics rule
+## Graphics rule under current closeout
 
-M5.7/M5.8 research does not touch this Core.
+Do not modify Core for graphics under the current accepted `GRAPHICS_SOURCE_BACKED_UNAVAILABLE` result.
 
-If source-backed graphics is found, M5.9+ integrates around the validated DTC mechanism only on the post-freeze graphics Core branch. No scene IDs, magic addresses, or graphics-specific DTC behavior.
+Do not add scene IDs, magic addresses, graphics-specific DTC behavior, proxy frontend semantics, or synthetic graphics trace handling merely to produce paper-style graphics bars.
+
+If genuinely new original/source-backed graphics evidence later reopens M5.8, any future graphics integration must still be implemented around the validated DTC mechanism on a fresh branch from the then-recorded compute-freeze Core SHA.
 
 ## Git/evidence discipline
 
