@@ -5780,16 +5780,24 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
           static_cast<unsigned long long>(dtc_l1_lower_cap_full_events()));
   unsigned long long mshr_entry_full = 0;
   unsigned long long mshr_merge_full = 0;
+  unsigned long long line_allocation_full = 0;
   for (unsigned access = 0; access < NUM_MEM_ACCESS_TYPE; ++access) {
     mshr_entry_full +=
         l1d_stats.get_aggregated_fail_stats(access, MSHR_ENRTY_FAIL);
     mshr_merge_full +=
         l1d_stats.get_aggregated_fail_stats(access, MSHR_MERGE_ENRTY_FAIL);
+    line_allocation_full +=
+        l1d_stats.get_aggregated_fail_stats(access, LINE_ALLOC_FAIL);
   }
   fprintf(fout, "DTC_L1_baseline_mshr_entry_full_events = %llu\n",
           mshr_entry_full);
   fprintf(fout, "DTC_L1_baseline_mshr_merge_full_events = %llu\n",
           mshr_merge_full);
+  // LINE_ALLOC_FAIL is emitted by the conventional L1 tag array only when
+  // all candidate cache lines are reserved.  Keep it distinct from the DTC
+  // tag-bank arbitration statistic above and from MSHR/miss-queue capacity.
+  fprintf(fout, "DTC_L1_baseline_l1d_line_allocation_fail_events = %llu\n",
+          line_allocation_full);
   fprintf(fout, "DTC_L1_nonexclusive_mshr_entry_full_cycles = %llu\n",
           mshr_entry_full);
   fprintf(fout, "DTC_L1_nonexclusive_mshr_merge_full_cycles = %llu\n",
