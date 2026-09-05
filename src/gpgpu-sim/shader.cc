@@ -5766,6 +5766,12 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
           dtc_l1_lower_outstanding());
   fprintf(fout, "DTC_L1_lower_outstanding_peak = %u\n",
           dtc_l1_lower_peak());
+  fprintf(fout, "DTC_L1_lower_outstanding_cycle_sum = %llu\n",
+          static_cast<unsigned long long>(
+              dtc_l1_lower_occupancy_cycle_sum()));
+  fprintf(fout, "DTC_L1_lower_outstanding_sample_cycles = %llu\n",
+          static_cast<unsigned long long>(
+              dtc_l1_lower_occupancy_sample_cycles()));
   fprintf(fout, "DTC_L1_lower_cap_full_events = %llu\n",
           static_cast<unsigned long long>(dtc_l1_lower_cap_full_events()));
   fprintf(fout, "DTC_L1_primary_stall_lower_cap = %llu\n",

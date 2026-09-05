@@ -1139,6 +1139,8 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
   m_dtc_l1_lower_cap_full_events = 0;
   m_dtc_l1_lower_requests_acquired = 0;
   m_dtc_l1_lower_requests_released = 0;
+  m_dtc_l1_lower_occupancy_cycle_sum = 0;
+  m_dtc_l1_lower_occupancy_sample_cycles = 0;
   last_streamID = -1;
 
   gpu_kernel_time.clear();
@@ -1360,6 +1362,18 @@ void gpgpu_sim::dtc_l1_complete_lower_request() {
   assert(m_dtc_l1_lower_requests_acquired -
              m_dtc_l1_lower_requests_released ==
          m_dtc_l1_lower_outstanding);
+}
+
+void gpgpu_sim::dtc_l1_sample_lower_outstanding() {
+  const unsigned mode = m_shader_config->dtc_l1_mode;
+  if (mode != static_cast<unsigned>(dtc_l1::mode::PAPER_BASE) &&
+      mode != static_cast<unsigned>(dtc_l1::mode::PAPER_IO) &&
+      mode != static_cast<unsigned>(dtc_l1::mode::PAPER_OO) &&
+      mode != static_cast<unsigned>(dtc_l1::mode::MODERN_OO_SECTOR)) {
+    return;
+  }
+  m_dtc_l1_lower_occupancy_cycle_sum += m_dtc_l1_lower_outstanding;
+  ++m_dtc_l1_lower_occupancy_sample_cycles;
 }
 
 void sst_gpgpu_sim::SST_receive_mem_reply(unsigned core_id, void *mem_req) {
@@ -2480,6 +2494,10 @@ void gpgpu_sim::cycle() {
           gpu_occupancy.aggregate_warp_slot_filled,
           gpu_occupancy.aggregate_theoretical_warp_slots);
     }
+    // Capture the post-pipeline lower-credit occupancy for this core cycle.
+    // This is a statistics-only sample and intentionally occurs after all
+    // current-cycle DTC admission/completion transitions.
+    dtc_l1_sample_lower_outstanding();
     float temp = 0;
     for (unsigned i = 0; i < m_shader_config->num_shader(); i++) {
       temp += m_shader_stats->m_pipeline_duty_cycle[i];

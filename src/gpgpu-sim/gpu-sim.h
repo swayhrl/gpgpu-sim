@@ -719,6 +719,13 @@ class gpgpu_sim : public gpgpu_t {
   unsigned long long dtc_l1_lower_requests_released() const {
     return m_dtc_l1_lower_requests_released;
   }
+  void dtc_l1_sample_lower_outstanding();
+  unsigned long long dtc_l1_lower_occupancy_cycle_sum() const {
+    return m_dtc_l1_lower_occupancy_cycle_sum;
+  }
+  unsigned long long dtc_l1_lower_occupancy_sample_cycles() const {
+    return m_dtc_l1_lower_occupancy_sample_cycles;
+  }
 
   // backward pointer
   class gpgpu_context *gpgpu_ctx;
@@ -815,6 +822,11 @@ class gpgpu_sim : public gpgpu_t {
   unsigned long long m_dtc_l1_lower_cap_full_events;
   unsigned long long m_dtc_l1_lower_requests_acquired;
   unsigned long long m_dtc_l1_lower_requests_released;
+  // Sample once per simulated core cycle, after the core pipeline has made
+  // its lower-request transitions.  These are observability-only counters;
+  // admission and completion remain governed by the existing cap protocol.
+  unsigned long long m_dtc_l1_lower_occupancy_cycle_sum;
+  unsigned long long m_dtc_l1_lower_occupancy_sample_cycles;
 
   std::string executed_kernel_info_string();  //< format the kernel information
                                               // into a string for stat printout
