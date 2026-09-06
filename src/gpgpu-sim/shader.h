@@ -2197,6 +2197,7 @@ class ldst_unit : public pipelined_simd_unit {
   uint64_t m_dtc_l1_io_lower_created = 0;
   uint64_t m_dtc_l1_io_lower_issued = 0;
   uint64_t m_dtc_l1_io_lower_responses = 0;
+  uint64_t m_dtc_l1_io_lower_create_queue_full_stalls = 0;
   uint64_t m_dtc_l1_io_inflight_peak = 0;
   uint64_t m_dtc_l1_io_pib_peak = 0;
   uint64_t m_dtc_l1_io_inflight_identity_mismatch = 0;
@@ -2279,6 +2280,7 @@ class ldst_unit : public pipelined_simd_unit {
   uint64_t m_dtc_l1_oo_lower_created = 0;
   uint64_t m_dtc_l1_oo_lower_issued = 0;
   uint64_t m_dtc_l1_oo_lower_responses = 0;
+  uint64_t m_dtc_l1_oo_lower_create_queue_full_stalls = 0;
   uint64_t m_dtc_l1_oo_out_of_order_retires = 0;
   uint64_t m_dtc_l1_oo_ready_but_wb_blocked_cycles = 0;
   uint64_t m_dtc_l1_m4_store_admits = 0;

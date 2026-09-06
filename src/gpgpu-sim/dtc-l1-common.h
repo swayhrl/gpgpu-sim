@@ -166,6 +166,14 @@ class io_frontend {
     return true;
   }
 
+  // A lower-request candidate is needed only for a tag miss.  This is a
+  // non-mutating lookahead used to reserve bounded lower-create capacity
+  // before access() commits the Tag -> physical allocation.
+  bool will_new_miss(uint64_t address) {
+    const uint64_t line = address & ~(kLogicalLineBytes - 1);
+    return find_tag(line) == nullptr;
+  }
+
   io_access_result access(uint64_t cycle, uint64_t uid, uint64_t address) {
     begin_cycle(cycle);
     entry *owner = find_entry(uid);
@@ -438,6 +446,13 @@ class oo_frontend {
     ++m_tag_requests_this_cycle[bank];
     ++m_tag_requests;
     return true;
+  }
+
+  // See io_frontend::will_new_miss().  Existing Valid/Pending tags need no
+  // lower candidate and must remain serviceable while that queue is full.
+  bool will_new_miss(uint64_t address) {
+    const uint64_t line = address & ~(kLogicalLineBytes - 1);
+    return find_tag(line) == nullptr;
   }
 
   io_access_result access(uint64_t cycle, uint64_t uid, uint64_t address) {
@@ -885,6 +900,25 @@ class sector_oo_frontend {
     return true;
   }
 
+  // Return a conservative upper bound on sector lower candidates that this
+  // access can create.  It is intentionally non-mutating so the caller can
+  // reserve queue capacity before access() changes any line state.
+  size_t prospective_new_requests(uint64_t address, uint8_t sector_mask) {
+    assert(sector_mask && !(sector_mask & ~0xFU));
+    const uint64_t line = address & ~(kLogicalLineBytes - 1);
+    const tag_entry *tag = find_tag(line);
+    if (!tag) return static_cast<size_t>(__builtin_popcount(sector_mask));
+    const physical_line &physical = m_phys[tag->physical.id];
+    size_t result = 0;
+    for (unsigned sector = 0; sector < kSectorsPerLogicalLine; ++sector) {
+      const uint8_t bit = static_cast<uint8_t>(1U << sector);
+      if ((sector_mask & bit) &&
+          physical.sectors[sector] == sector_state::INVALID)
+        ++result;
+    }
+    return result;
+  }
+
   // The mask is canonicalized to the low four sectors.  INVALID sectors on
   // a hit are promoted to PENDING without allocating a second physical line.
   access_result access(uint64_t cycle, uint64_t uid, uint64_t address,
@@ -1320,6 +1354,7 @@ struct paper_frontend_stats {
   uint64_t io_lower_created = 0;
   uint64_t io_lower_issued = 0;
   uint64_t io_lower_responses = 0;
+  uint64_t io_lower_create_queue_full_stalls = 0;
   uint64_t io_inflight_current = 0;
   uint64_t io_inflight_peak = 0;
   uint64_t io_inflight_identity_mismatch = 0;
@@ -1359,6 +1394,7 @@ struct paper_frontend_stats {
   uint64_t oo_lower_created = 0;
   uint64_t oo_lower_issued = 0;
   uint64_t oo_lower_responses = 0;
+  uint64_t oo_lower_create_queue_full_stalls = 0;
   uint64_t oo_inflight_current = 0;
   uint64_t oo_pib_occupancy = 0;
   uint64_t oo_retire_count = 0;
@@ -1427,6 +1463,8 @@ struct paper_frontend_stats {
     io_lower_created += other.io_lower_created;
     io_lower_issued += other.io_lower_issued;
     io_lower_responses += other.io_lower_responses;
+    io_lower_create_queue_full_stalls +=
+        other.io_lower_create_queue_full_stalls;
     io_inflight_current += other.io_inflight_current;
     io_inflight_peak = std::max(io_inflight_peak, other.io_inflight_peak);
     io_inflight_identity_mismatch += other.io_inflight_identity_mismatch;
@@ -1479,6 +1517,8 @@ struct paper_frontend_stats {
     oo_lower_created += other.oo_lower_created;
     oo_lower_issued += other.oo_lower_issued;
     oo_lower_responses += other.oo_lower_responses;
+    oo_lower_create_queue_full_stalls +=
+        other.oo_lower_create_queue_full_stalls;
     oo_inflight_current += other.oo_inflight_current;
     oo_pib_occupancy += other.oo_pib_occupancy;
     oo_retire_count += other.oo_retire_count;

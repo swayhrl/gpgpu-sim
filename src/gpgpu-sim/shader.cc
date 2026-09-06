@@ -2127,6 +2127,8 @@ void ldst_unit::get_dtc_l1_stats(
     io.io_lower_created = m_dtc_l1_io_lower_created;
     io.io_lower_issued = m_dtc_l1_io_lower_issued;
     io.io_lower_responses = m_dtc_l1_io_lower_responses;
+    io.io_lower_create_queue_full_stalls =
+        m_dtc_l1_io_lower_create_queue_full_stalls;
     io.io_inflight_current = m_dtc_l1_io_inflight.size();
     io.io_inflight_peak = m_dtc_l1_io_inflight_peak;
     io.io_inflight_identity_mismatch = m_dtc_l1_io_inflight_identity_mismatch;
@@ -2218,6 +2220,8 @@ void ldst_unit::get_dtc_l1_stats(
       oo.oo_lower_created = m_dtc_l1_oo_lower_created;
       oo.oo_lower_issued = m_dtc_l1_oo_lower_issued;
       oo.oo_lower_responses = m_dtc_l1_oo_lower_responses;
+      oo.oo_lower_create_queue_full_stalls =
+          m_dtc_l1_oo_lower_create_queue_full_stalls;
       oo.oo_inflight_current = m_dtc_l1_oo_inflight.size();
       oo.oo_pib_occupancy = m_dtc_l1_oo_pib.size();
       oo.oo_retire_count = m_dtc_l1_oo_frontend->retires();
@@ -2954,6 +2958,18 @@ bool ldst_unit::dtc_l1_io_memory_cycle(
         entry->references[entry->next_reference];
     const unsigned long long cycle =
         m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
+    // This is the bounded DTC-owned candidate queue described by the M2
+    // lower-request contract.  Do not allocate a physical line until there is
+    // room to retain its future lower request: global-credit backpressure must
+    // become a retriable miss-queue stall, never a post-allocation abort.
+    if (m_dtc_l1_io_frontend->will_new_miss(reference.line_address) &&
+        m_dtc_l1_io_lower_create_queue.size() >=
+            m_config->dtc_l1_io_pib_entries) {
+      ++m_dtc_l1_io_lower_create_queue_full_stalls;
+      stall_reason = BK_CONF;
+      access_type = G_MEM_LD;
+      return false;
+    }
     if (!m_dtc_l1_io_frontend->try_serve_tag(cycle,
                                               reference.line_address)) {
       stall_reason = BK_CONF;
@@ -3201,6 +3217,24 @@ bool ldst_unit::dtc_l1_oo_memory_cycle(
         entry->references[entry->next_reference];
     const unsigned long long cycle =
         m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
+    // Modern sector mode can enqueue up to four candidates for one logical
+    // reference.  Reserve that maximum before frontend mutation so its
+    // bounded candidate queue cannot overflow after allocation.
+    const size_t lower_candidate_reservation =
+        dtc_l1_sector_oo_active()
+            ? m_dtc_l1_sector_frontend->prospective_new_requests(
+                  reference.line_address, reference.sector_mask)
+            : (m_dtc_l1_oo_frontend->will_new_miss(reference.line_address)
+                   ? 1
+                   : 0);
+    if (m_dtc_l1_oo_lower_create_queue.size() +
+            lower_candidate_reservation >
+        m_config->dtc_l1_oo_pib_entries) {
+      ++m_dtc_l1_oo_lower_create_queue_full_stalls;
+      stall_reason = BK_CONF;
+      access_type = G_MEM_LD;
+      return false;
+    }
     const bool tag_served = dtc_l1_sector_oo_active()
                                 ? m_dtc_l1_sector_frontend->try_serve_tag(
                                       cycle, reference.line_address)
@@ -5516,6 +5550,9 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
             static_cast<unsigned long long>(total.io_lower_issued));
     fprintf(fout, "DTC_L1_io_lower_responses = %llu\n",
             static_cast<unsigned long long>(total.io_lower_responses));
+    fprintf(fout, "DTC_L1_io_lower_create_queue_full_stalls = %llu\n",
+            static_cast<unsigned long long>(
+                total.io_lower_create_queue_full_stalls));
     fprintf(fout, "DTC_L1_io_inflight_current = %llu\n",
             static_cast<unsigned long long>(total.io_inflight_current));
     fprintf(fout, "DTC_L1_io_inflight_peak_per_sm = %llu\n",
@@ -5686,6 +5723,9 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
             static_cast<unsigned long long>(total.oo_lower_issued));
     fprintf(fout, "DTC_L1_oo_lower_responses = %llu\n",
             static_cast<unsigned long long>(total.oo_lower_responses));
+    fprintf(fout, "DTC_L1_oo_lower_create_queue_full_stalls = %llu\n",
+            static_cast<unsigned long long>(
+                total.oo_lower_create_queue_full_stalls));
     fprintf(fout, "DTC_L1_oo_inflight_current = %llu\n",
             static_cast<unsigned long long>(total.oo_inflight_current));
     fprintf(fout, "DTC_L1_oo_pib_occupancy = %llu\n",
