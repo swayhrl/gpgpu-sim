@@ -422,6 +422,10 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_vm_l2_tlb_lookup_latency", OPT_UINT32,
                          &gpgpu_vm_l2_tlb_lookup_latency,
                          "generic M3 L2 TLB lookup service cycles", "80");
+  option_parser_register(opp, "-gpgpu_vm_l2_tlb_mode", OPT_UINT32,
+                         &gpgpu_vm_l2_tlb_mode,
+                         "L2 TLB mode: 0=accepted exact-page, "
+                         "1=speculative 16-subentry candidate", "0");
   option_parser_register(opp, "-gpgpu_vm_translation_mshr_entries",
                          OPT_UINT32, &gpgpu_vm_translation_mshr_entries,
                          "functional translation MSHR entries", "32");
@@ -1098,7 +1102,8 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
             m_shader_config->gpgpu_vm_pwc_lookup_latency),
         m_shader_config->gpgpu_vm_l1_tlb_lookup_latency,
         m_shader_config->gpgpu_vm_l2_tlb_lookup_latency,
-        m_shader_config->gpgpu_vm_object_map);
+        m_shader_config->gpgpu_vm_object_map,
+        m_shader_config->gpgpu_vm_l2_tlb_mode);
     if (!vm_config.valid()) {
       fprintf(stderr, "ERROR: invalid functional VM TLB configuration\n");
       abort();

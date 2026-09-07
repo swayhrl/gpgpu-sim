@@ -1652,6 +1652,8 @@ class shader_core_config : public core_config {
   unsigned gpgpu_vm_l2_tlb_assoc;
   unsigned gpgpu_vm_l2_tlb_ports;
   unsigned gpgpu_vm_l2_tlb_lookup_latency;
+  // 0=accepted exact-page L2 path; 1=speculative 16-subentry candidate.
+  unsigned gpgpu_vm_l2_tlb_mode;
   unsigned gpgpu_vm_translation_mshr_entries;
   unsigned gpgpu_vm_pwq_entries;
   unsigned gpgpu_vm_walkers;

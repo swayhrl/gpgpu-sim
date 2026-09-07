@@ -145,6 +145,14 @@ struct tlb_config {
   unsigned sets() const;
 };
 
+// The accepted M1--M4C path is the exact-page TLB below.  M4B deliberately
+// makes the sub-entry organization an opt-in L2 candidate so that enabling no
+// new option retains the existing object, tag, replacement, and timing path.
+enum l2_tlb_mode {
+  L2_TLB_STANDARD = 0,
+  L2_TLB_SUBENTRY_16 = 1
+};
+
 // M4C object labels are observability metadata.  They are intentionally not
 // part of translation_key, so they cannot affect a TLB match, replacement, or
 // timing decision.
@@ -255,6 +263,81 @@ class set_associative_tlb {
   uint64_t m_touch_clock;
 };
 
+// C1 selection: REFERENCE_APPROX_SUBENTRY_16.  One L2 entry is a base-VPN
+// group with exactly sixteen independently valid base-page translations.  The
+// group is the unit of set placement/replacement/LRU; a selected invalid leaf
+// is a TLB miss even when the base tag matches.  This is intentionally a
+// separate candidate type rather than a mutation of set_associative_tlb.
+struct subentry_tlb_stats {
+  uint64_t base_tag_hits;
+  uint64_t base_tag_misses;
+  uint64_t selected_subentry_hits;
+  uint64_t selected_subentry_misses;
+  uint64_t group_fills;
+  uint64_t existing_group_fills;
+  uint64_t group_evictions;
+  uint64_t valid_subentries_evicted;
+  uint64_t valid_subentries_by_object[OBJECT_CLASS_COUNT];
+  uint64_t eviction_matrix[OBJECT_CLASS_COUNT][OBJECT_CLASS_COUNT];
+  subentry_tlb_stats()
+      : base_tag_hits(0), base_tag_misses(0), selected_subentry_hits(0),
+        selected_subentry_misses(0), group_fills(0),
+        existing_group_fills(0), group_evictions(0),
+        valid_subentries_evicted(0), valid_subentries_by_object(),
+        eviction_matrix() {}
+};
+
+class subentry_tlb {
+ public:
+  enum { kSubentriesPerGroup = 16 };
+  explicit subentry_tlb(const tlb_config &config = tlb_config());
+  bool probe(const translation_key &key, uint64_t cycle, uint64_t *ppn);
+  tlb_fill_result fill(const translation_key &key, uint64_t ppn,
+                       uint64_t cycle,
+                       object_class object = OBJECT_UNKNOWN);
+  bool try_consume_port(uint64_t cycle);
+  unsigned occupancy() const;
+  unsigned valid_subentries() const;
+  const tlb_stats &stats() const { return m_stats; }
+  const subentry_tlb_stats &subentry_stats() const { return m_subentry_stats; }
+
+ private:
+  struct subentry {
+    bool valid;
+    uint64_t ppn;
+    object_class object;
+    subentry() : valid(false), ppn(0), object(OBJECT_UNKNOWN) {}
+  };
+  struct group_entry {
+    bool valid;
+    unsigned asid;
+    uint64_t base_vpn;
+    uint64_t page_size;
+    uint64_t last_touch;
+    // This is a group-level compatibility label for the existing M4C
+    // group-eviction matrix only.  Per-subentry object occupancy/evictions
+    // remain separately recorded in subentry_tlb_stats.
+    object_class object;
+    subentry leaves[kSubentriesPerGroup];
+    group_entry()
+        : valid(false), asid(0), base_vpn(0), page_size(0), last_touch(0),
+          object(OBJECT_UNKNOWN), leaves() {}
+  };
+  unsigned set_for(unsigned asid, uint64_t base_vpn,
+                   uint64_t page_size) const;
+  unsigned leaf_for(const translation_key &key) const;
+  group_entry *find_group(const translation_key &key);
+  const group_entry *find_group(const translation_key &key) const;
+  void clear_group(group_entry *group, object_class incoming);
+  tlb_config m_config;
+  std::vector<group_entry> m_entries;
+  tlb_stats m_stats;
+  subentry_tlb_stats m_subentry_stats;
+  uint64_t m_port_cycle;
+  unsigned m_ports_used;
+  uint64_t m_touch_clock;
+};
+
 struct translation_config {
   unsigned num_sms;
   uint64_t page_size;
@@ -274,6 +357,7 @@ struct translation_config {
   page_table_config page_table;
   pwc_config pwc;
   std::string object_map_path;
+  unsigned l2_mode;
   translation_config(unsigned sms = 1,
                      uint64_t page = vm_core::kDefaultBasePageSize,
                      const tlb_config &l1_config = tlb_config(),
@@ -285,13 +369,14 @@ struct translation_config {
                      unsigned page_table_walk_mode = 0,
                      const pwc_config &pwc_config_value = pwc_config(),
                      unsigned l1_latency = 0, unsigned l2_latency = 0,
-                     const std::string &object_map = "")
+                     const std::string &object_map = "",
+                     unsigned l2_tlb_mode_value = L2_TLB_STANDARD)
       : num_sms(sms), page_size(page), l1(l1_config), l2(l2_config),
         mshr_entries(mshr_count), pwq_entries(pwq_count), walkers(walker_count),
         walk_latency(latency), l1_lookup_latency(l1_latency),
         l2_lookup_latency(l2_latency), ptw_mode(page_table_walk_mode),
         page_table(page_table_config_value), pwc(pwc_config_value),
-        object_map_path(object_map) {}
+        object_map_path(object_map), l2_mode(l2_tlb_mode_value) {}
   bool valid() const;
 };
 
@@ -485,7 +570,10 @@ class translation_controller {
   unsigned active_walkers() const { return m_active_walks.size(); }
   const translation_config &config() const { return m_config; }
   const set_associative_tlb &l1(unsigned sid) const;
+  // Retained exact-page L2 accessor for M1--M4C directed tests.  It is the
+  // active L2 only in L2_TLB_STANDARD mode.
   const set_associative_tlb &l2() const { return m_l2; }
+  const subentry_tlb &l2_subentries() const { return m_l2_subentries; }
   const translation_stats &stats() const { return m_stats; }
   bool object_attribution_conserves() const;
   void print_stats(FILE *fout) const;
@@ -627,6 +715,7 @@ class translation_controller {
   page_table_backend *m_page_table;
   std::vector<set_associative_tlb> m_l1s;
   set_associative_tlb m_l2;
+  subentry_tlb m_l2_subentries;
   std::vector<mshr_entry> m_mshrs;
   std::vector<lookup_operation> m_lookups;
   std::vector<translation_key> m_pwq;

@@ -429,16 +429,194 @@ unsigned set_associative_tlb::occupancy() const {
   return result;
 }
 
+subentry_tlb::subentry_tlb(const tlb_config &config)
+    : m_config(config), m_entries(), m_stats(), m_subentry_stats(),
+      m_port_cycle(~0ULL), m_ports_used(0), m_touch_clock(0) {
+  assert(m_config.valid());
+  m_entries.resize(m_config.entries);
+}
+
+unsigned subentry_tlb::set_for(unsigned asid, uint64_t base_vpn,
+                               uint64_t page_size) const {
+  // C1's approved approximation has no target-reference set-index function.
+  // Keep the accepted generic hash shape, changing only the tag from a VPN to
+  // its 16-page group.  This is a documented model choice, not a hardware
+  // reconstruction.
+  const uint64_t mixed = base_vpn ^ (uint64_t(asid) << 17) ^
+                         (page_size >> 12);
+  return unsigned(mixed % m_config.sets());
+}
+
+unsigned subentry_tlb::leaf_for(const translation_key &key) const {
+  assert(key.page_size == vm_core::kDefaultBasePageSize);
+  return unsigned(key.vpn & (kSubentriesPerGroup - 1));
+}
+
+subentry_tlb::group_entry *subentry_tlb::find_group(
+    const translation_key &key) {
+  const uint64_t base_vpn = key.vpn / kSubentriesPerGroup;
+  const unsigned begin = set_for(key.asid, base_vpn, key.page_size) *
+                         m_config.assoc;
+  for (unsigned way = 0; way < m_config.assoc; ++way) {
+    group_entry &candidate = m_entries[begin + way];
+    if (candidate.valid && candidate.asid == key.asid &&
+        candidate.base_vpn == base_vpn && candidate.page_size == key.page_size)
+      return &candidate;
+  }
+  return 0;
+}
+
+const subentry_tlb::group_entry *subentry_tlb::find_group(
+    const translation_key &key) const {
+  const uint64_t base_vpn = key.vpn / kSubentriesPerGroup;
+  const unsigned begin = set_for(key.asid, base_vpn, key.page_size) *
+                         m_config.assoc;
+  for (unsigned way = 0; way < m_config.assoc; ++way) {
+    const group_entry &candidate = m_entries[begin + way];
+    if (candidate.valid && candidate.asid == key.asid &&
+        candidate.base_vpn == base_vpn && candidate.page_size == key.page_size)
+      return &candidate;
+  }
+  return 0;
+}
+
+bool subentry_tlb::try_consume_port(uint64_t cycle) {
+  if (m_port_cycle != cycle) {
+    m_port_cycle = cycle;
+    m_ports_used = 0;
+  }
+  if (m_ports_used >= m_config.ports_per_cycle) {
+    ++m_stats.port_stalls;
+    return false;
+  }
+  ++m_ports_used;
+  return true;
+}
+
+bool subentry_tlb::probe(const translation_key &key, uint64_t cycle,
+                         uint64_t *ppn) {
+  (void)cycle;
+  assert(key.page_size == vm_core::kDefaultBasePageSize);
+  assert(ppn != 0);
+  ++m_stats.accesses;
+  group_entry *group = find_group(key);
+  if (group == 0) {
+    ++m_stats.misses;
+    ++m_subentry_stats.base_tag_misses;
+    return false;
+  }
+  ++m_subentry_stats.base_tag_hits;
+  group->last_touch = ++m_touch_clock;
+  subentry &leaf = group->leaves[leaf_for(key)];
+  if (!leaf.valid) {
+    ++m_stats.misses;
+    ++m_subentry_stats.selected_subentry_misses;
+    return false;
+  }
+  *ppn = leaf.ppn;
+  ++m_stats.hits;
+  ++m_subentry_stats.selected_subentry_hits;
+  return true;
+}
+
+void subentry_tlb::clear_group(group_entry *group, object_class incoming) {
+  assert(group != 0 && group->valid);
+  ++m_stats.evictions;
+  ++m_subentry_stats.group_evictions;
+  for (unsigned leaf_index = 0; leaf_index < kSubentriesPerGroup;
+       ++leaf_index) {
+    subentry &leaf = group->leaves[leaf_index];
+    if (!leaf.valid) continue;
+    assert(m_subentry_stats.valid_subentries_by_object[leaf.object] != 0);
+    --m_subentry_stats.valid_subentries_by_object[leaf.object];
+    ++m_subentry_stats.valid_subentries_evicted;
+    ++m_subentry_stats.eviction_matrix[incoming][leaf.object];
+    leaf = subentry();
+  }
+  group->valid = false;
+}
+
+tlb_fill_result subentry_tlb::fill(const translation_key &key, uint64_t ppn,
+                                   uint64_t cycle, object_class object) {
+  (void)cycle;
+  assert(key.page_size == vm_core::kDefaultBasePageSize);
+  assert(object < OBJECT_CLASS_COUNT);
+  const uint64_t base_vpn = key.vpn / kSubentriesPerGroup;
+  const unsigned begin = set_for(key.asid, base_vpn, key.page_size) *
+                         m_config.assoc;
+  group_entry *group = find_group(key);
+  tlb_fill_result result;
+  if (group != 0) {
+    ++m_subentry_stats.existing_group_fills;
+  } else {
+    group = &m_entries[begin];
+    for (unsigned way = 0; way < m_config.assoc; ++way) {
+      group_entry &candidate = m_entries[begin + way];
+      if (!candidate.valid) {
+        group = &candidate;
+        break;
+      }
+      if (candidate.last_touch < group->last_touch) group = &candidate;
+    }
+    if (group->valid) {
+      const object_class victim_object = group->object;
+      clear_group(group, object);
+      result = tlb_fill_result(true, victim_object);
+    }
+    group->valid = true;
+    group->asid = key.asid;
+    group->base_vpn = base_vpn;
+    group->page_size = key.page_size;
+    group->object = object;
+    ++m_subentry_stats.group_fills;
+  }
+  group->last_touch = ++m_touch_clock;
+  group->object = object;
+  subentry &leaf = group->leaves[leaf_for(key)];
+  if (leaf.valid && leaf.object != object) {
+    assert(m_subentry_stats.valid_subentries_by_object[leaf.object] != 0);
+    --m_subentry_stats.valid_subentries_by_object[leaf.object];
+    ++m_subentry_stats.valid_subentries_by_object[object];
+  } else if (!leaf.valid) {
+    ++m_subentry_stats.valid_subentries_by_object[object];
+  }
+  leaf.valid = true;
+  leaf.ppn = ppn;
+  leaf.object = object;
+  return result;
+}
+
+unsigned subentry_tlb::occupancy() const {
+  unsigned result = 0;
+  for (unsigned index = 0; index < m_entries.size(); ++index)
+    if (m_entries[index].valid) ++result;
+  return result;
+}
+
+unsigned subentry_tlb::valid_subentries() const {
+  unsigned result = 0;
+  for (unsigned index = 0; index < m_entries.size(); ++index) {
+    const group_entry &group = m_entries[index];
+    if (!group.valid) continue;
+    for (unsigned leaf = 0; leaf < kSubentriesPerGroup; ++leaf)
+      if (group.leaves[leaf].valid) ++result;
+  }
+  return result;
+}
+
 bool translation_config::valid() const {
   return num_sms != 0 && vm_core::valid_page_size(page_size) && l1.valid() &&
          l2.valid() && mshr_entries != 0 && pwq_entries != 0 && walkers != 0 &&
          walk_latency != 0 && ptw_mode <= 1 && page_table.valid() &&
-         pwc.valid();
+         pwc.valid() && l2_mode <= L2_TLB_SUBENTRY_16 &&
+         (l2_mode != L2_TLB_SUBENTRY_16 ||
+          page_size == vm_core::kDefaultBasePageSize);
 }
 
 translation_controller::translation_controller(const translation_config &config)
     : m_config(config), m_default_page_table(config.page_table),
-      m_page_table(&m_default_page_table), m_l1s(), m_l2(config.l2), m_mshrs(),
+      m_page_table(&m_default_page_table), m_l1s(), m_l2(config.l2),
+      m_l2_subentries(config.l2), m_mshrs(),
       m_lookups(), m_pwq(), m_active_walks(), m_pwc(),
       m_object_map(config.object_map_path), m_object_unique_keys(), m_stats(),
       m_next_pte_request_id(1), m_pwc_touch_clock(0) {
@@ -452,7 +630,8 @@ translation_controller::translation_controller(const translation_config &config)
 translation_controller::translation_controller(const translation_config &config,
                                                page_table_backend *backend)
     : m_config(config), m_default_page_table(config.page_table),
-      m_page_table(backend), m_l1s(), m_l2(config.l2), m_mshrs(), m_lookups(),
+      m_page_table(backend), m_l1s(), m_l2(config.l2),
+      m_l2_subentries(config.l2), m_mshrs(), m_lookups(),
       m_pwq(), m_active_walks(), m_pwc(), m_object_map(config.object_map_path),
       m_object_unique_keys(), m_stats(),
       m_next_pte_request_id(1),
@@ -653,7 +832,11 @@ void translation_controller::service_lookups(uint64_t cycle) {
         continue;
       }
       if (lookup.stage == LOOKUP_L2_LAUNCH) {
-        if (!m_l2.try_consume_port(cycle)) {
+        const bool l2_port_granted =
+            m_config.l2_mode == L2_TLB_STANDARD
+                ? m_l2.try_consume_port(cycle)
+                : m_l2_subentries.try_consume_port(cycle);
+        if (!l2_port_granted) {
           ++index;
           continue;
         }
@@ -670,7 +853,9 @@ void translation_controller::service_lookups(uint64_t cycle) {
       }
       if (lookup.stage == LOOKUP_L2_SERVICE && lookup.ready_cycle <= cycle) {
         uint64_t ppn = 0;
-        const bool hit = m_l2.probe(lookup.key, cycle, &ppn);
+        const bool hit = m_config.l2_mode == L2_TLB_STANDARD
+                             ? m_l2.probe(lookup.key, cycle, &ppn)
+                             : m_l2_subentries.probe(lookup.key, cycle, &ppn);
         ++m_stats.l2_lookup_completions;
         if (m_stats.object_attribution_enabled) {
           if (hit)
@@ -917,7 +1102,9 @@ bool translation_controller::complete_translation(const translation_key &key,
     ++m_stats.mapper_lookups;
     const object_class fill_object = classify_key(key);
     const tlb_fill_result l2_fill =
-        m_l2.fill(key, ppn, cycle, fill_object);
+        m_config.l2_mode == L2_TLB_STANDARD
+            ? m_l2.fill(key, ppn, cycle, fill_object)
+            : m_l2_subentries.fill(key, ppn, cycle, fill_object);
     if (m_stats.object_attribution_enabled) {
       ++m_stats.object[fill_object].l2_fills;
       if (l2_fill.evicted)
@@ -1225,7 +1412,9 @@ bool translation_controller::object_attribution_conserves() const {
     l1_total.hits += stats.hits;
     l1_total.misses += stats.misses;
   }
-  const tlb_stats &l2_stats = m_l2.stats();
+  const tlb_stats &l2_stats =
+      m_config.l2_mode == L2_TLB_STANDARD ? m_l2.stats()
+                                           : m_l2_subentries.stats();
   return requesters == m_stats.l1_lookup_launches &&
          l1_launches == m_stats.l1_lookup_launches &&
          l1_hits == l1_total.hits && l1_misses == l1_total.misses &&
@@ -1264,7 +1453,9 @@ void translation_controller::print_stats(FILE *fout) const {
     l1_total.port_stalls += stats.port_stalls;
     l1_occupancy += m_l1s[sid].occupancy();
   }
-  const tlb_stats &l2_stats = m_l2.stats();
+  const tlb_stats &l2_stats =
+      m_config.l2_mode == L2_TLB_STANDARD ? m_l2.stats()
+                                           : m_l2_subentries.stats();
   fprintf(fout, "vm_translation_page_size_bytes = %llu\n",
           (unsigned long long)m_config.page_size);
   fprintf(fout, "vm_translation_lookup_requests = %llu\n",
@@ -1405,6 +1596,7 @@ void translation_controller::print_stats(FILE *fout) const {
   fprintf(fout, "vm_l1_tlb_port_stalls = %llu\n",
           (unsigned long long)l1_total.port_stalls);
   fprintf(fout, "vm_l1_tlb_occupancy = %u\n", l1_occupancy);
+  fprintf(fout, "vm_l2_tlb_mode = %u\n", m_config.l2_mode);
   fprintf(fout, "vm_l2_tlb_accesses = %llu\n",
           (unsigned long long)l2_stats.accesses);
   fprintf(fout, "vm_l2_tlb_hits = %llu\n", (unsigned long long)l2_stats.hits);
@@ -1414,7 +1606,45 @@ void translation_controller::print_stats(FILE *fout) const {
           (unsigned long long)l2_stats.evictions);
   fprintf(fout, "vm_l2_tlb_port_stalls = %llu\n",
           (unsigned long long)l2_stats.port_stalls);
-  fprintf(fout, "vm_l2_tlb_occupancy = %u\n", m_l2.occupancy());
+  fprintf(fout, "vm_l2_tlb_occupancy = %u\n",
+          m_config.l2_mode == L2_TLB_STANDARD ? m_l2.occupancy()
+                                               : m_l2_subentries.occupancy());
+  if (m_config.l2_mode == L2_TLB_SUBENTRY_16) {
+    const subentry_tlb_stats &subentry = m_l2_subentries.subentry_stats();
+    fprintf(fout, "vm_l2_tlb_subentry_schema = REFERENCE_APPROX_SUBENTRY_16\n");
+    fprintf(fout, "vm_l2_tlb_subentry_group_entries = %u\n",
+            m_config.l2.entries);
+    fprintf(fout, "vm_l2_tlb_subentry_count_per_group = %u\n",
+            subentry_tlb::kSubentriesPerGroup);
+    fprintf(fout, "vm_l2_tlb_subentry_valid_occupancy = %u\n",
+            m_l2_subentries.valid_subentries());
+    fprintf(fout, "vm_l2_tlb_subentry_base_tag_hits = %llu\n",
+            (unsigned long long)subentry.base_tag_hits);
+    fprintf(fout, "vm_l2_tlb_subentry_base_tag_misses = %llu\n",
+            (unsigned long long)subentry.base_tag_misses);
+    fprintf(fout, "vm_l2_tlb_subentry_hits = %llu\n",
+            (unsigned long long)subentry.selected_subentry_hits);
+    fprintf(fout, "vm_l2_tlb_subentry_misses = %llu\n",
+            (unsigned long long)subentry.selected_subentry_misses);
+    fprintf(fout, "vm_l2_tlb_subentry_group_fills = %llu\n",
+            (unsigned long long)subentry.group_fills);
+    fprintf(fout, "vm_l2_tlb_subentry_existing_group_fills = %llu\n",
+            (unsigned long long)subentry.existing_group_fills);
+    fprintf(fout, "vm_l2_tlb_subentry_group_evictions = %llu\n",
+            (unsigned long long)subentry.group_evictions);
+    fprintf(fout, "vm_l2_tlb_subentry_valid_evictions = %llu\n",
+            (unsigned long long)subentry.valid_subentries_evicted);
+    for (unsigned object = 0; object < OBJECT_CLASS_COUNT; ++object) {
+      const char *name = object_class_name(static_cast<object_class>(object));
+      fprintf(fout, "vm_l2_tlb_subentry_valid_%s = %llu\n", name,
+              (unsigned long long)subentry.valid_subentries_by_object[object]);
+      for (unsigned victim = 0; victim < OBJECT_CLASS_COUNT; ++victim)
+        fprintf(fout,
+                "vm_l2_tlb_subentry_eviction_incoming_%s_victim_%s = %llu\n",
+                name, object_class_name(static_cast<object_class>(victim)),
+                (unsigned long long)subentry.eviction_matrix[object][victim]);
+    }
+  }
   fprintf(fout, "vm_object_attribution_enabled = %u\n",
           m_stats.object_attribution_enabled ? 1U : 0U);
   if (!m_stats.object_attribution_enabled) return;
