@@ -185,6 +185,35 @@ enum translation_access {
   TRANSLATION_ACCESS_ATOMIC = 2
 };
 
+// A V2 registration may be architecturally rejected without being a malformed
+// simulator configuration.  The result is machine-readable and, critically,
+// has no live descriptor image.  It is distinct from a missing/unreadable
+// artifact, which remains a project configuration error.
+enum segment_registration_status {
+  SEGMENT_REGISTRATION_DISABLED = 0,
+  SEGMENT_REGISTRATION_ACCEPTED_V2,
+  SEGMENT_REGISTRATION_ACCEPTED_HISTORICAL_V1,
+  SEGMENT_REGISTRATION_REJECTED_EMPTY,
+  SEGMENT_REGISTRATION_REJECTED_CAPACITY,
+  SEGMENT_REGISTRATION_REJECTED_OVERLAP,
+  SEGMENT_REGISTRATION_REJECTED_UNSORTED,
+  SEGMENT_REGISTRATION_REJECTED_ASID_EPOCH,
+  SEGMENT_REGISTRATION_REJECTED_RIGHTS,
+  SEGMENT_REGISTRATION_REJECTED_MAPPING_CLASS,
+  SEGMENT_REGISTRATION_REJECTED_EXTENT
+};
+
+const char *segment_registration_status_name(segment_registration_status status);
+
+enum segment_lifecycle_state {
+  SEGMENT_LIFECYCLE_INACTIVE = 0,
+  SEGMENT_LIFECYCLE_INSTALLING,
+  SEGMENT_LIFECYCLE_ACTIVE,
+  SEGMENT_LIFECYCLE_REVOKING
+};
+
+const char *segment_lifecycle_state_name(segment_lifecycle_state state);
+
 const char *object_class_name(object_class object);
 
 // A frozen line-oriented schema replaces per-run ad-hoc metadata parsing.  A
@@ -225,6 +254,13 @@ class weight_segment_map {
   explicit weight_segment_map(const std::string &path = "");
   bool enabled() const { return m_enabled; }
   bool registered_v2() const { return m_registered_v2; }
+  bool registration_accepted() const {
+    return m_registration_status == SEGMENT_REGISTRATION_ACCEPTED_V2 ||
+           m_registration_status == SEGMENT_REGISTRATION_ACCEPTED_HISTORICAL_V1;
+  }
+  segment_registration_status registration_status() const {
+    return m_registration_status;
+  }
   unsigned size() const { return m_ranges.size(); }
   unsigned active_asid() const { return m_active_asid; }
   unsigned active_epoch() const { return m_active_epoch; }
@@ -254,6 +290,7 @@ class weight_segment_map {
   };
   bool m_enabled;
   bool m_registered_v2;
+  segment_registration_status m_registration_status;
   unsigned m_active_asid;
   unsigned m_active_epoch;
   std::vector<range> m_ranges;
@@ -275,6 +312,26 @@ struct segment_config {
     return entries != 0 && lookup_latency != 0 && !map_path.empty();
   }
 };
+
+// Official C9 comparison arms are selected as a configuration contract, not
+// inferred from arbitrary entry counts. H0 is deliberately represented only
+// so the selector can reject it permanently.
+enum fair_arm_id {
+  FAIR_ARM_MANUAL = 0,
+  FAIR_ARM_F0_BASELINE_EXACT,
+  FAIR_ARM_F1_SUBENTRY_G96,
+  FAIR_ARM_F2_EXACT_E688,
+  FAIR_ARM_F3_EXACT_SWEEP,
+  FAIR_ARM_F4_EXACT_E1536,
+  FAIR_ARM_F5_BLOCKED_PHYSICAL_PWC,
+  FAIR_ARM_F6_EXACT_2M_E848,
+  FAIR_ARM_F7_SEGMENT_EXACT_E320,
+  FAIR_ARM_F8_SEGMENT_SUBENTRY_G32,
+  FAIR_ARM_F9_EXACT_E656,
+  FAIR_ARM_H0_HISTORICAL_UNFAIR
+};
+
+const char *fair_arm_name(unsigned arm);
 
 enum pwc_mode { PWC_OFF = 0, PWC_FINITE = 1, PWC_IDEAL = 2 };
 
@@ -317,6 +374,9 @@ class set_associative_tlb {
   tlb_fill_result fill(const translation_key &key, uint64_t ppn,
                        uint64_t cycle,
                        object_class object = OBJECT_UNKNOWN);
+  bool invalidate(const translation_key &key);
+  void flush_asid(unsigned asid);
+  void flush_all();
   bool try_consume_port(uint64_t cycle);
   unsigned occupancy() const;
   const tlb_stats &stats() const { return m_stats; }
@@ -446,6 +506,7 @@ struct translation_config {
   std::string object_map_path;
   unsigned l2_mode;
   segment_config segment;
+  unsigned fair_arm;
   translation_config(unsigned sms = 1,
                      uint64_t page = vm_core::kDefaultBasePageSize,
                      const tlb_config &l1_config = tlb_config(),
@@ -460,16 +521,22 @@ struct translation_config {
                      const std::string &object_map = "",
                      unsigned l2_tlb_mode_value = L2_TLB_STANDARD,
                      const segment_config &segment_config_value =
-                         segment_config())
+                         segment_config(),
+                     unsigned fair_arm_value = FAIR_ARM_MANUAL)
       : num_sms(sms), page_size(page), l1(l1_config), l2(l2_config),
         mshr_entries(mshr_count), pwq_entries(pwq_count), walkers(walker_count),
         walk_latency(latency), l1_lookup_latency(l1_latency),
         l2_lookup_latency(l2_latency), ptw_mode(page_table_walk_mode),
         page_table(page_table_config_value), pwc(pwc_config_value),
         object_map_path(object_map), l2_mode(l2_tlb_mode_value),
-        segment(segment_config_value) {}
+        segment(segment_config_value), fair_arm(fair_arm_value) {}
   bool valid() const;
 };
+
+// Overwrites only the arm-controlled fields with the frozen C9 realization.
+// F5 and H0 return false: neither is an executable official profile.
+bool configure_fair_arm(translation_config *config, unsigned arm);
+uint64_t fair_arm_charged_bits(const translation_config &config);
 
 enum lookup_result {
   READY,
@@ -529,6 +596,14 @@ struct translation_stats {
   uint64_t segment_install_rejections;
   uint64_t segment_revoke_attempts;
   uint64_t segment_revoke_acks;
+  uint64_t segment_install_replica_acks;
+  uint64_t segment_revoke_replica_acks;
+  uint64_t segment_epoch_wrap_quiesces;
+  uint64_t translation_generation_advances;
+  uint64_t translation_generation_wrap_quiesces;
+  uint64_t translation_stale_fills_discarded;
+  uint64_t translation_stale_ready_discards;
+  uint64_t translation_stale_waiters_discarded;
   // Per-requester, critical-path state intervals.  These are deliberately
   // not summed into a fabricated global latency: merged requesters share a
   // single MSHR/walk while retaining their own entry and wakeup times.
@@ -645,6 +720,12 @@ struct translation_stats {
         segment_mapping_mismatch_faults(0), segment_install_attempts(0),
         segment_install_acks(0), segment_install_rejections(0),
         segment_revoke_attempts(0), segment_revoke_acks(0),
+        segment_install_replica_acks(0), segment_revoke_replica_acks(0),
+        segment_epoch_wrap_quiesces(0), translation_generation_advances(0),
+        translation_generation_wrap_quiesces(0),
+        translation_stale_fills_discarded(0),
+        translation_stale_ready_discards(0),
+        translation_stale_waiters_discarded(0),
         requester_completions(0),
         requester_latency_cycles_total(0), requester_latency_cycles_max(0),
         requester_l1_queue_cycles_total(0), requester_l1_queue_cycles_max(0),
@@ -718,6 +799,29 @@ class translation_controller {
   const set_associative_tlb &l2() const { return m_l2; }
   const subentry_tlb &l2_subentries() const { return m_l2_subentries; }
   const translation_stats &stats() const { return m_stats; }
+  // Deterministic privileged-control seam for C9's pinned epoch. No Segment
+  // descriptor is eligible until every local replica explicitly acknowledges
+  // the staged image; revoke similarly removes every image before reuse.
+  bool begin_segment_install();
+  bool acknowledge_segment_install(unsigned sid);
+  bool begin_segment_revoke();
+  bool acknowledge_segment_revoke(unsigned sid);
+  bool quiesce_segment_epoch_wrap();
+  bool segment_active() const {
+    return m_segment_lifecycle == SEGMENT_LIFECYCLE_ACTIVE;
+  }
+  segment_lifecycle_state segment_lifecycle() const {
+    return m_segment_lifecycle;
+  }
+  unsigned segment_active_asid() const { return m_segment_active_asid; }
+  unsigned segment_active_epoch() const { return m_segment_active_epoch; }
+  // Conventional translation generation is intentionally independent of the
+  // Segment driver epoch. A shootdown invalidates resident L1/L2 state and
+  // causes in-flight old-generation fills to be discarded.
+  void invalidate_translation(const translation_key &key);
+  void flush_translation_asid(unsigned asid);
+  void flush_translation_all();
+  uint64_t translation_generation(unsigned asid) const;
   bool object_attribution_conserves() const;
   void print_stats(FILE *fout) const;
 
@@ -747,10 +851,13 @@ class translation_controller {
     translation_key key;
     std::vector<waiter> waiters;
     uint64_t enqueue_cycle;
+    uint64_t generation;
     object_class object;
     mshr_entry(const translation_key &k, uint64_t enqueue,
+               uint64_t captured_generation,
                object_class object_classification)
         : key(k), waiters(), enqueue_cycle(enqueue),
+          generation(captured_generation),
           object(object_classification) {}
     bool has_waiter(uint64_t uid) const;
   };
@@ -778,6 +885,7 @@ class translation_controller {
     uint64_t ppn;
     uint64_t sim_va;
     uint64_t request_bytes;
+    uint64_t generation;
     object_class object;
     translation_access access;
     translation_source source;
@@ -793,7 +901,7 @@ class translation_controller {
     uint64_t l1_ppn;
     lookup_operation(unsigned s, uint64_t u, const translation_key &k,
                      uint64_t entry, uint64_t ready,
-                     uint64_t va, uint64_t bytes,
+                     uint64_t va, uint64_t bytes, uint64_t captured_generation,
                      object_class object_classification,
                      translation_access request_access, bool launch_segment,
                      uint64_t segment_ready)
@@ -802,6 +910,7 @@ class translation_controller {
           l2_issued(false),
           l2_launch_cycle(0), l2_complete_cycle(0), ready_cycle(ready),
           ppn(0), sim_va(va), request_bytes(bytes),
+          generation(captured_generation),
           object(object_classification), access(request_access),
           source(TRANSLATION_SOURCE_UNOBSERVED),
           segment_launched(launch_segment), segment_ready_cycle(segment_ready),
@@ -813,10 +922,13 @@ class translation_controller {
   struct completed_outcome {
     translation_key key;
     translation_source source;
+    uint64_t generation;
     completed_outcome(const translation_key &completed_key = translation_key(),
                       translation_source completed_source =
-                          TRANSLATION_SOURCE_UNOBSERVED)
-        : key(completed_key), source(completed_source) {}
+                          TRANSLATION_SOURCE_UNOBSERVED,
+                      uint64_t completed_generation = 0)
+        : key(completed_key), source(completed_source),
+          generation(completed_generation) {}
   };
   lookup_operation *find_lookup(unsigned sid, uint64_t uid,
                                 const translation_key &key);
@@ -863,6 +975,10 @@ class translation_controller {
                                  uint64_t mshr_join_cycle, bool used_mshr,
                                  uint64_t ready_cycle, object_class object);
   void service_lookups(uint64_t cycle);
+  void advance_translation_generation(unsigned asid);
+  void invalidate_resident_translation(const translation_key &key);
+  void flush_resident_translation_asid(unsigned asid);
+  void flush_resident_translation_all();
   bool pwc_enabled() const { return m_config.pwc.mode != PWC_OFF; }
   bool pwc_is_leaf(unsigned level) const {
     return level + 1 == m_page_table->levels();
@@ -896,6 +1012,13 @@ class translation_controller {
   // clusters (the existing per-SID L1 model).  The canonical map below is
   // used only by the normal PTE backend consistency path.
   std::vector<weight_segment_map> m_weight_segment_locals;
+  std::vector<bool> m_segment_install_acks;
+  std::vector<bool> m_segment_revoke_acks;
+  segment_lifecycle_state m_segment_lifecycle;
+  unsigned m_segment_active_asid;
+  unsigned m_segment_active_epoch;
+  bool m_segment_epoch_wrap_requires_quiesce;
+  std::map<unsigned, uint64_t> m_translation_generations;
   std::set<translation_key> m_object_unique_keys[OBJECT_CLASS_COUNT];
   translation_stats m_stats;
   uint64_t m_next_pte_request_id;

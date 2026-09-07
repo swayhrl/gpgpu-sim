@@ -426,6 +426,11 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          &gpgpu_vm_l2_tlb_mode,
                          "L2 TLB mode: 0=accepted exact-page, "
                          "1=speculative 16-subentry candidate", "0");
+  option_parser_register(opp, "-gpgpu_vm_fair_arm", OPT_UINT32,
+                         &gpgpu_vm_fair_arm,
+                         "C10A2 fair arm: 0=manual, 1=F0, 2=F1, 3=F2, "
+                         "4=F3, 5=F4, 6=F5(blocked), 7=F6, 8=F7, "
+                         "9=F8, 10=F9; 11=H0(rejected)", "0");
   option_parser_register(opp, "-gpgpu_vm_translation_mshr_entries",
                          OPT_UINT32, &gpgpu_vm_translation_mshr_entries,
                          "functional translation MSHR entries", "32");
@@ -1124,12 +1129,27 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
             m_shader_config->gpgpu_vm_weight_segmentation_enable != 0,
             m_shader_config->gpgpu_vm_weight_segment_entries,
             m_shader_config->gpgpu_vm_weight_segment_lookup_latency,
-            m_shader_config->gpgpu_vm_weight_segment_map));
+            m_shader_config->gpgpu_vm_weight_segment_map),
+        m_shader_config->gpgpu_vm_fair_arm);
+    if (!vm_translation::configure_fair_arm(
+            &vm_config, m_shader_config->gpgpu_vm_fair_arm)) {
+      fprintf(stderr, "ERROR: blocked or invalid C10A2 VM fair arm %u\n",
+              m_shader_config->gpgpu_vm_fair_arm);
+      abort();
+    }
     if (!vm_config.valid()) {
       fprintf(stderr, "ERROR: invalid functional VM TLB configuration\n");
       abort();
     }
     m_vm_translation = new vm_translation::translation_controller(vm_config);
+    if (vm_config.segment.enabled &&
+        m_vm_translation->begin_segment_install()) {
+      // This deterministic privileged-control model explicitly stages and
+      // acknowledges each local replica before any Segment descriptor becomes
+      // eligible. A semantic V2 rejection simply leaves the model inactive.
+      for (unsigned sid = 0; sid < m_shader_config->num_shader(); ++sid)
+        assert(m_vm_translation->acknowledge_segment_install(sid));
+    }
   }
   ctx->ptx_parser->set_ptx_warp_size(m_shader_config);
   ptx_file_line_stats_create_exposed_latency_tracker(m_config.num_shader());

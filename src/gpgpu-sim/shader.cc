@@ -2464,13 +2464,18 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
           access.get_sim_va(), access.get_size(),
           m_config->gpgpu_vm_page_size));
       uint64_t translated_pa = 0;
+      const vm_translation::translation_access translation_access =
+          inst.isatomic()
+              ? vm_translation::TRANSLATION_ACCESS_ATOMIC
+              : (inst.is_store() ? vm_translation::TRANSLATION_ACCESS_WRITE
+                                 : vm_translation::TRANSLATION_ACCESS_READ);
       const vm_translation::lookup_result result =
           m_gpu->vm_translation()->translate(
               m_sid, 0, access.get_sim_va(), access.get_size(),
               m_core->get_gpu()->gpu_sim_cycle +
-                  m_core->get_gpu()->gpu_tot_sim_cycle,
+              m_core->get_gpu()->gpu_tot_sim_cycle,
               access.get_uid(),
-              &translated_pa, &translation_outcome);
+              &translated_pa, &translation_outcome, translation_access);
       if (result != vm_translation::READY) {
         ++m_stats->vm_translation_stall_cycles;
         stall_reason = COAL_STALL;

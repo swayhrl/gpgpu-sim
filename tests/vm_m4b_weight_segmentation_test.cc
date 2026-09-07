@@ -54,6 +54,12 @@ static void advance(vm_translation::translation_controller *vm,
   for (uint64_t cycle = begin; cycle <= end; ++cycle) vm->cycle(cycle);
 }
 
+static void install_segments(vm_translation::translation_controller *vm) {
+  assert(vm->begin_segment_install());
+  assert(vm->acknowledge_segment_install(0));
+  assert(vm->segment_active());
+}
+
 int main() {
   write_maps();
   vm_translation::weight_segment_map direct(kSegmentMap);
@@ -68,6 +74,7 @@ int main() {
   // must neither probe nor enter the conventional lower path.
   vm_translation::translation_controller vm(
       config(vm_translation::L2_TLB_SUBENTRY_16));
+  install_segments(&vm);
   uint64_t pa = 0;
   vm_translation::translation_source source =
       vm_translation::TRANSLATION_SOURCE_UNOBSERVED;
@@ -130,6 +137,7 @@ int main() {
   // Weight Segmentation is enabled.
   vm_translation::translation_controller kv(
       config(vm_translation::L2_TLB_STANDARD));
+  install_segments(&kv);
   assert(kv.translate(0, 0, 0x30020, 32, 0, 3, &pa) ==
          vm_translation::TRANSLATION_PENDING);
   advance(&kv, 0, 7);
@@ -137,6 +145,7 @@ int main() {
          kv.stats().mshr_allocations == 1);
   vm_translation::translation_controller unknown(
       config(vm_translation::L2_TLB_STANDARD));
+  install_segments(&unknown);
   assert(unknown.translate(0, 0, 0x40020, 32, 0, 4, &pa) ==
          vm_translation::TRANSLATION_PENDING);
   advance(&unknown, 0, 7);

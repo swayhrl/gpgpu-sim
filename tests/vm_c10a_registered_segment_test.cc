@@ -43,6 +43,12 @@ static void advance(vm_translation::translation_controller *vm,
   for (uint64_t cycle = begin; cycle <= end; ++cycle) vm->cycle(cycle);
 }
 
+static void install_segments(vm_translation::translation_controller *vm) {
+  assert(vm->begin_segment_install());
+  assert(vm->acknowledge_segment_install(0));
+  assert(vm->segment_active());
+}
+
 int main() {
   write_registration();
   vm_translation::weight_segment_map map(kRegistration);
@@ -69,6 +75,7 @@ int main() {
   // non-identity Segment hit, and HIT_FIRST suppresses the unfinished L1
   // result and every conventional lower request.
   vm_translation::translation_controller segment_first(controller_config(2));
+  install_segments(&segment_first);
   uint64_t pa = 0;
   vm_translation::translation_source source =
       vm_translation::TRANSLATION_SOURCE_UNOBSERVED;
@@ -112,6 +119,7 @@ int main() {
   // With a deliberately slow Segment model point, an already-resident L1
   // entry must win first rather than resurrecting C3's wait-both behavior.
   vm_translation::translation_controller l1_first(controller_config(20));
+  install_segments(&l1_first);
   assert(l1_first.translate(0, 7, 16 * kPage + 64, 32, 0, 3, &pa, &source,
                             vm_translation::TRANSLATION_ACCESS_WRITE) ==
          vm_translation::TRANSLATION_PENDING);
