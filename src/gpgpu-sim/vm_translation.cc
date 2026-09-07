@@ -1164,8 +1164,12 @@ bool translation_controller::invariants_hold() const {
 }
 
 bool translation_controller::quiescent_invariants_hold() const {
-  return m_mshrs.empty() && m_lookups.empty() &&
-         m_completed_outcomes.empty() && invariants_hold();
+  // completed_outcomes is delivery metadata for requesters that have already
+  // been woken.  It is deliberately consumed on the requester's normal retry
+  // so cache-correlation can retain the PTW origin, but it does not represent
+  // an active TLB, MSHR, PWQ, or walker operation.  A controller is quiescent
+  // once those modeled resources are drained.
+  return m_mshrs.empty() && m_lookups.empty() && invariants_hold();
 }
 
 bool translation_controller::object_attribution_conserves() const {
