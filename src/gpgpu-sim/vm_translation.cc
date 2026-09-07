@@ -124,6 +124,74 @@ object_class object_range_map::classify(uint64_t start, uint64_t bytes) const {
   return OBJECT_UNKNOWN;
 }
 
+weight_segment_map::weight_segment_map(const std::string &path)
+    : m_enabled(false), m_ranges() {
+  if (path.empty()) return;
+  std::ifstream input(path.c_str());
+  assert(input.good() && "unable to open immutable Weight Segment map");
+  std::string line;
+  assert(std::getline(input, line));
+  assert(line == "M4B_WEIGHT_SEGMENT_MAP_V1" &&
+         "unsupported Weight Segment map schema");
+  bool saw_roi = false;
+  bool saw_source_sha = false;
+  bool saw_archive_sha = false;
+  bool saw_object_map_sha = false;
+  while (std::getline(input, line)) {
+    if (line.empty() || line[0] == '#') continue;
+    const std::vector<std::string> fields = split_tab_fields(line);
+    assert(!fields.empty());
+    if (fields[0] == "roi") {
+      assert(fields.size() == 2 && !fields[1].empty());
+      saw_roi = true;
+    } else if (fields[0] == "source_sha256") {
+      assert(fields.size() == 2 && fields[1].size() == 64);
+      saw_source_sha = true;
+    } else if (fields[0] == "archive_sha256") {
+      assert(fields.size() == 2 && fields[1].size() == 64);
+      saw_archive_sha = true;
+    } else if (fields[0] == "object_map_sha256") {
+      assert(fields.size() == 2 && fields[1].size() == 64);
+      saw_object_map_sha = true;
+    } else {
+      assert(fields[0] == "segment" && fields.size() == 4 &&
+             fields[1] == "WEIGHT");
+      uint64_t start = 0;
+      uint64_t end = 0;
+      assert(parse_u64(fields[2], &start) && parse_u64(fields[3], &end));
+      assert(start <= end);
+      if (!m_ranges.empty()) {
+        assert(m_ranges.back().start < start && m_ranges.back().end < start &&
+               "Weight Segment descriptors must be globally sorted/disjoint");
+      }
+      m_ranges.push_back(range(start, end));
+    }
+  }
+  assert(saw_roi && saw_source_sha && saw_archive_sha && saw_object_map_sha &&
+         !m_ranges.empty());
+  m_enabled = true;
+}
+
+bool weight_segment_map::translate(uint64_t start, uint64_t bytes,
+                                   uint64_t page_size, uint64_t *ppn) const {
+  if (!m_enabled) return false;
+  assert(ppn != 0 && vm_core::valid_page_size(page_size));
+  assert(bytes != 0 && start <= ~0ULL - (bytes - 1));
+  const uint64_t end = start + bytes - 1;
+  for (unsigned index = 0; index < m_ranges.size(); ++index) {
+    const range &candidate = m_ranges[index];
+    if (candidate.start > end) break;
+    if (candidate.end < start) continue;
+    // Boundary-straddling accesses do not receive a fabricated Segment hit.
+    if (start >= candidate.start && end <= candidate.end) {
+      *ppn = vm_core::vpn(start, page_size);
+      return true;
+    }
+    return false;
+  }
+  return false;
+}
+
 namespace {
 
 const uint64_t kPteBytes = 8;
@@ -610,7 +678,7 @@ bool translation_config::valid() const {
          walk_latency != 0 && ptw_mode <= 1 && page_table.valid() &&
          pwc.valid() && l2_mode <= L2_TLB_SUBENTRY_16 &&
          (l2_mode != L2_TLB_SUBENTRY_16 ||
-          page_size == vm_core::kDefaultBasePageSize);
+          page_size == vm_core::kDefaultBasePageSize) && segment.valid();
 }
 
 translation_controller::translation_controller(const translation_config &config)
@@ -618,9 +686,14 @@ translation_controller::translation_controller(const translation_config &config)
       m_page_table(&m_default_page_table), m_l1s(), m_l2(config.l2),
       m_l2_subentries(config.l2), m_mshrs(),
       m_lookups(), m_pwq(), m_active_walks(), m_pwc(),
-      m_object_map(config.object_map_path), m_object_unique_keys(), m_stats(),
+      m_object_map(config.object_map_path),
+      m_weight_segments(config.segment.map_path), m_object_unique_keys(),
+      m_stats(),
       m_next_pte_request_id(1), m_pwc_touch_clock(0) {
   assert(m_config.valid());
+  assert(m_config.segment.enabled == m_weight_segments.enabled());
+  assert(!m_config.segment.enabled ||
+         m_weight_segments.size() <= m_config.segment.entries);
   m_stats.object_attribution_enabled = m_object_map.enabled();
   initialize_pwc_stats();
   for (unsigned sid = 0; sid < m_config.num_sms; ++sid)
@@ -633,11 +706,15 @@ translation_controller::translation_controller(const translation_config &config,
       m_page_table(backend), m_l1s(), m_l2(config.l2),
       m_l2_subentries(config.l2), m_mshrs(), m_lookups(),
       m_pwq(), m_active_walks(), m_pwc(), m_object_map(config.object_map_path),
-      m_object_unique_keys(), m_stats(),
+      m_weight_segments(config.segment.map_path), m_object_unique_keys(),
+      m_stats(),
       m_next_pte_request_id(1),
       m_pwc_touch_clock(0) {
   assert(m_config.valid());
   assert(m_page_table != 0 && m_page_table->valid());
+  assert(m_config.segment.enabled == m_weight_segments.enabled());
+  assert(!m_config.segment.enabled ||
+         m_weight_segments.size() <= m_config.segment.entries);
   m_stats.object_attribution_enabled = m_object_map.enabled();
   initialize_pwc_stats();
   for (unsigned sid = 0; sid < m_config.num_sms; ++sid)
@@ -807,20 +884,87 @@ void translation_controller::service_lookups(uint64_t cycle) {
     progress = false;
     for (unsigned index = 0; index < m_lookups.size();) {
       lookup_operation &lookup = m_lookups[index];
-      if (lookup.stage == LOOKUP_L1_SERVICE && lookup.ready_cycle <= cycle) {
-        uint64_t ppn = 0;
-        const bool hit = m_l1s[lookup.sid].probe(lookup.key, cycle, &ppn);
-        ++m_stats.l1_lookup_completions;
-        if (m_stats.object_attribution_enabled) {
-          if (hit)
-            ++m_stats.object[lookup.object].l1_hits;
-          else
-            ++m_stats.object[lookup.object].l1_misses;
+      if (lookup.stage == LOOKUP_L1_SERVICE) {
+        bool changed = false;
+        if (!lookup.l1_completed && lookup.ready_cycle <= cycle) {
+          uint64_t ppn = 0;
+          const bool hit = m_l1s[lookup.sid].probe(lookup.key, cycle, &ppn);
+          ++m_stats.l1_lookup_completions;
+          if (m_stats.object_attribution_enabled) {
+            if (hit)
+              ++m_stats.object[lookup.object].l1_hits;
+            else
+              ++m_stats.object[lookup.object].l1_misses;
+          }
+          if (lookup.segment_launched) {
+            ++m_stats.segment_raw_l1_completions;
+            if (hit)
+              ++m_stats.segment_raw_l1_hits;
+            else
+              ++m_stats.segment_raw_l1_misses;
+          }
+          m_stats.l1_lookup_service_cycles += m_config.l1_lookup_latency;
+          lookup.l1_complete_cycle = cycle;
+          lookup.l1_completed = true;
+          lookup.l1_hit = hit;
+          lookup.l1_ppn = ppn;
+          changed = true;
         }
-        m_stats.l1_lookup_service_cycles += m_config.l1_lookup_latency;
-        lookup.l1_complete_cycle = cycle;
-        if (hit) {
-          lookup.ppn = ppn;
+        if (lookup.segment_launched && !lookup.segment_completed &&
+            lookup.segment_ready_cycle <= cycle) {
+          lookup.segment_completed = true;
+          ++m_stats.segment_lookup_completions;
+          if (lookup.object == OBJECT_WEIGHT &&
+              m_weight_segments.translate(lookup.sim_va, lookup.request_bytes,
+                                          lookup.key.page_size,
+                                          &lookup.segment_ppn)) {
+            lookup.segment_hit = true;
+            ++m_stats.segment_hits;
+          } else {
+            ++m_stats.segment_misses;
+          }
+          changed = true;
+        }
+        if (lookup.segment_launched &&
+            (!lookup.l1_completed || !lookup.segment_completed)) {
+          if (changed) progress = true;
+          ++index;
+          continue;
+        }
+        if (!lookup.segment_launched && !lookup.l1_completed) {
+          if (changed) progress = true;
+          ++index;
+          continue;
+        }
+        if (lookup.segment_launched && lookup.segment_hit) {
+          // The L1 probe was already completed as a raw parallel observation;
+          // its result must never fill or redirect the Weight Segment hit.
+          lookup.ppn = lookup.segment_ppn;
+          lookup.source = TRANSLATION_SOURCE_SEGMENT_HIT;
+          lookup.stage = LOOKUP_READY;
+          ++m_stats.segment_l2_suppressed;
+          ++m_stats.segment_mshr_suppressed;
+          ++m_stats.segment_pwq_suppressed;
+          ++m_stats.segment_walker_suppressed;
+          ++m_stats.segment_pwc_suppressed;
+          ++m_stats.segment_pte_suppressed;
+          ++m_stats.segment_l1_fill_suppressed;
+          progress = true;
+          ++index;
+          continue;
+        }
+        // Either Segmentation is disabled (the accepted path) or its lookup
+        // missed.  Reuse this already completed L1 result: no retry may
+        // consume another port or re-probe L1.
+        assert(lookup.l1_completed);
+        if (lookup.segment_launched) {
+          if (lookup.l1_hit)
+            ++m_stats.segment_effective_l1_hits;
+          else
+            ++m_stats.segment_effective_l1_misses;
+        }
+        if (lookup.l1_hit) {
+          lookup.ppn = lookup.l1_ppn;
           if (lookup.source == TRANSLATION_SOURCE_UNOBSERVED)
             lookup.source = TRANSLATION_SOURCE_L1_TLB_HIT;
           lookup.stage = LOOKUP_READY;
@@ -1020,15 +1164,6 @@ lookup_result translation_controller::translate(unsigned sid, unsigned asid,
   translation_key key(asid, vm_core::vpn(sim_va, m_config.page_size),
                       m_config.page_size);
   const object_class object = m_object_map.classify(sim_va, request_bytes);
-  // A previously accepted waiter is already represented by this active MSHR.
-  // It must wait without competing for either TLB lookup resource or
-  // polluting probe/miss statistics.  A distinct UID deliberately falls
-  // through to the normal first lookup and may then merge below.
-  const mshr_entry *existing = find_mshr(key);
-  if (existing != 0 && existing->has_waiter(waiter_uid)) {
-    ++m_stats.pending_waiter_bypasses;
-    return TRANSLATION_PENDING;
-  }
   lookup_operation *inflight = find_lookup(sid, waiter_uid, key);
   if (inflight != 0) {
     if (inflight->stage != LOOKUP_READY) {
@@ -1053,6 +1188,15 @@ lookup_result translation_controller::translate(unsigned sid, unsigned asid,
     if (source != 0) *source = completed_source;
     return READY;
   }
+  // A previously accepted MSHR waiter waits without competing for either
+  // lookup resource.  This check follows an active lookup so a new Weight
+  // requester can still launch its required parallel Segment + L1 lookup even
+  // if another requester is walking the same page.
+  const mshr_entry *existing = find_mshr(key);
+  if (existing != 0 && existing->has_waiter(waiter_uid)) {
+    ++m_stats.pending_waiter_bypasses;
+    return TRANSLATION_PENDING;
+  }
   ++m_stats.lookup_requests;
   set_associative_tlb &l1_tlb = m_l1s[sid];
   if (!l1_tlb.try_consume_port(cycle)) return L1_PORT_STALL;
@@ -1060,12 +1204,21 @@ lookup_result translation_controller::translate(unsigned sid, unsigned asid,
   if (m_stats.object_attribution_enabled)
     ++m_stats.object[object].l1_lookup_launches;
   note_object_requester(object, key);
-  m_lookups.push_back(
-      lookup_operation(sid, waiter_uid, key, cycle,
-                       cycle + m_config.l1_lookup_latency, object));
   std::map<uint64_t, completed_outcome>::iterator completed =
       m_completed_outcomes.find(waiter_uid);
-  if (completed != m_completed_outcomes.end() && completed->second.key == key) {
+  const bool has_completed_outcome =
+      completed != m_completed_outcomes.end() && completed->second.key == key;
+  // A PTW-woken retry is already resolved conventional paging work.  It
+  // retains the accepted L1 delivery probe/source handoff but must not begin a
+  // second Segment lookup for the same requester.
+  const bool launch_segment =
+      m_config.segment.enabled && !has_completed_outcome;
+  m_lookups.push_back(lookup_operation(
+      sid, waiter_uid, key, cycle, cycle + m_config.l1_lookup_latency, sim_va,
+      request_bytes, object, launch_segment,
+      launch_segment ? cycle + m_config.segment.lookup_latency : cycle));
+  if (launch_segment) ++m_stats.segment_lookup_launches;
+  if (has_completed_outcome) {
     m_lookups.back().source = completed->second.source;
     m_completed_outcomes.erase(completed);
   }
@@ -1327,6 +1480,11 @@ bool translation_controller::invariants_hold() const {
     if (m_lookups[i].sid >= m_l1s.size() ||
         m_lookups[i].stage > LOOKUP_READY)
       return false;
+    if (m_config.segment.enabled != m_lookups[i].segment_launched ||
+        (m_lookups[i].segment_hit &&
+         (!m_lookups[i].segment_completed ||
+          m_lookups[i].stage != LOOKUP_READY)))
+      return false;
     for (unsigned j = i + 1; j < m_lookups.size(); ++j)
       if (m_lookups[i].sid == m_lookups[j].sid &&
           m_lookups[i].uid == m_lookups[j].uid &&
@@ -1480,6 +1638,46 @@ void translation_controller::print_stats(FILE *fout) const {
           (unsigned long long)m_stats.l2_lookup_completions);
   fprintf(fout, "vm_l2_tlb_lookup_service_cycles = %llu\n",
           (unsigned long long)m_stats.l2_lookup_service_cycles);
+  fprintf(fout, "vm_weight_segmentation_enabled = %u\n",
+          m_config.segment.enabled ? 1U : 0U);
+  fprintf(fout, "vm_weight_segment_entries_configured = %u\n",
+          m_config.segment.entries);
+  fprintf(fout, "vm_weight_segment_descriptors_loaded = %u\n",
+          m_weight_segments.size());
+  fprintf(fout, "vm_weight_segment_lookup_latency_cycles = %u\n",
+          m_config.segment.lookup_latency);
+  fprintf(fout, "vm_weight_segment_lookup_launches = %llu\n",
+          (unsigned long long)m_stats.segment_lookup_launches);
+  fprintf(fout, "vm_weight_segment_lookup_completions = %llu\n",
+          (unsigned long long)m_stats.segment_lookup_completions);
+  fprintf(fout, "vm_weight_segment_hits = %llu\n",
+          (unsigned long long)m_stats.segment_hits);
+  fprintf(fout, "vm_weight_segment_misses = %llu\n",
+          (unsigned long long)m_stats.segment_misses);
+  fprintf(fout, "vm_weight_segment_raw_l1_completions = %llu\n",
+          (unsigned long long)m_stats.segment_raw_l1_completions);
+  fprintf(fout, "vm_weight_segment_raw_l1_hits = %llu\n",
+          (unsigned long long)m_stats.segment_raw_l1_hits);
+  fprintf(fout, "vm_weight_segment_raw_l1_misses = %llu\n",
+          (unsigned long long)m_stats.segment_raw_l1_misses);
+  fprintf(fout, "vm_weight_segment_effective_l1_hits = %llu\n",
+          (unsigned long long)m_stats.segment_effective_l1_hits);
+  fprintf(fout, "vm_weight_segment_effective_l1_misses = %llu\n",
+          (unsigned long long)m_stats.segment_effective_l1_misses);
+  fprintf(fout, "vm_weight_segment_l2_suppressed = %llu\n",
+          (unsigned long long)m_stats.segment_l2_suppressed);
+  fprintf(fout, "vm_weight_segment_mshr_suppressed = %llu\n",
+          (unsigned long long)m_stats.segment_mshr_suppressed);
+  fprintf(fout, "vm_weight_segment_pwq_suppressed = %llu\n",
+          (unsigned long long)m_stats.segment_pwq_suppressed);
+  fprintf(fout, "vm_weight_segment_walker_suppressed = %llu\n",
+          (unsigned long long)m_stats.segment_walker_suppressed);
+  fprintf(fout, "vm_weight_segment_pwc_suppressed = %llu\n",
+          (unsigned long long)m_stats.segment_pwc_suppressed);
+  fprintf(fout, "vm_weight_segment_pte_suppressed = %llu\n",
+          (unsigned long long)m_stats.segment_pte_suppressed);
+  fprintf(fout, "vm_weight_segment_l1_fills_suppressed = %llu\n",
+          (unsigned long long)m_stats.segment_l1_fill_suppressed);
   fprintf(fout, "vm_translation_requester_completions = %llu\n",
           (unsigned long long)m_stats.requester_completions);
   fprintf(fout, "vm_translation_requester_latency_cycles_total = %llu\n",

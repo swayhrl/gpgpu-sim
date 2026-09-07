@@ -474,6 +474,22 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          &gpgpu_vm_object_map,
                          "immutable M4C VM object-range map (empty disables)",
                          "");
+  option_parser_register(opp, "-gpgpu_vm_weight_segmentation_enable",
+                         OPT_UINT32, &gpgpu_vm_weight_segmentation_enable,
+                         "M4B speculative Weight Segmentation enable", "0");
+  option_parser_register(opp, "-gpgpu_vm_weight_segment_entries", OPT_UINT32,
+                         &gpgpu_vm_weight_segment_entries,
+                         "M4B immutable Weight Segment descriptor capacity",
+                         "0");
+  option_parser_register(opp, "-gpgpu_vm_weight_segment_lookup_latency",
+                         OPT_UINT32,
+                         &gpgpu_vm_weight_segment_lookup_latency,
+                         "M4B parallel Weight Segment lookup service cycles",
+                         "0");
+  option_parser_register(opp, "-gpgpu_vm_weight_segment_map", OPT_CSTR,
+                         &gpgpu_vm_weight_segment_map,
+                         "M4B immutable Weight Segment map (empty disables)",
+                         "");
   option_parser_register(opp, "-gpgpu_memory_telemetry_level", OPT_UINT32,
                          &gpgpu_memory_telemetry_level,
                          "M4C bounded memory telemetry: 0=off, 1=aggregate, 2=windows, 3=diagnostic",
@@ -1103,7 +1119,12 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
         m_shader_config->gpgpu_vm_l1_tlb_lookup_latency,
         m_shader_config->gpgpu_vm_l2_tlb_lookup_latency,
         m_shader_config->gpgpu_vm_object_map,
-        m_shader_config->gpgpu_vm_l2_tlb_mode);
+        m_shader_config->gpgpu_vm_l2_tlb_mode,
+        vm_translation::segment_config(
+            m_shader_config->gpgpu_vm_weight_segmentation_enable != 0,
+            m_shader_config->gpgpu_vm_weight_segment_entries,
+            m_shader_config->gpgpu_vm_weight_segment_lookup_latency,
+            m_shader_config->gpgpu_vm_weight_segment_map));
     if (!vm_config.valid()) {
       fprintf(stderr, "ERROR: invalid functional VM TLB configuration\n");
       abort();

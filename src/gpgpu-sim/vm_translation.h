@@ -172,7 +172,8 @@ enum translation_source {
   TRANSLATION_SOURCE_IDEAL_IDENTITY,
   TRANSLATION_SOURCE_L1_TLB_HIT,
   TRANSLATION_SOURCE_L2_TLB_HIT,
-  TRANSLATION_SOURCE_PTW
+  TRANSLATION_SOURCE_PTW,
+  TRANSLATION_SOURCE_SEGMENT_HIT
 };
 
 const char *object_class_name(object_class object);
@@ -196,6 +197,45 @@ class object_range_map {
   };
   bool m_enabled;
   std::vector<range> m_ranges;
+};
+
+// Immutable descriptors for the only C3 accelerator: Weight Segmentation.
+// A descriptor is identity-mapped because the frozen M1 data mapping is
+// identity-like; it authorizes a range hit, not a replacement policy or a new
+// physical-address mechanism.  KV and unknown accesses never match this map.
+class weight_segment_map {
+ public:
+  explicit weight_segment_map(const std::string &path = "");
+  bool enabled() const { return m_enabled; }
+  unsigned size() const { return m_ranges.size(); }
+  bool translate(uint64_t start, uint64_t bytes, uint64_t page_size,
+                 uint64_t *ppn) const;
+
+ private:
+  struct range {
+    uint64_t start;
+    uint64_t end;
+    range(uint64_t s = 0, uint64_t e = 0) : start(s), end(e) {}
+  };
+  bool m_enabled;
+  std::vector<range> m_ranges;
+};
+
+struct segment_config {
+  bool enabled;
+  unsigned entries;
+  unsigned lookup_latency;
+  std::string map_path;
+  segment_config(bool enable = false, unsigned entry_count = 0,
+                 unsigned service_latency = 0,
+                 const std::string &segment_map = "")
+      : enabled(enable), entries(entry_count), lookup_latency(service_latency),
+        map_path(segment_map) {}
+  bool valid() const {
+    if (!enabled)
+      return entries == 0 && lookup_latency == 0 && map_path.empty();
+    return entries != 0 && lookup_latency != 0 && !map_path.empty();
+  }
 };
 
 enum pwc_mode { PWC_OFF = 0, PWC_FINITE = 1, PWC_IDEAL = 2 };
@@ -358,6 +398,7 @@ struct translation_config {
   pwc_config pwc;
   std::string object_map_path;
   unsigned l2_mode;
+  segment_config segment;
   translation_config(unsigned sms = 1,
                      uint64_t page = vm_core::kDefaultBasePageSize,
                      const tlb_config &l1_config = tlb_config(),
@@ -370,13 +411,16 @@ struct translation_config {
                      const pwc_config &pwc_config_value = pwc_config(),
                      unsigned l1_latency = 0, unsigned l2_latency = 0,
                      const std::string &object_map = "",
-                     unsigned l2_tlb_mode_value = L2_TLB_STANDARD)
+                     unsigned l2_tlb_mode_value = L2_TLB_STANDARD,
+                     const segment_config &segment_config_value =
+                         segment_config())
       : num_sms(sms), page_size(page), l1(l1_config), l2(l2_config),
         mshr_entries(mshr_count), pwq_entries(pwq_count), walkers(walker_count),
         walk_latency(latency), l1_lookup_latency(l1_latency),
         l2_lookup_latency(l2_latency), ptw_mode(page_table_walk_mode),
         page_table(page_table_config_value), pwc(pwc_config_value),
-        object_map_path(object_map), l2_mode(l2_tlb_mode_value) {}
+        object_map_path(object_map), l2_mode(l2_tlb_mode_value),
+        segment(segment_config_value) {}
   bool valid() const;
 };
 
@@ -404,6 +448,25 @@ struct translation_stats {
   uint64_t l2_lookup_launches;
   uint64_t l2_lookup_completions;
   uint64_t l2_lookup_service_cycles;
+  // C3 reports the L1 probe that runs in parallel with a segment lookup as a
+  // raw observation.  The effective counters exclude raw L1 outcomes whose
+  // translation result is suppressed by a Weight Segment hit.
+  uint64_t segment_lookup_launches;
+  uint64_t segment_lookup_completions;
+  uint64_t segment_hits;
+  uint64_t segment_misses;
+  uint64_t segment_raw_l1_completions;
+  uint64_t segment_raw_l1_hits;
+  uint64_t segment_raw_l1_misses;
+  uint64_t segment_effective_l1_hits;
+  uint64_t segment_effective_l1_misses;
+  uint64_t segment_l2_suppressed;
+  uint64_t segment_mshr_suppressed;
+  uint64_t segment_pwq_suppressed;
+  uint64_t segment_walker_suppressed;
+  uint64_t segment_pwc_suppressed;
+  uint64_t segment_pte_suppressed;
+  uint64_t segment_l1_fill_suppressed;
   // Per-requester, critical-path state intervals.  These are deliberately
   // not summed into a fabricated global latency: merged requesters share a
   // single MSHR/walk while retaining their own entry and wakeup times.
@@ -504,7 +567,15 @@ struct translation_stats {
         lookup_inflight_bypasses(0), l1_lookup_launches(0),
         l1_lookup_completions(0), l1_lookup_service_cycles(0),
         l2_lookup_launches(0), l2_lookup_completions(0),
-        l2_lookup_service_cycles(0), requester_completions(0),
+        l2_lookup_service_cycles(0), segment_lookup_launches(0),
+        segment_lookup_completions(0), segment_hits(0), segment_misses(0),
+        segment_raw_l1_completions(0), segment_raw_l1_hits(0),
+        segment_raw_l1_misses(0), segment_effective_l1_hits(0),
+        segment_effective_l1_misses(0), segment_l2_suppressed(0),
+        segment_mshr_suppressed(0), segment_pwq_suppressed(0),
+        segment_walker_suppressed(0), segment_pwc_suppressed(0),
+        segment_pte_suppressed(0), segment_l1_fill_suppressed(0),
+        requester_completions(0),
         requester_latency_cycles_total(0), requester_latency_cycles_max(0),
         requester_l1_queue_cycles_total(0), requester_l1_queue_cycles_max(0),
         requester_l1_service_cycles_total(0),
@@ -633,17 +704,32 @@ class translation_controller {
     uint64_t l2_complete_cycle;
     uint64_t ready_cycle;
     uint64_t ppn;
+    uint64_t sim_va;
+    uint64_t request_bytes;
     object_class object;
     translation_source source;
+    bool segment_launched;
+    uint64_t segment_ready_cycle;
+    bool segment_completed;
+    bool segment_hit;
+    uint64_t segment_ppn;
+    bool l1_completed;
+    bool l1_hit;
+    uint64_t l1_ppn;
     lookup_operation(unsigned s, uint64_t u, const translation_key &k,
                      uint64_t entry, uint64_t ready,
-                     object_class object_classification)
+                     uint64_t va, uint64_t bytes,
+                     object_class object_classification,
+                     bool launch_segment, uint64_t segment_ready)
         : sid(s), uid(u), key(k), stage(LOOKUP_L1_SERVICE),
           entry_cycle(entry), l1_launch_cycle(entry), l1_complete_cycle(0),
           l2_issued(false),
           l2_launch_cycle(0), l2_complete_cycle(0), ready_cycle(ready),
-          ppn(0), object(object_classification),
-          source(TRANSLATION_SOURCE_UNOBSERVED) {}
+          ppn(0), sim_va(va), request_bytes(bytes),
+          object(object_classification), source(TRANSLATION_SOURCE_UNOBSERVED),
+          segment_launched(launch_segment), segment_ready_cycle(segment_ready),
+          segment_completed(!launch_segment), segment_hit(false),
+          segment_ppn(0), l1_completed(false), l1_hit(false), l1_ppn(0) {}
   };
   struct completed_outcome {
     translation_key key;
@@ -726,6 +812,7 @@ class translation_controller {
   // this map has no timing or flow-control role.
   std::map<uint64_t, completed_outcome> m_completed_outcomes;
   object_range_map m_object_map;
+  weight_segment_map m_weight_segments;
   std::set<translation_key> m_object_unique_keys[OBJECT_CLASS_COUNT];
   translation_stats m_stats;
   uint64_t m_next_pte_request_id;

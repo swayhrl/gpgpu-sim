@@ -1673,6 +1673,12 @@ class shader_core_config : public core_config {
   // Optional immutable M4C object-range map.  Empty preserves the accepted
   // M1-M3 behavior and produces no object-attribution counters.
   char *gpgpu_vm_object_map;
+  // C3 Weight Segmentation is an explicit parallel lookup state machine.
+  // Empty/zero values retain the accepted M1--M4C paging path exactly.
+  unsigned gpgpu_vm_weight_segmentation_enable;
+  unsigned gpgpu_vm_weight_segment_entries;
+  unsigned gpgpu_vm_weight_segment_lookup_latency;
+  char *gpgpu_vm_weight_segment_map;
   // M4C/M4B bounded telemetry level: 0=off, 1=ROI aggregate, 2=aggregate
   // plus fixed transaction windows, 3=reserved bounded diagnostics.
   unsigned gpgpu_memory_telemetry_level;

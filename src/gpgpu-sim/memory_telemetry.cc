@@ -366,7 +366,7 @@ const char *m4c_memory_telemetry_cache_status_name(unsigned status) {
 const char *m4c_memory_telemetry_translation_outcome_name(unsigned outcome) {
   static const char *names[] = {"UNOBSERVED", "VM_DISABLED",
                                 "IDEAL_IDENTITY", "L1_TLB_HIT",
-                                "L2_TLB_HIT", "PTW"};
+                                "L2_TLB_HIT", "PTW", "SEGMENT_HIT"};
   assert(outcome < M4C_TRANSLATION_OUTCOME_COUNT);
   return names[outcome];
 }
