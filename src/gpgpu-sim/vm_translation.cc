@@ -125,18 +125,23 @@ object_class object_range_map::classify(uint64_t start, uint64_t bytes) const {
 }
 
 weight_segment_map::weight_segment_map(const std::string &path)
-    : m_enabled(false), m_ranges() {
+    : m_enabled(false), m_registered_v2(false), m_active_asid(0),
+      m_active_epoch(0), m_ranges() {
   if (path.empty()) return;
   std::ifstream input(path.c_str());
   assert(input.good() && "unable to open immutable Weight Segment map");
   std::string line;
   assert(std::getline(input, line));
-  assert(line == "M4B_WEIGHT_SEGMENT_MAP_V1" &&
+  const bool legacy_v1 = line == "M4B_WEIGHT_SEGMENT_MAP_V1";
+  const bool registered_v2 = line == "M4B_WEIGHT_SEGMENT_REGISTRATION_V2";
+  assert((legacy_v1 || registered_v2) &&
          "unsupported Weight Segment map schema");
   bool saw_roi = false;
   bool saw_source_sha = false;
   bool saw_archive_sha = false;
   bool saw_object_map_sha = false;
+  bool saw_asid = !registered_v2;
+  bool saw_epoch = !registered_v2;
   while (std::getline(input, line)) {
     if (line.empty() || line[0] == '#') continue;
     const std::vector<std::string> fields = split_tab_fields(line);
@@ -153,41 +158,122 @@ weight_segment_map::weight_segment_map(const std::string &path)
     } else if (fields[0] == "object_map_sha256") {
       assert(fields.size() == 2 && fields[1].size() == 64);
       saw_object_map_sha = true;
+    } else if (registered_v2 && fields[0] == "provisioned_asid") {
+      uint64_t value = 0;
+      assert(fields.size() == 2 && parse_u64(fields[1], &value) &&
+             value <= 0xffff);
+      m_active_asid = static_cast<unsigned>(value);
+      saw_asid = true;
+    } else if (registered_v2 && fields[0] == "epoch") {
+      uint64_t value = 0;
+      assert(fields.size() == 2 && parse_u64(fields[1], &value) &&
+             value != 0 && value <= 0xffff);
+      m_active_epoch = static_cast<unsigned>(value);
+      saw_epoch = true;
     } else {
-      assert(fields[0] == "segment" && fields.size() == 4 &&
-             fields[1] == "WEIGHT");
-      uint64_t start = 0;
-      uint64_t end = 0;
-      assert(parse_u64(fields[2], &start) && parse_u64(fields[3], &end));
-      assert(start <= end);
+      if (legacy_v1) {
+        assert(fields[0] == "segment" && fields.size() == 4 &&
+               fields[1] == "WEIGHT");
+        uint64_t start = 0;
+        uint64_t end = 0;
+        assert(parse_u64(fields[2], &start) && parse_u64(fields[3], &end));
+        assert(start <= end &&
+               (start % vm_core::kDefaultBasePageSize) == 0);
+        // Retained solely for historical C3 evidence. New official profiles
+        // must use V2 and never call this identity-compatible format fair.
+        m_ranges.push_back(range(0, 0,
+                                 start / vm_core::kDefaultBasePageSize,
+                                 end / vm_core::kDefaultBasePageSize,
+                                 start / vm_core::kDefaultBasePageSize,
+                                 true, 0));
+        continue;
+      }
+      assert(fields[0] == "descriptor" && fields.size() == 8);
+      uint64_t asid = 0, epoch = 0, va_base = 0, va_limit = 0, pa_base = 0;
+      uint64_t read_only = 0, mapping_class = 0;
+      assert(parse_u64(fields[1], &asid) && parse_u64(fields[2], &epoch) &&
+             parse_u64(fields[3], &va_base) && parse_u64(fields[4], &va_limit) &&
+             parse_u64(fields[5], &pa_base) && parse_u64(fields[6], &read_only) &&
+             parse_u64(fields[7], &mapping_class));
+      assert(asid == m_active_asid && epoch == m_active_epoch &&
+             va_base <= va_limit && read_only == 1 && mapping_class == 0);
       if (!m_ranges.empty()) {
-        assert(m_ranges.back().start < start && m_ranges.back().end < start &&
+        assert(m_ranges.back().va_limit_vpn < va_base &&
                "Weight Segment descriptors must be globally sorted/disjoint");
       }
-      m_ranges.push_back(range(start, end));
+      m_ranges.push_back(range(static_cast<unsigned>(asid),
+                               static_cast<unsigned>(epoch), va_base, va_limit,
+                               pa_base, true, static_cast<unsigned>(mapping_class)));
     }
   }
   assert(saw_roi && saw_source_sha && saw_archive_sha && saw_object_map_sha &&
-         !m_ranges.empty());
+         saw_asid && saw_epoch && !m_ranges.empty());
+  assert(m_ranges.size() <= 8 && "C10A local table capacity is N=8");
+  m_registered_v2 = registered_v2;
   m_enabled = true;
 }
 
 bool weight_segment_map::translate(uint64_t start, uint64_t bytes,
                                    uint64_t page_size, uint64_t *ppn) const {
+  return translate(translation_key(0, vm_core::vpn(start, page_size), page_size),
+                   start, bytes, true, ppn, 0);
+}
+
+bool weight_segment_map::translate(const translation_key &key, uint64_t start,
+                                   uint64_t bytes, bool is_read, uint64_t *ppn,
+                                   fallback_reason *reason) const {
+  if (reason != 0) *reason = SEGMENT_FALLBACK_NO_DESCRIPTOR;
   if (!m_enabled) return false;
-  assert(ppn != 0 && vm_core::valid_page_size(page_size));
+  assert(ppn != 0 && vm_core::valid_page_size(key.page_size));
   assert(bytes != 0 && start <= ~0ULL - (bytes - 1));
-  const uint64_t end = start + bytes - 1;
+  if (key.page_size != vm_core::kDefaultBasePageSize || !is_read) {
+    if (reason != 0) *reason = SEGMENT_FALLBACK_RIGHTS;
+    return false;
+  }
+  if (m_registered_v2 && key.asid != m_active_asid) {
+    if (reason != 0) *reason = SEGMENT_FALLBACK_ASID;
+    return false;
+  }
+  const uint64_t offset = vm_core::page_offset(start, key.page_size);
+  if (offset + bytes > key.page_size) {
+    if (reason != 0) *reason = SEGMENT_FALLBACK_BOUNDARY;
+    return false;
+  }
+  const uint64_t vpn = vm_core::vpn(start, key.page_size);
   for (unsigned index = 0; index < m_ranges.size(); ++index) {
     const range &candidate = m_ranges[index];
-    if (candidate.start > end) break;
-    if (candidate.end < start) continue;
-    // Boundary-straddling accesses do not receive a fabricated Segment hit.
-    if (start >= candidate.start && end <= candidate.end) {
-      *ppn = vm_core::vpn(start, page_size);
+    if (candidate.va_base_vpn > vpn) break;
+    if (candidate.va_limit_vpn < vpn) continue;
+    if (m_registered_v2 && candidate.epoch != m_active_epoch) {
+      if (reason != 0) *reason = SEGMENT_FALLBACK_EPOCH;
+      return false;
+    }
+    if (!candidate.read_only || candidate.mapping_class != 0) {
+      if (reason != 0) *reason = SEGMENT_FALLBACK_RIGHTS;
+      return false;
+    }
+    if (vpn >= candidate.va_base_vpn && vpn <= candidate.va_limit_vpn) {
+      *ppn = candidate.pa_base_ppn + (vpn - candidate.va_base_vpn);
+      if (reason != 0) *reason = SEGMENT_FALLBACK_NONE;
       return true;
     }
+  }
+  return false;
+}
+
+bool weight_segment_map::registered_ppn(const translation_key &key,
+                                        uint64_t *ppn) const {
+  if (!m_registered_v2 || ppn == 0 ||
+      key.page_size != vm_core::kDefaultBasePageSize ||
+      key.asid != m_active_asid)
     return false;
+  for (unsigned index = 0; index < m_ranges.size(); ++index) {
+    const range &candidate = m_ranges[index];
+    if (candidate.va_base_vpn > key.vpn) break;
+    if (candidate.va_limit_vpn < key.vpn) continue;
+    if (candidate.epoch != m_active_epoch) return false;
+    *ppn = candidate.pa_base_ppn + (key.vpn - candidate.va_base_vpn);
+    return true;
   }
   return false;
 }
@@ -914,9 +1000,10 @@ void translation_controller::service_lookups(uint64_t cycle) {
             lookup.segment_ready_cycle <= cycle) {
           lookup.segment_completed = true;
           ++m_stats.segment_lookup_completions;
-          if (lookup.object == OBJECT_WEIGHT &&
-              m_weight_segments.translate(lookup.sim_va, lookup.request_bytes,
-                                          lookup.key.page_size,
+          // Eligibility is descriptor registration (ASID/range/rights), never
+          // telemetry-only OBJECT_WEIGHT attribution.
+          if (m_weight_segments.translate(lookup.key, lookup.sim_va,
+                                          lookup.request_bytes, true,
                                           &lookup.segment_ppn)) {
             lookup.segment_hit = true;
             ++m_stats.segment_hits;
@@ -925,20 +1012,14 @@ void translation_controller::service_lookups(uint64_t cycle) {
           }
           changed = true;
         }
-        if (lookup.segment_launched &&
-            (!lookup.l1_completed || !lookup.segment_completed)) {
-          if (changed) progress = true;
-          ++index;
-          continue;
-        }
-        if (!lookup.segment_launched && !lookup.l1_completed) {
-          if (changed) progress = true;
-          ++index;
-          continue;
-        }
-        if (lookup.segment_launched && lookup.segment_hit) {
-          // The L1 probe was already completed as a raw parallel observation;
-          // its result must never fill or redirect the Weight Segment hit.
+        // HIT_FIRST: a validated Segment hit owns completion immediately.
+        // If L1 completed simultaneously, its mapping must agree. A late
+        // logical L1 result is cancelled with this join token, so it cannot
+        // redirect or duplicate the requester completion.
+        if (lookup.segment_launched && lookup.segment_completed &&
+            lookup.segment_hit) {
+          if (lookup.l1_completed && lookup.l1_hit)
+            assert(lookup.l1_ppn == lookup.segment_ppn);
           lookup.ppn = lookup.segment_ppn;
           lookup.source = TRANSLATION_SOURCE_SEGMENT_HIT;
           lookup.stage = LOOKUP_READY;
@@ -950,6 +1031,29 @@ void translation_controller::service_lookups(uint64_t cycle) {
           ++m_stats.segment_pte_suppressed;
           ++m_stats.segment_l1_fill_suppressed;
           progress = true;
+          ++index;
+          continue;
+        }
+        // HIT_FIRST: an L1 hit never waits for a slow Segment miss. The
+        // in-flight Segment result is cancelled with the same join token.
+        if (lookup.segment_launched && lookup.l1_completed && lookup.l1_hit) {
+          lookup.ppn = lookup.l1_ppn;
+          lookup.source = TRANSLATION_SOURCE_L1_TLB_HIT;
+          lookup.stage = LOOKUP_READY;
+          progress = true;
+          ++index;
+          continue;
+        }
+        // MISS_JOIN: neither single miss may launch L2 before the other
+        // parallel lookup is known to miss.
+        if (lookup.segment_launched &&
+            (!lookup.l1_completed || !lookup.segment_completed)) {
+          if (changed) progress = true;
+          ++index;
+          continue;
+        }
+        if (!lookup.segment_launched && !lookup.l1_completed) {
+          if (changed) progress = true;
           ++index;
           continue;
         }
@@ -1251,7 +1355,9 @@ bool translation_controller::complete_translation(const translation_key &key,
                                                    uint64_t cycle) {
   for (unsigned index = 0; index < m_mshrs.size(); ++index) {
     if (!(m_mshrs[index].key == key)) continue;
-    const uint64_t ppn = m_page_table->resolve_ppn(key);
+    uint64_t ppn = 0;
+    if (!m_weight_segments.registered_ppn(key, &ppn))
+      ppn = m_page_table->resolve_ppn(key);
     ++m_stats.mapper_lookups;
     const object_class fill_object = classify_key(key);
     const tlb_fill_result l2_fill =
@@ -1644,6 +1750,17 @@ void translation_controller::print_stats(FILE *fout) const {
           m_config.segment.entries);
   fprintf(fout, "vm_weight_segment_descriptors_loaded = %u\n",
           m_weight_segments.size());
+  fprintf(fout, "vm_weight_segment_registration_schema = %s\n",
+          m_weight_segments.registered_v2()
+              ? "C10A_REGISTERED_PA_V2"
+              : "HISTORICAL_UNFAIR_SPECULATIVE_V1");
+  fprintf(fout, "vm_weight_segment_provisioned_asid = %u\n",
+          m_weight_segments.active_asid());
+  fprintf(fout, "vm_weight_segment_active_epoch = %u\n",
+          m_weight_segments.active_epoch());
+  fprintf(fout, "vm_weight_segment_local_table_entries = %u\n",
+          m_config.segment.entries);
+  fprintf(fout, "vm_weight_segment_local_accepts_per_cycle = 1\n");
   fprintf(fout, "vm_weight_segment_lookup_latency_cycles = %u\n",
           m_config.segment.lookup_latency);
   fprintf(fout, "vm_weight_segment_lookup_launches = %llu\n",

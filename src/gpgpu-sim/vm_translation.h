@@ -205,19 +205,48 @@ class object_range_map {
 // physical-address mechanism.  KV and unknown accesses never match this map.
 class weight_segment_map {
  public:
+  enum fallback_reason {
+    SEGMENT_FALLBACK_NONE = 0,
+    SEGMENT_FALLBACK_NO_DESCRIPTOR,
+    SEGMENT_FALLBACK_ASID,
+    SEGMENT_FALLBACK_EPOCH,
+    SEGMENT_FALLBACK_RIGHTS,
+    SEGMENT_FALLBACK_BOUNDARY
+  };
   explicit weight_segment_map(const std::string &path = "");
   bool enabled() const { return m_enabled; }
+  bool registered_v2() const { return m_registered_v2; }
   unsigned size() const { return m_ranges.size(); }
+  unsigned active_asid() const { return m_active_asid; }
+  unsigned active_epoch() const { return m_active_epoch; }
   bool translate(uint64_t start, uint64_t bytes, uint64_t page_size,
                  uint64_t *ppn) const;
+  bool translate(const translation_key &key, uint64_t start, uint64_t bytes,
+                 bool is_read, uint64_t *ppn,
+                 fallback_reason *reason = 0) const;
+  // Registered pages must resolve identically through ordinary paging and
+  // Segment lookup. Returns false for unregistered pages.
+  bool registered_ppn(const translation_key &key, uint64_t *ppn) const;
 
  private:
   struct range {
-    uint64_t start;
-    uint64_t end;
-    range(uint64_t s = 0, uint64_t e = 0) : start(s), end(e) {}
+    unsigned asid;
+    unsigned epoch;
+    uint64_t va_base_vpn;
+    uint64_t va_limit_vpn;
+    uint64_t pa_base_ppn;
+    bool read_only;
+    unsigned mapping_class;
+    range(unsigned a = 0, unsigned e = 0, uint64_t vb = 0,
+          uint64_t vl = 0, uint64_t pb = 0, bool ro = false,
+          unsigned mc = 0)
+        : asid(a), epoch(e), va_base_vpn(vb), va_limit_vpn(vl),
+          pa_base_ppn(pb), read_only(ro), mapping_class(mc) {}
   };
   bool m_enabled;
+  bool m_registered_v2;
+  unsigned m_active_asid;
+  unsigned m_active_epoch;
   std::vector<range> m_ranges;
 };
 
