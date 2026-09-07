@@ -63,8 +63,9 @@ int main() {
   assert(ppn == 1);
   assert(!direct.translate(0x2fff0, 32, kPage, &ppn));
 
-  // Segment and L1 launch together.  The Segment hit waits for the raw L1
-  // observation, then suppresses every conventional lower translation path.
+  // C10-A HIT_FIRST/MISS_JOIN: Segment and L1 launch together.  A Segment hit
+  // may own completion before slow L1 service, so the cancelled L1 result
+  // must neither probe nor enter the conventional lower path.
   vm_translation::translation_controller vm(
       config(vm_translation::L2_TLB_SUBENTRY_16));
   uint64_t pa = 0;
@@ -79,10 +80,12 @@ int main() {
   assert(vm.l1(0).stats().accesses == 0);
   assert(vm.active_mshrs() == 0 && vm.stats().l2_lookup_launches == 0);
   vm.cycle(3);
-  assert(vm.l1(0).stats().accesses == 1);
+  assert(vm.l1(0).stats().accesses == 0);
   assert(vm.l1(0).occupancy() == 0);
-  assert(vm.stats().segment_raw_l1_misses == 1);
+  assert(vm.stats().segment_raw_l1_misses == 0);
   assert(vm.stats().segment_effective_l1_misses == 0);
+  assert(vm.stats().segment_first_owners == 1);
+  assert(vm.stats().segment_late_result_discards == 1);
   assert(vm.translate(0, 0, 0x10020, 32, 3, 1, &pa, &source) ==
          vm_translation::READY);
   assert(pa == 0x10020 &&
@@ -105,7 +108,7 @@ int main() {
          vm_translation::TRANSLATION_PENDING);
   advance(&vm, 10, 13);
   const uint64_t l1_after_miss = vm.l1(0).stats().accesses;
-  assert(l1_after_miss == 2);
+  assert(l1_after_miss == 1);
   assert(vm.stats().segment_misses == 1);
   assert(vm.stats().segment_effective_l1_misses == 1);
   assert(vm.stats().l2_lookup_launches == 1);

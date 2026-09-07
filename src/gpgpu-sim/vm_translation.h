@@ -176,6 +176,15 @@ enum translation_source {
   TRANSLATION_SOURCE_SEGMENT_HIT
 };
 
+// C10-A carries request access intent into the candidate path.  Existing
+// callers retain READ as the source-compatible default; simulator call-sites
+// must pass their real access class before any replay is authorized.
+enum translation_access {
+  TRANSLATION_ACCESS_READ = 0,
+  TRANSLATION_ACCESS_WRITE = 1,
+  TRANSLATION_ACCESS_ATOMIC = 2
+};
+
 const char *object_class_name(object_class object);
 
 // A frozen line-oriented schema replaces per-run ad-hoc metadata parsing.  A
@@ -199,10 +208,10 @@ class object_range_map {
   std::vector<range> m_ranges;
 };
 
-// Immutable descriptors for the only C3 accelerator: Weight Segmentation.
-// A descriptor is identity-mapped because the frozen M1 data mapping is
-// identity-like; it authorizes a range hit, not a replacement policy or a new
-// physical-address mechanism.  KV and unknown accesses never match this map.
+// Immutable descriptors for the C10-A Weight Segment candidate.  V2 records
+// a privileged ASID-scoped VA extent and its real PA extent; it is not an
+// identity mapping and is not derived from the telemetry object map.  V1 is
+// retained only to reproduce the frozen historical C3 artifact.
 class weight_segment_map {
  public:
   enum fallback_reason {
@@ -364,7 +373,16 @@ class subentry_tlb {
   tlb_fill_result fill(const translation_key &key, uint64_t ppn,
                        uint64_t cycle,
                        object_class object = OBJECT_UNKNOWN);
+  // C10A fair profiles require leaf-granular invalidation. Empty groups free
+  // their way immediately; this API is intentionally base-page only.
+  bool invalidate(const translation_key &key);
+  void flush_asid(unsigned asid);
+  void flush_all();
   bool try_consume_port(uint64_t cycle);
+  // Exposed for focused fair-profile validation.  The 96- and 32-group
+  // profiles must use the configuration-derived set count, never the
+  // historical 768-group geometry.
+  unsigned sets() const { return m_config.sets(); }
   unsigned occupancy() const;
   unsigned valid_subentries() const;
   const tlb_stats &stats() const { return m_stats; }
@@ -477,6 +495,9 @@ struct translation_stats {
   uint64_t l2_lookup_launches;
   uint64_t l2_lookup_completions;
   uint64_t l2_lookup_service_cycles;
+  uint64_t segment_lookup_attempts;
+  uint64_t segment_lookup_accepts;
+  uint64_t segment_port_denials;
   // C3 reports the L1 probe that runs in parallel with a segment lookup as a
   // raw observation.  The effective counters exclude raw L1 outcomes whose
   // translation result is suppressed by a Weight Segment hit.
@@ -496,6 +517,18 @@ struct translation_stats {
   uint64_t segment_pwc_suppressed;
   uint64_t segment_pte_suppressed;
   uint64_t segment_l1_fill_suppressed;
+  uint64_t segment_fallback_by_reason[6];
+  uint64_t segment_l1_first_owners;
+  uint64_t segment_first_owners;
+  uint64_t segment_both_miss;
+  uint64_t segment_miss_join_wait_cycles;
+  uint64_t segment_late_result_discards;
+  uint64_t segment_mapping_mismatch_faults;
+  uint64_t segment_install_attempts;
+  uint64_t segment_install_acks;
+  uint64_t segment_install_rejections;
+  uint64_t segment_revoke_attempts;
+  uint64_t segment_revoke_acks;
   // Per-requester, critical-path state intervals.  These are deliberately
   // not summed into a fabricated global latency: merged requesters share a
   // single MSHR/walk while retaining their own entry and wakeup times.
@@ -596,7 +629,9 @@ struct translation_stats {
         lookup_inflight_bypasses(0), l1_lookup_launches(0),
         l1_lookup_completions(0), l1_lookup_service_cycles(0),
         l2_lookup_launches(0), l2_lookup_completions(0),
-        l2_lookup_service_cycles(0), segment_lookup_launches(0),
+        l2_lookup_service_cycles(0), segment_lookup_attempts(0),
+        segment_lookup_accepts(0), segment_port_denials(0),
+        segment_lookup_launches(0),
         segment_lookup_completions(0), segment_hits(0), segment_misses(0),
         segment_raw_l1_completions(0), segment_raw_l1_hits(0),
         segment_raw_l1_misses(0), segment_effective_l1_hits(0),
@@ -604,6 +639,12 @@ struct translation_stats {
         segment_mshr_suppressed(0), segment_pwq_suppressed(0),
         segment_walker_suppressed(0), segment_pwc_suppressed(0),
         segment_pte_suppressed(0), segment_l1_fill_suppressed(0),
+        segment_fallback_by_reason(), segment_l1_first_owners(0),
+        segment_first_owners(0), segment_both_miss(0),
+        segment_miss_join_wait_cycles(0), segment_late_result_discards(0),
+        segment_mapping_mismatch_faults(0), segment_install_attempts(0),
+        segment_install_acks(0), segment_install_rejections(0),
+        segment_revoke_attempts(0), segment_revoke_acks(0),
         requester_completions(0),
         requester_latency_cycles_total(0), requester_latency_cycles_max(0),
         requester_l1_queue_cycles_total(0), requester_l1_queue_cycles_max(0),
@@ -645,7 +686,9 @@ class translation_controller {
                           uint64_t request_bytes, uint64_t cycle,
                           uint64_t waiter_uid,
                           uint64_t *sim_pa,
-                          translation_source *source = 0);
+                          translation_source *source = 0,
+                          translation_access access =
+                              TRANSLATION_ACCESS_READ);
   // Retained for the accepted M1-M3 directed tests.  Simulator callers pass
   // the real coalesced transaction size through the overload above.
   lookup_result translate(unsigned sid, unsigned asid, uint64_t sim_va,
@@ -736,12 +779,15 @@ class translation_controller {
     uint64_t sim_va;
     uint64_t request_bytes;
     object_class object;
+    translation_access access;
     translation_source source;
     bool segment_launched;
     uint64_t segment_ready_cycle;
     bool segment_completed;
     bool segment_hit;
     uint64_t segment_ppn;
+    unsigned segment_fallback_reason;
+    bool segment_join_accounted;
     bool l1_completed;
     bool l1_hit;
     uint64_t l1_ppn;
@@ -749,16 +795,20 @@ class translation_controller {
                      uint64_t entry, uint64_t ready,
                      uint64_t va, uint64_t bytes,
                      object_class object_classification,
-                     bool launch_segment, uint64_t segment_ready)
+                     translation_access request_access, bool launch_segment,
+                     uint64_t segment_ready)
         : sid(s), uid(u), key(k), stage(LOOKUP_L1_SERVICE),
           entry_cycle(entry), l1_launch_cycle(entry), l1_complete_cycle(0),
           l2_issued(false),
           l2_launch_cycle(0), l2_complete_cycle(0), ready_cycle(ready),
           ppn(0), sim_va(va), request_bytes(bytes),
-          object(object_classification), source(TRANSLATION_SOURCE_UNOBSERVED),
+          object(object_classification), access(request_access),
+          source(TRANSLATION_SOURCE_UNOBSERVED),
           segment_launched(launch_segment), segment_ready_cycle(segment_ready),
           segment_completed(!launch_segment), segment_hit(false),
-          segment_ppn(0), l1_completed(false), l1_hit(false), l1_ppn(0) {}
+          segment_ppn(0), segment_fallback_reason(0),
+          segment_join_accounted(false), l1_completed(false), l1_hit(false),
+          l1_ppn(0) {}
   };
   struct completed_outcome {
     translation_key key;
@@ -842,6 +892,10 @@ class translation_controller {
   std::map<uint64_t, completed_outcome> m_completed_outcomes;
   object_range_map m_object_map;
   weight_segment_map m_weight_segments;
+  // Immutable V2 descriptors are replicated one-for-one with the translation
+  // clusters (the existing per-SID L1 model).  The canonical map below is
+  // used only by the normal PTE backend consistency path.
+  std::vector<weight_segment_map> m_weight_segment_locals;
   std::set<translation_key> m_object_unique_keys[OBJECT_CLASS_COUNT];
   translation_stats m_stats;
   uint64_t m_next_pte_request_id;
