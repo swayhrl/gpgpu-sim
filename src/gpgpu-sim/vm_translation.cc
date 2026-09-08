@@ -1031,8 +1031,7 @@ bool physical_f5_pwc_config_matches(const translation_config &config) {
 bool fair_arm_config_matches(const translation_config &config) {
   const bool no_segment = !config.segment.enabled &&
                           config.segment.entries == 0 &&
-                          config.segment.lookup_latency == 0 &&
-                          config.segment.map_path.empty();
+                          config.segment.lookup_latency == 0;
   switch (config.fair_arm) {
     case FAIR_ARM_MANUAL:
       return true;
@@ -1097,7 +1096,10 @@ void select_exact_arm(translation_config *config, unsigned entries,
   config->page_size = page_size;
   config->l2 = tlb_config(entries, 16, config->l2.ports_per_cycle);
   config->l2_mode = L2_TLB_STANDARD;
-  config->segment = segment_config();
+  // Preserve an optional V2 driver registration.  It supplies the common
+  // ordinary-PTW PA mapping for C9 fair arms, but with the Segment bypass
+  // disabled and therefore no charged Segment state or lookup latency.
+  config->segment = segment_config(false, 0, 0, config->segment.map_path);
 }
 
 }  // namespace
@@ -1115,7 +1117,7 @@ bool configure_fair_arm(translation_config *config, unsigned arm) {
       config->page_size = vm_core::kDefaultBasePageSize;
       config->l2 = tlb_config(96, 16, config->l2.ports_per_cycle);
       config->l2_mode = L2_TLB_SUBENTRY_16;
-      config->segment = segment_config();
+      config->segment = segment_config(false, 0, 0, config->segment.map_path);
       break;
     case FAIR_ARM_F2_EXACT_E688:
       select_exact_arm(config, 688, vm_core::kDefaultBasePageSize);
@@ -1125,7 +1127,7 @@ bool configure_fair_arm(translation_config *config, unsigned arm) {
       config->l2 = tlb_config(config->l2.entries, 16,
                                config->l2.ports_per_cycle);
       config->l2_mode = L2_TLB_STANDARD;
-      config->segment = segment_config();
+      config->segment = segment_config(false, 0, 0, config->segment.map_path);
       break;
     case FAIR_ARM_F4_EXACT_E1536:
       select_exact_arm(config, 1536, vm_core::kDefaultBasePageSize);
@@ -2295,7 +2297,10 @@ bool translation_controller::complete_translation(const translation_key &key,
       return true;
     }
     uint64_t ppn = 0;
-    if (!segment_active() || !m_weight_segments.registered_ppn(key, &ppn))
+    // V2 registration is the driver-owned PA backend for both conventional
+    // paging and Segment.  Segment lifecycle controls only the bypass; it
+    // must not decide which PA a conventional PTW returns.
+    if (!m_weight_segments.registered_ppn(key, &ppn))
       ppn = m_page_table->resolve_ppn(key);
     ++m_stats.mapper_lookups;
     const object_class fill_object = classify_key(key);

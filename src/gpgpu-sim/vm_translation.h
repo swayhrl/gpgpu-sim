@@ -307,8 +307,11 @@ struct segment_config {
       : enabled(enable), entries(entry_count), lookup_latency(service_latency),
         map_path(segment_map) {}
   bool valid() const {
-    if (!enabled)
-      return entries == 0 && lookup_latency == 0 && map_path.empty();
+    // A disabled Segment engine may still carry a V2 driver registration as
+    // the ordinary-page-table PA backend.  This is required for fair arms:
+    // disabling the optional bypass must not silently change the registered
+    // VA->PA mapping seen by the conventional hierarchy.
+    if (!enabled) return entries == 0 && lookup_latency == 0;
     return entries != 0 && lookup_latency != 0 && !map_path.empty();
   }
 };
