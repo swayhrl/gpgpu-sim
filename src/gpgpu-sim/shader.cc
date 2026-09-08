@@ -2488,7 +2488,13 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
              vm_translation::TRANSLATION_SOURCE_UNOBSERVED);
       access.set_sim_pa(static_cast<new_addr_type>(translated_pa));
       ++m_stats->vm_ideal_translations;
-      assert(access.get_sim_va() == access.get_sim_pa());
+      // The accepted M1 baseline is identity-like, but C10 registered
+      // descriptors may deliberately supply a non-identity SimVA->SimPA
+      // extent.  `set_sim_pa()` preserves SimVA for observability while
+      // making the lower cache/DRAM request use SimPA, so equality is an
+      // observation—not a functional-mode invariant.
+      if (access.get_sim_va() == access.get_sim_pa())
+        ++m_stats->vm_identity_equal;
     }
     // The class is captured at the coalesced VM boundary from the frozen map.
     // It is metadata copied into mem_fetch, never a cache/TLB key component.

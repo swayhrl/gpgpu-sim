@@ -132,7 +132,7 @@ int main() {
   assert(controller.stats().segment_mshr_suppressed == 1);
   assert(controller.stats().l2_lookup_launches == 2);
   assert(controller.stats().mshr_allocations == 2);
-  // `requester_completions` is a critical-path observation counter.  A
+  // `requester_completions` is a critical-path observation counter.  Each
   // conventional MSHR waiter is sampled once when the walk wakes it and once
   // when its normal frontend retry returns READY; M3-G3.5 deliberately
   // relies on the former sample.  `completed` is the externally visible
@@ -141,7 +141,7 @@ int main() {
   assert(controller.stats().completed == 3);
   assert(controller.stats().requester_completions ==
          controller.stats().completed +
-             controller.stats().mshr_entries_completed);
+             controller.stats().waiter_wakeups);
   assert(controller.stats().pte_requests == controller.stats().pte_responses);
   assert(controller.stats().pte_l2_only_responses +
              controller.stats().pte_dram_responses ==
