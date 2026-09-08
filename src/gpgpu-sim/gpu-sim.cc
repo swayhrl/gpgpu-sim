@@ -429,7 +429,7 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_vm_fair_arm", OPT_UINT32,
                          &gpgpu_vm_fair_arm,
                          "C10A2 fair arm: 0=manual, 1=F0, 2=F1, 3=F2, "
-                         "4=F3, 5=F4, 6=F5(blocked), 7=F6, 8=F7, "
+                         "4=F3, 5=F4, 6=F5(physical PWC), 7=F6, 8=F7, "
                          "9=F8, 10=F9; 11=H0(rejected)", "0");
   option_parser_register(opp, "-gpgpu_vm_translation_mshr_entries",
                          OPT_UINT32, &gpgpu_vm_translation_mshr_entries,
@@ -466,7 +466,8 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          "70368744177664");
   option_parser_register(opp, "-gpgpu_vm_pwc_mode", OPT_UINT32,
                          &gpgpu_vm_pwc_mode,
-                         "generic M3 PWC mode: 0=OFF, 1=FINITE LRU, 2=IDEAL",
+                         "PWC mode: 0=OFF, 1=generic FINITE LRU, 2=IDEAL, "
+                         "3=C9 F5 physical (selector-controlled)",
                          "1");
   option_parser_register(opp, "-gpgpu_vm_pwc_entries", OPT_UINT32,
                          &gpgpu_vm_pwc_entries,

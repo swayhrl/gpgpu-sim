@@ -323,7 +323,7 @@ enum fair_arm_id {
   FAIR_ARM_F2_EXACT_E688,
   FAIR_ARM_F3_EXACT_SWEEP,
   FAIR_ARM_F4_EXACT_E1536,
-  FAIR_ARM_F5_BLOCKED_PHYSICAL_PWC,
+  FAIR_ARM_F5_PHYSICAL_PWC,
   FAIR_ARM_F6_EXACT_2M_E848,
   FAIR_ARM_F7_SEGMENT_EXACT_E320,
   FAIR_ARM_F8_SEGMENT_SUBENTRY_G32,
@@ -333,12 +333,20 @@ enum fair_arm_id {
 
 const char *fair_arm_name(unsigned arm);
 
-enum pwc_mode { PWC_OFF = 0, PWC_FINITE = 1, PWC_IDEAL = 2 };
+enum pwc_mode {
+  PWC_OFF = 0,
+  PWC_FINITE = 1,
+  PWC_IDEAL = 2,
+  // C9 F5 only: three 40-entry physical-pointer banks. This is not an
+  // alternative spelling for the generic finite vector.
+  PWC_PHYSICAL_F5 = 3
+};
 
 // This is a generic M3 modeling decision.  FINITE defaults to the 128-entry
 // organization used for the project baseline; it is not a target-paper or
-// hardware reconstruction.  A lookup has one configured service cycle and
-// intentionally has sufficient logical bandwidth for active walkers.
+// hardware reconstruction. FINITE has sufficient logical bandwidth for
+// active walkers. PWC_PHYSICAL_F5 is a distinct C9 implementation with an
+// explicit one-port queue and must have exactly 120 entries.
 struct pwc_config {
   unsigned mode;
   unsigned entries;
@@ -656,6 +664,15 @@ struct translation_stats {
   uint64_t pwc_occupancy;
   uint64_t pwc_occupancy_high_watermark;
   uint64_t pwc_service_cycles;
+  // F5's one-port physical PWC queue is separate from generic PWC service
+  // accounting. A denial leaves an active walk queued; it never re-probes.
+  uint64_t pwc_port_accepts;
+  uint64_t pwc_port_denials;
+  uint64_t pwc_queue_wait_cycles_total;
+  uint64_t pwc_queue_wait_cycles_max;
+  uint64_t pwc_queue_high_watermark;
+  uint64_t pwc_physical_payload_validations;
+  std::vector<uint64_t> pwc_occupancy_by_level;
   std::vector<uint64_t> pwc_accesses_by_level;
   std::vector<uint64_t> pwc_hits_by_level;
   std::vector<uint64_t> pwc_misses_by_level;
@@ -747,7 +764,10 @@ struct translation_stats {
         pte_dram_responses(0), pte_response_misassociations(0),
         pwc_accesses(0), pwc_hits(0), pwc_misses(0), pwc_inserts(0),
         pwc_evictions(0), pwc_occupancy(0), pwc_occupancy_high_watermark(0),
-        pwc_service_cycles(0), pwc_accesses_by_level(), pwc_hits_by_level(),
+        pwc_service_cycles(0), pwc_port_accepts(0), pwc_port_denials(0),
+        pwc_queue_wait_cycles_total(0), pwc_queue_wait_cycles_max(0),
+        pwc_queue_high_watermark(0), pwc_physical_payload_validations(0),
+        pwc_occupancy_by_level(), pwc_accesses_by_level(), pwc_hits_by_level(),
         pwc_misses_by_level(), pwc_pte_requests_skipped_by_level(),
         object_attribution_enabled(false), object(), l2_replacement_matrix() {}
 };
@@ -943,6 +963,7 @@ class translation_controller {
     uint64_t pte_request_id;
     uint64_t pte_issue_cycle;
     bool pwc_probe_scheduled;
+    uint64_t pwc_probe_enqueue_cycle;
     uint64_t pwc_probe_ready_cycle;
     bool pwc_miss_ready;
     object_class object;
@@ -950,7 +971,8 @@ class translation_controller {
                 object_class object_classification)
         : key(k), start_cycle(start), ready_cycle(ready), next_level(0),
           pte_outstanding(false), pte_request_id(0), pte_issue_cycle(0),
-          pwc_probe_scheduled(false), pwc_probe_ready_cycle(0),
+          pwc_probe_scheduled(false), pwc_probe_enqueue_cycle(~0ULL),
+          pwc_probe_ready_cycle(0),
           pwc_miss_ready(false), object(object_classification) {}
   };
   struct pwc_entry {
@@ -961,6 +983,20 @@ class translation_controller {
     uint64_t last_touch;
     pwc_entry(unsigned a, unsigned c, unsigned l, uint64_t p, uint64_t touch)
         : asid(a), page_class(c), level(l), prefix(p), last_touch(touch) {}
+  };
+  // F5 models physical non-leaf PTE payload rather than the legacy logical
+  // vector. The storage fields intentionally match the C9 accounting ABI:
+  // valid, ASID, level, VPN prefix, 33-bit next-table PPN and two attributes.
+  struct physical_f5_pwc_entry {
+    bool valid;
+    unsigned asid;
+    unsigned level;
+    uint64_t prefix;
+    uint64_t next_table_ppn;
+    unsigned attributes;
+    physical_f5_pwc_entry()
+        : valid(false), asid(0), level(0), prefix(0), next_table_ppn(0),
+          attributes(0) {}
   };
   lookup_result allocate_or_merge(unsigned sid, uint64_t waiter_uid,
                                   const translation_key &key, uint64_t cycle,
@@ -980,6 +1016,9 @@ class translation_controller {
   void flush_resident_translation_asid(unsigned asid);
   void flush_resident_translation_all();
   bool pwc_enabled() const { return m_config.pwc.mode != PWC_OFF; }
+  bool physical_f5_pwc_enabled() const {
+    return m_config.pwc.mode == PWC_PHYSICAL_F5;
+  }
   bool pwc_is_leaf(unsigned level) const {
     return level + 1 == m_page_table->levels();
   }
@@ -988,6 +1027,15 @@ class translation_controller {
   void service_pwc(uint64_t cycle);
   bool pwc_identity(const translation_key &key, unsigned level,
                     unsigned *page_class, uint64_t *prefix) const;
+  bool physical_f5_pwc_payload(const translation_key &key, unsigned level,
+                               uint64_t prefix, uint64_t *next_table_ppn,
+                               unsigned *attributes) const;
+  unsigned physical_f5_pwc_set(unsigned asid, uint64_t prefix) const;
+  unsigned physical_f5_pwc_victim(unsigned level, unsigned set) const;
+  void physical_f5_pwc_touch(unsigned level, unsigned set, unsigned way);
+  void flush_physical_f5_pwc_asid(unsigned asid);
+  void flush_physical_f5_pwc_all();
+  unsigned physical_f5_pwc_queue_depth() const;
   void initialize_pwc_stats();
   object_class classify_key(const translation_key &key) const;
   void note_object_requester(object_class object, const translation_key &key);
@@ -1002,6 +1050,8 @@ class translation_controller {
   std::vector<translation_key> m_pwq;
   std::vector<active_walk> m_active_walks;
   std::vector<pwc_entry> m_pwc;
+  std::vector<physical_f5_pwc_entry> m_physical_f5_pwc;
+  std::vector<unsigned> m_physical_f5_pwc_plru;
   // A PTW-completed requester re-enters through the existing L1 lookup path.
   // Preserve that source label only until that normal completion is observed;
   // this map has no timing or flow-control role.
@@ -1023,6 +1073,8 @@ class translation_controller {
   translation_stats m_stats;
   uint64_t m_next_pte_request_id;
   uint64_t m_pwc_touch_clock;
+  uint64_t m_physical_f5_pwc_port_cycle;
+  unsigned m_physical_f5_pwc_ports_used;
 };
 
 }  // namespace vm_translation

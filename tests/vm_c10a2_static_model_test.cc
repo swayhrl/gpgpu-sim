@@ -164,8 +164,11 @@ int main() {
   assert(vm_translation::configure_fair_arm(
              &f8, vm_translation::FAIR_ARM_F8_SEGMENT_SUBENTRY_G32) &&
          f8.valid() && f8.l2.sets() == 2);
-  assert(!vm_translation::configure_fair_arm(
-      &fair, vm_translation::FAIR_ARM_F5_BLOCKED_PHYSICAL_PWC));
+  assert(vm_translation::configure_fair_arm(
+             &fair, vm_translation::FAIR_ARM_F5_PHYSICAL_PWC) &&
+         fair.valid() && fair.l2.entries == 656 && fair.l2.sets() == 41 &&
+         fair.pwc.mode == vm_translation::PWC_PHYSICAL_F5 &&
+         fair.pwc.entries == 120 && fair.page_table.virtual_address_bits == 49);
   assert(!vm_translation::configure_fair_arm(
       &fair, vm_translation::FAIR_ARM_H0_HISTORICAL_UNFAIR));
   assert(remove(kRegistration) == 0);

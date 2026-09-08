@@ -69,8 +69,8 @@ const char *fair_arm_name(unsigned arm) {
       return "F3";
     case FAIR_ARM_F4_EXACT_E1536:
       return "F4";
-    case FAIR_ARM_F5_BLOCKED_PHYSICAL_PWC:
-      return "F5_BLOCKED";
+    case FAIR_ARM_F5_PHYSICAL_PWC:
+      return "F5";
     case FAIR_ARM_F6_EXACT_2M_E848:
       return "F6";
     case FAIR_ARM_F7_SEGMENT_EXACT_E320:
@@ -661,10 +661,12 @@ unsigned tlb_config::sets() const {
 }
 
 bool pwc_config::valid() const {
-  if (mode > PWC_IDEAL || lookup_latency == 0) return false;
+  if (mode > PWC_PHYSICAL_F5 || lookup_latency == 0) return false;
   if (mode == PWC_OFF) return entries == 0;
   if (mode == PWC_FINITE) return entries != 0;
-  return true;  // IDEAL is intentionally unbounded; entries is ignored.
+  if (mode == PWC_IDEAL) return true;  // entries intentionally ignored.
+  // C9 F5 has a fixed 3 levels * 40 entries physical organization.
+  return entries == 120;
 }
 
 set_associative_tlb::set_associative_tlb(const tlb_config &config)
@@ -1013,6 +1015,19 @@ bool is_segment_latency_point(unsigned latency) {
   return latency == 5 || latency == 10 || latency == 20;
 }
 
+bool physical_f5_pwc_config_matches(const translation_config &config) {
+  // C9 accounting fixes a 49-bit VA/PA ABI and 33-bit base-page VPN/PPN.
+  // The M3 PTE transport reservation remains separate from that accounted
+  // pointer field; the F5 entry stores a bounded next-table frame identity.
+  return config.page_size == vm_core::kDefaultBasePageSize &&
+         config.pwc.mode == PWC_PHYSICAL_F5 && config.pwc.entries == 120 &&
+         config.pwc.lookup_latency != 0 && config.page_table.levels == 4 &&
+         config.page_table.virtual_address_bits == 49 &&
+         config.page_table.application_physical_limit == (1ULL << 49) &&
+         config.page_table.pte_physical_base == (1ULL << 49) &&
+         config.page_table.pte_physical_bytes == (1ULL << 39);
+}
+
 bool fair_arm_config_matches(const translation_config &config) {
   const bool no_segment = !config.segment.enabled &&
                           config.segment.entries == 0 &&
@@ -1042,7 +1057,10 @@ bool fair_arm_config_matches(const translation_config &config) {
       return config.page_size == vm_core::kDefaultBasePageSize &&
              config.l2_mode == L2_TLB_STANDARD && config.l2.entries == 1536 &&
              config.l2.assoc == 16 && config.l2.sets() == 96 && no_segment;
-    case FAIR_ARM_F5_BLOCKED_PHYSICAL_PWC:
+    case FAIR_ARM_F5_PHYSICAL_PWC:
+      return config.l2_mode == L2_TLB_STANDARD && config.l2.entries == 656 &&
+             config.l2.assoc == 16 && config.l2.sets() == 41 && no_segment &&
+             physical_f5_pwc_config_matches(config);
     case FAIR_ARM_H0_HISTORICAL_UNFAIR:
       return false;
     case FAIR_ARM_F6_EXACT_2M_E848:
@@ -1112,6 +1130,16 @@ bool configure_fair_arm(translation_config *config, unsigned arm) {
     case FAIR_ARM_F4_EXACT_E1536:
       select_exact_arm(config, 1536, vm_core::kDefaultBasePageSize);
       break;
+    case FAIR_ARM_F5_PHYSICAL_PWC: {
+      select_exact_arm(config, 656, vm_core::kDefaultBasePageSize);
+      const unsigned latency = config->pwc.lookup_latency == 0
+                                   ? 1
+                                   : config->pwc.lookup_latency;
+      config->pwc = pwc_config(PWC_PHYSICAL_F5, 120, latency);
+      config->page_table = page_table_config(4, 49, 1ULL << 49, 1ULL << 49,
+                                             1ULL << 39);
+      break;
+    }
     case FAIR_ARM_F6_EXACT_2M_E848:
       select_exact_arm(config, 848, 2ULL * 1024ULL * 1024ULL);
       break;
@@ -1132,7 +1160,6 @@ bool configure_fair_arm(translation_config *config, unsigned arm) {
     case FAIR_ARM_F9_EXACT_E656:
       select_exact_arm(config, 656, vm_core::kDefaultBasePageSize);
       break;
-    case FAIR_ARM_F5_BLOCKED_PHYSICAL_PWC:
     case FAIR_ARM_H0_HISTORICAL_UNFAIR:
     default:
       return false;
@@ -1149,6 +1176,7 @@ uint64_t fair_arm_charged_bits(const translation_config &config) {
       return uint64_t(config.l2.entries) * 85 +
              uint64_t(config.l2.sets()) * 15;
     case FAIR_ARM_F4_EXACT_E1536: return 132000;
+    case FAIR_ARM_F5_PHYSICAL_PWC: return 64745;
     case FAIR_ARM_F6_EXACT_2M_E848: return 65243;
     case FAIR_ARM_F7_SEGMENT_EXACT_E320: return 65300;
     case FAIR_ARM_F8_SEGMENT_SUBENTRY_G32: return 57734;
@@ -1164,6 +1192,8 @@ bool translation_config::valid() const {
          pwc.valid() && l2_mode <= L2_TLB_SUBENTRY_16 &&
          (l2_mode != L2_TLB_SUBENTRY_16 ||
           page_size == vm_core::kDefaultBasePageSize) && segment.valid() &&
+         (pwc.mode != PWC_PHYSICAL_F5 ||
+          fair_arm == FAIR_ARM_F5_PHYSICAL_PWC) &&
          fair_arm_config_matches(*this);
 }
 
@@ -1172,6 +1202,7 @@ translation_controller::translation_controller(const translation_config &config)
       m_page_table(&m_default_page_table), m_l1s(), m_l2(config.l2),
       m_l2_subentries(config.l2), m_mshrs(),
       m_lookups(), m_pwq(), m_active_walks(), m_pwc(),
+      m_physical_f5_pwc(), m_physical_f5_pwc_plru(),
       m_object_map(config.object_map_path),
       m_weight_segments(config.segment.map_path), m_weight_segment_locals(),
       m_segment_install_acks(), m_segment_revoke_acks(),
@@ -1180,7 +1211,8 @@ translation_controller::translation_controller(const translation_config &config)
       m_segment_epoch_wrap_requires_quiesce(false),
       m_translation_generations(), m_object_unique_keys(),
       m_stats(),
-      m_next_pte_request_id(1), m_pwc_touch_clock(0) {
+      m_next_pte_request_id(1), m_pwc_touch_clock(0),
+      m_physical_f5_pwc_port_cycle(~0ULL), m_physical_f5_pwc_ports_used(0) {
   assert(m_config.valid());
   assert(!m_config.segment.enabled ||
          m_weight_segments.size() <= m_config.segment.entries);
@@ -1203,7 +1235,8 @@ translation_controller::translation_controller(const translation_config &config,
     : m_config(config), m_default_page_table(config.page_table),
       m_page_table(backend), m_l1s(), m_l2(config.l2),
       m_l2_subentries(config.l2), m_mshrs(), m_lookups(),
-      m_pwq(), m_active_walks(), m_pwc(), m_object_map(config.object_map_path),
+      m_pwq(), m_active_walks(), m_pwc(), m_physical_f5_pwc(),
+      m_physical_f5_pwc_plru(), m_object_map(config.object_map_path),
       m_weight_segments(config.segment.map_path), m_weight_segment_locals(),
       m_segment_install_acks(), m_segment_revoke_acks(),
       m_segment_lifecycle(SEGMENT_LIFECYCLE_INACTIVE),
@@ -1212,7 +1245,8 @@ translation_controller::translation_controller(const translation_config &config,
       m_translation_generations(), m_object_unique_keys(),
       m_stats(),
       m_next_pte_request_id(1),
-      m_pwc_touch_clock(0) {
+      m_pwc_touch_clock(0), m_physical_f5_pwc_port_cycle(~0ULL),
+      m_physical_f5_pwc_ports_used(0) {
   assert(m_config.valid());
   assert(m_page_table != 0 && m_page_table->valid());
   assert(!m_config.segment.enabled ||
@@ -1348,12 +1382,16 @@ void translation_controller::flush_resident_translation_asid(unsigned asid) {
     m_l2.flush_asid(asid);
   else
     m_l2_subentries.flush_asid(asid);
+  // F5 carries an ASID-tagged non-leaf pointer. Clear it before ASID reuse;
+  // the generic M3 PWC remains deliberately unchanged.
+  flush_physical_f5_pwc_asid(asid);
 }
 
 void translation_controller::flush_resident_translation_all() {
   for (unsigned sid = 0; sid < m_l1s.size(); ++sid) m_l1s[sid].flush_all();
   m_l2.flush_all();
   m_l2_subentries.flush_all();
+  flush_physical_f5_pwc_all();
 }
 
 void translation_controller::invalidate_translation(const translation_key &key) {
@@ -1386,10 +1424,17 @@ void translation_controller::flush_translation_all() {
 
 void translation_controller::initialize_pwc_stats() {
   const unsigned levels = m_page_table->levels();
+  m_stats.pwc_occupancy_by_level.assign(levels, 0);
   m_stats.pwc_accesses_by_level.assign(levels, 0);
   m_stats.pwc_hits_by_level.assign(levels, 0);
   m_stats.pwc_misses_by_level.assign(levels, 0);
   m_stats.pwc_pte_requests_skipped_by_level.assign(levels, 0);
+  if (physical_f5_pwc_enabled()) {
+    // C9 F5 is exactly three non-leaf levels * ten four-way sets.
+    assert(levels == 4 && m_config.page_size == vm_core::kDefaultBasePageSize);
+    m_physical_f5_pwc.assign(120, physical_f5_pwc_entry());
+    m_physical_f5_pwc_plru.assign(30, 0);
+  }
 }
 
 object_class translation_controller::classify_key(
@@ -1414,6 +1459,99 @@ bool translation_controller::pwc_identity(const translation_key &key,
   return m_page_table->pte_prefix_identity(key, level, page_class, prefix);
 }
 
+bool translation_controller::physical_f5_pwc_payload(
+    const translation_key &key, unsigned level, uint64_t prefix,
+    uint64_t *next_table_ppn, unsigned *attributes) const {
+  if (!physical_f5_pwc_enabled() || level >= 3 || next_table_ppn == 0 ||
+      attributes == 0 || key.page_size != vm_core::kDefaultBasePageSize)
+    return false;
+  // F5's 49-bit / 64KiB hierarchy has non-leaf prefix widths 6,15,24.
+  // The child-table PPN is a physical frame identity in the C9 page-table
+  // pool, not the legacy simulator PTE-transport address above the data PA
+  // range.  The three pools are disjoint and all values fit the charged 33b.
+  const unsigned prefix_bits[] = {6, 15, 24};
+  const uint64_t pool_base[] = {0, 1ULL << 6, (1ULL << 6) + (1ULL << 15)};
+  if (prefix >= (1ULL << prefix_bits[level])) return false;
+  *next_table_ppn = pool_base[level] + prefix;
+  *attributes = 3;  // present + readable C9 non-leaf PTE attributes.
+  return *next_table_ppn < (1ULL << 33);
+}
+
+unsigned translation_controller::physical_f5_pwc_set(unsigned asid,
+                                                      uint64_t prefix) const {
+  return unsigned((prefix ^ (uint64_t(asid) * 0x9e3779b9ULL)) % 10);
+}
+
+unsigned translation_controller::physical_f5_pwc_victim(unsigned level,
+                                                         unsigned set) const {
+  assert(level < 3 && set < 10);
+  const unsigned begin = level * 40 + set * 4;
+  for (unsigned way = 0; way < 4; ++way)
+    if (!m_physical_f5_pwc[begin + way].valid) return way;
+  // Three-bit tree-PLRU: root chooses the LRU half, then its child selects
+  // the LRU way within that half. This is the 3 bits/set charged by C9.
+  const unsigned state = m_physical_f5_pwc_plru[level * 10 + set];
+  const bool choose_right = (state & 1) != 0;
+  if (!choose_right) return (state & 2) != 0 ? 1 : 0;
+  return (state & 4) != 0 ? 3 : 2;
+}
+
+void translation_controller::physical_f5_pwc_touch(unsigned level,
+                                                    unsigned set,
+                                                    unsigned way) {
+  assert(level < 3 && set < 10 && way < 4);
+  unsigned &state = m_physical_f5_pwc_plru[level * 10 + set];
+  if (way < 2) {
+    state |= 1;  // right half becomes less recently used.
+    if (way == 0)
+      state |= 2;
+    else
+      state &= ~2U;
+  } else {
+    state &= ~1U;  // left half becomes less recently used.
+    if (way == 2)
+      state |= 4;
+    else
+      state &= ~4U;
+  }
+}
+
+void translation_controller::flush_physical_f5_pwc_asid(unsigned asid) {
+  if (!physical_f5_pwc_enabled()) return;
+  for (unsigned index = 0; index < m_physical_f5_pwc.size(); ++index) {
+    physical_f5_pwc_entry &entry = m_physical_f5_pwc[index];
+    if (!entry.valid || entry.asid != asid) continue;
+    entry = physical_f5_pwc_entry();
+    const unsigned level = index / 40;
+    assert(m_stats.pwc_occupancy_by_level[level] != 0);
+    --m_stats.pwc_occupancy_by_level[level];
+    assert(m_stats.pwc_occupancy != 0);
+    --m_stats.pwc_occupancy;
+  }
+}
+
+void translation_controller::flush_physical_f5_pwc_all() {
+  if (!physical_f5_pwc_enabled()) return;
+  for (unsigned index = 0; index < m_physical_f5_pwc.size(); ++index)
+    m_physical_f5_pwc[index] = physical_f5_pwc_entry();
+  for (unsigned level = 0; level < m_stats.pwc_occupancy_by_level.size();
+       ++level)
+    m_stats.pwc_occupancy_by_level[level] = 0;
+  m_stats.pwc_occupancy = 0;
+}
+
+unsigned translation_controller::physical_f5_pwc_queue_depth() const {
+  if (!physical_f5_pwc_enabled()) return 0;
+  unsigned depth = 0;
+  for (unsigned index = 0; index < m_active_walks.size(); ++index) {
+    const active_walk &walk = m_active_walks[index];
+    if (!walk.pte_outstanding && !walk.pwc_miss_ready &&
+        !walk.pwc_probe_scheduled && !pwc_is_leaf(walk.next_level))
+      ++depth;
+  }
+  return depth;
+}
+
 bool translation_controller::pwc_lookup(const active_walk &walk) {
   assert(pwc_enabled() && !pwc_is_leaf(walk.next_level));
   unsigned page_class = 0;
@@ -1425,6 +1563,38 @@ bool translation_controller::pwc_lookup(const active_walk &walk) {
     ++m_stats.object[walk.object].pwc_accesses;
   ++m_stats.pwc_accesses_by_level[level];
   m_stats.pwc_service_cycles += m_config.pwc.lookup_latency;
+  if (physical_f5_pwc_enabled()) {
+    assert(page_class == 0 && level < 3);
+    uint64_t next_table_ppn = 0;
+    unsigned attributes = 0;
+    assert(physical_f5_pwc_payload(walk.key, level, prefix,
+                                   &next_table_ppn, &attributes));
+    const unsigned set = physical_f5_pwc_set(walk.key.asid, prefix);
+    const unsigned begin = level * 40 + set * 4;
+    for (unsigned way = 0; way < 4; ++way) {
+      physical_f5_pwc_entry &entry = m_physical_f5_pwc[begin + way];
+      if (!entry.valid || entry.asid != walk.key.asid ||
+          entry.level != level || entry.prefix != prefix)
+        continue;
+      // A cache tag hit must also return the exact C9 physical PTE pointer
+      // and attributes that a noncached non-leaf PTE would provide.
+      assert(entry.next_table_ppn == next_table_ppn &&
+             entry.attributes == attributes);
+      ++m_stats.pwc_physical_payload_validations;
+      physical_f5_pwc_touch(level, set, way);
+      ++m_stats.pwc_hits;
+      if (m_stats.object_attribution_enabled)
+        ++m_stats.object[walk.object].pwc_hits;
+      ++m_stats.pwc_hits_by_level[level];
+      ++m_stats.pwc_pte_requests_skipped_by_level[level];
+      return true;
+    }
+    ++m_stats.pwc_misses;
+    if (m_stats.object_attribution_enabled)
+      ++m_stats.object[walk.object].pwc_misses;
+    ++m_stats.pwc_misses_by_level[level];
+    return false;
+  }
   for (unsigned index = 0; index < m_pwc.size(); ++index) {
     pwc_entry &entry = m_pwc[index];
     if (entry.asid == walk.key.asid && entry.page_class == page_class &&
@@ -1451,6 +1621,44 @@ void translation_controller::pwc_insert(const translation_key &key,
   unsigned page_class = 0;
   uint64_t prefix = 0;
   assert(pwc_identity(key, level, &page_class, &prefix));
+  if (physical_f5_pwc_enabled()) {
+    assert(page_class == 0 && level < 3);
+    uint64_t next_table_ppn = 0;
+    unsigned attributes = 0;
+    assert(physical_f5_pwc_payload(key, level, prefix, &next_table_ppn,
+                                   &attributes));
+    const unsigned set = physical_f5_pwc_set(key.asid, prefix);
+    const unsigned begin = level * 40 + set * 4;
+    for (unsigned way = 0; way < 4; ++way) {
+      physical_f5_pwc_entry &entry = m_physical_f5_pwc[begin + way];
+      if (!entry.valid || entry.asid != key.asid || entry.level != level ||
+          entry.prefix != prefix)
+        continue;
+      assert(entry.next_table_ppn == next_table_ppn &&
+             entry.attributes == attributes);
+      physical_f5_pwc_touch(level, set, way);
+      return;
+    }
+    const unsigned victim = physical_f5_pwc_victim(level, set);
+    physical_f5_pwc_entry &entry = m_physical_f5_pwc[begin + victim];
+    if (entry.valid) {
+      ++m_stats.pwc_evictions;
+    } else {
+      ++m_stats.pwc_occupancy;
+      ++m_stats.pwc_occupancy_by_level[level];
+      if (m_stats.pwc_occupancy > m_stats.pwc_occupancy_high_watermark)
+        m_stats.pwc_occupancy_high_watermark = m_stats.pwc_occupancy;
+    }
+    entry.valid = true;
+    entry.asid = key.asid;
+    entry.level = level;
+    entry.prefix = prefix;
+    entry.next_table_ppn = next_table_ppn;
+    entry.attributes = attributes;
+    physical_f5_pwc_touch(level, set, victim);
+    ++m_stats.pwc_inserts;
+    return;
+  }
   for (unsigned index = 0; index < m_pwc.size(); ++index) {
     pwc_entry &entry = m_pwc[index];
     if (entry.asid == key.asid && entry.page_class == page_class &&
@@ -1479,6 +1687,65 @@ void translation_controller::pwc_insert(const translation_key &key,
 
 void translation_controller::service_pwc(uint64_t cycle) {
   if (!pwc_enabled()) return;
+  if (physical_f5_pwc_enabled()) {
+    // Complete all previously accepted pipelined probes. Port capacity was
+    // consumed on admission, not on response, so completions need no second
+    // hidden read port.
+    for (unsigned index = 0; index < m_active_walks.size(); ++index) {
+      active_walk &walk = m_active_walks[index];
+      if (!walk.pwc_probe_scheduled || walk.pwc_probe_ready_cycle > cycle)
+        continue;
+      walk.pwc_probe_scheduled = false;
+      walk.pwc_probe_enqueue_cycle = ~0ULL;
+      if (pwc_lookup(walk))
+        ++walk.next_level;
+      else
+        walk.pwc_miss_ready = true;
+    }
+
+    if (m_physical_f5_pwc_port_cycle != cycle) {
+      m_physical_f5_pwc_port_cycle = cycle;
+      m_physical_f5_pwc_ports_used = 0;
+    }
+    int selected = -1;
+    uint64_t selected_enqueue = ~0ULL;
+    for (unsigned index = 0; index < m_active_walks.size(); ++index) {
+      active_walk &walk = m_active_walks[index];
+      if (walk.pte_outstanding || walk.pwc_miss_ready ||
+          walk.pwc_probe_scheduled || pwc_is_leaf(walk.next_level))
+        continue;
+      if (walk.pwc_probe_enqueue_cycle == ~0ULL)
+        walk.pwc_probe_enqueue_cycle = cycle;
+      if (walk.pwc_probe_enqueue_cycle < selected_enqueue) {
+        selected = static_cast<int>(index);
+        selected_enqueue = walk.pwc_probe_enqueue_cycle;
+      }
+    }
+    if (selected >= 0 && m_physical_f5_pwc_ports_used == 0) {
+      active_walk &walk = m_active_walks[static_cast<unsigned>(selected)];
+      const uint64_t queue_wait = cycle - walk.pwc_probe_enqueue_cycle;
+      m_stats.pwc_queue_wait_cycles_total += queue_wait;
+      if (queue_wait > m_stats.pwc_queue_wait_cycles_max)
+        m_stats.pwc_queue_wait_cycles_max = queue_wait;
+      walk.pwc_probe_scheduled = true;
+      walk.pwc_probe_ready_cycle = cycle + m_config.pwc.lookup_latency;
+      ++m_physical_f5_pwc_ports_used;
+      ++m_stats.pwc_port_accepts;
+    }
+    // Every other ready walker is explicitly still queued at this cycle.
+    for (unsigned index = 0; index < m_active_walks.size(); ++index) {
+      active_walk &walk = m_active_walks[index];
+      if (static_cast<int>(index) == selected || walk.pte_outstanding ||
+          walk.pwc_miss_ready || walk.pwc_probe_scheduled ||
+          pwc_is_leaf(walk.next_level))
+        continue;
+      ++m_stats.pwc_port_denials;
+    }
+    const unsigned queue_depth = physical_f5_pwc_queue_depth();
+    if (queue_depth > m_stats.pwc_queue_high_watermark)
+      m_stats.pwc_queue_high_watermark = queue_depth;
+    return;
+  }
   for (unsigned index = 0; index < m_active_walks.size(); ++index) {
     active_walk &walk = m_active_walks[index];
     if (walk.pte_outstanding || walk.pwc_miss_ready ||
@@ -2234,6 +2501,24 @@ bool translation_controller::complete_pte_response(uint64_t request_id,
 }
 
 bool translation_controller::invariants_hold() const {
+  unsigned physical_f5_occupancy = 0;
+  std::vector<unsigned> physical_f5_by_level(m_stats.pwc_occupancy_by_level.size(),
+                                              0);
+  if (physical_f5_pwc_enabled()) {
+    if (m_physical_f5_pwc.size() != 120 ||
+        m_physical_f5_pwc_plru.size() != 30)
+      return false;
+    for (unsigned index = 0; index < m_physical_f5_pwc.size(); ++index) {
+      if (!m_physical_f5_pwc[index].valid) continue;
+      const physical_f5_pwc_entry &entry = m_physical_f5_pwc[index];
+      const unsigned level = index / 40;
+      if (entry.level != level || level >= 3 || entry.attributes != 3 ||
+          entry.next_table_ppn >= (1ULL << 33))
+        return false;
+      ++physical_f5_occupancy;
+      ++physical_f5_by_level[level];
+    }
+  }
   if (m_stats.mshr_allocations < m_stats.mshr_releases ||
       m_stats.mshr_allocations - m_stats.mshr_releases != m_mshrs.size() ||
       m_stats.waiter_registrations < m_stats.waiter_wakeups ||
@@ -2241,7 +2526,14 @@ bool translation_controller::invariants_hold() const {
           m_stats.translation_stale_waiters_discarded ||
       m_stats.walk_starts < m_stats.walk_completions ||
       m_active_walks.size() > m_config.walkers ||
-      m_stats.pwc_occupancy != m_pwc.size() ||
+      m_stats.pwc_occupancy !=
+          (physical_f5_pwc_enabled() ? physical_f5_occupancy : m_pwc.size()) ||
+      (physical_f5_pwc_enabled() &&
+       (m_stats.pwc_occupancy_by_level.size() != physical_f5_by_level.size() ||
+        m_stats.pwc_occupancy_by_level.size() < 3 ||
+        m_stats.pwc_occupancy_by_level[0] != physical_f5_by_level[0] ||
+        m_stats.pwc_occupancy_by_level[1] != physical_f5_by_level[1] ||
+        m_stats.pwc_occupancy_by_level[2] != physical_f5_by_level[2])) ||
       (m_config.pwc.mode == PWC_FINITE &&
        m_pwc.size() > m_config.pwc.entries))
     return false;
@@ -2400,6 +2692,8 @@ void translation_controller::print_stats(FILE *fout) const {
                                            : m_l2_subentries.stats();
   fprintf(fout, "vm_translation_page_size_bytes = %llu\n",
           (unsigned long long)m_config.page_size);
+  fprintf(fout, "vm_translation_virtual_address_bits = %u\n",
+          m_config.page_table.virtual_address_bits);
   fprintf(fout, "vm_fair_arm_id = %u\n", m_config.fair_arm);
   fprintf(fout, "vm_fair_arm_name = %s\n", fair_arm_name(m_config.fair_arm));
   fprintf(fout, "vm_fair_arm_charged_bits = %llu\n",
@@ -2628,6 +2922,40 @@ void translation_controller::print_stats(FILE *fout) const {
   fprintf(fout, "vm_pwc_entries_configured = %u\n", m_config.pwc.entries);
   fprintf(fout, "vm_pwc_lookup_latency_cycles = %u\n",
           m_config.pwc.lookup_latency);
+  fprintf(fout, "vm_pwc_physical_f5_enabled = %u\n",
+          physical_f5_pwc_enabled() ? 1U : 0U);
+  fprintf(fout, "vm_pwc_physical_f5_entries_total = %u\n",
+          physical_f5_pwc_enabled() ? 120U : 0U);
+  fprintf(fout, "vm_pwc_physical_f5_entries_per_nonleaf_level = %u\n",
+          physical_f5_pwc_enabled() ? 40U : 0U);
+  fprintf(fout, "vm_pwc_physical_f5_sets_per_level = %u\n",
+          physical_f5_pwc_enabled() ? 10U : 0U);
+  fprintf(fout, "vm_pwc_physical_f5_ways = %u\n",
+          physical_f5_pwc_enabled() ? 4U : 0U);
+  fprintf(fout, "vm_pwc_physical_f5_prefix_bits_l0_l1_l2 = %s\n",
+          physical_f5_pwc_enabled() ? "6|15|24" : "NA");
+  fprintf(fout, "vm_pwc_physical_f5_payload_bits = %u\n",
+          physical_f5_pwc_enabled() ? 33U : 0U);
+  fprintf(fout, "vm_pwc_physical_f5_attributes_bits = %u\n",
+          physical_f5_pwc_enabled() ? 2U : 0U);
+  fprintf(fout, "vm_pwc_physical_f5_array_bits = %u\n",
+          physical_f5_pwc_enabled() ? 8280U : 0U);
+  fprintf(fout, "vm_pwc_physical_f5_plru_bits = %u\n",
+          physical_f5_pwc_enabled() ? 90U : 0U);
+  fprintf(fout, "vm_pwc_physical_f5_charged_bits = %u\n",
+          physical_f5_pwc_enabled() ? 8370U : 0U);
+  fprintf(fout, "vm_pwc_port_accepts = %llu\n",
+          (unsigned long long)m_stats.pwc_port_accepts);
+  fprintf(fout, "vm_pwc_port_denials = %llu\n",
+          (unsigned long long)m_stats.pwc_port_denials);
+  fprintf(fout, "vm_pwc_queue_wait_cycles_total = %llu\n",
+          (unsigned long long)m_stats.pwc_queue_wait_cycles_total);
+  fprintf(fout, "vm_pwc_queue_wait_cycles_max = %llu\n",
+          (unsigned long long)m_stats.pwc_queue_wait_cycles_max);
+  fprintf(fout, "vm_pwc_queue_high_watermark = %llu\n",
+          (unsigned long long)m_stats.pwc_queue_high_watermark);
+  fprintf(fout, "vm_pwc_physical_payload_validations = %llu\n",
+          (unsigned long long)m_stats.pwc_physical_payload_validations);
   fprintf(fout, "vm_pwc_accesses = %llu\n",
           (unsigned long long)m_stats.pwc_accesses);
   fprintf(fout, "vm_pwc_hits = %llu\n",
@@ -2646,6 +2974,8 @@ void translation_controller::print_stats(FILE *fout) const {
           (unsigned long long)m_stats.pwc_service_cycles);
   for (unsigned level = 0; level < m_stats.pwc_accesses_by_level.size();
        ++level) {
+    fprintf(fout, "vm_pwc_level_%u_occupancy = %llu\n", level,
+            (unsigned long long)m_stats.pwc_occupancy_by_level[level]);
     fprintf(fout, "vm_pwc_level_%u_accesses = %llu\n", level,
             (unsigned long long)m_stats.pwc_accesses_by_level[level]);
     fprintf(fout, "vm_pwc_level_%u_hits = %llu\n", level,

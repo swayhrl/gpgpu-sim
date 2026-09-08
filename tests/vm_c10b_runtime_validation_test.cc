@@ -337,9 +337,15 @@ static void test_fair_selector() {
            f8.l2.entries == 32 && f8.l2.sets() == 2 &&
            f7.segment.entries == 8 && f8.segment.entries == 8);
   }
+  vm_translation::translation_config f5 = fair_seed(5);
+  assert(vm_translation::configure_fair_arm(
+      &f5, vm_translation::FAIR_ARM_F5_PHYSICAL_PWC));
+  assert(f5.valid() && f5.l2.entries == 656 && f5.l2.sets() == 41 &&
+         f5.pwc.mode == vm_translation::PWC_PHYSICAL_F5 &&
+         f5.pwc.entries == 120 &&
+         f5.page_table.virtual_address_bits == 49 &&
+         vm_translation::fair_arm_charged_bits(f5) == 64745);
   vm_translation::translation_config rejected = fair_seed(5);
-  assert(!vm_translation::configure_fair_arm(
-      &rejected, vm_translation::FAIR_ARM_F5_BLOCKED_PHYSICAL_PWC));
   rejected = fair_seed(5);
   assert(!vm_translation::configure_fair_arm(
       &rejected, vm_translation::FAIR_ARM_H0_HISTORICAL_UNFAIR));
