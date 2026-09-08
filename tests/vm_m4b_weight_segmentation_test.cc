@@ -131,7 +131,11 @@ int main() {
          vm_translation::READY);
   assert(pa == 0x50020 && source == vm_translation::TRANSLATION_SOURCE_PTW);
   assert(vm.stats().segment_lookup_launches == 2);
-  assert(vm.stats().segment_raw_l1_completions == 2);
+  // The first Segment hit cancelled its late L1 shadow token under the C10
+  // HIT_FIRST model.  The model deliberately has no physical background
+  // response, so only the descriptor-miss request reaches L1 service.
+  assert(vm.stats().segment_raw_l1_completions == 1);
+  assert(vm.stats().segment_raw_l1_misses == 1);
 
   // KV and unknown accesses always take the normal L1/L2/MSHR path even when
   // Weight Segmentation is enabled.

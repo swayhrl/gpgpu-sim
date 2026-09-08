@@ -1621,7 +1621,15 @@ void translation_controller::service_lookups(uint64_t cycle) {
           lookup.source = TRANSLATION_SOURCE_SEGMENT_HIT;
           lookup.stage = LOOKUP_READY;
           ++m_stats.segment_first_owners;
-          if (!lookup.l1_completed) ++m_stats.segment_late_result_discards;
+          if (!lookup.l1_completed) {
+            ++m_stats.segment_late_result_discards;
+            // C10's logical late-loser cancellation has no physical
+            // background response model.  Mark the shadow L1 interval as
+            // zero-cost at its launch instead of leaving the default cycle
+            // zero, which is invalid for a request admitted after cycle 0
+            // and would incorrectly charge Segment time to L1 telemetry.
+            lookup.l1_complete_cycle = lookup.l1_launch_cycle;
+          }
           ++m_stats.segment_l2_suppressed;
           ++m_stats.segment_mshr_suppressed;
           ++m_stats.segment_pwq_suppressed;
