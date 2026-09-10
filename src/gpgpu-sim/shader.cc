@@ -4264,8 +4264,13 @@ void ldst_unit::issue(register_set &reg_set) {
   if (inst->is_load() && inst->space.get_type() != shared_space) {
     unsigned warp_id = inst->warp_id();
     unsigned n_accesses = inst->accessq_count();
+    // A predicated/no-effective-access load follows the established
+    // memory_cycle() empty-access retirement path.  It has no coalesced line
+    // reference to admit into DTC and must not create a zero-reference
+    // dependency or pending-write record at issue.
     const bool dtc_cacheable_read =
-        (dtc_l1_paper_io_active() || dtc_l1_paper_oo_active()) && m_L1D != NULL &&
+        (dtc_l1_paper_io_active() || dtc_l1_paper_oo_active()) &&
+        !inst->accessq_empty() && m_L1D != NULL &&
         (inst->space.get_type() == global_space ||
          inst->space.get_type() == local_space ||
          inst->space.get_type() == param_space_local) &&
