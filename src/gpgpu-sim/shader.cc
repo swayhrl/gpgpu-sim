@@ -2269,6 +2269,26 @@ void ldst_unit::print_dtc_l1_io_deadlock(FILE *fp) const {
           static_cast<unsigned long long>(m_dtc_l1_io_last_progress_cycle));
 }
 
+// Called only after the existing simulator deadlock decision.  This is
+// observability-only: it neither changes OO ownership nor participates in an
+// ordinary timing path.  It makes a capacity-sensitive fatal reproducible
+// without inferring that OO shares IO's FIFO partial-allocation mechanism.
+void ldst_unit::print_dtc_l1_oo_deadlock(FILE *fp) const {
+  if (!dtc_l1_paper_oo_active()) return;
+  if (m_dtc_l1_oo_pib.empty() && m_dtc_l1_oo_lower_create_queue.empty() &&
+      m_dtc_l1_oo_lower_issue_queue.empty() && m_dtc_l1_oo_inflight.empty())
+    return;
+  const dtc_l1::oo_frontend &front_end = *m_dtc_l1_oo_frontend;
+  fprintf(fp,
+          "DTC_L1_OO_DEADLOCK sm=%u pib=%zu frontend=%zu allocated_phys=%zu "
+          "active_refs=%llu lower_create=%zu lower_issue=%zu inflight=%zu\n",
+          m_sid, m_dtc_l1_oo_pib.size(), front_end.occupancy(),
+          front_end.allocated_lines(),
+          static_cast<unsigned long long>(front_end.active_refs()),
+          m_dtc_l1_oo_lower_create_queue.size(),
+          m_dtc_l1_oo_lower_issue_queue.size(), m_dtc_l1_oo_inflight.size());
+}
+
 void ldst_unit::get_l1d_cache_stats(cache_stats &cs) const {
   if (m_L1D) cs += m_L1D->get_stats();
 }
@@ -6766,6 +6786,10 @@ void shader_core_ctx::print_dtc_l1_io_deadlock(FILE *fp) const {
   m_ldst_unit->print_dtc_l1_io_deadlock(fp);
 }
 
+void shader_core_ctx::print_dtc_l1_oo_deadlock(FILE *fp) const {
+  m_ldst_unit->print_dtc_l1_oo_deadlock(fp);
+}
+
 void shader_core_ctx::get_l1d_cache_stats(cache_stats &cs) const {
   m_ldst_unit->get_l1d_cache_stats(cs);
 }
@@ -7609,6 +7633,11 @@ void simt_core_cluster::get_dtc_l1_stats(
 void simt_core_cluster::print_dtc_l1_io_deadlock(FILE *fp) const {
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i)
     m_core[i]->print_dtc_l1_io_deadlock(fp);
+}
+
+void simt_core_cluster::print_dtc_l1_oo_deadlock(FILE *fp) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i)
+    m_core[i]->print_dtc_l1_oo_deadlock(fp);
 }
 
 void simt_core_cluster::get_l1d_cache_stats(cache_stats &cs) const {

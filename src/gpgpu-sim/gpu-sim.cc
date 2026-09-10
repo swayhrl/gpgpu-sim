@@ -1661,6 +1661,11 @@ void gpgpu_sim::deadlock_check() {
       printf("DTC_L1_IO_RESOURCE_DEADLOCK diagnostic state:\n");
       for (unsigned i = 0; i < m_shader_config->n_simt_clusters; ++i)
         m_cluster[i]->print_dtc_l1_io_deadlock(stdout);
+    } else if (m_shader_config->dtc_l1_mode ==
+               static_cast<unsigned>(dtc_l1::mode::PAPER_OO)) {
+      printf("DTC_L1_OO_RESOURCE_DEADLOCK diagnostic state:\n");
+      for (unsigned i = 0; i < m_shader_config->n_simt_clusters; ++i)
+        m_cluster[i]->print_dtc_l1_oo_deadlock(stdout);
     }
     // This is reached only after the existing deadlock decision.  Capture the
     // live conventional pipeline/MSHR/scoreboard state before aborting so a
