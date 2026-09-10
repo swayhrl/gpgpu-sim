@@ -1318,6 +1318,23 @@ void baseline_cache::display_state(FILE *fp) const {
   m_mshrs.display(fp);
   fprintf(fp, "Miss queue (%zu entries):\n", m_miss_queue.size());
   for (const mem_fetch *mf : m_miss_queue) mf->print(fp);
+  // A reserved line is released only by the matching baseline fill.  The MSHR
+  // and miss-queue dumps above do not expose the root request mapping that
+  // owns that eventual fill, so include it in fatal-state diagnostics.  This
+  // reads no timing state and changes no cache behavior.
+  fprintf(fp, "Outstanding fill ownership (%zu entries):\n",
+          m_extra_mf_fields.size());
+  for (const auto &entry : m_extra_mf_fields) {
+    const mem_fetch *mf = entry.first;
+    const extra_mf_fields &fields = entry.second;
+    fprintf(fp,
+            "  root_mf=%p request_uid=%u valid=%d block=0x%llx addr=0x%llx "
+            "cache_index=%u data_size=%u pending_read=%u\n",
+            static_cast<const void *>(mf), mf->get_request_uid(),
+            fields.m_valid, static_cast<unsigned long long>(fields.m_block_addr),
+            static_cast<unsigned long long>(fields.m_addr),
+            fields.m_cache_index, fields.m_data_size, fields.pending_read);
+  }
   fprintf(fp, "\n");
 }
 
