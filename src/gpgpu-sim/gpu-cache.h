@@ -1054,6 +1054,8 @@ class mshr_table {
   void add(new_addr_type block_addr, mem_fetch *mf);
   /// Returns true if cannot accept new fill responses
   bool busy() const { return false; }
+  /// True while an accepted miss or a ready response still owns MSHR state.
+  bool empty() const { return m_data.empty() && m_current_response.empty(); }
   /// Accept a new cache fill response: mark entry ready for processing
   void mark_ready(new_addr_type block_addr, bool &has_atomic);
   /// Returns true if ready accesses exist
@@ -1354,9 +1356,10 @@ class baseline_cache : public cache_t {
   bool access_ready() const { return m_mshrs.access_ready(); }
   /// Pop next ready access (does not include accesses that "HIT")
   mem_fetch *next_access() { return m_mshrs.next_access(); }
-  // flash invalidate all entries in cache
+  // Request invalidation.  If a conventional miss still owns a reserved tag,
+  // completion is deferred until its cache/MSHR lifecycle is quiescent.
   void flush() { m_tag_array->flush(); }
-  void invalidate() { m_tag_array->invalidate(); }
+  void invalidate();
   void print(FILE *fp, unsigned &accesses, unsigned &misses) const;
   void display_state(FILE *fp) const;
   void display_set_state(FILE *fp, new_addr_type addr) const;
@@ -1460,6 +1463,17 @@ class baseline_cache : public cache_t {
   typedef std::map<mem_fetch *, extra_mf_fields> extra_mf_fields_lookup;
 
   extra_mf_fields_lookup m_extra_mf_fields;
+
+  // A kernel-end or membar invalidation must not clear a reserved tag while
+  // the matching conventional miss is still represented by an MSHR/owner.
+  // The request is retired from baseline_cache::cycle() once that state drains.
+  bool m_invalidate_pending = false;
+
+  bool conventional_miss_lifecycle_active() const {
+    return !m_miss_queue.empty() || !m_extra_mf_fields.empty() ||
+           !m_mshrs.empty();
+  }
+  void retire_pending_invalidate();
 
   cache_stats m_stats;
 
