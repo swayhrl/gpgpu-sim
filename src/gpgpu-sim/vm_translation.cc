@@ -452,6 +452,42 @@ bool weight_segment_map::registered_ppn(const translation_key &key,
   return false;
 }
 
+weight_segment_exclusion_map::weight_segment_exclusion_map(
+    const std::string &path)
+    : m_enabled(false), m_ranges() {
+  if (path.empty()) return;
+  std::ifstream input(path.c_str());
+  assert(input.good() && "unable to open C13 Segment exclusion map");
+  std::string line;
+  assert(std::getline(input, line));
+  assert(line == "C13_WEIGHT_SEGMENT_EXCLUSION_V1" &&
+         "unsupported C13 Segment exclusion schema");
+  const uint64_t max_vpn = (1ULL << 33) - 1;
+  while (std::getline(input, line)) {
+    if (line.empty() || line[0] == '#') continue;
+    const std::vector<std::string> fields = split_tab_fields(line);
+    assert(fields.size() == 3 && fields[0] == "exclude");
+    uint64_t begin = 0, end = 0;
+    assert(parse_u64(fields[1], &begin) && parse_u64(fields[2], &end));
+    assert(begin <= end && end <= max_vpn);
+    if (!m_ranges.empty()) assert(m_ranges.back().end_vpn < begin);
+    m_ranges.push_back(range(begin, end));
+  }
+  assert(!m_ranges.empty() && "C13 exclusion map must not be empty");
+  m_enabled = true;
+}
+
+bool weight_segment_exclusion_map::excludes(const translation_key &key) const {
+  if (!m_enabled || key.page_size != vm_core::kDefaultBasePageSize)
+    return false;
+  for (unsigned index = 0; index < m_ranges.size(); ++index) {
+    const range &candidate = m_ranges[index];
+    if (candidate.begin_vpn > key.vpn) break;
+    if (key.vpn <= candidate.end_vpn) return true;
+  }
+  return false;
+}
+
 namespace {
 
 const uint64_t kPteBytes = 8;
@@ -1206,7 +1242,9 @@ translation_controller::translation_controller(const translation_config &config)
       m_lookups(), m_pwq(), m_active_walks(), m_pwc(),
       m_physical_f5_pwc(), m_physical_f5_pwc_plru(),
       m_object_map(config.object_map_path),
-      m_weight_segments(config.segment.map_path), m_weight_segment_locals(),
+      m_weight_segments(config.segment.map_path),
+      m_weight_segment_exclusions(config.segment.exclusion_map_path),
+      m_weight_segment_locals(),
       m_segment_install_acks(), m_segment_revoke_acks(),
       m_segment_lifecycle(SEGMENT_LIFECYCLE_INACTIVE),
       m_segment_active_asid(0), m_segment_active_epoch(0),
@@ -1239,7 +1277,9 @@ translation_controller::translation_controller(const translation_config &config,
       m_l2_subentries(config.l2), m_mshrs(), m_lookups(),
       m_pwq(), m_active_walks(), m_pwc(), m_physical_f5_pwc(),
       m_physical_f5_pwc_plru(), m_object_map(config.object_map_path),
-      m_weight_segments(config.segment.map_path), m_weight_segment_locals(),
+      m_weight_segments(config.segment.map_path),
+      m_weight_segment_exclusions(config.segment.exclusion_map_path),
+      m_weight_segment_locals(),
       m_segment_install_acks(), m_segment_revoke_acks(),
       m_segment_lifecycle(SEGMENT_LIFECYCLE_INACTIVE),
       m_segment_active_asid(0), m_segment_active_epoch(0),
@@ -1860,7 +1900,7 @@ void translation_controller::service_lookups(uint64_t cycle) {
           weight_segment_map::fallback_reason reason =
               weight_segment_map::SEGMENT_FALLBACK_NONE;
           assert(lookup.sid < m_weight_segment_locals.size());
-          if (segment_active() &&
+          if (segment_active() && !m_weight_segment_exclusions.excludes(lookup.key) &&
               m_weight_segment_locals[lookup.sid].translate(
                   lookup.key, lookup.sim_va, lookup.request_bytes,
                   lookup.access == TRANSLATION_ACCESS_READ,

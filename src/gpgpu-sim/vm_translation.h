@@ -296,16 +296,38 @@ class weight_segment_map {
   std::vector<range> m_ranges;
 };
 
+// C13 diagnostic-only policy overlay.  It deliberately carries no PPN or
+// translation metadata: a matching range suppresses only the optional Segment
+// lookup, leaving the immutable V2 registration available to ordinary PTW.
+class weight_segment_exclusion_map {
+ public:
+  explicit weight_segment_exclusion_map(const std::string &path = "");
+  bool enabled() const { return m_enabled; }
+  bool excludes(const translation_key &key) const;
+
+ private:
+  struct range {
+    uint64_t begin_vpn;
+    uint64_t end_vpn;
+    range(uint64_t begin = 0, uint64_t end = 0)
+        : begin_vpn(begin), end_vpn(end) {}
+  };
+  bool m_enabled;
+  std::vector<range> m_ranges;
+};
+
 struct segment_config {
   bool enabled;
   unsigned entries;
   unsigned lookup_latency;
   std::string map_path;
+  std::string exclusion_map_path;
   segment_config(bool enable = false, unsigned entry_count = 0,
                  unsigned service_latency = 0,
-                 const std::string &segment_map = "")
+                 const std::string &segment_map = "",
+                 const std::string &exclusion_map = "")
       : enabled(enable), entries(entry_count), lookup_latency(service_latency),
-        map_path(segment_map) {}
+        map_path(segment_map), exclusion_map_path(exclusion_map) {}
   bool valid() const {
     // A disabled Segment engine may still carry a V2 driver registration as
     // the ordinary-page-table PA backend.  This is required for fair arms:
@@ -1061,6 +1083,7 @@ class translation_controller {
   std::map<uint64_t, completed_outcome> m_completed_outcomes;
   object_range_map m_object_map;
   weight_segment_map m_weight_segments;
+  weight_segment_exclusion_map m_weight_segment_exclusions;
   // Immutable V2 descriptors are replicated one-for-one with the translation
   // clusters (the existing per-SID L1 model).  The canonical map below is
   // used only by the normal PTE backend consistency path.
