@@ -32,7 +32,9 @@
 
 #include "gpu-cache.h"
 #include <assert.h>
+#include <cstdlib>
 #include <cstdint>
+#include <cstring>
 #include "gpu-sim.h"
 #include "hashing.h"
 #include "stat-tool.h"
@@ -64,6 +66,20 @@ const char *cache_fail_status_str(enum cache_reservation_fail_reason status) {
 
   return static_cache_reservation_fail_reason_str[status];
 }
+
+namespace {
+
+// The same trace deterministically exposes the terminal state on these three
+// SMs.  Keep this observer opt-in and narrow so a diagnostic run records the
+// causal conventional-L1 transitions without changing a formal binary's
+// behavior or producing an all-SM access log.
+bool fast64_2d_transition_trace_core(int core_id) {
+  const char *enabled = std::getenv("FAST64_2D_TRANSITION_TRACE");
+  return enabled && std::strcmp(enabled, "1") == 0 &&
+         (core_id == 3 || core_id == 29 || core_id == 51);
+}
+
+}  // namespace
 
 unsigned l1d_cache_config::set_bank(new_addr_type addr) const {
   // For sector cache, we select one sector per bank (sector interleaving)
@@ -371,6 +387,15 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
         }
         m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr),
                                time, mf->get_access_sector_mask());
+        if (fast64_2d_transition_trace_core(m_core_id)) {
+          fprintf(stderr,
+                  "FAST64_2D_TRANSITION cycle=%u event=TAG_ALLOC core=%d "
+                  "type=%d uid=%u addr=0x%llx index=%u sector=0x%lx "
+                  "write=%u status=MISS\n",
+                  time, m_core_id, m_type_id, mf->get_request_uid(),
+                  static_cast<unsigned long long>(addr), idx,
+                  mf->get_access_sector_mask().to_ulong(), mf->is_write());
+        }
       }
       break;
     case SECTOR_MISS:
@@ -381,6 +406,15 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
         bool before = m_lines[idx]->is_modified_line();
         ((sector_cache_block *)m_lines[idx])
             ->allocate_sector(time, mf->get_access_sector_mask());
+        if (fast64_2d_transition_trace_core(m_core_id)) {
+          fprintf(stderr,
+                  "FAST64_2D_TRANSITION cycle=%u event=TAG_ALLOC core=%d "
+                  "type=%d uid=%u addr=0x%llx index=%u sector=0x%lx "
+                  "write=%u status=SECTOR_MISS\n",
+                  time, m_core_id, m_type_id, mf->get_request_uid(),
+                  static_cast<unsigned long long>(addr), idx,
+                  mf->get_access_sector_mask().to_ulong(), mf->is_write());
+        }
         if (before && !m_lines[idx]->is_modified_line()) {
           m_dirty--;
         }
@@ -1261,12 +1295,14 @@ void baseline_cache::invalidate() {
   // Preserve the request and perform the same invalidation once the accepted
   // miss lifecycle has drained; no request, response, or DTC accounting path
   // is changed.
+  debug_fast64_2d_transition("INVALIDATE_REQUEST", NULL, (unsigned)-1);
   m_invalidate_pending = true;
   retire_pending_invalidate();
 }
 
 void baseline_cache::retire_pending_invalidate() {
   if (m_invalidate_pending && !conventional_miss_lifecycle_active()) {
+    debug_fast64_2d_transition("INVALIDATE_ACTUAL", NULL, (unsigned)-1);
     m_tag_array->invalidate();
     m_invalidate_pending = false;
   }
@@ -1280,7 +1316,11 @@ void baseline_cache::fill(mem_fetch *mf, unsigned time) {
     extra_mf_fields_lookup::iterator e =
         m_extra_mf_fields.find(mf->get_original_mf());
     assert(e != m_extra_mf_fields.end());
+    const unsigned pending_before = e->second.pending_read;
     e->second.pending_read--;
+    debug_fast64_2d_transition("FILL_CHILD", mf,
+                                e->second.m_cache_index, pending_before,
+                                e->second.pending_read);
 
     if (e->second.pending_read > 0) {
       // wait for the other requests to come back
@@ -1296,6 +1336,9 @@ void baseline_cache::fill(mem_fetch *mf, unsigned time) {
   extra_mf_fields_lookup::iterator e = m_extra_mf_fields.find(mf);
   assert(e != m_extra_mf_fields.end());
   assert(e->second.m_valid);
+  const unsigned fill_cache_index = e->second.m_cache_index;
+  debug_fast64_2d_transition("FILL_FINAL_PRE", mf, fill_cache_index,
+                              e->second.pending_read, e->second.pending_read);
   mf->set_data_size(e->second.m_data_size);
   mf->set_addr(e->second.m_addr);
   if (m_config.m_alloc_policy == ON_MISS)
@@ -1318,8 +1361,36 @@ void baseline_cache::fill(mem_fetch *mf, unsigned time) {
     block->set_byte_mask(mf);
   }
   m_extra_mf_fields.erase(mf);
+  debug_fast64_2d_transition("FILL_FINAL_POST", mf, fill_cache_index,
+                              0, 0);
   if (m_level == L1_GPU_CACHE) m_gpu->dtc_l1_complete_lower_request();
   m_bandwidth_management.use_fill_port(mf);
+}
+
+void baseline_cache::debug_fast64_2d_transition(const char *event,
+                                                 const mem_fetch *mf,
+                                                 unsigned cache_index,
+                                                 unsigned pending_before,
+                                                 unsigned pending_after) const {
+  const char *enabled = std::getenv("FAST64_2D_TRANSITION_TRACE");
+  if (!enabled || std::strcmp(enabled, "1") != 0 ||
+      m_name.rfind("L1D_", 0) != 0)
+    return;
+  const int core_id = std::atoi(m_name.c_str() + 4);
+  if (!fast64_2d_transition_trace_core(core_id)) return;
+  fprintf(stderr,
+          "FAST64_2D_TRANSITION cycle=%llu event=%s cache=%s uid=%u "
+          "addr=0x%llx index=%u sector=0x%lx pending_before=%u "
+          "pending_after=%u owners=%zu missq=%zu mshr_active=%u "
+          "invalidate_pending=%u\n",
+          m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, event, m_name.c_str(),
+          mf ? mf->get_request_uid() : 0U,
+          static_cast<unsigned long long>(mf ? mf->get_addr() : 0),
+          cache_index,
+          mf ? mf->get_access_sector_mask().to_ulong() : 0UL, pending_before,
+          pending_after, m_extra_mf_fields.size(), m_miss_queue.size(),
+          conventional_miss_lifecycle_active() ? 1U : 0U,
+          m_invalidate_pending ? 1U : 0U);
 }
 
 /// Checks if mf is waiting to be filled by lower memory level
@@ -1485,6 +1556,9 @@ void baseline_cache::send_read_request(new_addr_type addr,
     m_mshrs.add(mshr_addr, mf);
     m_extra_mf_fields[mf] = extra_mf_fields(
         mshr_addr, mf->get_addr(), cache_index, mf->get_data_size(), m_config);
+    debug_fast64_2d_transition("OWNER_CREATE", mf, cache_index,
+                                m_extra_mf_fields[mf].pending_read,
+                                m_extra_mf_fields[mf].pending_read);
     mf->set_data_size(m_config.get_atom_sz());
     mf->set_addr(mshr_addr);
     m_miss_queue.push_back(mf);

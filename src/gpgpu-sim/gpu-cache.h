@@ -1473,6 +1473,13 @@ class baseline_cache : public cache_t {
     return !m_miss_queue.empty() || !m_extra_mf_fields.empty() ||
            !m_mshrs.empty();
   }
+  // Diagnostic-only transition trace for the reproducible 2DConvolution
+  // reserved-tag failure.  It is disabled unless the isolated diagnostic
+  // binary is launched with FAST64_2D_TRANSITION_TRACE=1.
+  void debug_fast64_2d_transition(const char *event, const mem_fetch *mf,
+                                  unsigned cache_index,
+                                  unsigned pending_before = 0,
+                                  unsigned pending_after = 0) const;
   void retire_pending_invalidate();
 
   cache_stats m_stats;
