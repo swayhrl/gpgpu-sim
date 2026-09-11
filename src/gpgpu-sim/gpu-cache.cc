@@ -1249,6 +1249,27 @@ void baseline_cache::cycle() {
   bool fill_port_busy = !m_bandwidth_management.fill_port_free();
   m_stats.sample_cache_port_utility(data_port_busy, fill_port_busy);
   m_bandwidth_management.replenish_port_bandwidth();
+  retire_pending_invalidate();
+}
+
+void baseline_cache::invalidate() {
+  // The pre-existing kernel-end flush can be requested after an SM has no
+  // runnable threads but before its conventional L1 misses have drained.
+  // Invalidating such a tag lets a later MSHR merge reserve a second tag while
+  // the original fill owner still points at the first cache index.  The final
+  // fill then retires the owner/MSHR but leaves that second tag RESERVED.
+  // Preserve the request and perform the same invalidation once the accepted
+  // miss lifecycle has drained; no request, response, or DTC accounting path
+  // is changed.
+  m_invalidate_pending = true;
+  retire_pending_invalidate();
+}
+
+void baseline_cache::retire_pending_invalidate() {
+  if (m_invalidate_pending && !conventional_miss_lifecycle_active()) {
+    m_tag_array->invalidate();
+    m_invalidate_pending = false;
+  }
 }
 
 /// Interface for response from lower memory level (model bandwidth restictions
