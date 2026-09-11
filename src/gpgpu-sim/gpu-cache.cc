@@ -1393,6 +1393,31 @@ void baseline_cache::debug_fast64_2d_transition(const char *event,
           m_invalidate_pending ? 1U : 0U);
 }
 
+void baseline_cache::debug_fast64_2d_mshr_decision(
+    const char *event, const mem_fetch *mf, new_addr_type mshr_addr,
+    bool mshr_hit, bool mshr_avail, enum cache_request_status tag_status,
+    const char *disposition) const {
+  const char *enabled = std::getenv("FAST64_2D_TRANSITION_TRACE");
+  if (!enabled || std::strcmp(enabled, "1") != 0 ||
+      m_name.rfind("L1D_", 0) != 0)
+    return;
+  const int core_id = std::atoi(m_name.c_str() + 4);
+  if (!fast64_2d_transition_trace_core(core_id)) return;
+  fprintf(stderr,
+          "FAST64_2D_TRANSITION cycle=%llu event=%s cache=%s uid=%u "
+          "addr=0x%llx mshr_addr=0x%llx sector=0x%lx mshr_hit=%u "
+          "mshr_avail=%u tag_status=%s disposition=%s owners=%zu "
+          "missq=%zu\n",
+          m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, event,
+          m_name.c_str(), mf ? mf->get_request_uid() : 0U,
+          static_cast<unsigned long long>(mf ? mf->get_addr() : 0),
+          static_cast<unsigned long long>(mshr_addr),
+          mf ? mf->get_access_sector_mask().to_ulong() : 0UL,
+          mshr_hit ? 1U : 0U, mshr_avail ? 1U : 0U,
+          cache_request_status_str(tag_status), disposition,
+          m_extra_mf_fields.size(), m_miss_queue.size());
+}
+
 /// Checks if mf is waiting to be filled by lower memory level
 bool baseline_cache::waiting_for_fill(mem_fetch *mf) {
   extra_mf_fields_lookup::iterator e = m_extra_mf_fields.find(mf);
@@ -1532,12 +1557,16 @@ void baseline_cache::send_read_request(new_addr_type addr,
   bool mshr_hit = m_mshrs.probe(mshr_addr);
   bool mshr_avail = !m_mshrs.full(mshr_addr);
   if (mshr_hit && mshr_avail) {
+    enum cache_request_status tag_status;
     if (read_only)
-      m_tag_array->access(block_addr, time, cache_index, mf);
+      tag_status = m_tag_array->access(block_addr, time, cache_index, mf);
     else
-      m_tag_array->access(block_addr, time, cache_index, wb, evicted, mf);
+      tag_status =
+          m_tag_array->access(block_addr, time, cache_index, wb, evicted, mf);
 
     m_mshrs.add(mshr_addr, mf);
+    debug_fast64_2d_mshr_decision("MSHR_DECISION", mf, mshr_addr, mshr_hit,
+                                  mshr_avail, tag_status, "MERGE");
     m_stats.inc_stats(mf->get_access_type(), MSHR_HIT, mf->get_streamID());
     do_miss = true;
 
@@ -1548,10 +1577,12 @@ void baseline_cache::send_read_request(new_addr_type addr,
                              mf->get_streamID());
       return;
     }
+    enum cache_request_status tag_status;
     if (read_only)
-      m_tag_array->access(block_addr, time, cache_index, mf);
+      tag_status = m_tag_array->access(block_addr, time, cache_index, mf);
     else
-      m_tag_array->access(block_addr, time, cache_index, wb, evicted, mf);
+      tag_status =
+          m_tag_array->access(block_addr, time, cache_index, wb, evicted, mf);
 
     m_mshrs.add(mshr_addr, mf);
     m_extra_mf_fields[mf] = extra_mf_fields(
@@ -1559,6 +1590,8 @@ void baseline_cache::send_read_request(new_addr_type addr,
     debug_fast64_2d_transition("OWNER_CREATE", mf, cache_index,
                                 m_extra_mf_fields[mf].pending_read,
                                 m_extra_mf_fields[mf].pending_read);
+    debug_fast64_2d_mshr_decision("MSHR_DECISION", mf, mshr_addr, mshr_hit,
+                                  mshr_avail, tag_status, "ROOT");
     mf->set_data_size(m_config.get_atom_sz());
     mf->set_addr(mshr_addr);
     m_miss_queue.push_back(mf);

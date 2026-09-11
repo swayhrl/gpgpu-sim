@@ -1355,7 +1355,13 @@ class baseline_cache : public cache_t {
   /// not include accesses that "HIT")
   bool access_ready() const { return m_mshrs.access_ready(); }
   /// Pop next ready access (does not include accesses that "HIT")
-  mem_fetch *next_access() { return m_mshrs.next_access(); }
+  mem_fetch *next_access() {
+    mem_fetch *mf = m_mshrs.next_access();
+    debug_fast64_2d_mshr_decision("MSHR_CONSUME", mf,
+                                  m_config.mshr_addr(mf->get_addr()), false,
+                                  true, HIT, "CONSUME");
+    return mf;
+  }
   // Request invalidation.  If a conventional miss still owns a reserved tag,
   // completion is deferred until its cache/MSHR lifecycle is quiescent.
   void flush() { m_tag_array->flush(); }
@@ -1480,6 +1486,14 @@ class baseline_cache : public cache_t {
                                   unsigned cache_index,
                                   unsigned pending_before = 0,
                                   unsigned pending_after = 0) const;
+  // Diagnostic-only MSHR-key record.  It is compiled solely on the isolated
+  // 2DConvolution transition branch and is gated by the same opt-in observer.
+  // The record distinguishes a tag allocation from the key that owns its
+  // lower-response lifecycle; it changes neither allocation nor retirement.
+  void debug_fast64_2d_mshr_decision(
+      const char *event, const mem_fetch *mf, new_addr_type mshr_addr,
+      bool mshr_hit, bool mshr_avail, enum cache_request_status tag_status,
+      const char *disposition) const;
   void retire_pending_invalidate();
 
   cache_stats m_stats;
