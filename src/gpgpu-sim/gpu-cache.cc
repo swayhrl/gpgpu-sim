@@ -1423,6 +1423,18 @@ void baseline_cache::send_read_request(new_addr_type addr,
   bool mshr_hit = m_mshrs.probe(mshr_addr);
   bool mshr_avail = !m_mshrs.full(mshr_addr);
   if (mshr_hit && mshr_avail) {
+    // A merge has no fill-owner of its own: the eventual lower response fills
+    // the cache index saved by the existing root request.  It is therefore
+    // valid only while that root's tag identity is still present.  Calling
+    // access() first on MISS/SECTOR_MISS would allocate a new RESERVED tag,
+    // then append this mf to the old MSHR; the old root fill would retire the
+    // MSHR/owner while leaving the new tag without a fill owner.  Probe before
+    // mutating the tag array and retry after the current MSHR drains instead.
+    enum cache_request_status merge_tag_status =
+        m_tag_array->probe(block_addr, cache_index, mf, mf->is_write());
+    if (merge_tag_status != HIT_RESERVED && merge_tag_status != HIT) {
+      return;
+    }
     if (read_only)
       m_tag_array->access(block_addr, time, cache_index, mf);
     else
