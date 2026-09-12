@@ -115,46 +115,72 @@ struct post_fast64_lifetime_observer {
   };
 
   void allocated(physical_identity identity, uint64_t cycle) {
-    pending[{identity.id, identity.generation}] = {cycle, false, 0};
+    allocations[{identity.id, identity.generation}] = {cycle, false, 0};
   }
 
-  void pending_evicted(physical_identity identity, uint64_t cycle) {
-    auto it = pending.find({identity.id, identity.generation});
-    if (it == pending.end() || it->second.pending_tag_evicted) return;
+  void pending_tag_evicted(physical_identity identity, uint64_t cycle) {
+    auto it = allocations.find({identity.id, identity.generation});
+    if (it == allocations.end() || it->second.pending_tag_evicted) return;
     it->second.pending_tag_evicted = true;
     it->second.eviction_cycle = cycle;
-    ++pending_tag_eviction_count;
+    ++pending_tag_evictions;
   }
 
   void completed(physical_identity identity, uint64_t cycle) {
-    auto it = pending.find({identity.id, identity.generation});
-    if (it == pending.end()) return;
+    auto it = allocations.find({identity.id, identity.generation});
+    if (it == allocations.end()) return;
     const uint64_t alloc_to_ready = cycle - it->second.allocation_cycle;
     ++alloc_to_ready_count;
     alloc_to_ready_sum_cycles += alloc_to_ready;
     alloc_to_ready_max_cycles = std::max(alloc_to_ready_max_cycles, alloc_to_ready);
     if (it->second.pending_tag_evicted) {
       const uint64_t eviction_to_response = cycle - it->second.eviction_cycle;
-      ++pending_evict_to_response_count;
-      pending_evict_to_response_sum_cycles += eviction_to_response;
-      pending_evict_to_response_max_cycles =
-          std::max(pending_evict_to_response_max_cycles, eviction_to_response);
+      ++pending_eviction_to_response_count;
+      pending_eviction_to_response_sum_cycles += eviction_to_response;
+      pending_eviction_to_response_max_cycles = std::max(
+          pending_eviction_to_response_max_cycles, eviction_to_response);
     }
-    pending.erase(it);
+    allocations.erase(it);
   }
 
-  size_t live_records() const { return pending.size(); }
+  // OO only: once a Tag-invalid line still has a live Ref, its final
+  // reclaim may happen after the response/alloc-to-ready record is gone.
+  // Keep that independent observation record keyed by the same identity.
+  void deferred_tag_evicted(physical_identity identity, uint64_t cycle) {
+    deferred_tag_evictions.emplace(std::make_pair(identity.id, identity.generation),
+                                   cycle);
+  }
+
+  void final_reclaimed(physical_identity identity, uint64_t cycle) {
+    const auto key = std::make_pair(identity.id, identity.generation);
+    auto it = deferred_tag_evictions.find(key);
+    if (it == deferred_tag_evictions.end()) return;
+    const uint64_t deferred_lifetime = cycle - it->second;
+    ++deferred_tag_eviction_to_final_reclaim_count;
+    deferred_tag_eviction_to_final_reclaim_sum_cycles += deferred_lifetime;
+    deferred_tag_eviction_to_final_reclaim_max_cycles = std::max(
+        deferred_tag_eviction_to_final_reclaim_max_cycles, deferred_lifetime);
+    deferred_tag_evictions.erase(it);
+  }
+
+  size_t live_records() const {
+    return allocations.size() + deferred_tag_evictions.size();
+  }
 
   uint64_t alloc_to_ready_count = 0;
   uint64_t alloc_to_ready_sum_cycles = 0;
   uint64_t alloc_to_ready_max_cycles = 0;
-  uint64_t pending_tag_eviction_count = 0;
-  uint64_t pending_evict_to_response_count = 0;
-  uint64_t pending_evict_to_response_sum_cycles = 0;
-  uint64_t pending_evict_to_response_max_cycles = 0;
+  uint64_t pending_tag_evictions = 0;
+  uint64_t pending_eviction_to_response_count = 0;
+  uint64_t pending_eviction_to_response_sum_cycles = 0;
+  uint64_t pending_eviction_to_response_max_cycles = 0;
+  uint64_t deferred_tag_eviction_to_final_reclaim_count = 0;
+  uint64_t deferred_tag_eviction_to_final_reclaim_sum_cycles = 0;
+  uint64_t deferred_tag_eviction_to_final_reclaim_max_cycles = 0;
 
  private:
-  std::map<std::pair<unsigned, uint64_t>, record> pending;
+  std::map<std::pair<unsigned, uint64_t>, record> allocations;
+  std::map<std::pair<unsigned, uint64_t>, uint64_t> deferred_tag_evictions;
 };
 
 // Deterministic whole-line IO-DTC model used by M2 directed tests and by the
@@ -273,7 +299,7 @@ class io_frontend {
       if (!m_phys[victim->physical.id].ready) {
         m_evicted_pending_lines[victim->line] = victim->physical;
         if (m_cfg.post_fast64_telemetry)
-          m_observer.pending_evicted(victim->physical, cycle);
+          m_observer.pending_tag_evicted(victim->physical, cycle);
       }
       owner->release_on_retire.push_back(victim->physical);
     }
@@ -348,17 +374,17 @@ class io_frontend {
   uint64_t observer_alloc_to_ready_max_cycles() const {
     return m_observer.alloc_to_ready_max_cycles;
   }
-  uint64_t observer_pending_tag_eviction_count() const {
-    return m_observer.pending_tag_eviction_count;
+  uint64_t observer_pending_tag_evictions() const {
+    return m_observer.pending_tag_evictions;
   }
-  uint64_t observer_pending_evict_to_response_count() const {
-    return m_observer.pending_evict_to_response_count;
+  uint64_t observer_pending_eviction_to_response_count() const {
+    return m_observer.pending_eviction_to_response_count;
   }
-  uint64_t observer_pending_evict_to_response_sum_cycles() const {
-    return m_observer.pending_evict_to_response_sum_cycles;
+  uint64_t observer_pending_eviction_to_response_sum_cycles() const {
+    return m_observer.pending_eviction_to_response_sum_cycles;
   }
-  uint64_t observer_pending_evict_to_response_max_cycles() const {
-    return m_observer.pending_evict_to_response_max_cycles;
+  uint64_t observer_pending_eviction_to_response_max_cycles() const {
+    return m_observer.pending_eviction_to_response_max_cycles;
   }
   size_t observer_live_records() const { return m_observer.live_records(); }
   uint64_t partial_allocation_events() const { return m_partial_allocation_events; }
@@ -574,8 +600,10 @@ class oo_frontend {
       assert(old.allocated && old.tag_valid);
       if (m_cfg.post_fast64_telemetry && !old.ready) {
         m_evicted_pending_lines[victim->line] = victim->physical;
-        m_observer.pending_evicted(victim->physical, cycle);
+        m_observer.pending_tag_evicted(victim->physical, cycle);
       }
+      if (m_cfg.post_fast64_telemetry && old.ref_count)
+        m_observer.deferred_tag_evicted(victim->physical, cycle);
       old.tag_valid = false;
       ++m_tag_evictions;
       if (old.ref_count == 0) {
@@ -668,6 +696,8 @@ class oo_frontend {
       --physical.ref_count;
       if (!physical.tag_valid && physical.ref_count == 0) {
         release(identity);
+        if (m_cfg.post_fast64_telemetry)
+          m_observer.final_reclaimed(identity, cycle);
         ++m_final_ref_reclaims;
       }
     }
@@ -700,6 +730,8 @@ class oo_frontend {
       --physical.ref_count;
       if (!physical.tag_valid && physical.ref_count == 0) {
         release(identity);
+        if (m_cfg.post_fast64_telemetry)
+          m_observer.final_reclaimed(identity, cycle);
         ++m_final_ref_reclaims;
       }
     }
@@ -741,17 +773,17 @@ class oo_frontend {
   uint64_t observer_alloc_to_ready_max_cycles() const {
     return m_observer.alloc_to_ready_max_cycles;
   }
-  uint64_t observer_pending_tag_eviction_count() const {
-    return m_observer.pending_tag_eviction_count;
+  uint64_t observer_pending_tag_evictions() const {
+    return m_observer.pending_tag_evictions;
   }
-  uint64_t observer_pending_evict_to_response_count() const {
-    return m_observer.pending_evict_to_response_count;
+  uint64_t observer_deferred_tag_eviction_to_final_reclaim_count() const {
+    return m_observer.deferred_tag_eviction_to_final_reclaim_count;
   }
-  uint64_t observer_pending_evict_to_response_sum_cycles() const {
-    return m_observer.pending_evict_to_response_sum_cycles;
+  uint64_t observer_deferred_tag_eviction_to_final_reclaim_sum_cycles() const {
+    return m_observer.deferred_tag_eviction_to_final_reclaim_sum_cycles;
   }
-  uint64_t observer_pending_evict_to_response_max_cycles() const {
-    return m_observer.pending_evict_to_response_max_cycles;
+  uint64_t observer_deferred_tag_eviction_to_final_reclaim_max_cycles() const {
+    return m_observer.deferred_tag_eviction_to_final_reclaim_max_cycles;
   }
   size_t observer_live_records() const { return m_observer.live_records(); }
   uint64_t immediate_reclaims() const { return m_immediate_reclaims; }
@@ -1516,10 +1548,10 @@ struct paper_frontend_stats {
   uint64_t io_alloc_to_ready_count = 0;
   uint64_t io_alloc_to_ready_sum_cycles = 0;
   uint64_t io_alloc_to_ready_max_cycles = 0;
-  uint64_t io_pending_tag_eviction_count = 0;
-  uint64_t io_pending_evict_to_response_count = 0;
-  uint64_t io_pending_evict_to_response_sum_cycles = 0;
-  uint64_t io_pending_evict_to_response_max_cycles = 0;
+  uint64_t io_pending_tag_evictions = 0;
+  uint64_t io_pending_eviction_to_response_count = 0;
+  uint64_t io_pending_eviction_to_response_sum_cycles = 0;
+  uint64_t io_pending_eviction_to_response_max_cycles = 0;
   uint64_t io_observer_live_records = 0;
   uint64_t io_partial_allocation_events = 0;
   uint64_t io_allocation_width_limited_events = 0;
@@ -1557,10 +1589,10 @@ struct paper_frontend_stats {
   uint64_t oo_alloc_to_ready_count = 0;
   uint64_t oo_alloc_to_ready_sum_cycles = 0;
   uint64_t oo_alloc_to_ready_max_cycles = 0;
-  uint64_t oo_pending_tag_eviction_count = 0;
-  uint64_t oo_pending_evict_to_response_count = 0;
-  uint64_t oo_pending_evict_to_response_sum_cycles = 0;
-  uint64_t oo_pending_evict_to_response_max_cycles = 0;
+  uint64_t oo_pending_tag_evictions = 0;
+  uint64_t oo_deferred_tag_eviction_to_final_reclaim_count = 0;
+  uint64_t oo_deferred_tag_eviction_to_final_reclaim_sum_cycles = 0;
+  uint64_t oo_deferred_tag_eviction_to_final_reclaim_max_cycles = 0;
   uint64_t oo_observer_live_records = 0;
   uint64_t oo_immediate_reclaims = 0;
   uint64_t oo_deferred_reclaims = 0;
@@ -1646,14 +1678,14 @@ struct paper_frontend_stats {
     io_alloc_to_ready_sum_cycles += other.io_alloc_to_ready_sum_cycles;
     io_alloc_to_ready_max_cycles =
         std::max(io_alloc_to_ready_max_cycles, other.io_alloc_to_ready_max_cycles);
-    io_pending_tag_eviction_count += other.io_pending_tag_eviction_count;
-    io_pending_evict_to_response_count +=
-        other.io_pending_evict_to_response_count;
-    io_pending_evict_to_response_sum_cycles +=
-        other.io_pending_evict_to_response_sum_cycles;
-    io_pending_evict_to_response_max_cycles = std::max(
-        io_pending_evict_to_response_max_cycles,
-        other.io_pending_evict_to_response_max_cycles);
+    io_pending_tag_evictions += other.io_pending_tag_evictions;
+    io_pending_eviction_to_response_count +=
+        other.io_pending_eviction_to_response_count;
+    io_pending_eviction_to_response_sum_cycles +=
+        other.io_pending_eviction_to_response_sum_cycles;
+    io_pending_eviction_to_response_max_cycles = std::max(
+        io_pending_eviction_to_response_max_cycles,
+        other.io_pending_eviction_to_response_max_cycles);
     io_observer_live_records += other.io_observer_live_records;
     io_partial_allocation_events += other.io_partial_allocation_events;
     io_allocation_width_limited_events += other.io_allocation_width_limited_events;
@@ -1705,14 +1737,14 @@ struct paper_frontend_stats {
     oo_alloc_to_ready_sum_cycles += other.oo_alloc_to_ready_sum_cycles;
     oo_alloc_to_ready_max_cycles =
         std::max(oo_alloc_to_ready_max_cycles, other.oo_alloc_to_ready_max_cycles);
-    oo_pending_tag_eviction_count += other.oo_pending_tag_eviction_count;
-    oo_pending_evict_to_response_count +=
-        other.oo_pending_evict_to_response_count;
-    oo_pending_evict_to_response_sum_cycles +=
-        other.oo_pending_evict_to_response_sum_cycles;
-    oo_pending_evict_to_response_max_cycles = std::max(
-        oo_pending_evict_to_response_max_cycles,
-        other.oo_pending_evict_to_response_max_cycles);
+    oo_pending_tag_evictions += other.oo_pending_tag_evictions;
+    oo_deferred_tag_eviction_to_final_reclaim_count +=
+        other.oo_deferred_tag_eviction_to_final_reclaim_count;
+    oo_deferred_tag_eviction_to_final_reclaim_sum_cycles +=
+        other.oo_deferred_tag_eviction_to_final_reclaim_sum_cycles;
+    oo_deferred_tag_eviction_to_final_reclaim_max_cycles = std::max(
+        oo_deferred_tag_eviction_to_final_reclaim_max_cycles,
+        other.oo_deferred_tag_eviction_to_final_reclaim_max_cycles);
     oo_observer_live_records += other.oo_observer_live_records;
     oo_immediate_reclaims += other.oo_immediate_reclaims;
     oo_deferred_reclaims += other.oo_deferred_reclaims;

@@ -2158,14 +2158,14 @@ void ldst_unit::get_dtc_l1_stats(
         m_dtc_l1_io_frontend->observer_alloc_to_ready_sum_cycles();
     io.io_alloc_to_ready_max_cycles =
         m_dtc_l1_io_frontend->observer_alloc_to_ready_max_cycles();
-    io.io_pending_tag_eviction_count =
-        m_dtc_l1_io_frontend->observer_pending_tag_eviction_count();
-    io.io_pending_evict_to_response_count =
-        m_dtc_l1_io_frontend->observer_pending_evict_to_response_count();
-    io.io_pending_evict_to_response_sum_cycles =
-        m_dtc_l1_io_frontend->observer_pending_evict_to_response_sum_cycles();
-    io.io_pending_evict_to_response_max_cycles =
-        m_dtc_l1_io_frontend->observer_pending_evict_to_response_max_cycles();
+    io.io_pending_tag_evictions =
+        m_dtc_l1_io_frontend->observer_pending_tag_evictions();
+    io.io_pending_eviction_to_response_count =
+        m_dtc_l1_io_frontend->observer_pending_eviction_to_response_count();
+    io.io_pending_eviction_to_response_sum_cycles =
+        m_dtc_l1_io_frontend->observer_pending_eviction_to_response_sum_cycles();
+    io.io_pending_eviction_to_response_max_cycles =
+        m_dtc_l1_io_frontend->observer_pending_eviction_to_response_max_cycles();
     io.io_observer_live_records =
         m_dtc_l1_io_frontend->observer_live_records();
     io.io_partial_allocation_events =
@@ -2259,14 +2259,17 @@ void ldst_unit::get_dtc_l1_stats(
           m_dtc_l1_oo_frontend->observer_alloc_to_ready_sum_cycles();
       oo.oo_alloc_to_ready_max_cycles =
           m_dtc_l1_oo_frontend->observer_alloc_to_ready_max_cycles();
-      oo.oo_pending_tag_eviction_count =
-          m_dtc_l1_oo_frontend->observer_pending_tag_eviction_count();
-      oo.oo_pending_evict_to_response_count =
-          m_dtc_l1_oo_frontend->observer_pending_evict_to_response_count();
-      oo.oo_pending_evict_to_response_sum_cycles =
-          m_dtc_l1_oo_frontend->observer_pending_evict_to_response_sum_cycles();
-      oo.oo_pending_evict_to_response_max_cycles =
-          m_dtc_l1_oo_frontend->observer_pending_evict_to_response_max_cycles();
+      oo.oo_pending_tag_evictions =
+          m_dtc_l1_oo_frontend->observer_pending_tag_evictions();
+      oo.oo_deferred_tag_eviction_to_final_reclaim_count =
+          m_dtc_l1_oo_frontend
+              ->observer_deferred_tag_eviction_to_final_reclaim_count();
+      oo.oo_deferred_tag_eviction_to_final_reclaim_sum_cycles =
+          m_dtc_l1_oo_frontend
+              ->observer_deferred_tag_eviction_to_final_reclaim_sum_cycles();
+      oo.oo_deferred_tag_eviction_to_final_reclaim_max_cycles =
+          m_dtc_l1_oo_frontend
+              ->observer_deferred_tag_eviction_to_final_reclaim_max_cycles();
       oo.oo_observer_live_records =
           m_dtc_l1_oo_frontend->observer_live_records();
       oo.oo_immediate_reclaims = m_dtc_l1_oo_frontend->immediate_reclaims();
@@ -5641,17 +5644,17 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
             static_cast<unsigned long long>(total.io_alloc_to_ready_sum_cycles));
     fprintf(fout, "DTC_L1_io_alloc_to_ready_max_cycles = %llu\n",
             static_cast<unsigned long long>(total.io_alloc_to_ready_max_cycles));
-    fprintf(fout, "DTC_L1_io_pending_tag_eviction_count = %llu\n",
-            static_cast<unsigned long long>(total.io_pending_tag_eviction_count));
-    fprintf(fout, "DTC_L1_io_pending_evict_to_response_count = %llu\n",
+    fprintf(fout, "DTC_L1_io_pending_tag_evictions = %llu\n",
+            static_cast<unsigned long long>(total.io_pending_tag_evictions));
+    fprintf(fout, "DTC_L1_io_pending_eviction_to_response_count = %llu\n",
             static_cast<unsigned long long>(
-                total.io_pending_evict_to_response_count));
-    fprintf(fout, "DTC_L1_io_pending_evict_to_response_sum_cycles = %llu\n",
+                total.io_pending_eviction_to_response_count));
+    fprintf(fout, "DTC_L1_io_pending_eviction_to_response_sum_cycles = %llu\n",
             static_cast<unsigned long long>(
-                total.io_pending_evict_to_response_sum_cycles));
-    fprintf(fout, "DTC_L1_io_pending_evict_to_response_max_cycles = %llu\n",
+                total.io_pending_eviction_to_response_sum_cycles));
+    fprintf(fout, "DTC_L1_io_pending_eviction_to_response_max_cycles = %llu\n",
             static_cast<unsigned long long>(
-                total.io_pending_evict_to_response_max_cycles));
+                total.io_pending_eviction_to_response_max_cycles));
     fprintf(fout, "DTC_L1_io_observer_live_records = %llu\n",
             static_cast<unsigned long long>(total.io_observer_live_records));
     fprintf(fout, "DTC_L1_io_partial_allocation_events = %llu\n",
@@ -5824,17 +5827,20 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
             static_cast<unsigned long long>(total.oo_alloc_to_ready_sum_cycles));
     fprintf(fout, "DTC_L1_oo_alloc_to_ready_max_cycles = %llu\n",
             static_cast<unsigned long long>(total.oo_alloc_to_ready_max_cycles));
-    fprintf(fout, "DTC_L1_oo_pending_tag_eviction_count = %llu\n",
-            static_cast<unsigned long long>(total.oo_pending_tag_eviction_count));
-    fprintf(fout, "DTC_L1_oo_pending_evict_to_response_count = %llu\n",
+    fprintf(fout, "DTC_L1_oo_pending_tag_evictions = %llu\n",
+            static_cast<unsigned long long>(total.oo_pending_tag_evictions));
+    fprintf(fout,
+            "DTC_L1_oo_deferred_tag_eviction_to_final_reclaim_count = %llu\n",
             static_cast<unsigned long long>(
-                total.oo_pending_evict_to_response_count));
-    fprintf(fout, "DTC_L1_oo_pending_evict_to_response_sum_cycles = %llu\n",
+                total.oo_deferred_tag_eviction_to_final_reclaim_count));
+    fprintf(fout,
+            "DTC_L1_oo_deferred_tag_eviction_to_final_reclaim_sum_cycles = %llu\n",
             static_cast<unsigned long long>(
-                total.oo_pending_evict_to_response_sum_cycles));
-    fprintf(fout, "DTC_L1_oo_pending_evict_to_response_max_cycles = %llu\n",
+                total.oo_deferred_tag_eviction_to_final_reclaim_sum_cycles));
+    fprintf(fout,
+            "DTC_L1_oo_deferred_tag_eviction_to_final_reclaim_max_cycles = %llu\n",
             static_cast<unsigned long long>(
-                total.oo_pending_evict_to_response_max_cycles));
+                total.oo_deferred_tag_eviction_to_final_reclaim_max_cycles));
     fprintf(fout, "DTC_L1_oo_observer_live_records = %llu\n",
             static_cast<unsigned long long>(total.oo_observer_live_records));
     fprintf(fout, "DTC_L1_oo_immediate_reclaims = %llu\n",
