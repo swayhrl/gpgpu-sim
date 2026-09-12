@@ -518,6 +518,9 @@ struct translation_config {
   unsigned l2_mode;
   segment_config segment;
   unsigned fair_arm;
+  // C14 Path N: default-off, counter-only translation-exposure telemetry.
+  // It controls no lookup, arbitration, or completion state.
+  bool c14_criticality_telemetry;
   translation_config(unsigned sms = 1,
                      uint64_t page = vm_core::kDefaultBasePageSize,
                      const tlb_config &l1_config = tlb_config(),
@@ -533,14 +536,16 @@ struct translation_config {
                      unsigned l2_tlb_mode_value = L2_TLB_STANDARD,
                      const segment_config &segment_config_value =
                          segment_config(),
-                     unsigned fair_arm_value = FAIR_ARM_MANUAL)
+                     unsigned fair_arm_value = FAIR_ARM_MANUAL,
+                     bool c14_criticality_telemetry_value = false)
       : num_sms(sms), page_size(page), l1(l1_config), l2(l2_config),
         mshr_entries(mshr_count), pwq_entries(pwq_count), walkers(walker_count),
         walk_latency(latency), l1_lookup_latency(l1_latency),
         l2_lookup_latency(l2_latency), ptw_mode(page_table_walk_mode),
         page_table(page_table_config_value), pwc(pwc_config_value),
         object_map_path(object_map), l2_mode(l2_tlb_mode_value),
-        segment(segment_config_value), fair_arm(fair_arm_value) {}
+        segment(segment_config_value), fair_arm(fair_arm_value),
+        c14_criticality_telemetry(c14_criticality_telemetry_value) {}
   bool valid() const;
 };
 
@@ -631,6 +636,11 @@ struct translation_stats {
   uint64_t requester_l2_service_cycles_max;
   uint64_t requester_mshr_wait_cycles_total;
   uint64_t requester_mshr_wait_cycles_max;
+  // C14 Path N gauge: distinct requesters still represented by a lookup or
+  // an MSHR waiter. This is not a global execution-criticality measure.
+  uint64_t c14_criticality_pending_requester_samples;
+  uint64_t c14_criticality_pending_requester_total;
+  uint64_t c14_criticality_pending_requester_high_watermark;
   // Per-unique-PTE-request memory interval; it is never multiplied by MSHR
   // merge depth.
   uint64_t pte_memory_wait_cycles_total;
@@ -754,7 +764,11 @@ struct translation_stats {
         requester_l2_queue_cycles_total(0), requester_l2_queue_cycles_max(0),
         requester_l2_service_cycles_total(0),
         requester_l2_service_cycles_max(0), requester_mshr_wait_cycles_total(0),
-        requester_mshr_wait_cycles_max(0), pte_memory_wait_cycles_total(0),
+        requester_mshr_wait_cycles_max(0),
+        c14_criticality_pending_requester_samples(0),
+        c14_criticality_pending_requester_total(0),
+        c14_criticality_pending_requester_high_watermark(0),
+        pte_memory_wait_cycles_total(0),
         pte_memory_wait_cycles_max(0), mapper_lookups(0),
         completed(0), mshr_allocations(0), mshr_merges(0),
         mshr_full_events(0), waiter_registrations(0), waiter_wakeups(0),
@@ -1005,6 +1019,7 @@ class translation_controller {
                                   const translation_key &key, uint64_t cycle,
                                   const lookup_operation *lookup);
   void note_mshr_occupancy();
+  void note_c14_pending_requester_occupancy();
   void note_requester_completion(uint64_t entry_cycle,
                                  uint64_t l1_launch_cycle,
                                  uint64_t l1_complete_cycle,

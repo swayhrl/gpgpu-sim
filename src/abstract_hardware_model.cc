@@ -50,6 +50,8 @@ void mem_access_t::init(gpgpu_context *ctx) {
   m_translation_telemetry_outcome = M4C_TRANSLATION_UNOBSERVED;
   m_l1_telemetry_cache_status = M4C_TELEMETRY_L1_STATUS_UNAVAILABLE;
   m_m4c_frontend_transaction_observed = false;
+  m_c14_translation_ready_pending = false;
+  m_c14_translation_ready_cycle = 0;
   m_addr = 0;
   m_sim_va = 0;
   m_sim_pa = 0;

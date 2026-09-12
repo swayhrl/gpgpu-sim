@@ -2091,6 +2091,19 @@ void translation_controller::note_mshr_occupancy() {
     m_stats.mshr_occupancy_high_watermark = m_mshrs.size();
 }
 
+void translation_controller::note_c14_pending_requester_occupancy() {
+  if (!m_config.c14_criticality_telemetry) return;
+  // `m_lookups` owns pre-MSHR requesters; an MSHR owns its waiter requesters
+  // after handoff. These populations are disjoint in the C12 lifecycle.
+  uint64_t pending = m_lookups.size();
+  for (unsigned index = 0; index < m_mshrs.size(); ++index)
+    pending += m_mshrs[index].waiters.size();
+  ++m_stats.c14_criticality_pending_requester_samples;
+  m_stats.c14_criticality_pending_requester_total += pending;
+  if (pending > m_stats.c14_criticality_pending_requester_high_watermark)
+    m_stats.c14_criticality_pending_requester_high_watermark = pending;
+}
+
 void translation_controller::note_requester_completion(
     uint64_t entry_cycle, uint64_t l1_launch_cycle,
     uint64_t l1_complete_cycle, bool l2_issued, uint64_t l2_launch_cycle,
@@ -2373,6 +2386,7 @@ void translation_controller::cycle(uint64_t cycle) {
     // makes that level available to the existing physical PTE path below.
     service_pwc(cycle);
     assert(m_active_walks.size() <= m_config.walkers);
+    note_c14_pending_requester_occupancy();
     return;
   }
   for (unsigned index = 0; index < m_active_walks.size();) {
@@ -2400,6 +2414,7 @@ void translation_controller::cycle(uint64_t cycle) {
       ++m_stats.object[entry->object].walk_starts;
   }
   assert(m_active_walks.size() <= m_config.walkers);
+  note_c14_pending_requester_occupancy();
 }
 
 bool translation_controller::next_pte_request(pte_request *request) const {
@@ -2878,6 +2893,16 @@ void translation_controller::print_stats(FILE *fout) const {
           (unsigned long long)m_stats.requester_mshr_wait_cycles_total);
   fprintf(fout, "vm_translation_requester_mshr_wait_cycles_max = %llu\n",
           (unsigned long long)m_stats.requester_mshr_wait_cycles_max);
+  if (m_config.c14_criticality_telemetry) {
+    fprintf(fout, "vm_c14_criticality_telemetry = 1\n");
+    fprintf(fout, "vm_c14_pending_requester_samples = %llu\n",
+            (unsigned long long)m_stats.c14_criticality_pending_requester_samples);
+    fprintf(fout, "vm_c14_pending_requester_total = %llu\n",
+            (unsigned long long)m_stats.c14_criticality_pending_requester_total);
+    fprintf(fout, "vm_c14_pending_requester_high_watermark = %llu\n",
+            (unsigned long long)
+                m_stats.c14_criticality_pending_requester_high_watermark);
+  }
   fprintf(fout, "vm_functional_mapper_lookups = %llu\n",
           (unsigned long long)m_stats.mapper_lookups);
   fprintf(fout, "vm_functional_completed = %llu\n",

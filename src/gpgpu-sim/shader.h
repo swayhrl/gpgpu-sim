@@ -1682,6 +1682,8 @@ class shader_core_config : public core_config {
   unsigned gpgpu_vm_weight_segment_entries;
   unsigned gpgpu_vm_weight_segment_lookup_latency;
   char *gpgpu_vm_weight_segment_map;
+  // C14 Path N default-off local translation-exposure telemetry.
+  unsigned gpgpu_vm_c14_criticality_telemetry;
   // M4C/M4B bounded telemetry level: 0=off, 1=ROI aggregate, 2=aggregate
   // plus fixed transaction windows, 3=reserved bounded diagnostics.
   unsigned gpgpu_memory_telemetry_level;

@@ -904,6 +904,19 @@ class mem_access_t {
   void set_l1_telemetry_cache_status(unsigned status) {
     m_l1_telemetry_cache_status = status;
   }
+  // C14 Path N: an observational marker set only when functional translation
+  // becomes READY. It survives ordinary memory-stage retries and has no
+  // routing, ordering, or timing effect.
+  void mark_c14_translation_ready(uint64_t cycle) {
+    m_c14_translation_ready_pending = true;
+    m_c14_translation_ready_cycle = cycle;
+  }
+  bool c14_translation_ready_pending() const {
+    return m_c14_translation_ready_pending;
+  }
+  uint64_t c14_translation_ready_cycle() const {
+    return m_c14_translation_ready_cycle;
+  }
   bool mark_m4c_frontend_transaction_observed() {
     if (m_m4c_frontend_transaction_observed) return false;
     m_m4c_frontend_transaction_observed = true;
@@ -967,6 +980,8 @@ class mem_access_t {
   unsigned m_translation_telemetry_outcome;
   unsigned m_l1_telemetry_cache_status;
   bool m_m4c_frontend_transaction_observed;
+  bool m_c14_translation_ready_pending;
+  uint64_t m_c14_translation_ready_cycle;
 };
 
 class mem_fetch;

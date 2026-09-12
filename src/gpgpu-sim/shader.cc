@@ -2433,6 +2433,17 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
 
   mem_stage_stall_type stall_cond = NO_RC_FAIL;
   mem_access_t &access = inst.accessq_back();
+  const bool c14_criticality_enabled =
+      m_config->gpgpu_vm_c14_criticality_telemetry != 0;
+  const uint64_t c14_cycle = m_core->get_gpu()->gpu_sim_cycle +
+                             m_core->get_gpu()->gpu_tot_sim_cycle;
+  bool c14_ready_to_data_admission =
+      c14_criticality_enabled && access.c14_translation_ready_pending();
+  const unsigned c14_tracked_uid = access.get_uid();
+  unsigned c14_tracked_class = access.get_telemetry_class();
+  unsigned c14_tracked_outcome =
+      access.get_translation_telemetry_outcome();
+  uint64_t c14_ready_cycle = access.c14_translation_ready_cycle();
   if (!access.vm_translation_applied()) {
     vm_translation::translation_source translation_outcome =
         vm_translation::TRANSLATION_SOURCE_UNOBSERVED;
@@ -2478,6 +2489,17 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
               &translated_pa, &translation_outcome, translation_access);
       if (result != vm_translation::READY) {
         ++m_stats->vm_translation_stall_cycles;
+        if (c14_criticality_enabled) {
+          const vm_translation::object_class object =
+              m_gpu->classify_vm_object(access.get_sim_va(), access.get_size());
+          unsigned memory_class = M4C_DATA_UNKNOWN;
+          if (object == vm_translation::OBJECT_WEIGHT)
+            memory_class = M4C_DATA_WEIGHT;
+          else if (object == vm_translation::OBJECT_KV_CACHE)
+            memory_class = M4C_DATA_KV_CACHE;
+          c14_translation_criticality_telemetry_instance().record_head_blocked(
+              memory_class);
+        }
         stall_reason = COAL_STALL;
         const bool iswrite = inst.is_store();
         access_type = inst.space.is_local() ? (iswrite ? L_MEM_ST : L_MEM_LD)
@@ -2507,6 +2529,19 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
     else
       access.set_telemetry_class(M4C_DATA_UNKNOWN);
     access.set_translation_telemetry_outcome(translation_outcome);
+    if (c14_criticality_enabled && m_config->gpgpu_vm_mode == 2) {
+      // This marks functional translation readiness, not DRAM issue. The
+      // marker is consumed below when this exact access leaves the LD/ST
+      // access queue through L1D or bypass admission.
+      access.mark_c14_translation_ready(c14_cycle);
+      c14_ready_to_data_admission = true;
+      c14_ready_cycle = c14_cycle;
+      c14_tracked_class = access.get_telemetry_class();
+      c14_tracked_outcome = access.get_translation_telemetry_outcome();
+      c14_translation_criticality_telemetry_instance().record_translation_ready(
+          access.get_telemetry_class(),
+          access.get_translation_telemetry_outcome());
+    }
   }
 
   // Count front-end work once for each dynamically issued memory instruction
@@ -2582,6 +2617,20 @@ bool ldst_unit::memory_cycle(warp_inst_t &inst,
       access_type = (iswrite) ? L_MEM_ST : L_MEM_LD;
     else
       access_type = (iswrite) ? G_MEM_ST : G_MEM_LD;
+  }
+  if (c14_ready_to_data_admission) {
+    // `accessq_back()` is the exact access tracked at this invocation. A
+    // different UID (or an empty queue) proves it left the LD/ST queue; this
+    // is L1D/bypass admission, deliberately not a claim of a physical-memory
+    // issue or a GPU-global critical path.
+    const bool admitted = inst.accessq_empty() ||
+                          inst.accessq_back().get_uid() != c14_tracked_uid;
+    if (admitted) {
+      assert(c14_cycle >= c14_ready_cycle);
+      c14_translation_criticality_telemetry_instance().record_data_admission(
+          c14_tracked_class, c14_tracked_outcome,
+          c14_cycle - c14_ready_cycle);
+    }
   }
   return inst.accessq_empty();
 }

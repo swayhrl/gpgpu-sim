@@ -119,4 +119,44 @@ const char *m4c_memory_telemetry_cache_status_name(unsigned status);
 const char *m4c_memory_telemetry_translation_outcome_name(unsigned outcome);
 const char *m4c_memory_telemetry_request_operation_name(unsigned operation);
 
+// C14 Path N. This deliberately measures only a local LD/ST-head proxy and
+// data-path admission after translation readiness; it does not claim a GPU-wide
+// critical path. The class is independent of M4C telemetry level so it can be
+// enabled without enabling windows or other M4C collection.
+class c14_translation_criticality_telemetry {
+ public:
+  c14_translation_criticality_telemetry();
+  void configure(bool enabled);
+  bool enabled() const { return m_enabled; }
+  void record_head_blocked(unsigned memory_class);
+  void record_translation_ready(unsigned memory_class,
+                                unsigned translation_outcome);
+  void record_data_admission(unsigned memory_class,
+                             unsigned translation_outcome, uint64_t gap);
+  void print(FILE *fout, const char *kernel_name) const;
+  void finish_kernel();
+
+ private:
+  struct counters {
+    uint64_t head_blocked_cycles[M4C_MEMORY_CLASS_COUNT];
+    uint64_t ready_events[M4C_MEMORY_CLASS_COUNT]
+                         [M4C_TRANSLATION_OUTCOME_COUNT];
+    uint64_t data_admission_samples[M4C_MEMORY_CLASS_COUNT]
+                                   [M4C_TRANSLATION_OUTCOME_COUNT];
+    uint64_t ready_to_admission_cycles[M4C_MEMORY_CLASS_COUNT]
+                                        [M4C_TRANSLATION_OUTCOME_COUNT];
+    uint64_t ready_to_admission_cycles_max[M4C_MEMORY_CLASS_COUNT]
+                                            [M4C_TRANSLATION_OUTCOME_COUNT];
+    uint64_t ready_to_admission_same_cycle[M4C_MEMORY_CLASS_COUNT]
+                                            [M4C_TRANSLATION_OUTCOME_COUNT];
+    counters();
+  };
+  bool m_enabled;
+  unsigned m_kernel_index;
+  counters m_current;
+};
+
+c14_translation_criticality_telemetry &
+c14_translation_criticality_telemetry_instance();
+
 #endif

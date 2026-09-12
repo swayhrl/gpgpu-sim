@@ -376,3 +376,104 @@ const char *m4c_memory_telemetry_request_operation_name(unsigned operation) {
   assert(operation < 3);
   return names[operation];
 }
+
+c14_translation_criticality_telemetry::counters::counters()
+    : head_blocked_cycles(), ready_events(), data_admission_samples(),
+      ready_to_admission_cycles(), ready_to_admission_cycles_max(),
+      ready_to_admission_same_cycle() {}
+
+c14_translation_criticality_telemetry::c14_translation_criticality_telemetry()
+    : m_enabled(false), m_kernel_index(0), m_current() {}
+
+void c14_translation_criticality_telemetry::configure(bool enabled) {
+  m_enabled = enabled;
+  m_kernel_index = 0;
+  m_current = counters();
+}
+
+void c14_translation_criticality_telemetry::record_head_blocked(
+    unsigned memory_class) {
+  if (!m_enabled) return;
+  assert(memory_class < M4C_MEMORY_CLASS_COUNT);
+  ++m_current.head_blocked_cycles[memory_class];
+}
+
+void c14_translation_criticality_telemetry::record_translation_ready(
+    unsigned memory_class, unsigned translation_outcome) {
+  if (!m_enabled) return;
+  assert(memory_class < M4C_MEMORY_CLASS_COUNT);
+  assert(translation_outcome < M4C_TRANSLATION_OUTCOME_COUNT);
+  ++m_current.ready_events[memory_class][translation_outcome];
+}
+
+void c14_translation_criticality_telemetry::record_data_admission(
+    unsigned memory_class, unsigned translation_outcome, uint64_t gap) {
+  if (!m_enabled) return;
+  assert(memory_class < M4C_MEMORY_CLASS_COUNT);
+  assert(translation_outcome < M4C_TRANSLATION_OUTCOME_COUNT);
+  ++m_current.data_admission_samples[memory_class][translation_outcome];
+  m_current.ready_to_admission_cycles[memory_class][translation_outcome] += gap;
+  if (gap >
+      m_current.ready_to_admission_cycles_max[memory_class][translation_outcome])
+    m_current.ready_to_admission_cycles_max[memory_class][translation_outcome] =
+        gap;
+  if (gap == 0)
+    ++m_current.ready_to_admission_same_cycle[memory_class]
+                                             [translation_outcome];
+}
+
+void c14_translation_criticality_telemetry::print(FILE *fout,
+                                                   const char *kernel_name) const {
+  if (!m_enabled) return;
+  const char *name = kernel_name && kernel_name[0] ? kernel_name : "UNKNOWN";
+  fprintf(fout, "c14_criticality_schema = C14_TRANSLATION_EXPOSURE_V1\n");
+  fprintf(fout, "c14_criticality_scope = LOCAL_LDST_HEAD_PROXY\n");
+  fprintf(fout, "c14_criticality_kernel_index = %u\n", m_kernel_index);
+  fprintf(fout, "c14_criticality_kernel_name = %s\n", name);
+  for (unsigned object = 0; object < M4C_MEMORY_CLASS_COUNT; ++object) {
+    const char *object_name = m4c_memory_telemetry_class_name(object);
+    fprintf(fout, "c14_translation_head_blocked_cycles_%s = %llu\n",
+            object_name,
+            (unsigned long long)m_current.head_blocked_cycles[object]);
+    for (unsigned outcome = 0; outcome < M4C_TRANSLATION_OUTCOME_COUNT;
+         ++outcome) {
+      const char *outcome_name =
+          m4c_memory_telemetry_translation_outcome_name(outcome);
+      fprintf(fout, "c14_translation_ready_events_%s_%s = %llu\n",
+              object_name, outcome_name,
+              (unsigned long long)m_current.ready_events[object][outcome]);
+      fprintf(fout,
+              "c14_translation_ready_to_data_admission_samples_%s_%s = %llu\n",
+              object_name, outcome_name,
+              (unsigned long long)m_current.data_admission_samples[object]
+                                                                    [outcome]);
+      fprintf(fout,
+              "c14_translation_ready_to_data_admission_cycles_%s_%s = %llu\n",
+              object_name, outcome_name,
+              (unsigned long long)m_current.ready_to_admission_cycles[object]
+                                                                     [outcome]);
+      fprintf(fout,
+              "c14_translation_ready_to_data_admission_cycles_max_%s_%s = %llu\n",
+              object_name, outcome_name,
+              (unsigned long long)m_current
+                  .ready_to_admission_cycles_max[object][outcome]);
+      fprintf(fout,
+              "c14_translation_ready_to_data_admission_same_cycle_%s_%s = %llu\n",
+              object_name, outcome_name,
+              (unsigned long long)m_current
+                  .ready_to_admission_same_cycle[object][outcome]);
+    }
+  }
+}
+
+void c14_translation_criticality_telemetry::finish_kernel() {
+  if (!m_enabled) return;
+  ++m_kernel_index;
+  m_current = counters();
+}
+
+c14_translation_criticality_telemetry &
+c14_translation_criticality_telemetry_instance() {
+  static c14_translation_criticality_telemetry telemetry;
+  return telemetry;
+}
