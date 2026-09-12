@@ -299,6 +299,31 @@ int main() {
   assert(duplicate.kind == dtc_l1::io_access_kind::NEW_MISS);
   assert(duplicate.physical.id != pending_old.physical.id);
   assert(pending_evict.duplicate_after_eviction() == 1);
+
+  config io_observer_cfg = pending_evict_cfg;
+  io_observer_cfg.post_fast64_telemetry = true;
+  dtc_l1::io_frontend io_observer(io_observer_cfg);
+  assert(io_observer.admit(410));
+  const auto io_observer_old = io_observer.access(200, 410, 0);
+  assert(io_observer.admit(411));
+  const auto io_observer_evict = io_observer.access(210, 411, 128);
+  assert(io_observer.admit(412));
+  const auto io_observer_duplicate = io_observer.access(220, 412, 0);
+  assert(io_observer_duplicate.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(io_observer.duplicate_after_eviction() == 1);
+  io_observer.complete(io_observer_old.physical, 230);
+  assert(io_observer.observer_alloc_to_ready_count() == 1);
+  assert(io_observer.observer_alloc_to_ready_sum_cycles() == 30);
+  // Both the original line and the replacement line are pending victims;
+  // only the original has completed at this point.
+  assert(io_observer.observer_pending_tag_eviction_count() == 2);
+  assert(io_observer.observer_pending_evict_to_response_count() == 1);
+  assert(io_observer.observer_pending_evict_to_response_sum_cycles() == 20);
+  io_observer.complete(io_observer_evict.physical, 240);
+  io_observer.complete(io_observer_duplicate.physical, 250);
+  assert(io_observer.observer_alloc_to_ready_count() == 3);
+  assert(io_observer.observer_alloc_to_ready_sum_cycles() == 90);
+  assert(io_observer.observer_live_records() == 0);
   pending_evict.complete(pending_old.physical);
   pending_evict.complete(replacement_pending.physical);
   pending_evict.complete(duplicate.physical);
@@ -447,6 +472,17 @@ int main() {
   const auto observer_duplicate = oo_observer.access(312, 852, 0);
   assert(observer_duplicate.kind == dtc_l1::io_access_kind::NEW_MISS);
   assert(oo_observer.duplicate_after_eviction() == 1);
+  oo_observer.complete(observer_old.physical, 330);
+  assert(oo_observer.observer_alloc_to_ready_count() == 1);
+  assert(oo_observer.observer_alloc_to_ready_sum_cycles() == 20);
+  assert(oo_observer.observer_pending_tag_eviction_count() == 2);
+  assert(oo_observer.observer_pending_evict_to_response_count() == 1);
+  assert(oo_observer.observer_pending_evict_to_response_sum_cycles() == 19);
+  oo_observer.complete(observer_evict.physical, 331);
+  oo_observer.complete(observer_duplicate.physical, 332);
+  assert(oo_observer.observer_alloc_to_ready_count() == 3);
+  assert(oo_observer.observer_alloc_to_ready_sum_cycles() == 60);
+  assert(oo_observer.observer_live_records() == 0);
 
   // A separate sequence makes the old pending identity complete before its
   // same-line re-access; it is an ordinary reallocation, not a duplicate.
