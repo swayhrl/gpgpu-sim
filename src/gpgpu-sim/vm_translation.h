@@ -518,6 +518,9 @@ struct translation_config {
   unsigned l2_mode;
   segment_config segment;
   unsigned fair_arm;
+  // C14 Path P: default-off, counter-only Segment-race telemetry. This
+  // controls no lookup, arbitration, or completion state.
+  bool c14_segment_race_telemetry;
   translation_config(unsigned sms = 1,
                      uint64_t page = vm_core::kDefaultBasePageSize,
                      const tlb_config &l1_config = tlb_config(),
@@ -533,14 +536,16 @@ struct translation_config {
                      unsigned l2_tlb_mode_value = L2_TLB_STANDARD,
                      const segment_config &segment_config_value =
                          segment_config(),
-                     unsigned fair_arm_value = FAIR_ARM_MANUAL)
+                     unsigned fair_arm_value = FAIR_ARM_MANUAL,
+                     bool c14_segment_race_telemetry_value = false)
       : num_sms(sms), page_size(page), l1(l1_config), l2(l2_config),
         mshr_entries(mshr_count), pwq_entries(pwq_count), walkers(walker_count),
         walk_latency(latency), l1_lookup_latency(l1_latency),
         l2_lookup_latency(l2_latency), ptw_mode(page_table_walk_mode),
         page_table(page_table_config_value), pwc(pwc_config_value),
         object_map_path(object_map), l2_mode(l2_tlb_mode_value),
-        segment(segment_config_value), fair_arm(fair_arm_value) {}
+        segment(segment_config_value), fair_arm(fair_arm_value),
+        c14_segment_race_telemetry(c14_segment_race_telemetry_value) {}
   bool valid() const;
 };
 
@@ -602,6 +607,32 @@ struct translation_stats {
   uint64_t segment_miss_join_wait_cycles;
   uint64_t segment_late_result_discards;
   uint64_t segment_mapping_mismatch_faults;
+  // C14 Path P default-off race accounting. These fields distinguish the
+  // existing state-machine suppression boundary from an unsafe rollback of an
+  // already admitted exact request.
+  uint64_t c14_segment_race_admissions;
+  uint64_t c14_segment_race_segment_winners;
+  uint64_t c14_segment_race_l1_winners;
+  uint64_t c14_segment_race_dual_miss_fallbacks;
+  uint64_t c14_segment_race_segment_winner_l1_port_consumed;
+  uint64_t c14_segment_race_segment_winner_l1_not_completed;
+  uint64_t c14_segment_race_segment_winner_l1_completed_hit;
+  uint64_t c14_segment_race_segment_winner_l1_completed_miss;
+  uint64_t c14_segment_race_segment_winner_l1_late_discard;
+  uint64_t c14_segment_race_segment_winner_l2_not_issued;
+  uint64_t c14_segment_race_segment_winner_mshr_not_allocated;
+  uint64_t c14_segment_race_segment_winner_ptw_not_started;
+  uint64_t c14_segment_race_segment_winner_pte_not_issued;
+  uint64_t c14_segment_race_l2_winners;
+  uint64_t c14_segment_race_ptw_winners;
+  uint64_t c14_segment_race_segment_latency_samples;
+  uint64_t c14_segment_race_segment_latency_cycles_total;
+  uint64_t c14_segment_race_l1_latency_samples;
+  uint64_t c14_segment_race_l1_latency_cycles_total;
+  uint64_t c14_segment_race_l2_latency_samples;
+  uint64_t c14_segment_race_l2_latency_cycles_total;
+  uint64_t c14_segment_race_ptw_wake_latency_samples;
+  uint64_t c14_segment_race_ptw_wake_latency_cycles_total;
   uint64_t segment_install_attempts;
   uint64_t segment_install_acks;
   uint64_t segment_install_rejections;
@@ -737,7 +768,28 @@ struct translation_stats {
         segment_fallback_by_reason(), segment_l1_first_owners(0),
         segment_first_owners(0), segment_both_miss(0),
         segment_miss_join_wait_cycles(0), segment_late_result_discards(0),
-        segment_mapping_mismatch_faults(0), segment_install_attempts(0),
+        segment_mapping_mismatch_faults(0), c14_segment_race_admissions(0),
+        c14_segment_race_segment_winners(0), c14_segment_race_l1_winners(0),
+        c14_segment_race_dual_miss_fallbacks(0),
+        c14_segment_race_segment_winner_l1_port_consumed(0),
+        c14_segment_race_segment_winner_l1_not_completed(0),
+        c14_segment_race_segment_winner_l1_completed_hit(0),
+        c14_segment_race_segment_winner_l1_completed_miss(0),
+        c14_segment_race_segment_winner_l1_late_discard(0),
+        c14_segment_race_segment_winner_l2_not_issued(0),
+        c14_segment_race_segment_winner_mshr_not_allocated(0),
+        c14_segment_race_segment_winner_ptw_not_started(0),
+        c14_segment_race_segment_winner_pte_not_issued(0),
+        c14_segment_race_l2_winners(0), c14_segment_race_ptw_winners(0),
+        c14_segment_race_segment_latency_samples(0),
+        c14_segment_race_segment_latency_cycles_total(0),
+        c14_segment_race_l1_latency_samples(0),
+        c14_segment_race_l1_latency_cycles_total(0),
+        c14_segment_race_l2_latency_samples(0),
+        c14_segment_race_l2_latency_cycles_total(0),
+        c14_segment_race_ptw_wake_latency_samples(0),
+        c14_segment_race_ptw_wake_latency_cycles_total(0),
+        segment_install_attempts(0),
         segment_install_acks(0), segment_install_rejections(0),
         segment_revoke_attempts(0), segment_revoke_acks(0),
         segment_install_replica_acks(0), segment_revoke_replica_acks(0),
@@ -860,15 +912,16 @@ class translation_controller {
     uint64_t l2_complete_cycle;
     uint64_t mshr_join_cycle;
     object_class object;
+    bool c14_segment_race;
     waiter(unsigned s, uint64_t u, uint64_t entry, uint64_t l1_launch,
            uint64_t l1_complete, bool l2_issued, uint64_t l2_launch,
            uint64_t l2_complete, uint64_t mshr_join,
-           object_class object_classification)
+           object_class object_classification, bool segment_race)
         : sid(s), uid(u), entry_cycle(entry), l1_launch_cycle(l1_launch),
           l1_complete_cycle(l1_complete), l2_issued(l2_issued),
           l2_launch_cycle(l2_launch),
           l2_complete_cycle(l2_complete), mshr_join_cycle(mshr_join),
-          object(object_classification) {}
+          object(object_classification), c14_segment_race(segment_race) {}
   };
   struct mshr_entry {
     translation_key key;

@@ -496,6 +496,10 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          &gpgpu_vm_weight_segment_map,
                          "M4B immutable Weight Segment map (empty disables)",
                          "");
+  option_parser_register(opp, "-gpgpu_vm_c14_segment_race_telemetry",
+                         OPT_UINT32, &gpgpu_vm_c14_segment_race_telemetry,
+                         "C14 Path P default-off Segment/exact race counters",
+                         "0");
   option_parser_register(opp, "-gpgpu_memory_telemetry_level", OPT_UINT32,
                          &gpgpu_memory_telemetry_level,
                          "M4C bounded memory telemetry: 0=off, 1=aggregate, 2=windows, 3=diagnostic",
@@ -1131,7 +1135,8 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
             m_shader_config->gpgpu_vm_weight_segment_entries,
             m_shader_config->gpgpu_vm_weight_segment_lookup_latency,
             m_shader_config->gpgpu_vm_weight_segment_map),
-        m_shader_config->gpgpu_vm_fair_arm);
+        m_shader_config->gpgpu_vm_fair_arm,
+        m_shader_config->gpgpu_vm_c14_segment_race_telemetry != 0);
     if (!vm_translation::configure_fair_arm(
             &vm_config, m_shader_config->gpgpu_vm_fair_arm)) {
       fprintf(stderr, "ERROR: blocked or invalid C10A2 VM fair arm %u\n",

@@ -1890,8 +1890,27 @@ void translation_controller::service_lookups(uint64_t cycle) {
           lookup.source = TRANSLATION_SOURCE_SEGMENT_HIT;
           lookup.stage = LOOKUP_READY;
           ++m_stats.segment_first_owners;
+          if (m_config.c14_segment_race_telemetry) {
+            // C12 has not reached LOOKUP_L2_LAUNCH here. Account that
+            // suppression boundary; do not call it a rollback/cancellation.
+            assert(!lookup.l2_issued);
+            ++m_stats.c14_segment_race_segment_winners;
+            ++m_stats.c14_segment_race_segment_winner_l1_port_consumed;
+            ++m_stats.c14_segment_race_segment_winner_l2_not_issued;
+            ++m_stats.c14_segment_race_segment_winner_mshr_not_allocated;
+            ++m_stats.c14_segment_race_segment_winner_ptw_not_started;
+            ++m_stats.c14_segment_race_segment_winner_pte_not_issued;
+            if (!lookup.l1_completed)
+              ++m_stats.c14_segment_race_segment_winner_l1_not_completed;
+            else if (lookup.l1_hit)
+              ++m_stats.c14_segment_race_segment_winner_l1_completed_hit;
+            else
+              ++m_stats.c14_segment_race_segment_winner_l1_completed_miss;
+          }
           if (!lookup.l1_completed) {
             ++m_stats.segment_late_result_discards;
+            if (m_config.c14_segment_race_telemetry)
+              ++m_stats.c14_segment_race_segment_winner_l1_late_discard;
             // C10's logical late-loser cancellation has no physical
             // background response model.  Mark the shadow L1 interval as
             // zero-cost at its launch instead of leaving the default cycle
@@ -1917,6 +1936,8 @@ void translation_controller::service_lookups(uint64_t cycle) {
           lookup.source = TRANSLATION_SOURCE_L1_TLB_HIT;
           lookup.stage = LOOKUP_READY;
           ++m_stats.segment_l1_first_owners;
+          if (m_config.c14_segment_race_telemetry)
+            ++m_stats.c14_segment_race_l1_winners;
           if (!lookup.segment_completed) ++m_stats.segment_late_result_discards;
           progress = true;
           ++index;
@@ -1950,9 +1971,13 @@ void translation_controller::service_lookups(uint64_t cycle) {
           if (lookup.source == TRANSLATION_SOURCE_UNOBSERVED)
             lookup.source = TRANSLATION_SOURCE_L1_TLB_HIT;
           lookup.stage = LOOKUP_READY;
+          if (lookup.segment_launched && m_config.c14_segment_race_telemetry)
+            ++m_stats.c14_segment_race_l1_winners;
         } else {
           if (lookup.segment_launched && !lookup.segment_join_accounted) {
             ++m_stats.segment_both_miss;
+            if (m_config.c14_segment_race_telemetry)
+              ++m_stats.c14_segment_race_dual_miss_fallbacks;
             const uint64_t first_completion =
                 lookup.l1_complete_cycle < lookup.segment_ready_cycle
                     ? lookup.l1_complete_cycle : lookup.segment_ready_cycle;
@@ -2008,6 +2033,8 @@ void translation_controller::service_lookups(uint64_t cycle) {
           lookup.ppn = ppn;
           lookup.source = TRANSLATION_SOURCE_L2_TLB_HIT;
           lookup.stage = LOOKUP_READY;
+          if (lookup.segment_launched && m_config.c14_segment_race_telemetry)
+            ++m_stats.c14_segment_race_l2_winners;
         } else {
           lookup.stage = LOOKUP_MSHR_HANDOFF;
         }
@@ -2050,9 +2077,9 @@ lookup_result translation_controller::allocate_or_merge(
     // through the normal bounded admission path afterwards.
     if (existing->generation != lookup->generation) return TRANSLATION_PENDING;
     if (existing->has_waiter(waiter_uid)) return TRANSLATION_PENDING;
-    existing->waiters.push_back(waiter(sid, waiter_uid, entry, l1_launch,
-                                       l1_complete, l2_issued, l2_launch,
-                                       l2_complete, cycle, lookup->object));
+    existing->waiters.push_back(waiter(
+        sid, waiter_uid, entry, l1_launch, l1_complete, l2_issued, l2_launch,
+        l2_complete, cycle, lookup->object, lookup->segment_launched));
     ++m_stats.mshr_merges;
     if (m_stats.object_attribution_enabled)
       ++m_stats.object[lookup->object].mshr_merges;
@@ -2072,9 +2099,9 @@ lookup_result translation_controller::allocate_or_merge(
   assert(find_mshr(key) == 0);
   m_mshrs.push_back(mshr_entry(key, cycle, lookup->generation,
                                lookup->object));
-  m_mshrs.back().waiters.push_back(waiter(sid, waiter_uid, entry, l1_launch,
-                                         l1_complete, l2_issued, l2_launch,
-                                         l2_complete, cycle, lookup->object));
+  m_mshrs.back().waiters.push_back(waiter(
+      sid, waiter_uid, entry, l1_launch, l1_complete, l2_issued, l2_launch,
+      l2_complete, cycle, lookup->object, lookup->segment_launched));
   m_pwq.push_back(key);
   ++m_stats.mshr_allocations;
   if (m_stats.object_attribution_enabled)
@@ -2191,6 +2218,19 @@ lookup_result translation_controller::translate(unsigned sid, unsigned asid,
         inflight->l1_complete_cycle, inflight->l2_issued,
         inflight->l2_launch_cycle, inflight->l2_complete_cycle, 0, false,
         cycle, inflight->object);
+    if (m_config.c14_segment_race_telemetry && inflight->segment_launched) {
+      const uint64_t latency = cycle - inflight->entry_cycle;
+      if (completed_source == TRANSLATION_SOURCE_SEGMENT_HIT) {
+        ++m_stats.c14_segment_race_segment_latency_samples;
+        m_stats.c14_segment_race_segment_latency_cycles_total += latency;
+      } else if (completed_source == TRANSLATION_SOURCE_L1_TLB_HIT) {
+        ++m_stats.c14_segment_race_l1_latency_samples;
+        m_stats.c14_segment_race_l1_latency_cycles_total += latency;
+      } else if (completed_source == TRANSLATION_SOURCE_L2_TLB_HIT) {
+        ++m_stats.c14_segment_race_l2_latency_samples;
+        m_stats.c14_segment_race_l2_latency_cycles_total += latency;
+      }
+    }
     for (unsigned index = 0; index < m_lookups.size(); ++index)
       if (&m_lookups[index] == inflight) {
         m_lookups.erase(m_lookups.begin() + index);
@@ -2246,6 +2286,8 @@ lookup_result translation_controller::translate(unsigned sid, unsigned asid,
   if (launch_segment) {
     ++m_stats.segment_lookup_accepts;
     ++m_stats.segment_lookup_launches;
+    if (m_config.c14_segment_race_telemetry)
+      ++m_stats.c14_segment_race_admissions;
   }
   if (has_completed_outcome) {
     m_lookups.back().source = completed->second.source;
@@ -2324,6 +2366,13 @@ bool translation_controller::complete_translation(const translation_key &key,
           entry_waiter.l1_complete_cycle, entry_waiter.l2_issued,
           entry_waiter.l2_launch_cycle, entry_waiter.l2_complete_cycle,
           entry_waiter.mshr_join_cycle, true, cycle, entry_waiter.object);
+      if (m_config.c14_segment_race_telemetry &&
+          entry_waiter.c14_segment_race) {
+        ++m_stats.c14_segment_race_ptw_winners;
+        ++m_stats.c14_segment_race_ptw_wake_latency_samples;
+        m_stats.c14_segment_race_ptw_wake_latency_cycles_total +=
+            cycle - entry_waiter.entry_cycle;
+      }
       // The regular requester retry will still perform the accepted L1 probe
       // and obtain the same SimPA.  This side map preserves only the fact
       // that its residency originated in a PTW, for later cache correlation.
@@ -2826,6 +2875,55 @@ void translation_controller::print_stats(FILE *fout) const {
           (unsigned long long)m_stats.segment_late_result_discards);
   fprintf(fout, "vm_weight_segment_mapping_mismatch_faults = %llu\n",
           (unsigned long long)m_stats.segment_mapping_mismatch_faults);
+  if (m_config.c14_segment_race_telemetry) {
+    fprintf(fout, "vm_c14_segment_race_telemetry = 1\n");
+    fprintf(fout, "vm_c14_segment_race_admissions = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_admissions);
+    fprintf(fout, "vm_c14_segment_race_segment_winners = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_segment_winners);
+    fprintf(fout, "vm_c14_segment_race_l1_winners = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_l1_winners);
+    fprintf(fout, "vm_c14_segment_race_dual_miss_fallbacks = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_dual_miss_fallbacks);
+    fprintf(fout, "vm_c14_segment_race_segment_winner_l1_port_consumed = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_segment_winner_l1_port_consumed);
+    fprintf(fout, "vm_c14_segment_race_segment_winner_l1_not_completed = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_segment_winner_l1_not_completed);
+    fprintf(fout, "vm_c14_segment_race_segment_winner_l1_completed_hit = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_segment_winner_l1_completed_hit);
+    fprintf(fout, "vm_c14_segment_race_segment_winner_l1_completed_miss = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_segment_winner_l1_completed_miss);
+    fprintf(fout, "vm_c14_segment_race_segment_winner_l1_late_discard = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_segment_winner_l1_late_discard);
+    fprintf(fout, "vm_c14_segment_race_segment_winner_l2_not_issued = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_segment_winner_l2_not_issued);
+    fprintf(fout, "vm_c14_segment_race_segment_winner_mshr_not_allocated = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_segment_winner_mshr_not_allocated);
+    fprintf(fout, "vm_c14_segment_race_segment_winner_ptw_not_started = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_segment_winner_ptw_not_started);
+    fprintf(fout, "vm_c14_segment_race_segment_winner_pte_not_issued = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_segment_winner_pte_not_issued);
+    fprintf(fout, "vm_c14_segment_race_l2_winners = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_l2_winners);
+    fprintf(fout, "vm_c14_segment_race_ptw_winners = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_ptw_winners);
+    fprintf(fout, "vm_c14_segment_race_segment_latency_samples = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_segment_latency_samples);
+    fprintf(fout, "vm_c14_segment_race_segment_latency_cycles_total = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_segment_latency_cycles_total);
+    fprintf(fout, "vm_c14_segment_race_l1_latency_samples = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_l1_latency_samples);
+    fprintf(fout, "vm_c14_segment_race_l1_latency_cycles_total = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_l1_latency_cycles_total);
+    fprintf(fout, "vm_c14_segment_race_l2_latency_samples = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_l2_latency_samples);
+    fprintf(fout, "vm_c14_segment_race_l2_latency_cycles_total = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_l2_latency_cycles_total);
+    fprintf(fout, "vm_c14_segment_race_ptw_wake_latency_samples = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_ptw_wake_latency_samples);
+    fprintf(fout, "vm_c14_segment_race_ptw_wake_latency_cycles_total = %llu\n",
+            (unsigned long long)m_stats.c14_segment_race_ptw_wake_latency_cycles_total);
+  }
   fprintf(fout, "vm_weight_segment_install_attempts = %llu\n",
           (unsigned long long)m_stats.segment_install_attempts);
   fprintf(fout, "vm_weight_segment_install_acks = %llu\n",
