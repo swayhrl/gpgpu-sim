@@ -38,6 +38,9 @@ struct config {
   unsigned io_pib_entries = 256;
   unsigned oo_pib_entries = 128;
   unsigned ref_count_bits = 13;
+  // Default-off post-FAST64 observer state. It must not participate in any
+  // admission, allocation, retirement, reclaim, or completion decision.
+  bool post_fast64_telemetry = false;
 };
 
 // Completion ownership is separate from the frontend's physical-line state.
@@ -485,6 +488,8 @@ class oo_frontend {
     if (victim->valid) {
       physical_line &old = m_phys[victim->physical.id];
       assert(old.allocated && old.tag_valid);
+      if (m_cfg.post_fast64_telemetry && !old.ready)
+        m_evicted_pending_lines[victim->line] = victim->physical;
       old.tag_valid = false;
       ++m_tag_evictions;
       if (old.ref_count == 0) {
@@ -496,6 +501,10 @@ class oo_frontend {
     }
     if (free_id < 0) free_id = find_free_physical();
     assert(free_id >= 0);
+    // Observer-only: this point has both a new physical allocation and a
+    // guaranteed NEW_MISS result. A failed allocation above cannot count.
+    if (m_cfg.post_fast64_telemetry && m_evicted_pending_lines.erase(line))
+      ++m_duplicate_after_eviction;
     physical_line &physical = m_phys[free_id];
     physical.allocated = true;
     physical.ready = false;
@@ -535,6 +544,16 @@ class oo_frontend {
       ++m_wakeups;
     }
     physical.waiters.clear();
+    if (m_cfg.post_fast64_telemetry) {
+      for (auto it = m_evicted_pending_lines.begin();
+           it != m_evicted_pending_lines.end();) {
+        if (it->second.id == identity.id &&
+            it->second.generation == identity.generation)
+          it = m_evicted_pending_lines.erase(it);
+        else
+          ++it;
+      }
+    }
     assert_shadow_refs();
   }
 
@@ -620,6 +639,9 @@ class oo_frontend {
   uint64_t out_of_order_retires() const { return m_out_of_order_retires; }
   uint64_t wakeups() const { return m_wakeups; }
   uint64_t tag_evictions() const { return m_tag_evictions; }
+  uint64_t duplicate_after_eviction() const {
+    return m_duplicate_after_eviction;
+  }
   uint64_t immediate_reclaims() const { return m_immediate_reclaims; }
   uint64_t deferred_reclaims() const { return m_deferred_reclaims; }
   uint64_t final_ref_reclaims() const { return m_final_ref_reclaims; }
@@ -806,12 +828,16 @@ class oo_frontend {
   uint64_t m_cycle = UINT64_MAX, m_retire_cycle = UINT64_MAX,
            m_lru_clock = 0, m_new_misses = 0, m_valid_hits = 0,
            m_pending_hits = 0, m_retires = 0, m_out_of_order_retires = 0,
-           m_wakeups = 0, m_tag_evictions = 0, m_immediate_reclaims = 0,
+           m_wakeups = 0, m_tag_evictions = 0,
+           m_duplicate_after_eviction = 0, m_immediate_reclaims = 0,
            m_deferred_reclaims = 0, m_final_ref_reclaims = 0,
            m_no_free_physical_events = 0,
            m_allocation_width_limited_events = 0, m_tag_cycle = UINT64_MAX,
            m_tag_requests = 0, m_tag_conflicts = 0;
   unsigned m_allocations_this_cycle = 0, m_rr_next = 0;
+  // Solely an observer index: line -> original pending allocation identity.
+  // It is never consulted by normal mechanism decisions.
+  std::map<uint64_t, physical_identity> m_evicted_pending_lines;
   std::vector<unsigned> m_tag_requests_this_cycle =
       std::vector<unsigned>(m_cfg.tag_banks, 0);
   unsigned m_total_tag_requests_this_cycle = 0;
@@ -1406,6 +1432,7 @@ struct paper_frontend_stats {
   uint64_t oo_pending_hits = 0;
   uint64_t oo_new_misses = 0;
   uint64_t oo_tag_evictions = 0;
+  uint64_t oo_duplicate_after_eviction = 0;
   uint64_t oo_immediate_reclaims = 0;
   uint64_t oo_deferred_reclaims = 0;
   uint64_t oo_final_ref_reclaims = 0;
@@ -1531,6 +1558,7 @@ struct paper_frontend_stats {
     oo_pending_hits += other.oo_pending_hits;
     oo_new_misses += other.oo_new_misses;
     oo_tag_evictions += other.oo_tag_evictions;
+    oo_duplicate_after_eviction += other.oo_duplicate_after_eviction;
     oo_immediate_reclaims += other.oo_immediate_reclaims;
     oo_deferred_reclaims += other.oo_deferred_reclaims;
     oo_final_ref_reclaims += other.oo_final_ref_reclaims;
