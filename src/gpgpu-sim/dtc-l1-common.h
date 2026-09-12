@@ -103,6 +103,60 @@ struct io_access_result {
   physical_identity physical;
 };
 
+// Default-off diagnostic bookkeeping shared by the whole-line IO and OO
+// frontends. The map is keyed by the identity that already protects normal
+// completion ownership, so a recycled physical index cannot be confused with
+// the old allocation. None of these values is consulted by mechanism logic.
+struct post_fast64_lifetime_observer {
+  struct record {
+    uint64_t allocation_cycle = 0;
+    bool pending_tag_evicted = false;
+    uint64_t eviction_cycle = 0;
+  };
+
+  void allocated(physical_identity identity, uint64_t cycle) {
+    pending[{identity.id, identity.generation}] = {cycle, false, 0};
+  }
+
+  void pending_evicted(physical_identity identity, uint64_t cycle) {
+    auto it = pending.find({identity.id, identity.generation});
+    if (it == pending.end() || it->second.pending_tag_evicted) return;
+    it->second.pending_tag_evicted = true;
+    it->second.eviction_cycle = cycle;
+    ++pending_tag_eviction_count;
+  }
+
+  void completed(physical_identity identity, uint64_t cycle) {
+    auto it = pending.find({identity.id, identity.generation});
+    if (it == pending.end()) return;
+    const uint64_t alloc_to_ready = cycle - it->second.allocation_cycle;
+    ++alloc_to_ready_count;
+    alloc_to_ready_sum_cycles += alloc_to_ready;
+    alloc_to_ready_max_cycles = std::max(alloc_to_ready_max_cycles, alloc_to_ready);
+    if (it->second.pending_tag_evicted) {
+      const uint64_t eviction_to_response = cycle - it->second.eviction_cycle;
+      ++pending_evict_to_response_count;
+      pending_evict_to_response_sum_cycles += eviction_to_response;
+      pending_evict_to_response_max_cycles =
+          std::max(pending_evict_to_response_max_cycles, eviction_to_response);
+    }
+    pending.erase(it);
+  }
+
+  size_t live_records() const { return pending.size(); }
+
+  uint64_t alloc_to_ready_count = 0;
+  uint64_t alloc_to_ready_sum_cycles = 0;
+  uint64_t alloc_to_ready_max_cycles = 0;
+  uint64_t pending_tag_eviction_count = 0;
+  uint64_t pending_evict_to_response_count = 0;
+  uint64_t pending_evict_to_response_sum_cycles = 0;
+  uint64_t pending_evict_to_response_max_cycles = 0;
+
+ private:
+  std::map<std::pair<unsigned, uint64_t>, record> pending;
+};
+
 // Deterministic whole-line IO-DTC model used by M2 directed tests and by the
 // later LD/ST integration.  It deliberately owns no conventional MSHR state.
 class io_frontend {
@@ -216,8 +270,11 @@ class io_frontend {
     tag_entry *victim = select_victim(line);
     if (victim->valid) {
       ++m_tag_evictions;
-      if (!m_phys[victim->physical.id].ready)
+      if (!m_phys[victim->physical.id].ready) {
         m_evicted_pending_lines[victim->line] = victim->physical;
+        if (m_cfg.post_fast64_telemetry)
+          m_observer.pending_evicted(victim->physical, cycle);
+      }
       owner->release_on_retire.push_back(victim->physical);
     }
     // Count a duplicate only while the original evicted allocation is still
@@ -227,6 +284,7 @@ class io_frontend {
     physical_identity identity{static_cast<unsigned>(free_id), ++m_phys[free_id].generation};
     m_phys[free_id].allocated = true;
     m_phys[free_id].ready = false;
+    if (m_cfg.post_fast64_telemetry) m_observer.allocated(identity, cycle);
     *victim = {true, line, identity, ++m_lru_clock};
     owner->references.push_back(identity);
     if (owner->has_unresolved_line && owner->unresolved_line == line)
@@ -237,7 +295,9 @@ class io_frontend {
     return {io_access_kind::NEW_MISS, identity};
   }
 
-  void complete(physical_identity identity) {
+  void complete(physical_identity identity) { complete(identity, m_cycle); }
+
+  void complete(physical_identity identity, uint64_t cycle) {
     assert(identity.id < m_phys.size());
     physical_line &line = m_phys[identity.id];
     assert(line.allocated && line.generation == identity.generation);
@@ -248,8 +308,9 @@ class io_frontend {
           it->second.generation == identity.generation)
         it = m_evicted_pending_lines.erase(it);
       else
-        ++it;
+          ++it;
     }
+    if (m_cfg.post_fast64_telemetry) m_observer.completed(identity, cycle);
   }
 
   bool head_ready() const {
@@ -278,6 +339,28 @@ class io_frontend {
   uint64_t retires() const { return m_retires; }
   uint64_t tag_evictions() const { return m_tag_evictions; }
   uint64_t duplicate_after_eviction() const { return m_duplicate_after_eviction; }
+  uint64_t observer_alloc_to_ready_count() const {
+    return m_observer.alloc_to_ready_count;
+  }
+  uint64_t observer_alloc_to_ready_sum_cycles() const {
+    return m_observer.alloc_to_ready_sum_cycles;
+  }
+  uint64_t observer_alloc_to_ready_max_cycles() const {
+    return m_observer.alloc_to_ready_max_cycles;
+  }
+  uint64_t observer_pending_tag_eviction_count() const {
+    return m_observer.pending_tag_eviction_count;
+  }
+  uint64_t observer_pending_evict_to_response_count() const {
+    return m_observer.pending_evict_to_response_count;
+  }
+  uint64_t observer_pending_evict_to_response_sum_cycles() const {
+    return m_observer.pending_evict_to_response_sum_cycles;
+  }
+  uint64_t observer_pending_evict_to_response_max_cycles() const {
+    return m_observer.pending_evict_to_response_max_cycles;
+  }
+  size_t observer_live_records() const { return m_observer.live_records(); }
   uint64_t partial_allocation_events() const { return m_partial_allocation_events; }
   uint64_t valid_hits() const { return m_valid_hits; }
   uint64_t pending_hits() const { return m_pending_hits; }
@@ -371,6 +454,7 @@ class io_frontend {
   size_t m_allocated_lines_peak = 0, m_minimum_free_lines = 0,
          m_partial_entries_peak = 0, m_partial_lines_held_peak = 0;
   std::map<uint64_t, physical_identity> m_evicted_pending_lines;
+  post_fast64_lifetime_observer m_observer;
   unsigned m_allocations_this_cycle = 0, m_rr_next = 0;
   std::vector<unsigned> m_tag_requests_this_cycle =
       std::vector<unsigned>(m_cfg.tag_banks, 0);
@@ -488,8 +572,10 @@ class oo_frontend {
     if (victim->valid) {
       physical_line &old = m_phys[victim->physical.id];
       assert(old.allocated && old.tag_valid);
-      if (m_cfg.post_fast64_telemetry && !old.ready)
+      if (m_cfg.post_fast64_telemetry && !old.ready) {
         m_evicted_pending_lines[victim->line] = victim->physical;
+        m_observer.pending_evicted(victim->physical, cycle);
+      }
       old.tag_valid = false;
       ++m_tag_evictions;
       if (old.ref_count == 0) {
@@ -513,6 +599,7 @@ class oo_frontend {
     physical.waiters.clear();
     physical_identity identity{static_cast<unsigned>(free_id),
                                ++physical.generation};
+    if (m_cfg.post_fast64_telemetry) m_observer.allocated(identity, cycle);
     *victim = {true, line, identity, ++m_lru_clock};
     attach_reference(*owner, identity);
     ++m_allocations_this_cycle;
@@ -529,7 +616,9 @@ class oo_frontend {
            m_phys[identity.id].generation == identity.generation;
   }
 
-  void complete(physical_identity identity) {
+  void complete(physical_identity identity) { complete(identity, m_cycle); }
+
+  void complete(physical_identity identity, uint64_t cycle) {
     assert(fill_identity_matches(identity) &&
            "OO fill must match the original physical generation");
     physical_line &physical = m_phys[identity.id];
@@ -553,6 +642,7 @@ class oo_frontend {
         else
           ++it;
       }
+      m_observer.completed(identity, cycle);
     }
     assert_shadow_refs();
   }
@@ -642,6 +732,28 @@ class oo_frontend {
   uint64_t duplicate_after_eviction() const {
     return m_duplicate_after_eviction;
   }
+  uint64_t observer_alloc_to_ready_count() const {
+    return m_observer.alloc_to_ready_count;
+  }
+  uint64_t observer_alloc_to_ready_sum_cycles() const {
+    return m_observer.alloc_to_ready_sum_cycles;
+  }
+  uint64_t observer_alloc_to_ready_max_cycles() const {
+    return m_observer.alloc_to_ready_max_cycles;
+  }
+  uint64_t observer_pending_tag_eviction_count() const {
+    return m_observer.pending_tag_eviction_count;
+  }
+  uint64_t observer_pending_evict_to_response_count() const {
+    return m_observer.pending_evict_to_response_count;
+  }
+  uint64_t observer_pending_evict_to_response_sum_cycles() const {
+    return m_observer.pending_evict_to_response_sum_cycles;
+  }
+  uint64_t observer_pending_evict_to_response_max_cycles() const {
+    return m_observer.pending_evict_to_response_max_cycles;
+  }
+  size_t observer_live_records() const { return m_observer.live_records(); }
   uint64_t immediate_reclaims() const { return m_immediate_reclaims; }
   uint64_t deferred_reclaims() const { return m_deferred_reclaims; }
   uint64_t final_ref_reclaims() const { return m_final_ref_reclaims; }
@@ -838,6 +950,7 @@ class oo_frontend {
   // Solely an observer index: line -> original pending allocation identity.
   // It is never consulted by normal mechanism decisions.
   std::map<uint64_t, physical_identity> m_evicted_pending_lines;
+  post_fast64_lifetime_observer m_observer;
   std::vector<unsigned> m_tag_requests_this_cycle =
       std::vector<unsigned>(m_cfg.tag_banks, 0);
   unsigned m_total_tag_requests_this_cycle = 0;
@@ -1400,6 +1513,14 @@ struct paper_frontend_stats {
   uint64_t io_physical_releases = 0;
   uint64_t io_tag_evictions = 0;
   uint64_t io_duplicate_after_eviction = 0;
+  uint64_t io_alloc_to_ready_count = 0;
+  uint64_t io_alloc_to_ready_sum_cycles = 0;
+  uint64_t io_alloc_to_ready_max_cycles = 0;
+  uint64_t io_pending_tag_eviction_count = 0;
+  uint64_t io_pending_evict_to_response_count = 0;
+  uint64_t io_pending_evict_to_response_sum_cycles = 0;
+  uint64_t io_pending_evict_to_response_max_cycles = 0;
+  uint64_t io_observer_live_records = 0;
   uint64_t io_partial_allocation_events = 0;
   uint64_t io_allocation_width_limited_events = 0;
   uint64_t io_no_free_physical_events = 0;
@@ -1433,6 +1554,14 @@ struct paper_frontend_stats {
   uint64_t oo_new_misses = 0;
   uint64_t oo_tag_evictions = 0;
   uint64_t oo_duplicate_after_eviction = 0;
+  uint64_t oo_alloc_to_ready_count = 0;
+  uint64_t oo_alloc_to_ready_sum_cycles = 0;
+  uint64_t oo_alloc_to_ready_max_cycles = 0;
+  uint64_t oo_pending_tag_eviction_count = 0;
+  uint64_t oo_pending_evict_to_response_count = 0;
+  uint64_t oo_pending_evict_to_response_sum_cycles = 0;
+  uint64_t oo_pending_evict_to_response_max_cycles = 0;
+  uint64_t oo_observer_live_records = 0;
   uint64_t oo_immediate_reclaims = 0;
   uint64_t oo_deferred_reclaims = 0;
   uint64_t oo_final_ref_reclaims = 0;
@@ -1513,6 +1642,19 @@ struct paper_frontend_stats {
     io_physical_releases += other.io_physical_releases;
     io_tag_evictions += other.io_tag_evictions;
     io_duplicate_after_eviction += other.io_duplicate_after_eviction;
+    io_alloc_to_ready_count += other.io_alloc_to_ready_count;
+    io_alloc_to_ready_sum_cycles += other.io_alloc_to_ready_sum_cycles;
+    io_alloc_to_ready_max_cycles =
+        std::max(io_alloc_to_ready_max_cycles, other.io_alloc_to_ready_max_cycles);
+    io_pending_tag_eviction_count += other.io_pending_tag_eviction_count;
+    io_pending_evict_to_response_count +=
+        other.io_pending_evict_to_response_count;
+    io_pending_evict_to_response_sum_cycles +=
+        other.io_pending_evict_to_response_sum_cycles;
+    io_pending_evict_to_response_max_cycles = std::max(
+        io_pending_evict_to_response_max_cycles,
+        other.io_pending_evict_to_response_max_cycles);
+    io_observer_live_records += other.io_observer_live_records;
     io_partial_allocation_events += other.io_partial_allocation_events;
     io_allocation_width_limited_events += other.io_allocation_width_limited_events;
     io_no_free_physical_events += other.io_no_free_physical_events;
@@ -1559,6 +1701,19 @@ struct paper_frontend_stats {
     oo_new_misses += other.oo_new_misses;
     oo_tag_evictions += other.oo_tag_evictions;
     oo_duplicate_after_eviction += other.oo_duplicate_after_eviction;
+    oo_alloc_to_ready_count += other.oo_alloc_to_ready_count;
+    oo_alloc_to_ready_sum_cycles += other.oo_alloc_to_ready_sum_cycles;
+    oo_alloc_to_ready_max_cycles =
+        std::max(oo_alloc_to_ready_max_cycles, other.oo_alloc_to_ready_max_cycles);
+    oo_pending_tag_eviction_count += other.oo_pending_tag_eviction_count;
+    oo_pending_evict_to_response_count +=
+        other.oo_pending_evict_to_response_count;
+    oo_pending_evict_to_response_sum_cycles +=
+        other.oo_pending_evict_to_response_sum_cycles;
+    oo_pending_evict_to_response_max_cycles = std::max(
+        oo_pending_evict_to_response_max_cycles,
+        other.oo_pending_evict_to_response_max_cycles);
+    oo_observer_live_records += other.oo_observer_live_records;
     oo_immediate_reclaims += other.oo_immediate_reclaims;
     oo_deferred_reclaims += other.oo_deferred_reclaims;
     oo_final_ref_reclaims += other.oo_final_ref_reclaims;
