@@ -316,9 +316,9 @@ int main() {
   assert(io_observer.observer_alloc_to_ready_sum_cycles() == 30);
   // Both the original line and the replacement line are pending victims;
   // only the original has completed at this point.
-  assert(io_observer.observer_pending_tag_eviction_count() == 2);
-  assert(io_observer.observer_pending_evict_to_response_count() == 1);
-  assert(io_observer.observer_pending_evict_to_response_sum_cycles() == 20);
+  assert(io_observer.observer_pending_tag_evictions() == 2);
+  assert(io_observer.observer_pending_eviction_to_response_count() == 1);
+  assert(io_observer.observer_pending_eviction_to_response_sum_cycles() == 20);
   io_observer.complete(io_observer_evict.physical, 240);
   io_observer.complete(io_observer_duplicate.physical, 250);
   assert(io_observer.observer_alloc_to_ready_count() == 3);
@@ -475,14 +475,31 @@ int main() {
   oo_observer.complete(observer_old.physical, 330);
   assert(oo_observer.observer_alloc_to_ready_count() == 1);
   assert(oo_observer.observer_alloc_to_ready_sum_cycles() == 20);
-  assert(oo_observer.observer_pending_tag_eviction_count() == 2);
-  assert(oo_observer.observer_pending_evict_to_response_count() == 1);
-  assert(oo_observer.observer_pending_evict_to_response_sum_cycles() == 19);
+  assert(oo_observer.observer_pending_tag_evictions() == 2);
   oo_observer.complete(observer_evict.physical, 331);
   oo_observer.complete(observer_duplicate.physical, 332);
   assert(oo_observer.observer_alloc_to_ready_count() == 3);
   assert(oo_observer.observer_alloc_to_ready_sum_cycles() == 60);
+  // Both evicted Tags remain observer-live until the matching final Ref
+  // reclaim, which is deliberately later than their response completion.
+  assert(oo_observer.observer_live_records() == 2);
+  assert(oo_observer.retire_one_ready(333));
+  assert(oo_observer.retire_one_ready(334));
+  assert(oo_observer.retire_one_ready(335));
+  assert(oo_observer
+             .observer_deferred_tag_eviction_to_final_reclaim_count() == 2);
+  assert(oo_observer
+             .observer_deferred_tag_eviction_to_final_reclaim_sum_cycles() == 44);
+  assert(oo_observer
+             .observer_deferred_tag_eviction_to_final_reclaim_max_cycles() == 22);
   assert(oo_observer.observer_live_records() == 0);
+  // A valid Tag with no remaining Ref is an immediate reclaim and must not
+  // enter the deferred-lifetime family.
+  assert(oo_observer.admit(853));
+  const auto observer_immediate = oo_observer.access(340, 853, 384);
+  assert(observer_immediate.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(oo_observer
+             .observer_deferred_tag_eviction_to_final_reclaim_count() == 2);
 
   // A separate sequence makes the old pending identity complete before its
   // same-line re-access; it is an ordinary reallocation, not a duplicate.
