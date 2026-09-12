@@ -324,6 +324,32 @@ int main() {
   assert(io_observer.observer_alloc_to_ready_count() == 3);
   assert(io_observer.observer_alloc_to_ready_sum_cycles() == 90);
   assert(io_observer.observer_live_records() == 0);
+
+  // D1.6: occupancy samples are time integrals of state, not access-event
+  // counts.  The source hook supplies the live lower-request count.
+  config io_occupancy_cfg;
+  io_occupancy_cfg.selected_mode = mode::PAPER_IO;
+  io_occupancy_cfg.logical_sets = 2;
+  io_occupancy_cfg.logical_ways = 1;
+  io_occupancy_cfg.physical_lines = 2;
+  io_occupancy_cfg.post_fast64_telemetry = true;
+  dtc_l1::io_frontend io_occupancy(io_occupancy_cfg);
+  io_occupancy.observer_sample_sm_cycle(0);
+  assert(io_occupancy.admit(413));
+  const auto io_occupancy_first = io_occupancy.access(260, 413, 0);
+  assert(io_occupancy_first.kind == dtc_l1::io_access_kind::NEW_MISS);
+  io_occupancy.observer_sample_sm_cycle(3);
+  assert(io_occupancy.admit(414));
+  const auto io_occupancy_second = io_occupancy.access(261, 414, 128);
+  assert(io_occupancy_second.kind == dtc_l1::io_access_kind::NEW_MISS);
+  io_occupancy.observer_sample_sm_cycle(4);
+  assert(io_occupancy.observer_sample_sm_cycles() == 3);
+  assert(io_occupancy.observer_physical_allocated_line_cycles() == 3);
+  assert(io_occupancy.observer_physical_full_sm_cycles() == 1);
+  assert(io_occupancy.observer_inflight_request_cycles() == 7);
+  io_occupancy.complete(io_occupancy_first.physical, 262);
+  io_occupancy.complete(io_occupancy_second.physical, 262);
+  assert(io_occupancy.observer_live_records() == 0);
   pending_evict.complete(pending_old.physical);
   pending_evict.complete(replacement_pending.physical);
   pending_evict.complete(duplicate.physical);
@@ -488,6 +514,30 @@ int main() {
   assert(oo_observer.retire_one_ready(335));
   assert(oo_observer
              .observer_deferred_tag_eviction_to_final_reclaim_count() == 2);
+
+  config oo_occupancy_cfg;
+  oo_occupancy_cfg.selected_mode = mode::PAPER_OO;
+  oo_occupancy_cfg.logical_sets = 2;
+  oo_occupancy_cfg.logical_ways = 1;
+  oo_occupancy_cfg.physical_lines = 2;
+  oo_occupancy_cfg.post_fast64_telemetry = true;
+  dtc_l1::oo_frontend oo_occupancy(oo_occupancy_cfg);
+  oo_occupancy.observer_sample_sm_cycle(0);
+  assert(oo_occupancy.admit(854));
+  const auto oo_occupancy_first = oo_occupancy.access(350, 854, 0);
+  assert(oo_occupancy_first.kind == dtc_l1::io_access_kind::NEW_MISS);
+  oo_occupancy.observer_sample_sm_cycle(2);
+  assert(oo_occupancy.admit(855));
+  const auto oo_occupancy_second = oo_occupancy.access(351, 855, 128);
+  assert(oo_occupancy_second.kind == dtc_l1::io_access_kind::NEW_MISS);
+  oo_occupancy.observer_sample_sm_cycle(5);
+  assert(oo_occupancy.observer_sample_sm_cycles() == 3);
+  assert(oo_occupancy.observer_physical_allocated_line_cycles() == 3);
+  assert(oo_occupancy.observer_physical_full_sm_cycles() == 1);
+  assert(oo_occupancy.observer_inflight_request_cycles() == 7);
+  oo_occupancy.complete(oo_occupancy_first.physical, 352);
+  oo_occupancy.complete(oo_occupancy_second.physical, 352);
+  assert(oo_occupancy.observer_live_records() == 0);
   assert(oo_observer
              .observer_deferred_tag_eviction_to_final_reclaim_sum_cycles() == 44);
   assert(oo_observer
