@@ -2477,6 +2477,7 @@ class shader_core_config : public core_config {
   unsigned dtc_l1_pib_entries;
   unsigned dtc_l1_mshr_entries;
   unsigned dtc_l1_debug_event_limit;
+  unsigned dtc_l1_post_fast64_telemetry;
   unsigned dtc_l1_lower_outstanding_cap;
   unsigned dtc_l1_tag_banks;
   unsigned dtc_l1_tag_requests_per_bank_per_cycle;

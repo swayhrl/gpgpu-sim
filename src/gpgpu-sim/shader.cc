@@ -2233,8 +2233,10 @@ void ldst_unit::get_dtc_l1_stats(
           m_dtc_l1_oo_completion_dependencies_closed;
       oo.oo_valid_hits = m_dtc_l1_oo_frontend->valid_hits();
       oo.oo_pending_hits = m_dtc_l1_oo_frontend->pending_hits();
-      oo.oo_new_misses = m_dtc_l1_oo_frontend->new_misses();
-      oo.oo_tag_evictions = m_dtc_l1_oo_frontend->tag_evictions();
+    oo.oo_new_misses = m_dtc_l1_oo_frontend->new_misses();
+    oo.oo_tag_evictions = m_dtc_l1_oo_frontend->tag_evictions();
+    oo.oo_duplicate_after_eviction =
+        m_dtc_l1_oo_frontend->duplicate_after_eviction();
       oo.oo_immediate_reclaims = m_dtc_l1_oo_frontend->immediate_reclaims();
       oo.oo_deferred_reclaims = m_dtc_l1_oo_frontend->deferred_reclaims();
       oo.oo_final_ref_reclaims = m_dtc_l1_oo_frontend->final_ref_reclaims();
@@ -4211,6 +4213,8 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
   dtc_config.io_pib_entries = m_config->dtc_l1_io_pib_entries;
   dtc_config.oo_pib_entries = m_config->dtc_l1_oo_pib_entries;
   dtc_config.ref_count_bits = m_config->dtc_l1_ref_count_bits;
+  dtc_config.post_fast64_telemetry =
+      m_config->dtc_l1_post_fast64_telemetry != 0;
   m_dtc_l1_frontend = std::make_unique<dtc_l1::paper_frontend>(dtc_config);
   if (m_config->dtc_l1_mode == static_cast<unsigned>(dtc_l1::mode::PAPER_IO))
     m_dtc_l1_io_frontend = std::make_unique<dtc_l1::io_frontend>(dtc_config);
@@ -5757,6 +5761,9 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
             static_cast<unsigned long long>(total.oo_new_misses));
     fprintf(fout, "DTC_L1_oo_tag_evictions = %llu\n",
             static_cast<unsigned long long>(total.oo_tag_evictions));
+    fprintf(fout, "DTC_L1_oo_duplicate_after_eviction = %llu\n",
+            static_cast<unsigned long long>(
+                total.oo_duplicate_after_eviction));
     fprintf(fout, "DTC_L1_oo_immediate_reclaims = %llu\n",
             static_cast<unsigned long long>(total.oo_immediate_reclaims));
     fprintf(fout, "DTC_L1_oo_deferred_reclaims = %llu\n",

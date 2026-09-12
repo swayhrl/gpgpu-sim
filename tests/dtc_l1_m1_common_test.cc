@@ -431,6 +431,56 @@ int main() {
   assert(!oo.is_allocated(old_pending.physical));
   assert(oo.final_ref_reclaims() == 1);
 
+  // Post-FAST64 observer-only OO analogue of the IO duplicate definition:
+  // pending Tag eviction -> same-line NEW_MISS before old completion. The
+  // disabled control exercises the identical transitions but records nothing.
+  config oo_observer_cfg = oo_cfg;
+  oo_observer_cfg.post_fast64_telemetry = true;
+  dtc_l1::oo_frontend oo_observer(oo_observer_cfg);
+  assert(oo_observer.admit(850));
+  const auto observer_old = oo_observer.access(310, 850, 0);
+  assert(observer_old.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(oo_observer.admit(851));
+  const auto observer_evict = oo_observer.access(311, 851, 128);
+  assert(observer_evict.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(oo_observer.admit(852));
+  const auto observer_duplicate = oo_observer.access(312, 852, 0);
+  assert(observer_duplicate.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(oo_observer.duplicate_after_eviction() == 1);
+
+  // A separate sequence makes the old pending identity complete before its
+  // same-line re-access; it is an ordinary reallocation, not a duplicate.
+  dtc_l1::oo_frontend oo_observer_post_fill(oo_observer_cfg);
+  assert(oo_observer_post_fill.admit(870));
+  const auto post_fill_old = oo_observer_post_fill.access(320, 870, 0);
+  assert(oo_observer_post_fill.admit(871));
+  const auto post_fill_evict = oo_observer_post_fill.access(321, 871, 128);
+  assert(post_fill_old.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(post_fill_evict.kind == dtc_l1::io_access_kind::NEW_MISS);
+  oo_observer_post_fill.complete(post_fill_old.physical);
+  uint64_t observer_retired_uid = 0;
+  assert(oo_observer_post_fill.retire_one_ready(322, &observer_retired_uid));
+  assert(observer_retired_uid == 870);
+  assert(oo_observer_post_fill.admit(872));
+  const auto oo_post_fill_reaccess =
+      oo_observer_post_fill.access(323, 872, 0);
+  assert(oo_post_fill_reaccess.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(oo_observer_post_fill.duplicate_after_eviction() == 0);
+
+  config oo_observer_off_cfg = oo_observer_cfg;
+  oo_observer_off_cfg.post_fast64_telemetry = false;
+  dtc_l1::oo_frontend oo_observer_off(oo_observer_off_cfg);
+  assert(oo_observer_off.admit(860));
+  const auto off_old = oo_observer_off.access(310, 860, 0);
+  assert(oo_observer_off.admit(861));
+  const auto off_evict = oo_observer_off.access(311, 861, 128);
+  assert(oo_observer_off.admit(862));
+  const auto off_reaccess = oo_observer_off.access(312, 862, 0);
+  assert(off_old.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(off_evict.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(off_reaccess.kind == dtc_l1::io_access_kind::NEW_MISS);
+  assert(oo_observer_off.duplicate_after_eviction() == 0);
+
   // O03/O04/O10/O11: a valid hit and two pending readers each add exactly one
   // Ref; one fill wakes every pending dependency exactly once.
   assert(oo.admit(802));
