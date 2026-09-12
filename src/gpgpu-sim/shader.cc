@@ -2166,6 +2166,14 @@ void ldst_unit::get_dtc_l1_stats(
         m_dtc_l1_io_frontend->observer_pending_eviction_to_response_sum_cycles();
     io.io_pending_eviction_to_response_max_cycles =
         m_dtc_l1_io_frontend->observer_pending_eviction_to_response_max_cycles();
+    io.io_observer_sample_sm_cycles =
+        m_dtc_l1_io_frontend->observer_sample_sm_cycles();
+    io.io_physical_allocated_line_cycles =
+        m_dtc_l1_io_frontend->observer_physical_allocated_line_cycles();
+    io.io_physical_full_sm_cycles =
+        m_dtc_l1_io_frontend->observer_physical_full_sm_cycles();
+    io.io_inflight_request_cycles =
+        m_dtc_l1_io_frontend->observer_inflight_request_cycles();
     io.io_observer_live_records =
         m_dtc_l1_io_frontend->observer_live_records();
     io.io_partial_allocation_events =
@@ -2270,6 +2278,14 @@ void ldst_unit::get_dtc_l1_stats(
       oo.oo_deferred_tag_eviction_to_final_reclaim_max_cycles =
           m_dtc_l1_oo_frontend
               ->observer_deferred_tag_eviction_to_final_reclaim_max_cycles();
+      oo.oo_observer_sample_sm_cycles =
+          m_dtc_l1_oo_frontend->observer_sample_sm_cycles();
+      oo.oo_physical_allocated_line_cycles =
+          m_dtc_l1_oo_frontend->observer_physical_allocated_line_cycles();
+      oo.oo_physical_full_sm_cycles =
+          m_dtc_l1_oo_frontend->observer_physical_full_sm_cycles();
+      oo.oo_inflight_request_cycles =
+          m_dtc_l1_oo_frontend->observer_inflight_request_cycles();
       oo.oo_observer_live_records =
           m_dtc_l1_oo_frontend->observer_live_records();
       oo.oo_immediate_reclaims = m_dtc_l1_oo_frontend->immediate_reclaims();
@@ -2280,6 +2296,16 @@ void ldst_unit::get_dtc_l1_stats(
       oo.oo_physical_allocated = m_dtc_l1_oo_frontend->allocated_lines();
     }
     stats.add(oo);
+  }
+}
+
+void ldst_unit::sample_post_fast64_observer_cycle() {
+  if (dtc_l1_paper_io_active()) {
+    m_dtc_l1_io_frontend->observer_sample_sm_cycle(
+        m_dtc_l1_io_inflight.size());
+  } else if (m_dtc_l1_oo_frontend != nullptr) {
+    m_dtc_l1_oo_frontend->observer_sample_sm_cycle(
+        m_dtc_l1_oo_inflight.size());
   }
 }
 
@@ -5655,6 +5681,15 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
     fprintf(fout, "DTC_L1_io_pending_eviction_to_response_max_cycles = %llu\n",
             static_cast<unsigned long long>(
                 total.io_pending_eviction_to_response_max_cycles));
+    fprintf(fout, "DTC_L1_io_observer_sample_sm_cycles = %llu\n",
+            static_cast<unsigned long long>(total.io_observer_sample_sm_cycles));
+    fprintf(fout, "DTC_L1_io_physical_allocated_line_cycles = %llu\n",
+            static_cast<unsigned long long>(
+                total.io_physical_allocated_line_cycles));
+    fprintf(fout, "DTC_L1_io_physical_full_sm_cycles = %llu\n",
+            static_cast<unsigned long long>(total.io_physical_full_sm_cycles));
+    fprintf(fout, "DTC_L1_io_inflight_request_cycles = %llu\n",
+            static_cast<unsigned long long>(total.io_inflight_request_cycles));
     fprintf(fout, "DTC_L1_io_observer_live_records = %llu\n",
             static_cast<unsigned long long>(total.io_observer_live_records));
     fprintf(fout, "DTC_L1_io_partial_allocation_events = %llu\n",
@@ -5841,6 +5876,15 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
             "DTC_L1_oo_deferred_tag_eviction_to_final_reclaim_max_cycles = %llu\n",
             static_cast<unsigned long long>(
                 total.oo_deferred_tag_eviction_to_final_reclaim_max_cycles));
+    fprintf(fout, "DTC_L1_oo_observer_sample_sm_cycles = %llu\n",
+            static_cast<unsigned long long>(total.oo_observer_sample_sm_cycles));
+    fprintf(fout, "DTC_L1_oo_physical_allocated_line_cycles = %llu\n",
+            static_cast<unsigned long long>(
+                total.oo_physical_allocated_line_cycles));
+    fprintf(fout, "DTC_L1_oo_physical_full_sm_cycles = %llu\n",
+            static_cast<unsigned long long>(total.oo_physical_full_sm_cycles));
+    fprintf(fout, "DTC_L1_oo_inflight_request_cycles = %llu\n",
+            static_cast<unsigned long long>(total.oo_inflight_request_cycles));
     fprintf(fout, "DTC_L1_oo_observer_live_records = %llu\n",
             static_cast<unsigned long long>(total.oo_observer_live_records));
     fprintf(fout, "DTC_L1_oo_immediate_reclaims = %llu\n",
@@ -6422,6 +6466,10 @@ void shader_core_config::set_pipeline_latency() {
 void shader_core_ctx::cycle() {
   if (!isactive() && get_not_completed() == 0) return;
 
+  // This function is entered once for each source-active SM on a CORE tick.
+  // Sampling here, rather than in ldst_unit::cycle(), avoids the memory-unit
+  // port multiplier and leaves all mechanism decisions untouched.
+  m_ldst_unit->sample_post_fast64_observer_cycle();
   m_stats->shader_cycles[m_sid]++;
   writeback();
   execute();

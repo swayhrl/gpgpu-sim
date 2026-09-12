@@ -163,6 +163,17 @@ struct post_fast64_lifetime_observer {
     deferred_tag_evictions.erase(it);
   }
 
+  // This is called only from the source-proven once-per-active-SM-cycle
+  // hook.  It records current state without feeding a value back to the
+  // mechanism.
+  void sampled_sm_cycle(uint64_t allocated_lines, uint64_t physical_capacity,
+                        uint64_t inflight_requests) {
+    ++observer_sample_sm_cycles;
+    physical_allocated_line_cycles += allocated_lines;
+    if (allocated_lines == physical_capacity) ++physical_full_sm_cycles;
+    inflight_request_cycles += inflight_requests;
+  }
+
   size_t live_records() const {
     return allocations.size() + deferred_tag_evictions.size();
   }
@@ -177,6 +188,10 @@ struct post_fast64_lifetime_observer {
   uint64_t deferred_tag_eviction_to_final_reclaim_count = 0;
   uint64_t deferred_tag_eviction_to_final_reclaim_sum_cycles = 0;
   uint64_t deferred_tag_eviction_to_final_reclaim_max_cycles = 0;
+  uint64_t observer_sample_sm_cycles = 0;
+  uint64_t physical_allocated_line_cycles = 0;
+  uint64_t physical_full_sm_cycles = 0;
+  uint64_t inflight_request_cycles = 0;
 
  private:
   std::map<std::pair<unsigned, uint64_t>, record> allocations;
@@ -385,6 +400,23 @@ class io_frontend {
   }
   uint64_t observer_pending_eviction_to_response_max_cycles() const {
     return m_observer.pending_eviction_to_response_max_cycles;
+  }
+  void observer_sample_sm_cycle(uint64_t inflight_requests) {
+    if (!m_cfg.post_fast64_telemetry) return;
+    m_observer.sampled_sm_cycle(allocated_lines(), m_phys.size(),
+                                inflight_requests);
+  }
+  uint64_t observer_sample_sm_cycles() const {
+    return m_observer.observer_sample_sm_cycles;
+  }
+  uint64_t observer_physical_allocated_line_cycles() const {
+    return m_observer.physical_allocated_line_cycles;
+  }
+  uint64_t observer_physical_full_sm_cycles() const {
+    return m_observer.physical_full_sm_cycles;
+  }
+  uint64_t observer_inflight_request_cycles() const {
+    return m_observer.inflight_request_cycles;
   }
   size_t observer_live_records() const { return m_observer.live_records(); }
   uint64_t partial_allocation_events() const { return m_partial_allocation_events; }
@@ -784,6 +816,23 @@ class oo_frontend {
   }
   uint64_t observer_deferred_tag_eviction_to_final_reclaim_max_cycles() const {
     return m_observer.deferred_tag_eviction_to_final_reclaim_max_cycles;
+  }
+  void observer_sample_sm_cycle(uint64_t inflight_requests) {
+    if (!m_cfg.post_fast64_telemetry) return;
+    m_observer.sampled_sm_cycle(allocated_lines(), m_phys.size(),
+                                inflight_requests);
+  }
+  uint64_t observer_sample_sm_cycles() const {
+    return m_observer.observer_sample_sm_cycles;
+  }
+  uint64_t observer_physical_allocated_line_cycles() const {
+    return m_observer.physical_allocated_line_cycles;
+  }
+  uint64_t observer_physical_full_sm_cycles() const {
+    return m_observer.physical_full_sm_cycles;
+  }
+  uint64_t observer_inflight_request_cycles() const {
+    return m_observer.inflight_request_cycles;
   }
   size_t observer_live_records() const { return m_observer.live_records(); }
   uint64_t immediate_reclaims() const { return m_immediate_reclaims; }
@@ -1552,6 +1601,10 @@ struct paper_frontend_stats {
   uint64_t io_pending_eviction_to_response_count = 0;
   uint64_t io_pending_eviction_to_response_sum_cycles = 0;
   uint64_t io_pending_eviction_to_response_max_cycles = 0;
+  uint64_t io_observer_sample_sm_cycles = 0;
+  uint64_t io_physical_allocated_line_cycles = 0;
+  uint64_t io_physical_full_sm_cycles = 0;
+  uint64_t io_inflight_request_cycles = 0;
   uint64_t io_observer_live_records = 0;
   uint64_t io_partial_allocation_events = 0;
   uint64_t io_allocation_width_limited_events = 0;
@@ -1593,6 +1646,10 @@ struct paper_frontend_stats {
   uint64_t oo_deferred_tag_eviction_to_final_reclaim_count = 0;
   uint64_t oo_deferred_tag_eviction_to_final_reclaim_sum_cycles = 0;
   uint64_t oo_deferred_tag_eviction_to_final_reclaim_max_cycles = 0;
+  uint64_t oo_observer_sample_sm_cycles = 0;
+  uint64_t oo_physical_allocated_line_cycles = 0;
+  uint64_t oo_physical_full_sm_cycles = 0;
+  uint64_t oo_inflight_request_cycles = 0;
   uint64_t oo_observer_live_records = 0;
   uint64_t oo_immediate_reclaims = 0;
   uint64_t oo_deferred_reclaims = 0;
@@ -1686,6 +1743,11 @@ struct paper_frontend_stats {
     io_pending_eviction_to_response_max_cycles = std::max(
         io_pending_eviction_to_response_max_cycles,
         other.io_pending_eviction_to_response_max_cycles);
+    io_observer_sample_sm_cycles += other.io_observer_sample_sm_cycles;
+    io_physical_allocated_line_cycles +=
+        other.io_physical_allocated_line_cycles;
+    io_physical_full_sm_cycles += other.io_physical_full_sm_cycles;
+    io_inflight_request_cycles += other.io_inflight_request_cycles;
     io_observer_live_records += other.io_observer_live_records;
     io_partial_allocation_events += other.io_partial_allocation_events;
     io_allocation_width_limited_events += other.io_allocation_width_limited_events;
@@ -1745,6 +1807,11 @@ struct paper_frontend_stats {
     oo_deferred_tag_eviction_to_final_reclaim_max_cycles = std::max(
         oo_deferred_tag_eviction_to_final_reclaim_max_cycles,
         other.oo_deferred_tag_eviction_to_final_reclaim_max_cycles);
+    oo_observer_sample_sm_cycles += other.oo_observer_sample_sm_cycles;
+    oo_physical_allocated_line_cycles +=
+        other.oo_physical_allocated_line_cycles;
+    oo_physical_full_sm_cycles += other.oo_physical_full_sm_cycles;
+    oo_inflight_request_cycles += other.oo_inflight_request_cycles;
     oo_observer_live_records += other.oo_observer_live_records;
     oo_immediate_reclaims += other.oo_immediate_reclaims;
     oo_deferred_reclaims += other.oo_deferred_reclaims;
