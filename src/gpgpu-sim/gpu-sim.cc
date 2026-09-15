@@ -1147,14 +1147,6 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
   m_dtc_l1_lower_cap_full_events = 0;
   m_dtc_l1_lower_requests_acquired = 0;
   m_dtc_l1_lower_requests_released = 0;
-  m_l1_lower_traffic_conventional_transactions = 0;
-  m_l1_lower_traffic_conventional_payload_bytes = 0;
-  m_l1_lower_traffic_dtc_io_transactions = 0;
-  m_l1_lower_traffic_dtc_io_payload_bytes = 0;
-  m_l1_lower_traffic_dtc_oo_transactions = 0;
-  m_l1_lower_traffic_dtc_oo_payload_bytes = 0;
-  m_l1_lower_traffic_dtc_sector_transactions = 0;
-  m_l1_lower_traffic_dtc_sector_payload_bytes = 0;
   last_streamID = -1;
 
   gpu_kernel_time.clear();
@@ -1384,26 +1376,7 @@ void gpgpu_sim::observe_l1_lower_read(
   // an existing request has been constructed and cannot influence admission,
   // allocation, lower-credit ownership, queues, or request contents.
   if (!m_shader_config->gpgpu_l1_lower_traffic_observer) return;
-  assert(payload_bytes > 0);
-  switch (path) {
-    case l1_lower_traffic_observer_path::CONVENTIONAL:
-      ++m_l1_lower_traffic_conventional_transactions;
-      m_l1_lower_traffic_conventional_payload_bytes += payload_bytes;
-      return;
-    case l1_lower_traffic_observer_path::DTC_IO:
-      ++m_l1_lower_traffic_dtc_io_transactions;
-      m_l1_lower_traffic_dtc_io_payload_bytes += payload_bytes;
-      return;
-    case l1_lower_traffic_observer_path::DTC_OO:
-      ++m_l1_lower_traffic_dtc_oo_transactions;
-      m_l1_lower_traffic_dtc_oo_payload_bytes += payload_bytes;
-      return;
-    case l1_lower_traffic_observer_path::DTC_SECTOR:
-      ++m_l1_lower_traffic_dtc_sector_transactions;
-      m_l1_lower_traffic_dtc_sector_payload_bytes += payload_bytes;
-      return;
-  }
-  assert(0 && "unknown lower-traffic observer path");
+  m_l1_lower_traffic_observer_counters.observe(path, payload_bytes);
 }
 
 void sst_gpgpu_sim::SST_receive_mem_reply(unsigned core_id, void *mem_req) {

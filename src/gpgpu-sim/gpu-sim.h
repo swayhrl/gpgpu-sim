@@ -77,6 +77,67 @@ enum class l1_lower_traffic_observer_path {
   DTC_SECTOR,
 };
 
+// Storage-only accounting primitive for the dedicated SG5 observer.  Keeping
+// this independent of gpgpu_sim lets the deterministic fixture exercise the
+// exact production increment logic without constructing a simulator or
+// touching a cache/queue/allocation path.
+class l1_lower_traffic_observer_counters {
+ public:
+  void observe(l1_lower_traffic_observer_path path, unsigned payload_bytes) {
+    assert(payload_bytes > 0);
+    switch (path) {
+      case l1_lower_traffic_observer_path::CONVENTIONAL:
+        ++m_conventional_transactions;
+        m_conventional_payload_bytes += payload_bytes;
+        return;
+      case l1_lower_traffic_observer_path::DTC_IO:
+        ++m_dtc_io_transactions;
+        m_dtc_io_payload_bytes += payload_bytes;
+        return;
+      case l1_lower_traffic_observer_path::DTC_OO:
+        ++m_dtc_oo_transactions;
+        m_dtc_oo_payload_bytes += payload_bytes;
+        return;
+      case l1_lower_traffic_observer_path::DTC_SECTOR:
+        ++m_dtc_sector_transactions;
+        m_dtc_sector_payload_bytes += payload_bytes;
+        return;
+    }
+    assert(0 && "unknown lower-traffic observer path");
+  }
+
+  unsigned long long conventional_transactions() const {
+    return m_conventional_transactions;
+  }
+  unsigned long long conventional_payload_bytes() const {
+    return m_conventional_payload_bytes;
+  }
+  unsigned long long dtc_io_transactions() const { return m_dtc_io_transactions; }
+  unsigned long long dtc_io_payload_bytes() const {
+    return m_dtc_io_payload_bytes;
+  }
+  unsigned long long dtc_oo_transactions() const { return m_dtc_oo_transactions; }
+  unsigned long long dtc_oo_payload_bytes() const {
+    return m_dtc_oo_payload_bytes;
+  }
+  unsigned long long dtc_sector_transactions() const {
+    return m_dtc_sector_transactions;
+  }
+  unsigned long long dtc_sector_payload_bytes() const {
+    return m_dtc_sector_payload_bytes;
+  }
+
+ private:
+  unsigned long long m_conventional_transactions = 0;
+  unsigned long long m_conventional_payload_bytes = 0;
+  unsigned long long m_dtc_io_transactions = 0;
+  unsigned long long m_dtc_io_payload_bytes = 0;
+  unsigned long long m_dtc_oo_transactions = 0;
+  unsigned long long m_dtc_oo_payload_bytes = 0;
+  unsigned long long m_dtc_sector_transactions = 0;
+  unsigned long long m_dtc_sector_payload_bytes = 0;
+};
+
 extern tr1_hash_map<new_addr_type, unsigned> address_random_interleaving;
 
 // SST communication functions
@@ -733,28 +794,28 @@ class gpgpu_sim : public gpgpu_t {
     return m_shader_config->gpgpu_l1_lower_traffic_observer != 0;
   }
   unsigned long long l1_lower_traffic_conventional_transactions() const {
-    return m_l1_lower_traffic_conventional_transactions;
+    return m_l1_lower_traffic_observer_counters.conventional_transactions();
   }
   unsigned long long l1_lower_traffic_conventional_payload_bytes() const {
-    return m_l1_lower_traffic_conventional_payload_bytes;
+    return m_l1_lower_traffic_observer_counters.conventional_payload_bytes();
   }
   unsigned long long l1_lower_traffic_dtc_io_transactions() const {
-    return m_l1_lower_traffic_dtc_io_transactions;
+    return m_l1_lower_traffic_observer_counters.dtc_io_transactions();
   }
   unsigned long long l1_lower_traffic_dtc_io_payload_bytes() const {
-    return m_l1_lower_traffic_dtc_io_payload_bytes;
+    return m_l1_lower_traffic_observer_counters.dtc_io_payload_bytes();
   }
   unsigned long long l1_lower_traffic_dtc_oo_transactions() const {
-    return m_l1_lower_traffic_dtc_oo_transactions;
+    return m_l1_lower_traffic_observer_counters.dtc_oo_transactions();
   }
   unsigned long long l1_lower_traffic_dtc_oo_payload_bytes() const {
-    return m_l1_lower_traffic_dtc_oo_payload_bytes;
+    return m_l1_lower_traffic_observer_counters.dtc_oo_payload_bytes();
   }
   unsigned long long l1_lower_traffic_dtc_sector_transactions() const {
-    return m_l1_lower_traffic_dtc_sector_transactions;
+    return m_l1_lower_traffic_observer_counters.dtc_sector_transactions();
   }
   unsigned long long l1_lower_traffic_dtc_sector_payload_bytes() const {
-    return m_l1_lower_traffic_dtc_sector_payload_bytes;
+    return m_l1_lower_traffic_observer_counters.dtc_sector_payload_bytes();
   }
 
   // backward pointer
@@ -852,14 +913,7 @@ class gpgpu_sim : public gpgpu_t {
   unsigned long long m_dtc_l1_lower_cap_full_events;
   unsigned long long m_dtc_l1_lower_requests_acquired;
   unsigned long long m_dtc_l1_lower_requests_released;
-  unsigned long long m_l1_lower_traffic_conventional_transactions;
-  unsigned long long m_l1_lower_traffic_conventional_payload_bytes;
-  unsigned long long m_l1_lower_traffic_dtc_io_transactions;
-  unsigned long long m_l1_lower_traffic_dtc_io_payload_bytes;
-  unsigned long long m_l1_lower_traffic_dtc_oo_transactions;
-  unsigned long long m_l1_lower_traffic_dtc_oo_payload_bytes;
-  unsigned long long m_l1_lower_traffic_dtc_sector_transactions;
-  unsigned long long m_l1_lower_traffic_dtc_sector_payload_bytes;
+  l1_lower_traffic_observer_counters m_l1_lower_traffic_observer_counters;
 
   std::string executed_kernel_info_string();  //< format the kernel information
                                               // into a string for stat printout
