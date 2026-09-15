@@ -374,17 +374,28 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
       }
       break;
     case SECTOR_MISS:
-      assert(m_config.m_cache_type == SECTOR);
-      m_sector_miss++;
-      shader_cache_access_log(m_core_id, m_type_id, 1);  // log cache misses
-      if (m_config.m_alloc_policy == ON_MISS) {
-        bool before = m_lines[idx]->is_modified_line();
-        ((sector_cache_block *)m_lines[idx])
-            ->allocate_sector(time, mf->get_access_sector_mask());
-        if (before && !m_lines[idx]->is_modified_line()) {
-          m_dirty--;
+      // A NORMAL cache has one line-valid state rather than independent
+      // sector-valid states.  With write-through + lazy-fetch-on-read, a
+      // partial write can leave that line unreadable until a later read
+      // fetches the complete normal-cache atom.  probe() uses SECTOR_MISS as
+      // its existing "same tag, data unavailable" outcome in both cache
+      // types.  For NORMAL, retain the allocated tag and let the caller issue
+      // the full-line miss; sector allocation is neither valid nor needed.
+      if (m_config.m_cache_type == NORMAL) {
+        m_miss++;
+      } else {
+        assert(m_config.m_cache_type == SECTOR);
+        m_sector_miss++;
+        if (m_config.m_alloc_policy == ON_MISS) {
+          bool before = m_lines[idx]->is_modified_line();
+          ((sector_cache_block *)m_lines[idx])
+              ->allocate_sector(time, mf->get_access_sector_mask());
+          if (before && !m_lines[idx]->is_modified_line()) {
+            m_dirty--;
+          }
         }
       }
+      shader_cache_access_log(m_core_id, m_type_id, 1);  // log cache misses
       break;
     case RESERVATION_FAIL:
       m_res_fail++;
@@ -442,7 +453,9 @@ void tag_array::fill(unsigned index, unsigned time, mem_fetch *mf) {
   bool before = m_lines[index]->is_modified_line();
   m_lines[index]->fill(time, mf->get_access_sector_mask(),
                        mf->get_access_byte_mask());
-  if (m_lines[index]->is_modified_line() && !before) {
+  if (before && !m_lines[index]->is_modified_line()) {
+    m_dirty--;
+  } else if (m_lines[index]->is_modified_line() && !before) {
     m_dirty++;
   }
 }
