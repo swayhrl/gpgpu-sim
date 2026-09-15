@@ -1275,11 +1275,16 @@ void baseline_cache::retire_pending_invalidate() {
 /// Interface for response from lower memory level (model bandwidth restictions
 /// in caller)
 void baseline_cache::fill(mem_fetch *mf, unsigned time) {
-  if (m_config.m_mshr_type == SECTOR_ASSOC) {
-    assert(mf->get_original_mf());
+  // L2 can return sector fragments for either a sectorized or a NORMAL L1
+  // request.  In both cases the extra-fields map belongs to the original
+  // lower request, not to an individual response fragment.  Restrict this
+  // reconciliation to an actual fragment relationship so an unsplit reply
+  // continues through the existing direct-owner path unchanged.
+  if (mf->get_original_mf()) {
     extra_mf_fields_lookup::iterator e =
         m_extra_mf_fields.find(mf->get_original_mf());
     assert(e != m_extra_mf_fields.end());
+    assert(e->second.pending_read > 0);
     e->second.pending_read--;
 
     if (e->second.pending_read > 0) {
