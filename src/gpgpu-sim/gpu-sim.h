@@ -69,6 +69,14 @@
 
 class gpgpu_context;
 
+// Reporting categories only; they never select a request path.
+enum class l1_lower_traffic_observer_path {
+  CONVENTIONAL,
+  DTC_IO,
+  DTC_OO,
+  DTC_SECTOR,
+};
+
 extern tr1_hash_map<new_addr_type, unsigned> address_random_interleaving;
 
 // SST communication functions
@@ -719,6 +727,35 @@ class gpgpu_sim : public gpgpu_t {
   unsigned long long dtc_l1_lower_requests_released() const {
     return m_dtc_l1_lower_requests_released;
   }
+  void observe_l1_lower_read(l1_lower_traffic_observer_path path,
+                             unsigned payload_bytes);
+  bool l1_lower_traffic_observer_enabled() const {
+    return m_shader_config->gpgpu_l1_lower_traffic_observer != 0;
+  }
+  unsigned long long l1_lower_traffic_conventional_transactions() const {
+    return m_l1_lower_traffic_conventional_transactions;
+  }
+  unsigned long long l1_lower_traffic_conventional_payload_bytes() const {
+    return m_l1_lower_traffic_conventional_payload_bytes;
+  }
+  unsigned long long l1_lower_traffic_dtc_io_transactions() const {
+    return m_l1_lower_traffic_dtc_io_transactions;
+  }
+  unsigned long long l1_lower_traffic_dtc_io_payload_bytes() const {
+    return m_l1_lower_traffic_dtc_io_payload_bytes;
+  }
+  unsigned long long l1_lower_traffic_dtc_oo_transactions() const {
+    return m_l1_lower_traffic_dtc_oo_transactions;
+  }
+  unsigned long long l1_lower_traffic_dtc_oo_payload_bytes() const {
+    return m_l1_lower_traffic_dtc_oo_payload_bytes;
+  }
+  unsigned long long l1_lower_traffic_dtc_sector_transactions() const {
+    return m_l1_lower_traffic_dtc_sector_transactions;
+  }
+  unsigned long long l1_lower_traffic_dtc_sector_payload_bytes() const {
+    return m_l1_lower_traffic_dtc_sector_payload_bytes;
+  }
 
   // backward pointer
   class gpgpu_context *gpgpu_ctx;
@@ -815,6 +852,14 @@ class gpgpu_sim : public gpgpu_t {
   unsigned long long m_dtc_l1_lower_cap_full_events;
   unsigned long long m_dtc_l1_lower_requests_acquired;
   unsigned long long m_dtc_l1_lower_requests_released;
+  unsigned long long m_l1_lower_traffic_conventional_transactions;
+  unsigned long long m_l1_lower_traffic_conventional_payload_bytes;
+  unsigned long long m_l1_lower_traffic_dtc_io_transactions;
+  unsigned long long m_l1_lower_traffic_dtc_io_payload_bytes;
+  unsigned long long m_l1_lower_traffic_dtc_oo_transactions;
+  unsigned long long m_l1_lower_traffic_dtc_oo_payload_bytes;
+  unsigned long long m_l1_lower_traffic_dtc_sector_transactions;
+  unsigned long long m_l1_lower_traffic_dtc_sector_payload_bytes;
 
   std::string executed_kernel_info_string();  //< format the kernel information
                                               // into a string for stat printout
