@@ -1445,9 +1445,11 @@ class baseline_cache : public cache_t {
       m_addr = ad;
       m_cache_index = i;
       m_data_size = d;
-      pending_read = m_config.m_mshr_type == SECTOR_ASSOC
-                         ? m_config.m_line_sz / SECTOR_SIZE
-                         : 0;
+      // A 128-B conventional NORMAL request may be fragmented by the sector
+      // L2 just like a sector-L1 request.  The fill owner is the original
+      // mem_fetch in both cases, so retain the expected sector-return count
+      // independent of the L1 MSHR organization.
+      pending_read = m_config.m_line_sz / SECTOR_SIZE;
     }
     bool m_valid;
     new_addr_type m_block_addr;
