@@ -1503,6 +1503,11 @@ void baseline_cache::send_read_request(new_addr_type addr,
         mshr_addr, mf->get_addr(), cache_index, mf->get_data_size(), m_config);
     mf->set_data_size(m_config.get_atom_sz());
     mf->set_addr(mshr_addr);
+    // Observer-only accounting follows the frozen atom-size rewrite, so S
+    // reports 32 B and N reports 128 B without changing the lower request.
+    if (m_level == L1_GPU_CACHE)
+      m_gpu->observe_l1_lower_read(
+          l1_lower_traffic_observer_path::CONVENTIONAL, mf->get_data_size());
     m_miss_queue.push_back(mf);
     mf->set_status(m_miss_queue_status, time);
     if (!wa) events.push_back(cache_event(READ_REQUEST_SENT));

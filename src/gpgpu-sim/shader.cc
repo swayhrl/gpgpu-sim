@@ -3101,6 +3101,8 @@ void ldst_unit::dtc_l1_io_issue_lower_requests() {
     m_dtc_l1_io_lower_issue_queue.push_back(mf);
     m_dtc_l1_io_lower_create_queue.pop_front();
     ++m_dtc_l1_io_lower_created;
+    m_core->get_gpu()->observe_l1_lower_read(
+        l1_lower_traffic_observer_path::DTC_IO, mf->get_data_size());
     m_dtc_l1_io_last_progress_cycle = cycle;
     m_dtc_l1_io_inflight_peak =
         std::max(m_dtc_l1_io_inflight_peak,
@@ -3397,6 +3399,11 @@ void ldst_unit::dtc_l1_oo_issue_lower_requests() {
     m_dtc_l1_oo_lower_issue_queue.push_back(mf);
     m_dtc_l1_oo_lower_create_queue.pop_front();
     ++m_dtc_l1_oo_lower_created;
+    m_core->get_gpu()->observe_l1_lower_read(
+        dtc_l1_sector_oo_active()
+            ? l1_lower_traffic_observer_path::DTC_SECTOR
+            : l1_lower_traffic_observer_path::DTC_OO,
+        mf->get_data_size());
   }
   // Frozen lower issue width: one request per SM/cycle.
   if (!m_dtc_l1_oo_lower_issue_queue.empty()) {
@@ -5569,12 +5576,39 @@ void gpgpu_sim::shader_print_cache_stats(FILE *fout) const {
 
 void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
   const unsigned mode = m_shader_config->dtc_l1_mode;
-  if (mode != static_cast<unsigned>(dtc_l1::mode::PAPER_BASE) &&
-      mode != static_cast<unsigned>(dtc_l1::mode::PAPER_IO) &&
-      mode != static_cast<unsigned>(dtc_l1::mode::PAPER_OO) &&
-      mode != static_cast<unsigned>(dtc_l1::mode::MODERN_OO_SECTOR)) {
+  const bool dtc_paper_mode =
+      mode == static_cast<unsigned>(dtc_l1::mode::PAPER_BASE) ||
+      mode == static_cast<unsigned>(dtc_l1::mode::PAPER_IO) ||
+      mode == static_cast<unsigned>(dtc_l1::mode::PAPER_OO) ||
+      mode == static_cast<unsigned>(dtc_l1::mode::MODERN_OO_SECTOR);
+  const auto print_sg5_lower_traffic = [&]() {
+    if (!l1_lower_traffic_observer_enabled()) return;
+    fprintf(fout, "SG5_l1_lower_traffic_observer = 1\n");
+    fprintf(fout, "SG5_conventional_lower_read_transactions = %llu\n",
+            l1_lower_traffic_conventional_transactions());
+    fprintf(fout, "SG5_conventional_lower_read_payload_bytes = %llu\n",
+            l1_lower_traffic_conventional_payload_bytes());
+    fprintf(fout, "SG5_dtc_io_lower_transactions = %llu\n",
+            l1_lower_traffic_dtc_io_transactions());
+    fprintf(fout, "SG5_dtc_io_lower_payload_bytes = %llu\n",
+            l1_lower_traffic_dtc_io_payload_bytes());
+    fprintf(fout, "SG5_dtc_oo_lower_transactions = %llu\n",
+            l1_lower_traffic_dtc_oo_transactions());
+    fprintf(fout, "SG5_dtc_oo_lower_payload_bytes = %llu\n",
+            l1_lower_traffic_dtc_oo_payload_bytes());
+    // Sector OO is deliberately a distinct family, never a PAPER_OO proxy.
+    fprintf(fout, "SG5_dtc_sector_lower_transactions = %llu\n",
+            l1_lower_traffic_dtc_sector_transactions());
+    fprintf(fout, "SG5_dtc_sector_lower_payload_bytes = %llu\n",
+            l1_lower_traffic_dtc_sector_payload_bytes());
+  };
+  if (!dtc_paper_mode && !l1_lower_traffic_observer_enabled()) return;
+  if (!dtc_paper_mode) {
+    print_sg5_lower_traffic();
     return;
   }
+
+  print_sg5_lower_traffic();
 
   dtc_l1::paper_frontend_stats total;
   cache_stats l1d_stats;
