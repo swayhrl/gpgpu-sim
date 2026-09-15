@@ -1259,7 +1259,10 @@ void baseline_cache::fill(mem_fetch *mf, unsigned time) {
   // lower request, not to an individual response fragment.  Restrict this
   // reconciliation to an actual fragment relationship so an unsplit reply
   // continues through the existing direct-owner path unchanged.
-  if (mf->get_original_mf()) {
+  // At L2, original_mf points back to an L1 owner and is not owned by this
+  // cache's extra-fields map.  Only the conventional L1 fill reconciles its
+  // own split lower request.
+  if (m_level == L1_GPU_CACHE && mf->get_original_mf()) {
     extra_mf_fields_lookup::iterator e =
         m_extra_mf_fields.find(mf->get_original_mf());
     assert(e != m_extra_mf_fields.end());
