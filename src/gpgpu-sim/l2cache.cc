@@ -697,6 +697,11 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
     mf->set_status(IN_PARTITION_ICNT_TO_L2_QUEUE,
                    m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
   }
+  // Sample once after this L2 bank's existing cache-cycle work.  Both
+  // accessors are read-only; the observer cannot affect L2 acceptance.
+  if (!m_config->m_L2_config.disabled())
+    m_gpu->observe_sg3_l2_occupancy(m_L2cache->mshr_occupancy(),
+                                    m_L2cache->miss_queue_occupancy());
 }
 
 bool memory_sub_partition::full() const { return m_icnt_L2_queue->full(); }

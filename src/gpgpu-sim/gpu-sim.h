@@ -37,6 +37,7 @@
 #include <fstream>
 #include <iostream>
 #include <list>
+#include <map>
 #include "../abstract_hardware_model.h"
 #include "../option_parser.h"
 #include "../trace.h"
@@ -136,6 +137,77 @@ class l1_lower_traffic_observer_counters {
   unsigned long long m_dtc_oo_payload_bytes = 0;
   unsigned long long m_dtc_sector_transactions = 0;
   unsigned long long m_dtc_sector_payload_bytes = 0;
+};
+
+// Storage-only accounting primitive for the dedicated SG3 observer.  Samples
+// are supplied by existing clock-domain call sites after their functional
+// work; this class has no pointer back into any cache, queue, or scheduler.
+class sg3_downstream_observer_counters {
+ public:
+  void sample_dtc_outstanding(unsigned outstanding) {
+    ++m_dtc_core_samples;
+    m_dtc_outstanding_integral += outstanding;
+  }
+  void sample_l2_occupancy(unsigned mshr, unsigned miss_queue) {
+    ++m_l2_bank_samples;
+    m_l2_mshr_integral += mshr;
+    m_l2_miss_queue_integral += miss_queue;
+  }
+  void lower_created(unsigned sid, unsigned request_uid, uint64_t cycle) {
+    const uint64_t key = (static_cast<uint64_t>(sid) << 32) | request_uid;
+    const bool inserted = m_lower_birth_cycle.emplace(key, cycle).second;
+    assert(inserted && "SG3 lower-request observer key must be unique");
+  }
+  void lower_completed(unsigned sid, unsigned request_uid, uint64_t cycle) {
+    const uint64_t key = (static_cast<uint64_t>(sid) << 32) | request_uid;
+    const auto it = m_lower_birth_cycle.find(key);
+    if (it == m_lower_birth_cycle.end()) {
+      ++m_lower_lifetime_unmatched_completions;
+      return;
+    }
+    assert(cycle >= it->second);
+    ++m_lower_lifetime_completed;
+    m_lower_lifetime_sum_cycles += cycle - it->second;
+    if (cycle - it->second > m_lower_lifetime_max_cycles)
+      m_lower_lifetime_max_cycles = cycle - it->second;
+    m_lower_birth_cycle.erase(it);
+  }
+  unsigned long long dtc_core_samples() const { return m_dtc_core_samples; }
+  unsigned long long dtc_outstanding_integral() const {
+    return m_dtc_outstanding_integral;
+  }
+  unsigned long long l2_bank_samples() const { return m_l2_bank_samples; }
+  unsigned long long l2_mshr_integral() const { return m_l2_mshr_integral; }
+  unsigned long long l2_miss_queue_integral() const {
+    return m_l2_miss_queue_integral;
+  }
+  unsigned long long lower_lifetime_completed() const {
+    return m_lower_lifetime_completed;
+  }
+  unsigned long long lower_lifetime_sum_cycles() const {
+    return m_lower_lifetime_sum_cycles;
+  }
+  unsigned long long lower_lifetime_max_cycles() const {
+    return m_lower_lifetime_max_cycles;
+  }
+  unsigned long long lower_lifetime_unmatched_completions() const {
+    return m_lower_lifetime_unmatched_completions;
+  }
+  unsigned lower_lifetime_live_records() const {
+    return static_cast<unsigned>(m_lower_birth_cycle.size());
+  }
+
+ private:
+  unsigned long long m_dtc_core_samples = 0;
+  unsigned long long m_dtc_outstanding_integral = 0;
+  unsigned long long m_l2_bank_samples = 0;
+  unsigned long long m_l2_mshr_integral = 0;
+  unsigned long long m_l2_miss_queue_integral = 0;
+  unsigned long long m_lower_lifetime_completed = 0;
+  unsigned long long m_lower_lifetime_sum_cycles = 0;
+  unsigned long long m_lower_lifetime_max_cycles = 0;
+  unsigned long long m_lower_lifetime_unmatched_completions = 0;
+  std::map<uint64_t, uint64_t> m_lower_birth_cycle;
 };
 
 extern tr1_hash_map<new_addr_type, unsigned> address_random_interleaving;
@@ -793,6 +865,46 @@ class gpgpu_sim : public gpgpu_t {
   bool l1_lower_traffic_observer_enabled() const {
     return m_shader_config->gpgpu_l1_lower_traffic_observer != 0;
   }
+  bool sg3_downstream_observer_enabled() const {
+    return m_shader_config->gpgpu_sg3_downstream_observer != 0;
+  }
+  void observe_sg3_dtc_outstanding();
+  void observe_sg3_l2_occupancy(unsigned mshr, unsigned miss_queue);
+  void observe_sg3_lower_created(unsigned sid, unsigned request_uid,
+                                 uint64_t cycle);
+  void observe_sg3_lower_completed(unsigned sid, unsigned request_uid,
+                                   uint64_t cycle);
+  unsigned long long sg3_dtc_core_samples() const {
+    return m_sg3_downstream_observer_counters.dtc_core_samples();
+  }
+  unsigned long long sg3_dtc_outstanding_integral() const {
+    return m_sg3_downstream_observer_counters.dtc_outstanding_integral();
+  }
+  unsigned long long sg3_l2_bank_samples() const {
+    return m_sg3_downstream_observer_counters.l2_bank_samples();
+  }
+  unsigned long long sg3_l2_mshr_integral() const {
+    return m_sg3_downstream_observer_counters.l2_mshr_integral();
+  }
+  unsigned long long sg3_l2_miss_queue_integral() const {
+    return m_sg3_downstream_observer_counters.l2_miss_queue_integral();
+  }
+  unsigned long long sg3_lower_lifetime_completed() const {
+    return m_sg3_downstream_observer_counters.lower_lifetime_completed();
+  }
+  unsigned long long sg3_lower_lifetime_sum_cycles() const {
+    return m_sg3_downstream_observer_counters.lower_lifetime_sum_cycles();
+  }
+  unsigned long long sg3_lower_lifetime_max_cycles() const {
+    return m_sg3_downstream_observer_counters.lower_lifetime_max_cycles();
+  }
+  unsigned long long sg3_lower_lifetime_unmatched_completions() const {
+    return m_sg3_downstream_observer_counters
+        .lower_lifetime_unmatched_completions();
+  }
+  unsigned sg3_lower_lifetime_live_records() const {
+    return m_sg3_downstream_observer_counters.lower_lifetime_live_records();
+  }
   unsigned long long l1_lower_traffic_conventional_transactions() const {
     return m_l1_lower_traffic_observer_counters.conventional_transactions();
   }
@@ -914,6 +1026,7 @@ class gpgpu_sim : public gpgpu_t {
   unsigned long long m_dtc_l1_lower_requests_acquired;
   unsigned long long m_dtc_l1_lower_requests_released;
   l1_lower_traffic_observer_counters m_l1_lower_traffic_observer_counters;
+  sg3_downstream_observer_counters m_sg3_downstream_observer_counters;
 
   std::string executed_kernel_info_string();  //< format the kernel information
                                               // into a string for stat printout

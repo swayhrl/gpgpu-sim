@@ -99,6 +99,13 @@ if(GPGPUSIM_BUILD_DTC_L1_TESTS)
                                ${CUDAToolkit_INCLUDE_DIRS})
     add_test(NAME dtc_l1_lower_traffic_observer_test
              COMMAND dtc_l1_lower_traffic_observer_test)
+    add_executable(dtc_sg3_downstream_observer_test
+                   tests/dtc_sg3_downstream_observer_test.cc)
+    target_include_directories(dtc_sg3_downstream_observer_test PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim
+                               ${CUDAToolkit_INCLUDE_DIRS})
+    add_test(NAME dtc_sg3_downstream_observer_test
+             COMMAND dtc_sg3_downstream_observer_test)
 endif()
 
 # Set linker option for libcudart.so

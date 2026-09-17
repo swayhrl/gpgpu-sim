@@ -3101,6 +3101,8 @@ void ldst_unit::dtc_l1_io_issue_lower_requests() {
     m_dtc_l1_io_lower_issue_queue.push_back(mf);
     m_dtc_l1_io_lower_create_queue.pop_front();
     ++m_dtc_l1_io_lower_created;
+    m_core->get_gpu()->observe_sg3_lower_created(
+        m_core->get_sid(), request_uid, cycle);
     m_core->get_gpu()->observe_l1_lower_read(
         l1_lower_traffic_observer_path::DTC_IO, mf->get_data_size());
     m_dtc_l1_io_last_progress_cycle = cycle;
@@ -3149,6 +3151,8 @@ bool ldst_unit::dtc_l1_io_consume_response(mem_fetch *mf) {
   const bool whole_line_complete = record.response_sector_mask == 0xFU;
   if (whole_line_complete) {
     m_dtc_l1_io_frontend->complete(record.physical, cycle);
+    m_core->get_gpu()->observe_sg3_lower_completed(
+        m_core->get_sid(), it->first, cycle);
     m_core->get_gpu()->dtc_l1_complete_lower_request();
     m_dtc_l1_io_inflight.erase(it);
     ++m_dtc_l1_io_lower_responses;
@@ -3399,6 +3403,8 @@ void ldst_unit::dtc_l1_oo_issue_lower_requests() {
     m_dtc_l1_oo_lower_issue_queue.push_back(mf);
     m_dtc_l1_oo_lower_create_queue.pop_front();
     ++m_dtc_l1_oo_lower_created;
+    m_core->get_gpu()->observe_sg3_lower_created(
+        m_core->get_sid(), mf->get_request_uid(), cycle);
     m_core->get_gpu()->observe_l1_lower_read(
         dtc_l1_sector_oo_active()
             ? l1_lower_traffic_observer_path::DTC_SECTOR
@@ -3446,6 +3452,8 @@ bool ldst_unit::dtc_l1_oo_consume_response(mem_fetch *mf) {
       m_dtc_l1_sector_frontend->complete_sector(record.physical, sector);
     else
       m_dtc_l1_oo_frontend->complete(record.physical, cycle);
+    m_core->get_gpu()->observe_sg3_lower_completed(
+        m_core->get_sid(), it->first, cycle);
     m_core->get_gpu()->dtc_l1_complete_lower_request();
     m_dtc_l1_oo_inflight.erase(it);
     ++m_dtc_l1_oo_lower_responses;
@@ -5602,13 +5610,40 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
     fprintf(fout, "SG5_dtc_sector_lower_payload_bytes = %llu\n",
             l1_lower_traffic_dtc_sector_payload_bytes());
   };
-  if (!dtc_paper_mode && !l1_lower_traffic_observer_enabled()) return;
+  const auto print_sg3_downstream = [&]() {
+    if (!sg3_downstream_observer_enabled()) return;
+    fprintf(fout, "SG3_downstream_observer = 1\n");
+    fprintf(fout, "SG3_dtc_core_tick_samples = %llu\n",
+            sg3_dtc_core_samples());
+    fprintf(fout, "SG3_dtc_lower_outstanding_integral = %llu\n",
+            sg3_dtc_outstanding_integral());
+    fprintf(fout, "SG3_l2_bank_tick_samples = %llu\n",
+            sg3_l2_bank_samples());
+    fprintf(fout, "SG3_l2_mshr_occupancy_integral = %llu\n",
+            sg3_l2_mshr_integral());
+    fprintf(fout, "SG3_l2_miss_queue_occupancy_integral = %llu\n",
+            sg3_l2_miss_queue_integral());
+    fprintf(fout, "SG3_lower_lifetime_completed = %llu\n",
+            sg3_lower_lifetime_completed());
+    fprintf(fout, "SG3_lower_lifetime_sum_cycles = %llu\n",
+            sg3_lower_lifetime_sum_cycles());
+    fprintf(fout, "SG3_lower_lifetime_max_cycles = %llu\n",
+            sg3_lower_lifetime_max_cycles());
+    fprintf(fout, "SG3_lower_lifetime_unmatched_completions = %llu\n",
+            sg3_lower_lifetime_unmatched_completions());
+    fprintf(fout, "SG3_lower_lifetime_live_records = %u\n",
+            sg3_lower_lifetime_live_records());
+  };
+  if (!dtc_paper_mode && !l1_lower_traffic_observer_enabled() &&
+      !sg3_downstream_observer_enabled()) return;
   if (!dtc_paper_mode) {
     print_sg5_lower_traffic();
+    print_sg3_downstream();
     return;
   }
 
   print_sg5_lower_traffic();
+  print_sg3_downstream();
 
   dtc_l1::paper_frontend_stats total;
   cache_stats l1d_stats;

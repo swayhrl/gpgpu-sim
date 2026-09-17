@@ -419,6 +419,11 @@ void shader_core_config::reg_options(class OptionParser *opp) {
       opp, "-gpgpu_l1_lower_traffic_observer", OPT_UINT32,
       &gpgpu_l1_lower_traffic_observer,
       "Default-off observer-only comparable L1 lower-read traffic", "0");
+  option_parser_register(
+      opp, "-gpgpu_sg3_downstream_observer", OPT_UINT32,
+      &gpgpu_sg3_downstream_observer,
+      "Default-off observer-only SG3 downstream occupancy/lifetime telemetry",
+      "0");
   option_parser_register(opp, "-gpgpu_dtc_l1_lower_outstanding_cap",
                          OPT_UINT32, &dtc_l1_lower_outstanding_cap,
                          "DTC-L1 global lower outstanding-request cap", "256");
@@ -1377,6 +1382,31 @@ void gpgpu_sim::observe_l1_lower_read(
   // allocation, lower-credit ownership, queues, or request contents.
   if (!m_shader_config->gpgpu_l1_lower_traffic_observer) return;
   m_l1_lower_traffic_observer_counters.observe(path, payload_bytes);
+}
+
+void gpgpu_sim::observe_sg3_dtc_outstanding() {
+  if (!sg3_downstream_observer_enabled()) return;
+  m_sg3_downstream_observer_counters.sample_dtc_outstanding(
+      m_dtc_l1_lower_outstanding);
+}
+
+void gpgpu_sim::observe_sg3_l2_occupancy(unsigned mshr,
+                                          unsigned miss_queue) {
+  if (!sg3_downstream_observer_enabled()) return;
+  m_sg3_downstream_observer_counters.sample_l2_occupancy(mshr, miss_queue);
+}
+
+void gpgpu_sim::observe_sg3_lower_created(unsigned sid, unsigned request_uid,
+                                          uint64_t cycle) {
+  if (!sg3_downstream_observer_enabled()) return;
+  m_sg3_downstream_observer_counters.lower_created(sid, request_uid, cycle);
+}
+
+void gpgpu_sim::observe_sg3_lower_completed(unsigned sid,
+                                            unsigned request_uid,
+                                            uint64_t cycle) {
+  if (!sg3_downstream_observer_enabled()) return;
+  m_sg3_downstream_observer_counters.lower_completed(sid, request_uid, cycle);
 }
 
 void sst_gpgpu_sim::SST_receive_mem_reply(unsigned core_id, void *mem_req) {
@@ -2525,6 +2555,11 @@ void gpgpu_sim::cycle() {
       }
     }
 #endif
+
+    // One post-core-clock sample of the existing global DTC credit state.
+    // The observer guard owns storage only and is outside all issue/admission
+    // decisions made above.
+    observe_sg3_dtc_outstanding();
 
     issue_block2core();
     decrement_kernel_latency();

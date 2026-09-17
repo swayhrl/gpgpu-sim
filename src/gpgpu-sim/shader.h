@@ -2483,6 +2483,9 @@ class shader_core_config : public core_config {
   // from the DTC-only post-FAST64 observer so it can compare legacy S/N and
   // DTC paths without changing either path's controls.
   unsigned gpgpu_l1_lower_traffic_observer;
+  // Dedicated SG3 downstream observer.  Default-off and observational only;
+  // this does not select a cache, queue, or DTC execution path.
+  unsigned gpgpu_sg3_downstream_observer;
   unsigned dtc_l1_lower_outstanding_cap;
   unsigned dtc_l1_tag_banks;
   unsigned dtc_l1_tag_requests_per_bank_per_cycle;

@@ -1056,6 +1056,11 @@ class mshr_table {
   bool busy() const { return false; }
   /// True while an accepted miss or a ready response still owns MSHR state.
   bool empty() const { return m_data.empty() && m_current_response.empty(); }
+  // Read-only observer accessor.  A ready response still owns one MSHR entry
+  // until next_access() removes it, so both containers are included.
+  unsigned occupancy() const {
+    return static_cast<unsigned>(m_data.size() + m_current_response.size());
+  }
   /// Accept a new cache fill response: mark entry ready for processing
   void mark_ready(new_addr_type block_addr, bool &has_atomic);
   /// Returns true if ready accesses exist
@@ -1376,6 +1381,12 @@ class baseline_cache : public cache_t {
   }
   void get_sub_stats(struct cache_sub_stats &css) const {
     m_stats.get_sub_stats(css);
+  }
+  // Read-only observer accessors.  They intentionally expose no mutable cache
+  // state and are sampled only by the default-off SG3 diagnostics.
+  unsigned mshr_occupancy() const { return m_mshrs.occupancy(); }
+  unsigned miss_queue_occupancy() const {
+    return static_cast<unsigned>(m_miss_queue.size());
   }
   // Clear per-window stats for AerialVision support
   void clear_pw() { m_stats.clear_pw(); }
