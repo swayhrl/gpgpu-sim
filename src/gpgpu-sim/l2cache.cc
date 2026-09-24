@@ -442,7 +442,8 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
   if (!m_config->m_L2_config.disabled())
     m_L2cache = new l2_cache(L2c_name, m_config->m_L2_config, -1, -1,
                              m_L2interface, m_mf_allocator,
-                             IN_PARTITION_L2_MISS_QUEUE, gpu, L2_GPU_CACHE);
+                             IN_PARTITION_L2_MISS_QUEUE, gpu, L2_GPU_CACHE,
+                             m_id);
 
   unsigned int icnt_L2;
   unsigned int L2_dram;

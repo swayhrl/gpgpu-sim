@@ -255,6 +255,32 @@ void memory_config::reg_options(class OptionParser *opp) {
       " {<sector?>:<nsets>:<bsize>:<assoc>,<rep>:<wr>:<alloc>:<wr_alloc>:<set_"
       "index_fn>,<mshr>:<N>:<merge>,<mq>:<fifo_entry>,<data_port_width>",
       "S:32:128:24,L:B:m:L:P,A:192:4,32:0,32");
+  option_parser_register(
+      opp, "-gpgpu_l2_oracle_elastic_qweight_enable", OPT_BOOL,
+      &m_L2_config.m_oracle_elastic_enable,
+      "enable ORACLE_ELASTIC_QWEIGHT_RESIDENCY_V1", "0");
+  option_parser_register(
+      opp, "-gpgpu_l2_oracle_elastic_protected_quota_bytes", OPT_UINT64,
+      &m_L2_config.m_oracle_elastic_quota_bytes,
+      "global protected byte budget (mutually exclusive with exact lines)",
+      "0");
+  option_parser_register(
+      opp, "-gpgpu_l2_oracle_elastic_protected_quota_lines", OPT_UINT64,
+      &m_L2_config.m_oracle_elastic_quota_lines,
+      "exact global protected line budget (mutually exclusive with bytes)",
+      "0");
+  option_parser_register(
+      opp, "-gpgpu_l2_oracle_elastic_interval_sidecar", OPT_CSTR,
+      &m_L2_config.m_oracle_elastic_sidecar,
+      "canonical MODELED_L2_GET_ADDR interval sidecar", "");
+  option_parser_register(
+      opp, "-gpgpu_l2_oracle_elastic_sidecar_sha256", OPT_CSTR,
+      &m_L2_config.m_oracle_elastic_sidecar_sha256,
+      "accepted lowercase SHA256 for exact interval sidecar", "");
+  option_parser_register(
+      opp, "-gpgpu_l2_oracle_elastic_diagnostics", OPT_BOOL,
+      &m_L2_config.m_oracle_elastic_diagnostics,
+      "diagnostic counters only; independent of functional enable", "0");
   option_parser_register(opp, "-gpgpu_cache:dl2_texture_only", OPT_BOOL,
                          &m_L2_texure_only, "L2 cache used for texture only",
                          "1");

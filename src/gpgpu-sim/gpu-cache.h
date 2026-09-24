@@ -38,6 +38,7 @@
 #include "../tr1_hash_map.h"
 #include "gpu-misc.h"
 #include "mem_fetch.h"
+#include "oracle_elastic_residency.h"
 
 #include <iostream>
 #include "addrdec.h"
@@ -135,6 +136,10 @@ struct cache_block_t {
     m_block_addr = 0;
     // This is deliberately separate from m_tag and replacement state.
     m_telemetry_class = M4C_OTHER;
+    m_oracle_protected = false;
+    m_oracle_pending_protected = false;
+    m_oracle_target_class = 0;
+    m_oracle_pending_target_class = 0;
   }
 
   virtual void allocate(new_addr_type tag, new_addr_type block_addr,
@@ -180,11 +185,39 @@ struct cache_block_t {
     m_telemetry_class = telemetry_class;
   }
 
+  bool oracle_protected() const { return m_oracle_protected; }
+  bool oracle_pending_protected() const { return m_oracle_pending_protected; }
+  unsigned oracle_target_class() const { return m_oracle_target_class; }
+  void oracle_set_protected(bool value, unsigned target_class = 0) {
+    m_oracle_protected = value;
+    m_oracle_target_class = value ? target_class : 0;
+  }
+  void oracle_set_pending(bool value, unsigned target_class = 0) {
+    m_oracle_pending_protected = value;
+    m_oracle_pending_target_class = value ? target_class : 0;
+  }
+  void oracle_commit_pending() {
+    m_oracle_protected = m_oracle_pending_protected;
+    m_oracle_target_class = m_oracle_pending_target_class;
+    m_oracle_pending_protected = false;
+    m_oracle_pending_target_class = 0;
+  }
+  void oracle_clear_metadata() {
+    m_oracle_protected = false;
+    m_oracle_pending_protected = false;
+    m_oracle_target_class = 0;
+    m_oracle_pending_target_class = 0;
+  }
+
   new_addr_type m_tag;
   new_addr_type m_block_addr;
 
  private:
   unsigned m_telemetry_class;
+  bool m_oracle_protected;
+  bool m_oracle_pending_protected;
+  unsigned m_oracle_target_class;
+  unsigned m_oracle_pending_target_class;
 };
 
 struct line_cache_block : public cache_block_t {
@@ -583,6 +616,13 @@ class cache_config {
     m_set_index_function = LINEAR_SET_FUNCTION;
     m_is_streaming = false;
     m_wr_percent = 0;
+    m_oracle_elastic_enable = false;
+    m_oracle_elastic_quota_bytes = 0;
+    m_oracle_elastic_quota_lines = 0;
+    m_oracle_elastic_sidecar = NULL;
+    m_oracle_elastic_sidecar_sha256 = NULL;
+    m_oracle_elastic_diagnostics = false;
+    m_oracle_elastic_l2_instances = 0;
   }
   void init(char *config, FuncCache status) {
     cache_status = status;
@@ -864,6 +904,27 @@ class cache_config {
     return m_write_alloc_policy;
   }
   write_policy_t get_write_policy() { return m_write_policy; }
+  void init_oracle_elastic(unsigned l2_instances);
+  bool oracle_elastic_enabled() const { return m_oracle_runtime.enabled(); }
+  bool oracle_elastic_diagnostics_enabled() const {
+    return m_oracle_runtime.diagnostics_enabled();
+  }
+  uint64_t oracle_elastic_quota(unsigned instance) const {
+    return m_oracle_runtime.quota_for_instance(instance);
+  }
+  bool oracle_elastic_target(const mem_fetch *mf,
+                             unsigned *target_class = NULL) const;
+  uint64_t oracle_elastic_global_lines() const {
+    return m_oracle_runtime.global_line_budget();
+  }
+
+  bool m_oracle_elastic_enable;
+  unsigned long long m_oracle_elastic_quota_bytes;
+  unsigned long long m_oracle_elastic_quota_lines;
+  char *m_oracle_elastic_sidecar;
+  char *m_oracle_elastic_sidecar_sha256;
+  bool m_oracle_elastic_diagnostics;
+  unsigned m_oracle_elastic_l2_instances;
 
  protected:
   void exit_parse_error() {
@@ -911,6 +972,7 @@ class cache_config {
   unsigned m_data_port_width;  //< number of byte the cache can access per cycle
   enum set_index_function
       m_set_index_function;  // Hash, linear, or custom set index function
+  oracle_elastic_residency::oracle_config m_oracle_runtime;
 
   friend class tag_array;
   friend class baseline_cache;
@@ -1002,6 +1064,12 @@ class tag_array {
   void add_pending_line(mem_fetch *mf);
   void remove_pending_line(mem_fetch *mf);
   void inc_dirty() { m_dirty++; }
+  void oracle_clear_protection_if_invalid(unsigned idx);
+  uint64_t oracle_protected_occupancy() const {
+    return m_oracle_protected_occupancy;
+  }
+  uint64_t oracle_protected_quota() const { return m_oracle_protected_quota; }
+  void oracle_verify_invariant() const;
 
  protected:
   // This constructor is intended for use only from derived classes that wish to
@@ -1037,6 +1105,19 @@ class tag_array {
 
   typedef tr1_hash_map<new_addr_type, unsigned> line_table;
   line_table pending_lines;
+  uint64_t m_oracle_protected_occupancy;
+  uint64_t m_oracle_pending_protected;
+  uint64_t m_oracle_protected_quota;
+  uint64_t m_oracle_protected_occupancy_max;
+  mutable oracle_elastic_residency::diagnostic_counters m_oracle_diagnostics;
+
+  enum cache_request_status oracle_probe(
+      new_addr_type addr, unsigned &idx, mem_access_sector_mask_t mask,
+      bool is_write, bool probe_mode, mem_fetch *mf) const;
+  bool oracle_request_target(const mem_fetch *mf,
+                             unsigned *target_class = NULL) const;
+  void oracle_depart_line(unsigned idx);
+  void oracle_commit_fill(unsigned idx);
 };
 
 class mshr_table {
@@ -1748,8 +1829,12 @@ class l2_cache : public data_cache {
   l2_cache(const char *name, cache_config &config, int core_id, int type_id,
            mem_fetch_interface *memport, mem_fetch_allocator *mfcreator,
            enum mem_fetch_status status, class gpgpu_sim *gpu,
-           enum cache_gpu_level level)
-      : data_cache(name, config, core_id, type_id, memport, mfcreator, status,
+           enum cache_gpu_level level, unsigned oracle_l2_instance_id)
+      : data_cache(name, config,
+                   config.oracle_elastic_enabled()
+                       ? static_cast<int>(oracle_l2_instance_id)
+                       : core_id,
+                   type_id, memport, mfcreator, status,
                    L2_WR_ALLOC_R, L2_WRBK_ACC, gpu, level) {}
 
   virtual ~l2_cache() {}
