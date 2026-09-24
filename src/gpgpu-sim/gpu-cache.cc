@@ -515,17 +515,6 @@ enum cache_request_status tag_array::oracle_probe(
           eligible, target,
           m_oracle_protected_occupancy + m_oracle_pending_protected,
           m_oracle_protected_quota, policy, true);
-  if (result.status ==
-      oracle_elastic_residency::SELECTION_FROZEN_CONTRACT_UNREPRESENTABLE) {
-    if (m_config.oracle_elastic_diagnostics_enabled())
-      ++m_oracle_diagnostics.contract_unrepresentable_events;
-    fprintf(stderr,
-            "ORACLE_ELASTIC_QWEIGHT_RESIDENCY_V1 fail-closed: quota full "
-            "but addressed set has no eligible protected victim "
-            "(L2 instance %d, set %u, address 0x%llx)\n",
-            m_core_id, set_index, static_cast<unsigned long long>(addr));
-    abort();
-  }
   if (result.status != oracle_elastic_residency::SELECTION_FOUND)
     return RESERVATION_FAIL;
   idx = result.index;
@@ -581,8 +570,30 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
             oracle_target && m_oracle_protected_quota != 0 &&
             m_oracle_protected_occupancy + m_oracle_pending_protected ==
                 m_oracle_protected_quota;
+        const oracle_elastic_residency::admission oracle_admission =
+            oracle_elastic_residency::decide_fill_admission(
+                oracle_target,
+                m_oracle_protected_occupancy + m_oracle_pending_protected,
+                m_oracle_protected_quota, !valid_victim, protected_victim,
+                true);
+        const bool protection_denied_invalid =
+            oracle_admission.denial_reason ==
+            oracle_elastic_residency::QUOTA_FULL_BASELINE_INVALID_PRIORITY;
+        const bool protection_denied_no_local_protected =
+            oracle_admission.denial_reason ==
+            oracle_elastic_residency::
+                QUOTA_FULL_NO_LOCAL_PROTECTED_VICTIM;
         if (m_config.oracle_elastic_diagnostics_enabled()) {
           if (quota_full) ++m_oracle_diagnostics.quota_full_events;
+          if (protection_denied_invalid ||
+              protection_denied_no_local_protected) {
+            ++m_oracle_diagnostics.target_protection_admission_denied;
+            if (protection_denied_invalid)
+              ++m_oracle_diagnostics.denial_quota_full_invalid_priority;
+            else
+              ++m_oracle_diagnostics
+                    .denial_quota_full_no_local_protected;
+          }
           if (valid_victim) {
             if (oracle_target && protected_victim) {
               ++m_oracle_diagnostics.target_protected_victims;
@@ -619,7 +630,7 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
                                time, mf->get_access_sector_mask());
         m_lines[idx]->set_telemetry_class(mf->get_telemetry_class());
         const bool protect_fill =
-            oracle_target && m_oracle_protected_quota != 0;
+            oracle_admission.protect_fill;
         m_lines[idx]->oracle_set_pending(protect_fill, oracle_target_class);
         if (protect_fill) ++m_oracle_pending_protected;
         oracle_verify_invariant();
@@ -780,7 +791,9 @@ void tag_array::print(FILE *stream, unsigned &total_access,
             "quota_full_events=%llu\tordinary_borrowing_fills=%llu\t"
             "ordinary_borrowing_current=%llu\tordinary_borrowing_max=%llu\t"
             "protected_protected_replacements=%llu\t"
-            "contract_unrepresentable_events=%llu\n",
+            "target_protection_admission_denied=%llu\t"
+            "denial_quota_full_invalid_priority=%llu\t"
+            "denial_quota_full_no_local_protected=%llu\n",
             m_core_id,
             static_cast<unsigned long long>(m_oracle_protected_quota),
             static_cast<unsigned long long>(m_oracle_protected_occupancy),
@@ -799,7 +812,9 @@ void tag_array::print(FILE *stream, unsigned &total_access,
             static_cast<unsigned long long>(m_oracle_diagnostics.ordinary_borrowing_current),
             static_cast<unsigned long long>(m_oracle_diagnostics.ordinary_borrowing_max),
             static_cast<unsigned long long>(m_oracle_diagnostics.protected_protected_replacements),
-            static_cast<unsigned long long>(m_oracle_diagnostics.contract_unrepresentable_events));
+            static_cast<unsigned long long>(m_oracle_diagnostics.target_protection_admission_denied),
+            static_cast<unsigned long long>(m_oracle_diagnostics.denial_quota_full_invalid_priority),
+            static_cast<unsigned long long>(m_oracle_diagnostics.denial_quota_full_no_local_protected));
   }
   total_misses += (m_miss + m_sector_miss);
   total_access += m_access;

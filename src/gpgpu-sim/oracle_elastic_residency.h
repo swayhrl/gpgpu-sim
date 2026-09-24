@@ -27,8 +27,7 @@ struct candidate {
 
 enum selection_status {
   SELECTION_FOUND = 0,
-  SELECTION_NO_ELIGIBLE,
-  SELECTION_FROZEN_CONTRACT_UNREPRESENTABLE
+  SELECTION_NO_ELIGIBLE
 };
 
 enum victim_kind {
@@ -38,18 +37,32 @@ enum victim_kind {
   VICTIM_NONE
 };
 
+enum admission_denial_reason {
+  ADMISSION_DENIAL_NONE = 0,
+  QUOTA_FULL_BASELINE_INVALID_PRIORITY,
+  QUOTA_FULL_NO_LOCAL_PROTECTED_VICTIM
+};
+
 struct selection {
   selection_status status;
   unsigned index;
   victim_kind victim;
   bool protect_fill;
   bool quota_full;
+  admission_denial_reason denial_reason;
   selection()
       : status(SELECTION_NO_ELIGIBLE),
         index(static_cast<unsigned>(-1)),
         victim(VICTIM_NONE),
         protect_fill(false),
-        quota_full(false) {}
+        quota_full(false),
+        denial_reason(ADMISSION_DENIAL_NONE) {}
+};
+
+struct admission {
+  bool protect_fill;
+  admission_denial_reason denial_reason;
+  admission() : protect_fill(false), denial_reason(ADMISSION_DENIAL_NONE) {}
 };
 
 struct diagnostic_counters {
@@ -67,7 +80,9 @@ struct diagnostic_counters {
   uint64_t ordinary_borrowing_fills;
   uint64_t ordinary_borrowing_current;
   uint64_t ordinary_borrowing_max;
-  uint64_t contract_unrepresentable_events;
+  uint64_t target_protection_admission_denied;
+  uint64_t denial_quota_full_invalid_priority;
+  uint64_t denial_quota_full_no_local_protected;
   uint64_t occupancy_current;
   uint64_t occupancy_max;
   diagnostic_counters();
@@ -109,6 +124,11 @@ selection choose_victim(const std::vector<candidate> &eligible,
                         bool incoming_target, uint64_t occupancy,
                         uint64_t quota, replacement_policy policy,
                         bool mechanism_enabled);
+
+admission decide_fill_admission(bool incoming_target, uint64_t occupancy,
+                                uint64_t quota, bool victim_invalid,
+                                bool victim_protected,
+                                bool mechanism_enabled);
 
 bool target_request_eligible(unsigned access_type, bool is_write,
                              unsigned global_read_access_type);

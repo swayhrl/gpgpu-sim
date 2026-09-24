@@ -14,8 +14,15 @@ The global line budget is `ceil(bytes / line_bytes)` or the exact configured lin
 
 Protection is committed only when a reserved line fills. Pending protected reservations are tracked separately so concurrent misses cannot over-admit the quota; the published occupancy invariant remains the count of resident non-invalid protected lines. Eviction, whole-line invalidation, flush and reset clear metadata exactly once. Sector misses retain line-level protection and never promote an ordinary line.
 
-## Frozen-contract fail-closed boundary
+## Authorized admission-denial addendum
 
-The frozen rules do not define a legal action when the per-instance quota is full but the addressed set contains an invalid line or contains no eligible protected victim. A set-associative cache cannot evict a protected line from another set without changing mapping, lifetime, or baseline replacement semantics. The implementation therefore terminates explicitly with `SELECTION_FROZEN_CONTRACT_UNREPRESENTABLE`; it never silently overcommits, admits the target as ordinary, changes queueing, or performs cross-set eviction.
+A target tag means eligibility to request protected admission, not a guarantee of protection. When the per-instance quota is full:
 
-This boundary must be resolved or proven unreachable by trace/address integration before real C16 simulation. Consequently the implementation is preparation evidence, not a C16 performance result.
+- baseline invalid priority is preserved; the target fill uses the baseline invalid candidate and remains unprotected;
+- otherwise, an eligible local protected victim is selected by baseline LRU/FIFO and protection transfers to the incoming fill;
+- if no local protected victim exists, the baseline set-local ordinary victim is selected and the incoming fill remains unprotected;
+- if baseline has no eligible candidate, the baseline `RESERVATION_FAIL` remains unchanged.
+
+Denied admissions create no pending reservation and cannot change occupancy. Diagnostics distinguish `QUOTA_FULL_BASELINE_INVALID_PRIORITY` from `QUOTA_FULL_NO_LOCAL_PROTECTED_VICTIM`. There is no quota overcommit, cross-set eviction/demotion, global victim directory, target stall, promotion, per-set quota, or queueing change.
+
+The mechanism remains implementation-preparation evidence, not a C16 performance result. Real C16 replay still requires bounded-trace and `TRACE_ADDRESS_NAMESPACE -> L2 get_addr()` admission.

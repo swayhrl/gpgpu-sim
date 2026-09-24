@@ -123,6 +123,13 @@ selection found(const candidate &row, victim_kind kind, bool protect,
   return result;
 }
 
+selection denied(const candidate &row, victim_kind kind,
+                 admission_denial_reason reason) {
+  selection result = found(row, kind, false, true);
+  result.denial_reason = reason;
+  return result;
+}
+
 }  // namespace
 
 diagnostic_counters::diagnostic_counters()
@@ -132,7 +139,9 @@ diagnostic_counters::diagnostic_counters()
       normal_fallback_protected_victims(0), quota_full_events(0),
       protected_protected_replacements(0), ordinary_borrowing_fills(0),
       ordinary_borrowing_current(0), ordinary_borrowing_max(0),
-      contract_unrepresentable_events(0), occupancy_current(0),
+      target_protection_admission_denied(0),
+      denial_quota_full_invalid_priority(0),
+      denial_quota_full_no_local_protected(0), occupancy_current(0),
       occupancy_max(0) {}
 
 oracle_config::oracle_config()
@@ -261,13 +270,10 @@ selection choose_victim(const std::vector<candidate> &eligible,
   if (occupancy > quota) throw std::runtime_error("protected occupancy exceeds quota");
   const bool full = occupancy == quota;
   if (incoming_target && full) {
-    for (size_t i = 0; i < eligible.size(); ++i) {
-      if (eligible[i].invalid) {
-        none.status = SELECTION_FROZEN_CONTRACT_UNREPRESENTABLE;
-        none.quota_full = true;
-        return none;
-      }
-    }
+    for (size_t i = eligible.size(); i > 0; --i)
+      if (eligible[i - 1].invalid)
+        return denied(eligible[i - 1], VICTIM_INVALID,
+                      QUOTA_FULL_BASELINE_INVALID_PRIORITY);
   }
   if (!incoming_target || !full) {
     for (size_t i = eligible.size(); i > 0; --i)
@@ -281,13 +287,16 @@ selection choose_victim(const std::vector<candidate> &eligible,
   }
   if (incoming_target) {
     if (full) {
-      if (protected_rows.empty()) {
-        none.status = SELECTION_FROZEN_CONTRACT_UNREPRESENTABLE;
-        none.quota_full = true;
-        return none;
+      if (!protected_rows.empty()) {
+        unsigned selected = choose_oldest(protected_rows, policy);
+        return found(protected_rows[selected], VICTIM_PROTECTED, true, true);
       }
-      unsigned selected = choose_oldest(protected_rows, policy);
-      return found(protected_rows[selected], VICTIM_PROTECTED, true, true);
+      if (!normal.empty()) {
+        unsigned selected = choose_oldest(normal, policy);
+        return denied(normal[selected], VICTIM_NORMAL,
+                      QUOTA_FULL_NO_LOCAL_PROTECTED_VICTIM);
+      }
+      return none;
     }
     if (!normal.empty()) {
       unsigned selected = choose_oldest(normal, policy);
@@ -308,6 +317,30 @@ selection choose_victim(const std::vector<candidate> &eligible,
     }
   }
   return none;
+}
+
+admission decide_fill_admission(bool incoming_target, uint64_t occupancy,
+                                uint64_t quota, bool victim_invalid,
+                                bool victim_protected,
+                                bool mechanism_enabled) {
+  admission result;
+  if (!mechanism_enabled || !incoming_target || quota == 0) return result;
+  if (occupancy > quota)
+    throw std::runtime_error("protected occupancy exceeds quota at admission");
+  if (occupancy < quota) {
+    result.protect_fill = true;
+    return result;
+  }
+  if (victim_invalid) {
+    result.denial_reason = QUOTA_FULL_BASELINE_INVALID_PRIORITY;
+    return result;
+  }
+  if (victim_protected) {
+    result.protect_fill = true;
+    return result;
+  }
+  result.denial_reason = QUOTA_FULL_NO_LOCAL_PROTECTED_VICTIM;
+  return result;
 }
 
 bool target_request_eligible(unsigned access_type, bool is_write,

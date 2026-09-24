@@ -69,6 +69,12 @@ struct synthetic_set {
       if (lines[i].valid && lines[i].protected_line) ++counted;
     assert(counted == occupancy);
   }
+  void hit(unsigned index, bool target) {
+    (void)target;
+    assert(lines[index].valid);
+    lines[index].lru = clock++;
+    // V1 never promotes an ordinary resident line on a target hit.
+  }
 };
 
 static candidate row(unsigned index, bool invalid, bool protected_line,
@@ -140,13 +146,60 @@ static void test_selection() {
   std::vector<candidate> no_local_protected;
   no_local_protected.push_back(row(0, false, false, 1, 1));
   selection unresolved = choose_victim(no_local_protected, true, 4, 4, POLICY_LRU, true);
-  assert(unresolved.status == SELECTION_FROZEN_CONTRACT_UNREPRESENTABLE);
+  assert(unresolved.status == SELECTION_FOUND && unresolved.index == 0);
+  assert(!unresolved.protect_fill);
+  assert(unresolved.denial_reason == QUOTA_FULL_NO_LOCAL_PROTECTED_VICTIM);
 
   std::vector<candidate> full_with_invalid;
   full_with_invalid.push_back(row(0, true, false, 0, 0));
   full_with_invalid.push_back(row(1, false, true, 1, 1));
   selection full_invalid = choose_victim(full_with_invalid, true, 4, 4, POLICY_LRU, true);
-  assert(full_invalid.status == SELECTION_FROZEN_CONTRACT_UNREPRESENTABLE);
+  assert(full_invalid.status == SELECTION_FOUND && full_invalid.index == 0);
+  assert(!full_invalid.protect_fill);
+  assert(full_invalid.denial_reason == QUOTA_FULL_BASELINE_INVALID_PRIORITY);
+
+  std::vector<candidate> invalid_without_protected;
+  invalid_without_protected.push_back(row(3, true, false, 0, 0));
+  invalid_without_protected.push_back(row(4, true, false, 0, 0));
+  selection denied_invalid = choose_victim(invalid_without_protected, true, 4, 4,
+                                            POLICY_FIFO, true);
+  assert(denied_invalid.index == 4 && !denied_invalid.protect_fill);
+  assert(denied_invalid.denial_reason == QUOTA_FULL_BASELINE_INVALID_PRIORITY);
+
+  std::vector<candidate> ordinary_only;
+  ordinary_only.push_back(row(10, false, false, 30, 5));
+  ordinary_only.push_back(row(11, false, false, 10, 20));
+  selection denied_lru = choose_victim(ordinary_only, true, 4, 4,
+                                       POLICY_LRU, true);
+  selection denied_fifo = choose_victim(ordinary_only, true, 4, 4,
+                                        POLICY_FIFO, true);
+  assert(denied_lru.index == 11 && denied_fifo.index == 10);
+  assert(!denied_lru.protect_fill && !denied_fifo.protect_fill);
+  assert(denied_lru.denial_reason == QUOTA_FULL_NO_LOCAL_PROTECTED_VICTIM);
+  assert(denied_fifo.denial_reason == QUOTA_FULL_NO_LOCAL_PROTECTED_VICTIM);
+
+  std::vector<candidate> no_eligible;
+  selection reservation_fail = choose_victim(no_eligible, true, 4, 4,
+                                              POLICY_LRU, true);
+  assert(reservation_fail.status == SELECTION_NO_ELIGIBLE);
+
+  // A pending reservation consumes the remaining admission credit even before fill.
+  selection pending_full = choose_victim(ordinary_only, true, 2, 2,
+                                         POLICY_LRU, true);
+  assert(!pending_full.protect_fill);
+  assert(pending_full.denial_reason == QUOTA_FULL_NO_LOCAL_PROTECTED_VICTIM);
+
+  admission admit_below = decide_fill_admission(true, 1, 2, true, false, true);
+  assert(admit_below.protect_fill &&
+         admit_below.denial_reason == ADMISSION_DENIAL_NONE);
+  admission deny_invalid = decide_fill_admission(true, 2, 2, true, false, true);
+  assert(!deny_invalid.protect_fill &&
+         deny_invalid.denial_reason == QUOTA_FULL_BASELINE_INVALID_PRIORITY);
+  admission transfer = decide_fill_admission(true, 2, 2, false, true, true);
+  assert(transfer.protect_fill && transfer.denial_reason == ADMISSION_DENIAL_NONE);
+  admission deny_normal = decide_fill_admission(true, 2, 2, false, false, true);
+  assert(!deny_normal.protect_fill &&
+         deny_normal.denial_reason == QUOTA_FULL_NO_LOCAL_PROTECTED_VICTIM);
 
   for (unsigned seed = 1; seed < 1000; ++seed) {
     std::vector<candidate> random_rows;
@@ -175,6 +228,18 @@ static void test_synthetic_mechanism_sequences() {
   selection ordinary_borrow = protection.fill(false);
   assert(ordinary_borrow.victim == VICTIM_INVALID);
   assert(protection.occupancy == 1);  // no static capacity stranding.
+
+  synthetic_set denied_then_hit(2, 1);
+  denied_then_hit.fill(true);
+  selection denied = denied_then_hit.fill(true);
+  assert(denied.victim == VICTIM_INVALID && !denied.protect_fill);
+  assert(denied.denial_reason == QUOTA_FULL_BASELINE_INVALID_PRIORITY);
+  assert(denied_then_hit.occupancy == 1);
+  denied_then_hit.hit(denied.index, true);
+  assert(!denied_then_hit.lines[denied.index].protected_line);
+  assert(denied_then_hit.occupancy == 1);
+  denied_then_hit.invalidate(denied.index);
+  assert(denied_then_hit.occupancy == 1);
 
   synthetic_set target_competition(2, 2);
   target_competition.fill(true);
