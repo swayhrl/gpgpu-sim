@@ -44,6 +44,11 @@ mem_fetch::mem_fetch(const mem_access_t &access, const warp_inst_t *inst,
 {
   m_request_uid = sm_next_mf_request_uid++;
   m_access = access;
+  oracle_elastic_residency::observe_address(
+      "MEM_FETCH_CONSTRUCT", m_access.get_addr(),
+      m_access.get_type() == GLOBAL_ACC_R && !m_access.is_write() ? 1 : 0,
+      static_cast<int>(m_access.get_type()), m_access.is_write(),
+      m_request_uid);
   if (inst) {
     m_inst = *inst;
     assert(wid == m_inst.warp_id());

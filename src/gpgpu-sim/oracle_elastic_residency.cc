@@ -15,6 +15,94 @@
 namespace oracle_elastic_residency {
 namespace {
 
+class address_observer_state {
+ public:
+  address_observer_state()
+      : m_enabled(false), m_target_limit(0), m_target_observations(0),
+        m_non_target_observations(0), m_exact_target_address(0) {}
+
+  void configure(const char *path, unsigned target_limit,
+                 uint64_t exact_target_address,
+                 const std::vector<interval> &intervals) {
+    m_enabled = path != NULL && *path != '\0';
+    m_path = m_enabled ? path : "";
+    m_target_limit = target_limit;
+    m_target_observations = 0;
+    m_non_target_observations = 0;
+    m_exact_target_address = exact_target_address;
+    m_intervals = intervals;
+    if (!m_enabled) return;
+    std::ofstream out(m_path.c_str(), std::ios::out | std::ios::trunc);
+    if (!out) throw std::runtime_error("cannot create address observer log");
+    out << "stage\trequest_uid\taddress_dec\taddress_hex\taccess_type\t"
+           "is_write\teligibility\tinterval_match\ttarget\ttarget_class\n";
+  }
+
+  void observe(const char *stage, uint64_t address, int eligibility,
+               int access_type, bool is_write, uint64_t request_uid) {
+    if (!m_enabled) return;
+    unsigned target_class = 0;
+    bool interval_match = lookup(address, &target_class);
+    bool target = interval_match && eligibility != 0;
+    if (target && m_exact_target_address != 0 &&
+        address != m_exact_target_address)
+      return;
+    if (!target && m_non_target_observations >= 64) return;
+    std::ofstream out(m_path.c_str(), std::ios::out | std::ios::app);
+    if (!out) throw std::runtime_error("cannot append address observer log");
+    out << stage << '\t' << request_uid << '\t' << address << "\t0x"
+        << std::hex << address << std::dec << '\t' << access_type << '\t'
+        << (is_write ? 1 : 0) << '\t' << eligibility << '\t'
+        << (interval_match ? 1 : 0) << '\t' << (target ? 1 : 0) << '\t'
+        << target_class << '\n';
+    out.flush();
+    if (target) {
+      if (std::string(stage) == "ORACLE_LOOKUP")
+        ++m_target_observations;
+      if (m_target_limit && std::string(stage) == "ORACLE_LOOKUP" &&
+          m_target_observations >= m_target_limit) {
+        out << "ADDRESS_INTEGRATION_CANARY_ONLY_COMPLETE\t"
+            << m_target_observations << "\n";
+        out.flush();
+        exit(0);
+      }
+    } else {
+      ++m_non_target_observations;
+    }
+  }
+
+ private:
+  bool lookup(uint64_t address, unsigned *target_class) const {
+    size_t low = 0, high = m_intervals.size();
+    while (low < high) {
+      size_t mid = low + (high - low) / 2;
+      const interval &item = m_intervals[mid];
+      if (address < item.begin)
+        high = mid;
+      else if (address >= item.end)
+        low = mid + 1;
+      else {
+        if (target_class) *target_class = item.target_class;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool m_enabled;
+  std::string m_path;
+  unsigned m_target_limit;
+  unsigned m_target_observations;
+  unsigned m_non_target_observations;
+  uint64_t m_exact_target_address;
+  std::vector<interval> m_intervals;
+};
+
+address_observer_state &address_observer() {
+  static address_observer_state state;
+  return state;
+}
+
 uint32_t rotate_right(uint32_t value, unsigned bits) {
   return (value >> bits) | (value << (32 - bits));
 }
@@ -346,6 +434,19 @@ admission decide_fill_admission(bool incoming_target, uint64_t occupancy,
 bool target_request_eligible(unsigned access_type, bool is_write,
                              unsigned global_read_access_type) {
   return !is_write && access_type == global_read_access_type;
+}
+
+void configure_address_observer(const char *path, unsigned target_limit,
+                                uint64_t exact_target_address,
+                                const std::vector<interval> &intervals) {
+  address_observer().configure(path, target_limit, exact_target_address,
+                               intervals);
+}
+
+void observe_address(const char *stage, uint64_t address, int eligibility,
+                     int access_type, bool is_write, uint64_t request_uid) {
+  address_observer().observe(stage, address, eligibility, access_type, is_write,
+                             request_uid);
 }
 
 }  // namespace oracle_elastic_residency

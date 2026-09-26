@@ -133,6 +133,14 @@ admission decide_fill_admission(bool incoming_target, uint64_t occupancy,
 bool target_request_eligible(unsigned access_type, bool is_write,
                              unsigned global_read_access_type);
 
+// Opt-in address-integration observer. It is disabled unless a nonempty log
+// path is configured and never participates in replacement decisions.
+void configure_address_observer(const char *path, unsigned target_limit,
+                                uint64_t exact_target_address,
+                                const std::vector<interval> &intervals);
+void observe_address(const char *stage, uint64_t address, int eligibility,
+                     int access_type, bool is_write, uint64_t request_uid);
+
 }  // namespace oracle_elastic_residency
 
 #endif

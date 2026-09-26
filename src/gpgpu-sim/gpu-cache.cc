@@ -93,6 +93,10 @@ void cache_config::init_oracle_elastic(unsigned l2_instances) {
         m_oracle_elastic_quota_lines, m_line_sz, l2_instances,
         m_oracle_elastic_sidecar, m_oracle_elastic_sidecar_sha256,
         m_oracle_elastic_diagnostics);
+    oracle_elastic_residency::configure_address_observer(
+        m_oracle_address_canary_log, m_oracle_address_canary_target_limit,
+        m_oracle_address_canary_exact_address,
+        m_oracle_runtime.intervals());
   } catch (const std::exception &error) {
     fprintf(stderr, "ORACLE_ELASTIC_QWEIGHT_RESIDENCY_V1 config error: %s\n",
             error.what());
@@ -107,7 +111,12 @@ bool cache_config::oracle_elastic_target(const mem_fetch *mf,
           static_cast<unsigned>(mf->get_access_type()), mf->get_is_write(),
           static_cast<unsigned>(GLOBAL_ACC_R)))
     return false;
-  return m_oracle_runtime.lookup(mf->get_addr(), target_class);
+  const bool target = m_oracle_runtime.lookup(mf->get_addr(), target_class);
+  oracle_elastic_residency::observe_address(
+      "ORACLE_LOOKUP", mf->get_addr(), 1,
+      static_cast<int>(mf->get_access_type()), mf->get_is_write(),
+      mf->get_request_uid());
+  return target;
 }
 
 unsigned cache_config::hash_function(new_addr_type addr, unsigned m_nset,
@@ -322,8 +331,6 @@ void tag_array::oracle_commit_fill(unsigned idx) {
                  m_oracle_protected_occupancy);
     if (m_config.oracle_elastic_diagnostics_enabled())
       ++m_oracle_diagnostics.protected_fills;
-  } else {
-    line->oracle_commit_pending();
   }
   if (m_config.oracle_elastic_diagnostics_enabled()) {
     m_oracle_diagnostics.occupancy_current = m_oracle_protected_occupancy;
@@ -2343,6 +2350,11 @@ enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
 enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events) {
+  oracle_elastic_residency::observe_address(
+      "L2_ENTRY", mf->get_addr(),
+      mf->get_access_type() == GLOBAL_ACC_R && !mf->get_is_write() ? 1 : 0,
+      static_cast<int>(mf->get_access_type()), mf->get_is_write(),
+      mf->get_request_uid());
   return data_cache::access(addr, mf, time, events);
 }
 

@@ -622,6 +622,9 @@ class cache_config {
     m_oracle_elastic_sidecar = NULL;
     m_oracle_elastic_sidecar_sha256 = NULL;
     m_oracle_elastic_diagnostics = false;
+    m_oracle_address_canary_log = NULL;
+    m_oracle_address_canary_target_limit = 0;
+    m_oracle_address_canary_exact_address = 0;
     m_oracle_elastic_l2_instances = 0;
   }
   void init(char *config, FuncCache status) {
@@ -924,6 +927,9 @@ class cache_config {
   char *m_oracle_elastic_sidecar;
   char *m_oracle_elastic_sidecar_sha256;
   bool m_oracle_elastic_diagnostics;
+  char *m_oracle_address_canary_log;
+  unsigned m_oracle_address_canary_target_limit;
+  unsigned long long m_oracle_address_canary_exact_address;
   unsigned m_oracle_elastic_l2_instances;
 
  protected:

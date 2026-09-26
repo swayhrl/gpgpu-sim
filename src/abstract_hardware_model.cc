@@ -755,6 +755,10 @@ void warp_inst_t::memory_coalescing_arch_reduce_and_send(
   m_accessq.push_back(mem_access_t(access_type, addr, size, is_write,
                                    info.active, info.bytes, info.chunks,
                                    m_config->gpgpu_ctx));
+  oracle_elastic_residency::observe_address(
+      "MEM_ACCESS_CREATED", m_accessq.back().get_addr(),
+      access_type == GLOBAL_ACC_R && !is_write ? 1 : 0,
+      static_cast<int>(access_type), is_write, m_accessq.back().get_uid());
 }
 
 void warp_inst_t::completed(unsigned long long cycle) const {

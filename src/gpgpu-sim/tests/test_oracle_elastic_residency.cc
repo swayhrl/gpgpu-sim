@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
+#include <sstream>
 #include <vector>
 
 using namespace oracle_elastic_residency;
@@ -353,11 +354,40 @@ static void test_sha_and_exclusions() {
   assert(!target_request_eligible(7, false, global_read));
 }
 
+static void test_address_observer() {
+  const char *sidecar = "/tmp/c16_oracle_observer_sidecar.tsv";
+  const char *log = "/tmp/c16_oracle_observer_test.tsv";
+  std::ofstream file(sidecar, std::ios::binary);
+  file << "ORACLE_ELASTIC_QWEIGHT_RESIDENCY_V1\t1\tMODELED_L2_GET_ADDR\n";
+  file << "0x1000\t0x2000\ttarget\t4\n";
+  file.close();
+  std::string digest = oracle_config::sha256_file(sidecar);
+  oracle_config config;
+  config.configure(true, 0, 1, 128, 1, sidecar, digest.c_str(), false);
+  configure_address_observer(log, 0, 0x1120, config.intervals());
+  observe_address("TRACE_PARSED_LANE", 0x1120, -1, -1, false, 0);
+  observe_address("MEM_ACCESS_CREATED", 0x1120, 1, 0, false, 7);
+  observe_address("L2_ENTRY", 0x1120, 1, 0, false, 9);
+  observe_address("ORACLE_LOOKUP", 0x1120, 1, 0, false, 9);
+  observe_address("ORACLE_LOOKUP", 0x3000, 1, 0, false, 10);
+  std::ifstream input(log);
+  std::stringstream buffer;
+  buffer << input.rdbuf();
+  const std::string text = buffer.str();
+  assert(text.find("TRACE_PARSED_LANE\t0\t4384\t0x1120") != std::string::npos);
+  assert(text.find("MEM_ACCESS_CREATED\t7\t4384\t0x1120") != std::string::npos);
+  assert(text.find("L2_ENTRY\t9\t4384\t0x1120") != std::string::npos);
+  assert(text.find("ORACLE_LOOKUP\t9\t4384\t0x1120") != std::string::npos);
+  remove(log);
+  remove(sidecar);
+}
+
 int main() {
   test_selection();
   test_synthetic_mechanism_sequences();
   test_sidecar_and_quota();
   test_sha_and_exclusions();
+  test_address_observer();
   diagnostic_counters counters;
   assert(counters.target_accesses == 0 && counters.occupancy_current == 0);
   std::cout << "ORACLE_ELASTIC_QWEIGHT_RESIDENCY_POLICY_TEST_PASS\n";

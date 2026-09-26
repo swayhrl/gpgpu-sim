@@ -281,6 +281,19 @@ void memory_config::reg_options(class OptionParser *opp) {
       opp, "-gpgpu_l2_oracle_elastic_diagnostics", OPT_BOOL,
       &m_L2_config.m_oracle_elastic_diagnostics,
       "diagnostic counters only; independent of functional enable", "0");
+  option_parser_register(
+      opp, "-gpgpu_l2_oracle_address_canary_log", OPT_CSTR,
+      &m_L2_config.m_oracle_address_canary_log,
+      "ADDRESS_INTEGRATION_CANARY_ONLY TSV output path", "");
+  option_parser_register(
+      opp, "-gpgpu_l2_oracle_address_canary_target_limit", OPT_UINT32,
+      &m_L2_config.m_oracle_address_canary_target_limit,
+      "exit successfully after this many target oracle observations (0=off)",
+      "0");
+  option_parser_register(
+      opp, "-gpgpu_l2_oracle_address_canary_exact_address", OPT_UINT64,
+      &m_L2_config.m_oracle_address_canary_exact_address,
+      "record/terminate only for this exact target address (0=any)", "0");
   option_parser_register(opp, "-gpgpu_cache:dl2_texture_only", OPT_BOOL,
                          &m_L2_texure_only, "L2 cache used for texture only",
                          "1");
