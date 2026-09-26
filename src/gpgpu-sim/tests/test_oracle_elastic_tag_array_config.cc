@@ -34,6 +34,20 @@ class exposed_tag_array : public tag_array {
     block->fill(4, sector1, bytes);
     oracle_commit_fill(index);
   }
+
+  void install_ordinary_sector_line(unsigned index) {
+    mem_access_sector_mask_t sector0;
+    sector0.set(0);
+    mem_access_byte_mask_t bytes;
+    cache_block_t *block = get_block(index);
+    block->allocate(2, 0x2000, 1, sector0);
+    block->oracle_set_pending(false);
+    ++m_oracle_ordinary_valid;
+    block->fill(2, sector0, bytes);
+    oracle_commit_fill(index);
+  }
+
+  uint64_t ordinary_valid() const { return m_oracle_ordinary_valid; }
 };
 
 int main() {
@@ -100,6 +114,20 @@ int main() {
   assert(text.find("oracle_elastic_l2_class_occupancy") != std::string::npos);
   assert(text.find("class_1=1") != std::string::npos);
   assert(text.find("class_2=0") != std::string::npos);
+
+  exposed_tag_array ordinary(sector_config, 0, 0);
+  ordinary.install_ordinary_sector_line(0);
+  ordinary.fill_second_sector_without_new_admission(0);
+  assert(ordinary.ordinary_valid() == 1);
+  mem_access_sector_mask_t sector0;
+  sector0.set(0);
+  ordinary.oracle_invalidate_line(0, sector0);
+  assert(ordinary.ordinary_valid() == 1);
+  mem_access_sector_mask_t sector1;
+  sector1.set(1);
+  ordinary.oracle_invalidate_line(0, sector1);
+  assert(ordinary.ordinary_valid() == 0);
+  ordinary.oracle_verify_invariant();
 
   remove(sidecar);
   std::cout << "ORACLE_ELASTIC_TAG_ARRAY_CONFIG_TEST_PASS\n";

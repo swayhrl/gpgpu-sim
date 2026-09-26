@@ -259,6 +259,7 @@ void tag_array::init(int core_id, int type_id) {
   m_dirty = 0;
   m_oracle_protected_occupancy = 0;
   m_oracle_pending_protected = 0;
+  m_oracle_ordinary_valid = 0;
   m_oracle_protected_occupancy_max = 0;
   m_oracle_protected_quota =
       m_config.oracle_elastic_enabled()
@@ -273,6 +274,21 @@ bool tag_array::oracle_request_target(const mem_fetch *mf,
 }
 
 void tag_array::oracle_verify_invariant() const {
+  if (!m_config.oracle_elastic_enabled()) return;
+  assert(m_oracle_protected_occupancy + m_oracle_pending_protected <=
+         m_oracle_protected_quota);
+  if (m_config.oracle_elastic_diagnostics_enabled()) {
+    const uint64_t unused_quota =
+        m_oracle_protected_quota - m_oracle_protected_occupancy -
+        m_oracle_pending_protected;
+    const uint64_t borrowed = std::min(m_oracle_ordinary_valid, unused_quota);
+    m_oracle_diagnostics.ordinary_borrowing_current = borrowed;
+    m_oracle_diagnostics.ordinary_borrowing_max =
+        std::max(m_oracle_diagnostics.ordinary_borrowing_max, borrowed);
+  }
+}
+
+void tag_array::oracle_verify_invariant_deep() const {
   if (!m_config.oracle_elastic_enabled()) return;
   uint64_t counted = 0;
   uint64_t pending = 0;
@@ -289,23 +305,20 @@ void tag_array::oracle_verify_invariant() const {
   }
   assert(counted == m_oracle_protected_occupancy);
   assert(pending == m_oracle_pending_protected);
+  assert(ordinary_valid == m_oracle_ordinary_valid);
   assert(m_oracle_protected_occupancy + m_oracle_pending_protected <=
          m_oracle_protected_quota);
-  if (m_config.oracle_elastic_diagnostics_enabled()) {
-    const uint64_t unused_quota =
-        m_oracle_protected_quota - m_oracle_protected_occupancy -
-        m_oracle_pending_protected;
-    const uint64_t borrowed = std::min(ordinary_valid, unused_quota);
-    m_oracle_diagnostics.ordinary_borrowing_current = borrowed;
-    m_oracle_diagnostics.ordinary_borrowing_max =
-        std::max(m_oracle_diagnostics.ordinary_borrowing_max, borrowed);
-  }
 }
 
 void tag_array::oracle_depart_line(unsigned idx) {
   if (!m_config.oracle_elastic_enabled()) return;
   cache_block_t *line = m_lines[idx];
-  if (!line->is_invalid_line() && line->oracle_protected()) {
+  if (!line->is_invalid_line() && !line->oracle_protected() &&
+      !line->oracle_pending_protected()) {
+    assert(m_oracle_ordinary_valid > 0);
+    --m_oracle_ordinary_valid;
+  }
+  if (line->oracle_protected()) {
     assert(m_oracle_protected_occupancy > 0);
     --m_oracle_protected_occupancy;
   }
@@ -339,9 +352,21 @@ void tag_array::oracle_commit_fill(unsigned idx) {
   oracle_verify_invariant();
 }
 
-void tag_array::oracle_clear_protection_if_invalid(unsigned idx) {
-  if (!m_config.oracle_elastic_enabled()) return;
-  if (m_lines[idx]->is_invalid_line()) oracle_depart_line(idx);
+void tag_array::oracle_invalidate_line(unsigned idx,
+                                       mem_access_sector_mask_t mask) {
+  cache_block_t *line = m_lines[idx];
+  const bool was_ordinary = m_config.oracle_elastic_enabled() &&
+                            !line->is_invalid_line() &&
+                            !line->oracle_protected() &&
+                            !line->oracle_pending_protected();
+  line->set_status(INVALID, mask);
+  if (m_config.oracle_elastic_enabled() && line->is_invalid_line()) {
+    if (was_ordinary) {
+      assert(m_oracle_ordinary_valid > 0);
+      --m_oracle_ordinary_valid;
+    }
+    oracle_depart_line(idx);
+  }
   oracle_verify_invariant();
 }
 
@@ -639,7 +664,12 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
         const bool protect_fill =
             oracle_admission.protect_fill;
         m_lines[idx]->oracle_set_pending(protect_fill, oracle_target_class);
-        if (protect_fill) ++m_oracle_pending_protected;
+        if (m_config.oracle_elastic_enabled()) {
+          if (protect_fill)
+            ++m_oracle_pending_protected;
+          else
+            ++m_oracle_ordinary_valid;
+        }
         oracle_verify_invariant();
       }
       break;
@@ -704,6 +734,7 @@ void tag_array::fill(new_addr_type addr, unsigned time,
     m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr), time,
                            mask);
     m_lines[idx]->oracle_set_pending(false);
+    if (m_config.oracle_elastic_enabled()) ++m_oracle_ordinary_valid;
   } else if (status == SECTOR_MISS) {
     assert(m_config.m_cache_type == SECTOR);
     ((sector_cache_block *)m_lines[idx])->allocate_sector(time, mask);
@@ -789,6 +820,7 @@ void tag_array::print(FILE *stream, unsigned &total_access,
           (float)(m_miss + m_sector_miss) / m_access, m_pending_hit,
           (float)m_pending_hit / m_access);
   if (m_config.oracle_elastic_diagnostics_enabled()) {
+    oracle_verify_invariant_deep();
     unsigned long long class_occupancy[29] = {};
     for (unsigned i = 0; i < m_config.get_num_lines(); ++i) {
       cache_block_t *line = m_lines[i];
@@ -1833,12 +1865,10 @@ cache_request_status data_cache::wr_hit_we(new_addr_type addr,
   }
 
   // generate a write-through/evict
-  cache_block_t *block = m_tag_array->get_block(cache_index);
   send_write_request(mf, cache_event(WRITE_REQUEST_SENT), time, events);
 
-  // Invalidate block
-  block->set_status(INVALID, mf->get_access_sector_mask());
-  m_tag_array->oracle_clear_protection_if_invalid(cache_index);
+  m_tag_array->oracle_invalidate_line(cache_index,
+                                      mf->get_access_sector_mask());
 
   return HIT;
 }

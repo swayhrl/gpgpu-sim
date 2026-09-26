@@ -1070,7 +1070,7 @@ class tag_array {
   void add_pending_line(mem_fetch *mf);
   void remove_pending_line(mem_fetch *mf);
   void inc_dirty() { m_dirty++; }
-  void oracle_clear_protection_if_invalid(unsigned idx);
+  void oracle_invalidate_line(unsigned idx, mem_access_sector_mask_t mask);
   uint64_t oracle_protected_occupancy() const {
     return m_oracle_protected_occupancy;
   }
@@ -1113,6 +1113,7 @@ class tag_array {
   line_table pending_lines;
   uint64_t m_oracle_protected_occupancy;
   uint64_t m_oracle_pending_protected;
+  uint64_t m_oracle_ordinary_valid;
   uint64_t m_oracle_protected_quota;
   uint64_t m_oracle_protected_occupancy_max;
   mutable oracle_elastic_residency::diagnostic_counters m_oracle_diagnostics;
@@ -1122,6 +1123,7 @@ class tag_array {
       bool is_write, bool probe_mode, mem_fetch *mf) const;
   bool oracle_request_target(const mem_fetch *mf,
                              unsigned *target_class = NULL) const;
+  void oracle_verify_invariant_deep() const;
   void oracle_depart_line(unsigned idx);
   void oracle_commit_fill(unsigned idx);
 };

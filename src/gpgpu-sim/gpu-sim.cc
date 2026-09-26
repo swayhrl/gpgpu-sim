@@ -1821,6 +1821,15 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
                                 "L2_cache_stats_fail_breakdown");
       total_l2_css.print_port_stats(stdout, "L2_cache");
     }
+    if (m_memory_config->m_L2_config.oracle_elastic_diagnostics_enabled()) {
+      unsigned oracle_accesses = 0;
+      unsigned oracle_misses = 0;
+      printf("oracle_elastic_l2_snapshot_begin\n");
+      for (unsigned i = 0; i < m_memory_config->m_n_mem_sub_partition; i++)
+        m_memory_sub_partition[i]->print_cache_stat(oracle_accesses,
+                                                    oracle_misses);
+      printf("oracle_elastic_l2_snapshot_end\n");
+    }
   }
 
   if (m_config.gpgpu_cflog_interval != 0) {
