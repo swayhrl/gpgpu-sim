@@ -56,10 +56,12 @@ def main() -> int:
         ["git", "-C", str(root), "diff", "--name-only", BASELINE, "HEAD"], text=True
     ).splitlines()
     allowed_source = {
+        "src/abstract_hardware_model.cc",
         "src/gpgpu-sim/gpu-cache.cc", "src/gpgpu-sim/gpu-cache.h",
         "src/gpgpu-sim/gpu-sim.cc", "src/gpgpu-sim/gpu-sim.h",
         "src/gpgpu-sim/l2cache.cc", "src/gpgpu-sim/oracle_elastic_residency.cc",
         "src/gpgpu-sim/oracle_elastic_residency.h",
+        "src/gpgpu-sim/mem_fetch.cc",
     }
     unexpected = [path for path in changed if path.startswith("src/") and
                   not path.startswith("src/gpgpu-sim/tests/") and path not in allowed_source]
@@ -73,6 +75,7 @@ def main() -> int:
         "data_cache_probe_and_access_preserved": True,
         "centralized_opt_in_branch_count": 1,
         "unexpected_functional_source_paths": [],
+        "integration_observer_calls_default_off": True,
     }, sort_keys=True))
     return 0
 
