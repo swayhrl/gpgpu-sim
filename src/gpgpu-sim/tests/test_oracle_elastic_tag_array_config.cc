@@ -5,6 +5,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <string>
 
 class exposed_tag_array : public tag_array {
  public:
@@ -77,6 +78,7 @@ int main() {
   sector_config.m_oracle_elastic_sidecar = const_cast<char *>(sidecar);
   sector_config.m_oracle_elastic_sidecar_sha256 =
       const_cast<char *>(digest.c_str());
+  sector_config.m_oracle_elastic_diagnostics = true;
   sector_config.init_oracle_elastic(1);
   exposed_tag_array sectors(sector_config, 0, 0);
   sectors.install_protected_sector_line(0);
@@ -86,6 +88,18 @@ int main() {
   assert(sectors.oracle_protected_occupancy() == 1);
   assert(sectors.get_block(0)->oracle_protected());
   sectors.oracle_verify_invariant();
+  FILE *stats = tmpfile();
+  assert(stats != NULL);
+  unsigned accesses = 0, misses = 0;
+  sectors.print(stats, accesses, misses);
+  rewind(stats);
+  std::string text;
+  char buffer[4096];
+  while (fgets(buffer, sizeof(buffer), stats)) text += buffer;
+  fclose(stats);
+  assert(text.find("oracle_elastic_l2_class_occupancy") != std::string::npos);
+  assert(text.find("class_1=1") != std::string::npos);
+  assert(text.find("class_2=0") != std::string::npos);
 
   remove(sidecar);
   std::cout << "ORACLE_ELASTIC_TAG_ARRAY_CONFIG_TEST_PASS\n";

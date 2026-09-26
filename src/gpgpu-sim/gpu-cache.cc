@@ -789,6 +789,15 @@ void tag_array::print(FILE *stream, unsigned &total_access,
           (float)(m_miss + m_sector_miss) / m_access, m_pending_hit,
           (float)m_pending_hit / m_access);
   if (m_config.oracle_elastic_diagnostics_enabled()) {
+    unsigned long long class_occupancy[29] = {};
+    for (unsigned i = 0; i < m_config.get_num_lines(); ++i) {
+      cache_block_t *line = m_lines[i];
+      if (!line->is_invalid_line() && line->oracle_protected()) {
+        const unsigned target_class = line->oracle_target_class();
+        if (target_class >= 1 && target_class <= 28)
+          ++class_occupancy[target_class];
+      }
+    }
     fprintf(stream,
             "oracle_elastic_l2\tinstance=%d\tquota=%llu\toccupancy=%llu\t"
             "occupancy_max=%llu\ttarget_accesses=%llu\ttarget_hits=%llu\t"
@@ -822,6 +831,11 @@ void tag_array::print(FILE *stream, unsigned &total_access,
             static_cast<unsigned long long>(m_oracle_diagnostics.target_protection_admission_denied),
             static_cast<unsigned long long>(m_oracle_diagnostics.denial_quota_full_invalid_priority),
             static_cast<unsigned long long>(m_oracle_diagnostics.denial_quota_full_no_local_protected));
+    fprintf(stream, "oracle_elastic_l2_class_occupancy\tinstance=%d", m_core_id);
+    for (unsigned target_class = 1; target_class <= 28; ++target_class)
+      fprintf(stream, "\tclass_%u=%llu", target_class,
+              class_occupancy[target_class]);
+    fprintf(stream, "\n");
   }
   total_misses += (m_miss + m_sector_miss);
   total_access += m_access;
