@@ -598,20 +598,60 @@ static void test_target_selection_accounting_identity() {
   assert(counters.target_accesses == 0);
   assert(counters.selection_filtered_admissions == 0);
 
-  account_target_access(&counters, true, false, false, true);
-  account_selection_filtered_admission(&counters, true, false, true);
+  account_target_access(&counters, true, false, false, true, 3);
+  account_selection_filtered_admission(&counters, true, false, true, 3);
   assert(counters.target_accesses == 1);
   assert(counters.selected_target_accesses == 0);
+  assert(counters.selection_filtered_target_accesses == 1);
   assert(counters.target_misses == 1);
   assert(counters.selection_filtered_admissions == 1);
+  assert(counters.target_accesses_by_class[3] == 1);
+  assert(counters.selection_filtered_target_accesses_by_class[3] == 1);
+  assert(counters.selection_filtered_admissions_by_class[3] == 1);
 
-  account_target_access(&counters, true, true, true, false);
-  account_selection_filtered_admission(&counters, true, true, false);
+  account_target_access(&counters, true, true, true, false, 3);
+  account_selection_filtered_admission(&counters, true, true, false, 3);
   assert(counters.target_accesses == 2);
   assert(counters.selected_target_accesses == 1);
+  assert(counters.selection_filtered_target_accesses == 1);
   assert(counters.target_hits == 1);
   assert(counters.target_misses == 1);
   assert(counters.selection_filtered_admissions == 1);
+  assert(counters.target_accesses_by_class[3] == 2);
+  assert(counters.selected_target_accesses_by_class[3] == 1);
+}
+
+static void test_m1f_activation_observer() {
+  const char *path = "/tmp/c16_m1f_activation_observer.tsv";
+  configure_m1f_activation_observer(path, 2, 0x1080);
+  activation_record filtered = {
+      7, 0x1080, 0x1080, 0, false, true, 3, 9,
+      0xf000000000000000ULL, false, true, "MISS", 2, 17, "ORDINARY",
+      false, false, false, "NONE"};
+  observe_m1f_activation(filtered);
+  activation_record selected = {
+      8, 0x1100, 0x1100, 0, false, true, 3, 10,
+      0x0000000000000001ULL, true, false, "MISS", 2, 18, "INVALID",
+      true, true, false, "NONE"};
+  observe_m1f_activation(selected);
+  activation_record ordinary = {
+      9, 0x2200, 0x2200, 4, true, false, 0, 0, 0, false, false,
+      "MISS", 2, 19, "ORDINARY", false, false, false, "NONE"};
+  observe_m1f_activation(ordinary);
+  std::ifstream input(path);
+  std::stringstream contents;
+  contents << input.rdbuf();
+  const std::string text = contents.str();
+  assert(text.find("record_kind\trequest_uid") == 0);
+  assert(text.find("EXACT_AND_TARGET_SAMPLE\t7\t4224") != std::string::npos);
+  assert(text.find("\t3\t9\t0xf000000000000000\t0\t1\tMISS\t") !=
+         std::string::npos);
+  assert(text.find("TARGET_SAMPLE\t8\t4352") != std::string::npos);
+  assert(text.find("\t1\t0\tMISS\t2\t18\tINVALID\t1\t1\t0\tNONE") !=
+         std::string::npos);
+  assert(text.find("NON_TARGET_SAMPLE\t9\t8704") != std::string::npos);
+  configure_m1f_activation_observer(NULL, 0, 0);
+  remove(path);
 }
 
 static void test_sha_and_exclusions() {
@@ -663,11 +703,13 @@ int main() {
   test_m1f_stable_admission();
   test_toy_scan_survival_comparison();
   test_target_selection_accounting_identity();
+  test_m1f_activation_observer();
   test_sha_and_exclusions();
   test_address_observer();
   diagnostic_counters counters;
   assert(counters.target_accesses == 0 &&
          counters.selected_target_accesses == 0 &&
+         counters.selection_filtered_target_accesses == 0 &&
          counters.selection_filtered_admissions == 0 &&
          counters.occupancy_current == 0);
   std::cout << "ORACLE_ELASTIC_QWEIGHT_RESIDENCY_POLICY_TEST_PASS\n";

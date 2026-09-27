@@ -623,6 +623,8 @@ class cache_config {
     m_oracle_elastic_sidecar_sha256 = NULL;
     m_oracle_elastic_diagnostics = false;
     m_oracle_m1f_stable_admission_enable = false;
+    m_oracle_m1f_activation_log = NULL;
+    m_oracle_m1f_activation_target_sample_limit = 0;
     m_oracle_address_canary_log = NULL;
     m_oracle_address_canary_target_limit = 0;
     m_oracle_address_canary_exact_address = 0;
@@ -940,6 +942,8 @@ class cache_config {
   char *m_oracle_elastic_sidecar_sha256;
   bool m_oracle_elastic_diagnostics;
   bool m_oracle_m1f_stable_admission_enable;
+  char *m_oracle_m1f_activation_log;
+  unsigned m_oracle_m1f_activation_target_sample_limit;
   char *m_oracle_address_canary_log;
   unsigned m_oracle_address_canary_target_limit;
   unsigned long long m_oracle_address_canary_exact_address;
@@ -1137,7 +1141,9 @@ class tag_array {
   bool oracle_request_target(const mem_fetch *mf,
                              unsigned *target_class = NULL) const;
   bool oracle_request_protection_eligible(
-      const mem_fetch *mf, unsigned *target_class = NULL) const;
+      const mem_fetch *mf, unsigned *target_class = NULL,
+      uint64_t *region_relative_line_index = NULL,
+      uint64_t *selection_hash = NULL) const;
   void oracle_verify_invariant_deep() const;
   void oracle_depart_line(unsigned idx);
   void oracle_commit_fill(unsigned idx);

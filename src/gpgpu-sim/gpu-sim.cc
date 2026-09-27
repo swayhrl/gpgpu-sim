@@ -286,6 +286,14 @@ void memory_config::reg_options(class OptionParser *opp) {
       &m_L2_config.m_oracle_m1f_stable_admission_enable,
       "enable frozen B16 M1F stable target admission (requires oracle)", "0");
   option_parser_register(
+      opp, "-gpgpu_l2_oracle_m1f_activation_log", OPT_CSTR,
+      &m_L2_config.m_oracle_m1f_activation_log,
+      "bounded structured M1F activation-chain log; empty disables", "");
+  option_parser_register(
+      opp, "-gpgpu_l2_oracle_m1f_activation_target_sample_limit", OPT_UINT32,
+      &m_L2_config.m_oracle_m1f_activation_target_sample_limit,
+      "maximum target access records in the M1F activation log", "0");
+  option_parser_register(
       opp, "-gpgpu_l2_oracle_address_canary_log", OPT_CSTR,
       &m_L2_config.m_oracle_address_canary_log,
       "ADDRESS_INTEGRATION_CANARY_ONLY TSV output path", "");

@@ -78,10 +78,40 @@ struct admission {
   admission() : protect_fill(false), denial_reason(ADMISSION_DENIAL_NONE) {}
 };
 
+struct activation_record {
+  uint64_t request_uid;
+  uint64_t address;
+  uint64_t line_address;
+  unsigned access_type;
+  bool is_write;
+  bool oracle_target;
+  unsigned target_class;
+  uint64_t region_relative_line_index;
+  uint64_t selection_hash;
+  bool protection_eligible;
+  bool selection_filtered;
+  const char *cache_status;
+  unsigned l2_instance;
+  unsigned set_index;
+  const char *victim_kind;
+  bool hard_admission_attempted;
+  bool protected_admitted;
+  bool admission_denied;
+  const char *denial_reason;
+};
+
+void configure_m1f_activation_observer(const char *path,
+                                       unsigned target_sample_limit,
+                                       uint64_t exact_address);
+void observe_m1f_activation(const activation_record &record);
+
 struct diagnostic_counters {
   uint64_t target_accesses;
   uint64_t selected_target_accesses;
+  uint64_t selection_filtered_target_accesses;
   uint64_t selection_filtered_admissions;
+  uint64_t hard_admission_attempts;
+  uint64_t protected_admission_decisions;
   uint64_t target_hits;
   uint64_t target_misses;
   uint64_t protected_fills;
@@ -100,15 +130,26 @@ struct diagnostic_counters {
   uint64_t denial_quota_full_no_local_protected;
   uint64_t occupancy_current;
   uint64_t occupancy_max;
+  uint64_t target_accesses_by_class[29];
+  uint64_t selected_target_accesses_by_class[29];
+  uint64_t selection_filtered_target_accesses_by_class[29];
+  uint64_t selection_filtered_admissions_by_class[29];
+  uint64_t hard_admission_attempts_by_class[29];
+  uint64_t protected_admission_decisions_by_class[29];
+  uint64_t protected_fills_by_class[29];
+  uint64_t protected_hits_by_class[29];
+  uint64_t admission_denials_by_class[29];
   diagnostic_counters();
 };
 
 void account_target_access(diagnostic_counters *counters, bool oracle_target,
-                           bool protection_eligible, bool hit, bool miss);
+                           bool protection_eligible, bool hit, bool miss,
+                           unsigned target_class = 0);
 void account_selection_filtered_admission(diagnostic_counters *counters,
                                           bool oracle_target,
                                           bool protection_eligible,
-                                          bool admission_attempt);
+                                          bool admission_attempt,
+                                          unsigned target_class = 0);
 
 class oracle_config {
  public:

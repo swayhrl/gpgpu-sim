@@ -112,6 +112,87 @@ address_observer_state &address_observer() {
   return state;
 }
 
+class m1f_activation_observer_state {
+ public:
+  m1f_activation_observer_state()
+      : m_enabled(false), m_target_sample_limit(0), m_target_samples(0),
+        m_non_target_samples(0), m_exact_address(0), m_exact_samples(0) {}
+
+  void configure(const char *path, unsigned target_sample_limit,
+                 uint64_t exact_address) {
+    m_enabled = path != NULL && *path != '\0';
+    m_path = m_enabled ? path : "";
+    m_target_sample_limit = target_sample_limit;
+    m_target_samples = 0;
+    m_non_target_samples = 0;
+    m_exact_address = exact_address;
+    m_exact_samples = 0;
+    if (!m_enabled) return;
+    std::ofstream out(m_path.c_str(), std::ios::out | std::ios::trunc);
+    if (!out) throw std::runtime_error("cannot create M1F activation log");
+    out << "record_kind\trequest_uid\taddress_dec\taddress_hex\t"
+           "line_address_hex\taccess_type\tis_write\toracle_target\t"
+           "target_class\tregion_relative_line_index\tselection_hash_hex\t"
+           "protection_eligible\tselection_filtered\tcache_status\t"
+           "l2_instance\tset_index\tvictim_kind\t"
+           "hard_admission_attempted\tprotected_admitted\t"
+           "admission_denied\tdenial_reason\n";
+  }
+
+  void observe(const activation_record &record) {
+    if (!m_enabled) return;
+    const bool exact = m_exact_address != 0 &&
+                       record.address == m_exact_address &&
+                       m_exact_samples < 64;
+    const bool target_sample = record.oracle_target &&
+                               m_target_samples < m_target_sample_limit;
+    const bool non_target_sample = !record.oracle_target &&
+                                   m_non_target_samples < 64;
+    if (!exact && !target_sample && !non_target_sample) return;
+    const char *kind = exact && target_sample
+                           ? "EXACT_AND_TARGET_SAMPLE"
+                           : exact ? "EXACT"
+                                   : target_sample ? "TARGET_SAMPLE"
+                                                   : "NON_TARGET_SAMPLE";
+    std::ofstream out(m_path.c_str(), std::ios::out | std::ios::app);
+    if (!out) throw std::runtime_error("cannot append M1F activation log");
+    out << kind << '\t' << record.request_uid << '\t' << record.address
+        << "\t0x" << std::hex << record.address << "\t0x"
+        << record.line_address << std::dec << '\t' << record.access_type
+        << '\t' << (record.is_write ? 1 : 0) << '\t'
+        << (record.oracle_target ? 1 : 0) << '\t' << record.target_class
+        << '\t' << record.region_relative_line_index << "\t0x" << std::hex
+        << std::setw(16) << std::setfill('0') << record.selection_hash
+        << std::setfill(' ') << std::dec << '\t'
+        << (record.protection_eligible ? 1 : 0) << '\t'
+        << (record.selection_filtered ? 1 : 0) << '\t'
+        << record.cache_status << '\t' << record.l2_instance << '\t'
+        << record.set_index << '\t' << record.victim_kind << '\t'
+        << (record.hard_admission_attempted ? 1 : 0) << '\t'
+        << (record.protected_admitted ? 1 : 0) << '\t'
+        << (record.admission_denied ? 1 : 0) << '\t'
+        << record.denial_reason << '\n';
+    out.flush();
+    if (exact) ++m_exact_samples;
+    if (target_sample) ++m_target_samples;
+    if (non_target_sample) ++m_non_target_samples;
+  }
+
+ private:
+  bool m_enabled;
+  std::string m_path;
+  unsigned m_target_sample_limit;
+  unsigned m_target_samples;
+  unsigned m_non_target_samples;
+  uint64_t m_exact_address;
+  unsigned m_exact_samples;
+};
+
+m1f_activation_observer_state &m1f_activation_observer() {
+  static m1f_activation_observer_state state;
+  return state;
+}
+
 uint32_t rotate_right(uint32_t value, unsigned bits) {
   return (value >> bits) | (value << (32 - bits));
 }
@@ -267,7 +348,9 @@ bool m1f_stable_selected(unsigned target_class,
 
 diagnostic_counters::diagnostic_counters()
     : target_accesses(0), selected_target_accesses(0),
-      selection_filtered_admissions(0), target_hits(0), target_misses(0),
+      selection_filtered_target_accesses(0),
+      selection_filtered_admissions(0), hard_admission_attempts(0),
+      protected_admission_decisions(0), target_hits(0), target_misses(0),
       protected_fills(0), protected_hits(0), target_normal_victims(0),
       target_protected_victims(0), normal_normal_victims(0),
       normal_fallback_protected_victims(0), quota_full_events(0),
@@ -276,23 +359,59 @@ diagnostic_counters::diagnostic_counters()
       target_protection_admission_denied(0),
       denial_quota_full_invalid_priority(0),
       denial_quota_full_no_local_protected(0), occupancy_current(0),
-      occupancy_max(0) {}
+      occupancy_max(0) {
+  for (unsigned i = 0; i < 29; ++i) {
+    target_accesses_by_class[i] = 0;
+    selected_target_accesses_by_class[i] = 0;
+    selection_filtered_target_accesses_by_class[i] = 0;
+    selection_filtered_admissions_by_class[i] = 0;
+    hard_admission_attempts_by_class[i] = 0;
+    protected_admission_decisions_by_class[i] = 0;
+    protected_fills_by_class[i] = 0;
+    protected_hits_by_class[i] = 0;
+    admission_denials_by_class[i] = 0;
+  }
+}
+
+void configure_m1f_activation_observer(const char *path,
+                                       unsigned target_sample_limit,
+                                       uint64_t exact_address) {
+  m1f_activation_observer().configure(path, target_sample_limit,
+                                      exact_address);
+}
+
+void observe_m1f_activation(const activation_record &record) {
+  m1f_activation_observer().observe(record);
+}
 
 void account_target_access(diagnostic_counters *counters, bool oracle_target,
-                           bool protection_eligible, bool hit, bool miss) {
+                           bool protection_eligible, bool hit, bool miss,
+                           unsigned target_class) {
   if (!counters || !oracle_target) return;
   ++counters->target_accesses;
   if (protection_eligible) ++counters->selected_target_accesses;
+  else ++counters->selection_filtered_target_accesses;
   if (hit) ++counters->target_hits;
   if (miss) ++counters->target_misses;
+  if (target_class >= 1 && target_class <= 28) {
+    ++counters->target_accesses_by_class[target_class];
+    if (protection_eligible)
+      ++counters->selected_target_accesses_by_class[target_class];
+    else
+      ++counters->selection_filtered_target_accesses_by_class[target_class];
+  }
 }
 
 void account_selection_filtered_admission(diagnostic_counters *counters,
                                           bool oracle_target,
                                           bool protection_eligible,
-                                          bool admission_attempt) {
-  if (counters && oracle_target && !protection_eligible && admission_attempt)
+                                          bool admission_attempt,
+                                          unsigned target_class) {
+  if (counters && oracle_target && !protection_eligible && admission_attempt) {
     ++counters->selection_filtered_admissions;
+    if (target_class >= 1 && target_class <= 28)
+      ++counters->selection_filtered_admissions_by_class[target_class];
+  }
 }
 
 oracle_config::oracle_config()
