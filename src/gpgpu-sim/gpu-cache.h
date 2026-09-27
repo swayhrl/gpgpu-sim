@@ -38,6 +38,7 @@
 #include "../tr1_hash_map.h"
 #include "gpu-misc.h"
 #include "mem_fetch.h"
+#include "c16_strong_baselines.h"
 #include "oracle_elastic_residency.h"
 
 #include <iostream>
@@ -626,6 +627,9 @@ class cache_config {
     m_oracle_address_canary_target_limit = 0;
     m_oracle_address_canary_exact_address = 0;
     m_oracle_elastic_l2_instances = 0;
+    m_c16_baseline_enable = false;
+    m_c16_baseline_policy = c16_strong_baselines::POLICY_NONE;
+    m_c16_baseline_diagnostics = false;
   }
   void init(char *config, FuncCache status) {
     cache_status = status;
@@ -853,6 +857,13 @@ class cache_config {
   void print(FILE *fp) const {
     fprintf(fp, "Size = %d B (%d Set x %d-way x %d byte line)\n",
             m_line_sz * m_nset * m_assoc, m_nset, m_assoc, m_line_sz);
+    if (m_c16_baseline_enable || m_c16_baseline_diagnostics)
+      fprintf(fp,
+              "c16_strong_baseline_config\tenable=%u\tpolicy=%s\t"
+              "diagnostics=%u\n",
+              m_c16_baseline_enable ? 1U : 0U,
+              c16_strong_baselines::policy_name(m_c16_baseline_policy),
+              m_c16_baseline_diagnostics ? 1U : 0U);
   }
 
   virtual unsigned set_index(new_addr_type addr) const;
@@ -908,6 +919,7 @@ class cache_config {
   }
   write_policy_t get_write_policy() { return m_write_policy; }
   void init_oracle_elastic(unsigned l2_instances);
+  void init_c16_strong_baseline(unsigned l2_instances);
   bool oracle_elastic_enabled() const { return m_oracle_runtime.enabled(); }
   bool oracle_elastic_diagnostics_enabled() const {
     return m_oracle_runtime.diagnostics_enabled();
@@ -920,6 +932,19 @@ class cache_config {
   uint64_t oracle_elastic_global_lines() const {
     return m_oracle_runtime.global_line_budget();
   }
+  bool c16_baseline_enabled() const { return m_c16_baseline_enable; }
+  bool c16_baseline_diagnostics_enabled() const {
+    return m_c16_baseline_diagnostics;
+  }
+  unsigned c16_baseline_policy() const { return m_c16_baseline_policy; }
+  const char *c16_baseline_policy_name() const {
+    return c16_strong_baselines::policy_name(m_c16_baseline_policy);
+  }
+  bool c16_baseline_target_identity(
+      const mem_fetch *mf, unsigned *target_class = NULL,
+      uint64_t *region_relative_line_index = NULL) const;
+  bool c16_baseline_priority(const mem_fetch *mf,
+                             unsigned *target_class = NULL) const;
 
   bool m_oracle_elastic_enable;
   unsigned long long m_oracle_elastic_quota_bytes;
@@ -931,6 +956,9 @@ class cache_config {
   unsigned m_oracle_address_canary_target_limit;
   unsigned long long m_oracle_address_canary_exact_address;
   unsigned m_oracle_elastic_l2_instances;
+  bool m_c16_baseline_enable;
+  unsigned m_c16_baseline_policy;
+  bool m_c16_baseline_diagnostics;
 
  protected:
   void exit_parse_error() {
@@ -979,6 +1007,7 @@ class cache_config {
   enum set_index_function
       m_set_index_function;  // Hash, linear, or custom set index function
   oracle_elastic_residency::oracle_config m_oracle_runtime;
+  oracle_elastic_residency::oracle_config m_c16_baseline_target_map;
 
   friend class tag_array;
   friend class baseline_cache;
@@ -1117,8 +1146,16 @@ class tag_array {
   uint64_t m_oracle_protected_quota;
   uint64_t m_oracle_protected_occupancy_max;
   mutable oracle_elastic_residency::diagnostic_counters m_oracle_diagnostics;
+  mutable std::vector<unsigned char> m_c16_rrpv;
+  std::vector<unsigned char> m_c16_priority_state;
+  unsigned m_c16_drrip_psel;
+  uint64_t m_c16_brrip_miss_counter;
+  mutable c16_strong_baselines::diagnostics m_c16_diagnostics;
 
   enum cache_request_status oracle_probe(
+      new_addr_type addr, unsigned &idx, mem_access_sector_mask_t mask,
+      bool is_write, bool probe_mode, mem_fetch *mf) const;
+  enum cache_request_status c16_baseline_probe(
       new_addr_type addr, unsigned &idx, mem_access_sector_mask_t mask,
       bool is_write, bool probe_mode, mem_fetch *mf) const;
   bool oracle_request_target(const mem_fetch *mf,
@@ -1126,6 +1163,9 @@ class tag_array {
   void oracle_verify_invariant_deep() const;
   void oracle_depart_line(unsigned idx);
   void oracle_commit_fill(unsigned idx);
+  void c16_baseline_depart_line(unsigned idx);
+  void c16_baseline_commit_fill(unsigned idx);
+  void c16_baseline_verify() const;
 };
 
 class mshr_table {
@@ -1839,7 +1879,8 @@ class l2_cache : public data_cache {
            enum mem_fetch_status status, class gpgpu_sim *gpu,
            enum cache_gpu_level level, unsigned oracle_l2_instance_id)
       : data_cache(name, config,
-                   config.oracle_elastic_enabled()
+                   (config.oracle_elastic_enabled() ||
+                    config.c16_baseline_enabled())
                        ? static_cast<int>(oracle_l2_instance_id)
                        : core_id,
                    type_id, memport, mfcreator, status,

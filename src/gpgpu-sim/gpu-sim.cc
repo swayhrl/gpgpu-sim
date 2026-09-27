@@ -282,6 +282,18 @@ void memory_config::reg_options(class OptionParser *opp) {
       &m_L2_config.m_oracle_elastic_diagnostics,
       "diagnostic counters only; independent of functional enable", "0");
   option_parser_register(
+      opp, "-gpgpu_l2_c16_baseline_enable", OPT_BOOL,
+      &m_L2_config.m_c16_baseline_enable,
+      "enable one opt-in C16 strong replacement baseline", "0");
+  option_parser_register(
+      opp, "-gpgpu_l2_c16_baseline_policy", OPT_UINT32,
+      &m_L2_config.m_c16_baseline_policy,
+      "0=NONE,1=PRIORITY_ALL,2=PRIORITY_STABLE,3=DRRIP,4=SHIP_SW", "0");
+  option_parser_register(
+      opp, "-gpgpu_l2_c16_baseline_diagnostics", OPT_BOOL,
+      &m_L2_config.m_c16_baseline_diagnostics,
+      "C16 baseline diagnostics; independent of functional enable", "0");
+  option_parser_register(
       opp, "-gpgpu_l2_oracle_address_canary_log", OPT_CSTR,
       &m_L2_config.m_oracle_address_canary_log,
       "ADDRESS_INTEGRATION_CANARY_ONLY TSV output path", "");
@@ -1821,14 +1833,23 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
                                 "L2_cache_stats_fail_breakdown");
       total_l2_css.print_port_stats(stdout, "L2_cache");
     }
-    if (m_memory_config->m_L2_config.oracle_elastic_diagnostics_enabled()) {
+    if (m_memory_config->m_L2_config.oracle_elastic_diagnostics_enabled() ||
+        m_memory_config->m_L2_config.c16_baseline_diagnostics_enabled()) {
       unsigned oracle_accesses = 0;
       unsigned oracle_misses = 0;
-      printf("oracle_elastic_l2_snapshot_begin\n");
+      printf("%s\n",
+             m_memory_config->m_L2_config
+                     .c16_baseline_diagnostics_enabled()
+                 ? "c16_strong_baseline_l2_snapshot_begin"
+                 : "oracle_elastic_l2_snapshot_begin");
       for (unsigned i = 0; i < m_memory_config->m_n_mem_sub_partition; i++)
         m_memory_sub_partition[i]->print_cache_stat(oracle_accesses,
                                                     oracle_misses);
-      printf("oracle_elastic_l2_snapshot_end\n");
+      printf("%s\n",
+             m_memory_config->m_L2_config
+                     .c16_baseline_diagnostics_enabled()
+                 ? "c16_strong_baseline_l2_snapshot_end"
+                 : "oracle_elastic_l2_snapshot_end");
     }
   }
 

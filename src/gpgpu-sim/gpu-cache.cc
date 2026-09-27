@@ -66,6 +66,19 @@ const char *cache_fail_status_str(enum cache_reservation_fail_reason status) {
   return static_cache_reservation_fail_reason_str[status];
 }
 
+static bool c16_rrip_hit_trainable(const mem_fetch *mf) {
+  if (!mf) return false;
+  switch (mf->get_access_type()) {
+    case L1_WRBK_ACC:
+    case L2_WRBK_ACC:
+    case L1_WR_ALLOC_R:
+    case L2_WR_ALLOC_R:
+      return false;
+    default:
+      return true;
+  }
+}
+
 unsigned l1d_cache_config::set_bank(new_addr_type addr) const {
   // For sector cache, we select one sector per bank (sector interleaving)
   // This is what was found in Volta (one sector per bank, sector interleaving)
@@ -102,6 +115,117 @@ void cache_config::init_oracle_elastic(unsigned l2_instances) {
             error.what());
     abort();
   }
+}
+
+void cache_config::init_c16_strong_baseline(unsigned l2_instances) {
+  using namespace c16_strong_baselines;
+  if (!policy_value_valid(m_c16_baseline_policy)) {
+    fprintf(stderr, "C16 strong baseline invalid policy value %u\n",
+            m_c16_baseline_policy);
+    abort();
+  }
+  if ((!m_c16_baseline_enable && m_c16_baseline_policy != POLICY_NONE) ||
+      (m_c16_baseline_enable && m_c16_baseline_policy == POLICY_NONE)) {
+    fprintf(stderr,
+            "C16 strong baseline fail-closed enable/policy mismatch\n");
+    abort();
+  }
+  if (m_c16_baseline_enable && m_oracle_elastic_enable) {
+    fprintf(stderr,
+            "C16 strong baseline and oracle elastic functional enables are mutually exclusive\n");
+    abort();
+  }
+  if (m_c16_baseline_policy == POLICY_SHIP_SW &&
+      !ship_sw_contract_complete()) {
+    fprintf(stderr, "SHIP_SW_IMPLEMENTATION_CONTRACT_INCOMPLETE\n");
+    abort();
+  }
+  if (m_c16_baseline_enable && m_alloc_policy != ON_MISS) {
+    fprintf(stderr, "C16 strong baselines require L2 ON_MISS allocation\n");
+    abort();
+  }
+  if (m_c16_baseline_enable &&
+      (m_cache_type != SECTOR || m_line_sz != 128 || m_nset < 64)) {
+    fprintf(stderr,
+            "C16 strong baselines require accepted 128B sector L2 with at least 64 sets\n");
+    abort();
+  }
+  try {
+    const bool needs_target_map =
+        m_c16_baseline_enable && policy_needs_target_map(m_c16_baseline_policy);
+    m_c16_baseline_target_map.configure(
+        needs_target_map, 0, needs_target_map ? 1 : 0, m_line_sz,
+        l2_instances, m_oracle_elastic_sidecar,
+        m_oracle_elastic_sidecar_sha256, false);
+    if (m_c16_baseline_policy == POLICY_PRIORITY_STABLE) {
+      const std::vector<oracle_elastic_residency::interval> &intervals =
+          m_c16_baseline_target_map.intervals();
+      if (intervals.size() != 28)
+        throw std::runtime_error(
+            "PRIORITY_STABLE requires exact 28 target regions");
+      bool classes[29] = {};
+      for (size_t i = 0; i < intervals.size(); ++i) {
+        const oracle_elastic_residency::interval &item = intervals[i];
+        if (item.target_class < 1 || item.target_class > 28 ||
+            classes[item.target_class] ||
+            (item.end - item.begin) / 128 != 265216 ||
+            item.begin % 128 || item.end % 128)
+          throw std::runtime_error(
+              "PRIORITY_STABLE target geometry drift");
+        classes[item.target_class] = true;
+      }
+    }
+  } catch (const std::exception &error) {
+    fprintf(stderr, "C16 strong baseline config error: %s\n", error.what());
+    abort();
+  }
+}
+
+bool cache_config::c16_baseline_target_identity(
+    const mem_fetch *mf, unsigned *target_class,
+    uint64_t *region_relative_line_index) const {
+  if (!m_c16_baseline_enable || mf == NULL ||
+      !c16_strong_baselines::policy_needs_target_map(m_c16_baseline_policy))
+    return false;
+  if (!oracle_elastic_residency::target_request_eligible(
+          static_cast<unsigned>(mf->get_access_type()), mf->get_is_write(),
+          static_cast<unsigned>(GLOBAL_ACC_R)))
+    return false;
+  unsigned local_class = 0;
+  if (!m_c16_baseline_target_map.lookup(mf->get_addr(), &local_class))
+    return false;
+  const std::vector<oracle_elastic_residency::interval> &intervals =
+      m_c16_baseline_target_map.intervals();
+  for (size_t i = 0; i < intervals.size(); ++i) {
+    if (intervals[i].target_class == local_class &&
+        mf->get_addr() >= intervals[i].begin &&
+        mf->get_addr() < intervals[i].end) {
+      if (target_class) *target_class = local_class;
+      if (region_relative_line_index) {
+        const uint64_t line = mf->get_addr() & ~uint64_t(127);
+        *region_relative_line_index = (line - intervals[i].begin) / 128;
+      }
+      return true;
+    }
+  }
+  assert(0 && "target map lookup/class interval mismatch");
+  return false;
+}
+
+bool cache_config::c16_baseline_priority(const mem_fetch *mf,
+                                         unsigned *target_class) const {
+  uint64_t line_index = 0;
+  unsigned local_class = 0;
+  if (!c16_baseline_target_identity(mf, &local_class, &line_index))
+    return false;
+  if (target_class) *target_class = local_class;
+  if (m_c16_baseline_policy ==
+      c16_strong_baselines::POLICY_PRIORITY_ALL)
+    return true;
+  if (m_c16_baseline_policy ==
+      c16_strong_baselines::POLICY_PRIORITY_STABLE)
+    return c16_strong_baselines::stable_selected(local_class, line_index);
+  return false;
 }
 
 bool cache_config::oracle_elastic_target(const mem_fetch *mf,
@@ -265,7 +389,12 @@ void tag_array::init(int core_id, int type_id) {
       m_config.oracle_elastic_enabled()
           ? m_config.oracle_elastic_quota(static_cast<unsigned>(core_id))
           : 0;
+  m_c16_rrpv.assign(m_config.get_max_num_lines(), 3);
+  m_c16_priority_state.assign(m_config.get_max_num_lines(), 0);
+  m_c16_drrip_psel = 512;
+  m_c16_brrip_miss_counter = 0;
   oracle_verify_invariant();
+  c16_baseline_verify();
 }
 
 bool tag_array::oracle_request_target(const mem_fetch *mf,
@@ -352,6 +481,46 @@ void tag_array::oracle_commit_fill(unsigned idx) {
   oracle_verify_invariant();
 }
 
+void tag_array::c16_baseline_verify() const {
+  if (!m_config.c16_baseline_enabled()) return;
+  assert(m_c16_drrip_psel <= 1023);
+  assert(m_c16_diagnostics.priority_resident <= m_config.get_num_lines());
+  assert(m_c16_diagnostics.priority_pending <= m_config.get_num_lines());
+  assert(m_c16_diagnostics.priority_resident +
+             m_c16_diagnostics.priority_pending <=
+         m_config.get_num_lines());
+}
+
+void tag_array::c16_baseline_depart_line(unsigned idx) {
+  if (!m_config.c16_baseline_enabled()) return;
+  assert(idx < m_c16_priority_state.size());
+  if (m_c16_priority_state[idx] == 1) {
+    assert(m_c16_diagnostics.priority_pending > 0);
+    --m_c16_diagnostics.priority_pending;
+  } else if (m_c16_priority_state[idx] == 2) {
+    assert(m_c16_diagnostics.priority_resident > 0);
+    --m_c16_diagnostics.priority_resident;
+  }
+  m_c16_priority_state[idx] = 0;
+  m_c16_rrpv[idx] = 3;
+  c16_baseline_verify();
+}
+
+void tag_array::c16_baseline_commit_fill(unsigned idx) {
+  if (!m_config.c16_baseline_enabled()) return;
+  assert(idx < m_c16_priority_state.size());
+  if (m_c16_priority_state[idx] == 1) {
+    assert(m_c16_diagnostics.priority_pending > 0);
+    --m_c16_diagnostics.priority_pending;
+    ++m_c16_diagnostics.priority_resident;
+    m_c16_priority_state[idx] = 2;
+    m_c16_diagnostics.priority_peak_resident = std::max(
+        m_c16_diagnostics.priority_peak_resident,
+        m_c16_diagnostics.priority_resident);
+  }
+  c16_baseline_verify();
+}
+
 void tag_array::oracle_invalidate_line(unsigned idx,
                                        mem_access_sector_mask_t mask) {
   cache_block_t *line = m_lines[idx];
@@ -360,6 +529,8 @@ void tag_array::oracle_invalidate_line(unsigned idx,
                             !line->oracle_protected() &&
                             !line->oracle_pending_protected();
   line->set_status(INVALID, mask);
+  if (m_config.c16_baseline_enabled() && line->is_invalid_line())
+    c16_baseline_depart_line(idx);
   if (m_config.oracle_elastic_enabled() && line->is_invalid_line()) {
     if (was_ordinary) {
       assert(m_oracle_ordinary_valid > 0);
@@ -368,6 +539,7 @@ void tag_array::oracle_invalidate_line(unsigned idx,
     oracle_depart_line(idx);
   }
   oracle_verify_invariant();
+  c16_baseline_verify();
 }
 
 void tag_array::add_pending_line(mem_fetch *mf) {
@@ -399,6 +571,8 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
                                            mem_access_sector_mask_t mask,
                                            bool is_write, bool probe_mode,
                                            mem_fetch *mf) const {
+  if (m_config.c16_baseline_enabled())
+    return c16_baseline_probe(addr, idx, mask, is_write, probe_mode, mf);
   if (m_config.oracle_elastic_enabled())
     return oracle_probe(addr, idx, mask, is_write, probe_mode, mf);
   // assert( m_config.m_write_policy == READ_ONLY );
@@ -553,6 +727,80 @@ enum cache_request_status tag_array::oracle_probe(
   return MISS;
 }
 
+enum cache_request_status tag_array::c16_baseline_probe(
+    new_addr_type addr, unsigned &idx, mem_access_sector_mask_t mask,
+    bool is_write, bool probe_mode, mem_fetch *mf) const {
+  (void)mf;
+  const unsigned set_index = m_config.set_index(addr);
+  const new_addr_type tag = m_config.tag(addr);
+  std::vector<c16_strong_baselines::candidate> eligible;
+  for (unsigned way = 0; way < m_config.m_assoc; ++way) {
+    const unsigned index = set_index * m_config.m_assoc + way;
+    cache_block_t *line = m_lines[index];
+    if (line->m_tag == tag) {
+      if (line->get_status(mask) == RESERVED) {
+        idx = index;
+        return HIT_RESERVED;
+      } else if (line->get_status(mask) == VALID) {
+        idx = index;
+        return HIT;
+      } else if (line->get_status(mask) == MODIFIED) {
+        if ((!is_write && line->is_readable(mask)) || is_write) {
+          idx = index;
+          return HIT;
+        }
+        idx = index;
+        return SECTOR_MISS;
+      } else if (line->is_valid_line() &&
+                 line->get_status(mask) == INVALID) {
+        idx = index;
+        return SECTOR_MISS;
+      } else {
+        assert(line->get_status(mask) == INVALID);
+      }
+    }
+    if (line->is_reserved_line()) continue;
+    const float dirty_line_percentage =
+        (static_cast<float>(m_dirty) /
+         (m_config.m_nset * m_config.m_assoc)) * 100;
+    if (line->is_modified_line() &&
+        dirty_line_percentage < m_config.m_wr_percent)
+      continue;
+    c16_strong_baselines::candidate row;
+    row.index = index;
+    row.invalid = line->is_invalid_line();
+    row.priority = m_c16_priority_state[index] == 2;
+    row.rrpv = m_c16_rrpv[index];
+    row.last_access = line->get_last_access_time();
+    row.allocation_time = line->get_alloc_time();
+    eligible.push_back(row);
+  }
+  if (eligible.empty()) {
+    assert(m_config.m_alloc_policy == ON_MISS);
+    return RESERVATION_FAIL;
+  }
+  c16_strong_baselines::victim_result selected;
+  if (m_config.c16_baseline_policy() ==
+          c16_strong_baselines::POLICY_PRIORITY_ALL ||
+      m_config.c16_baseline_policy() ==
+          c16_strong_baselines::POLICY_PRIORITY_STABLE) {
+    selected = c16_strong_baselines::choose_priority_victim(
+        eligible, m_config.m_replacement_policy == LRU);
+  } else {
+    assert(m_config.c16_baseline_policy() ==
+           c16_strong_baselines::POLICY_DRRIP);
+    selected = c16_strong_baselines::choose_drrip_victim(&eligible);
+    if (!probe_mode) {
+      for (size_t i = 0; i < eligible.size(); ++i)
+        m_c16_rrpv[eligible[i].index] = eligible[i].rrpv;
+      m_c16_diagnostics.drrip_aging_rounds += selected.aging_rounds;
+    }
+  }
+  if (!selected.found) return RESERVATION_FAIL;
+  idx = selected.index;
+  return MISS;
+}
+
 enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
                                             unsigned &idx, mem_fetch *mf) {
   bool wb = false;
@@ -572,7 +820,34 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
   unsigned oracle_target_class = 0;
   const bool oracle_target =
       oracle_request_target(mf, &oracle_target_class);
+  unsigned c16_target_class = 0;
+  const bool c16_target =
+      m_config.c16_baseline_target_identity(mf, &c16_target_class, NULL);
+  const bool c16_priority =
+      m_config.c16_baseline_priority(mf, &c16_target_class);
   enum cache_request_status status = probe(addr, idx, mf, mf->is_write());
+  if (m_config.c16_baseline_enabled()) {
+    ++m_c16_diagnostics.accesses;
+    if (c16_target) ++m_c16_diagnostics.priority_target_accesses;
+    if (c16_priority) ++m_c16_diagnostics.priority_selected_accesses;
+    if (status == HIT_RESERVED)
+      ++m_c16_diagnostics.mshr_merge_no_promotion;
+    else if (status == SECTOR_MISS)
+      ++m_c16_diagnostics.sector_miss_no_promotion;
+    else if (status == HIT) {
+      if (m_config.c16_baseline_policy() ==
+          c16_strong_baselines::POLICY_DRRIP) {
+        if (c16_rrip_hit_trainable(mf)) {
+          m_c16_rrpv[idx] = 0;
+          ++m_c16_diagnostics.true_hit_promotions;
+        } else {
+          ++m_c16_diagnostics.writeback_hits_not_promoted;
+        }
+      }
+      if (m_c16_priority_state[idx] == 2)
+        ++m_c16_diagnostics.priority_hits;
+    }
+  }
   if (m_config.oracle_elastic_diagnostics_enabled()) {
     if (oracle_target) {
       ++m_oracle_diagnostics.target_accesses;
@@ -596,6 +871,8 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
       shader_cache_access_log(m_core_id, m_type_id, 1);  // log cache misses
       if (m_config.m_alloc_policy == ON_MISS) {
         const bool valid_victim = !m_lines[idx]->is_invalid_line();
+        const bool c16_priority_victim =
+            valid_victim && m_c16_priority_state[idx] == 2;
         const bool protected_victim =
             valid_victim && m_lines[idx]->oracle_protected();
         const bool quota_full =
@@ -648,6 +925,15 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
           evicted.m_has_valid_victim = true;
           evicted.m_telemetry_class = m_lines[idx]->get_telemetry_class();
         }
+        if (m_config.c16_baseline_enabled()) {
+          ++m_c16_diagnostics.accepted_new_line_allocations;
+          if (!valid_victim)
+            ++m_c16_diagnostics.invalid_victims;
+          else if (c16_priority_victim)
+            ++m_c16_diagnostics.priority_victims;
+          else
+            ++m_c16_diagnostics.ordinary_victims;
+        }
         if (m_lines[idx]->is_modified_line()) {
           wb = true;
           // m_lines[idx]->set_byte_mask(mf);
@@ -658,6 +944,7 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
           m_dirty--;
         }
         oracle_depart_line(idx);
+        c16_baseline_depart_line(idx);
         m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr),
                                time, mf->get_access_sector_mask());
         m_lines[idx]->set_telemetry_class(mf->get_telemetry_class());
@@ -669,6 +956,45 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
             ++m_oracle_pending_protected;
           else
             ++m_oracle_ordinary_valid;
+        }
+        if (m_config.c16_baseline_enabled()) {
+          const unsigned policy = m_config.c16_baseline_policy();
+          if ((policy == c16_strong_baselines::POLICY_PRIORITY_ALL ||
+               policy == c16_strong_baselines::POLICY_PRIORITY_STABLE) &&
+              c16_priority) {
+            m_c16_priority_state[idx] = 1;
+            ++m_c16_diagnostics.priority_pending;
+            ++m_c16_diagnostics.priority_allocations;
+          } else if (policy == c16_strong_baselines::POLICY_DRRIP) {
+            const unsigned set_index = m_config.set_index(addr);
+            const c16_strong_baselines::leader_role role =
+                c16_strong_baselines::drrip_leader_role(
+                    set_index, m_config.m_nset);
+            const unsigned old_psel = m_c16_drrip_psel;
+            c16_strong_baselines::drrip_train_psel(
+                role, &m_c16_drrip_psel);
+            if (m_c16_drrip_psel > old_psel)
+              ++m_c16_diagnostics.drrip_psel_increments;
+            else if (m_c16_drrip_psel < old_psel)
+              ++m_c16_diagnostics.drrip_psel_decrements;
+            bool used_brrip = false;
+            const unsigned insertion =
+                c16_strong_baselines::drrip_insertion_rrpv(
+                    role, m_c16_drrip_psel, &m_c16_brrip_miss_counter,
+                    &used_brrip);
+            m_c16_rrpv[idx] = insertion;
+            if (!used_brrip)
+              ++m_c16_diagnostics.drrip_srrip_insertions;
+            else if (insertion == 2)
+              ++m_c16_diagnostics.drrip_brrip_short_insertions;
+            else
+              ++m_c16_diagnostics.drrip_brrip_long_insertions;
+          }
+          m_c16_diagnostics.priority_peak_resident_plus_pending = std::max(
+              m_c16_diagnostics.priority_peak_resident_plus_pending,
+              m_c16_diagnostics.priority_resident +
+                  m_c16_diagnostics.priority_pending);
+          c16_baseline_verify();
         }
         oracle_verify_invariant();
       }
@@ -731,6 +1057,7 @@ void tag_array::fill(new_addr_type addr, unsigned time,
   // redundant memory request
   if (status == MISS) {
     oracle_depart_line(idx);
+    c16_baseline_depart_line(idx);
     m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr), time,
                            mask);
     m_lines[idx]->oracle_set_pending(false);
@@ -745,6 +1072,7 @@ void tag_array::fill(new_addr_type addr, unsigned time,
   before = m_lines[idx]->is_modified_line();
   m_lines[idx]->fill(time, mask, byte_mask);
   oracle_commit_fill(idx);
+  c16_baseline_commit_fill(idx);
   if (m_lines[idx]->is_modified_line() && !before) {
     m_dirty++;
   }
@@ -756,6 +1084,7 @@ void tag_array::fill(unsigned index, unsigned time, mem_fetch *mf) {
   m_lines[index]->fill(time, mf->get_access_sector_mask(),
                        mf->get_access_byte_mask());
   oracle_commit_fill(index);
+  c16_baseline_commit_fill(index);
   m_lines[index]->set_telemetry_class(mf->get_telemetry_class());
   if (m_lines[index]->is_modified_line() && !before) {
     m_dirty++;
@@ -769,6 +1098,7 @@ void tag_array::flush() {
   for (unsigned i = 0; i < m_config.get_num_lines(); i++)
     if (m_lines[i]->is_modified_line()) {
       oracle_depart_line(i);
+      c16_baseline_depart_line(i);
       for (unsigned j = 0; j < SECTOR_CHUNCK_SIZE; j++) {
         m_lines[i]->set_status(INVALID, mem_access_sector_mask_t().set(j));
       }
@@ -784,6 +1114,7 @@ void tag_array::invalidate() {
 
   for (unsigned i = 0; i < m_config.get_num_lines(); i++) {
     oracle_depart_line(i);
+    c16_baseline_depart_line(i);
     for (unsigned j = 0; j < SECTOR_CHUNCK_SIZE; j++)
       m_lines[i]->set_status(INVALID, mem_access_sector_mask_t().set(j));
   }
@@ -868,6 +1199,58 @@ void tag_array::print(FILE *stream, unsigned &total_access,
       fprintf(stream, "\tclass_%u=%llu", target_class,
               class_occupancy[target_class]);
     fprintf(stream, "\n");
+  }
+  if (m_config.c16_baseline_diagnostics_enabled()) {
+    uint64_t resident = 0, pending = 0;
+    for (unsigned i = 0; i < m_config.get_num_lines(); ++i) {
+      resident += m_c16_priority_state[i] == 2;
+      pending += m_c16_priority_state[i] == 1;
+      assert(m_c16_rrpv[i] <= 3);
+      assert(m_c16_priority_state[i] <= 2);
+    }
+    assert(resident == m_c16_diagnostics.priority_resident);
+    assert(pending == m_c16_diagnostics.priority_pending);
+    fprintf(
+        stream,
+        "c16_strong_baseline_l2\tinstance=%d\tpolicy=%s\taccesses=%llu\t"
+        "priority_resident=%llu\tpriority_pending=%llu\t"
+        "priority_peak_resident=%llu\tpriority_peak_resident_plus_pending=%llu\t"
+        "priority_target_accesses=%llu\tpriority_selected_accesses=%llu\t"
+        "priority_allocations=%llu\tpriority_hits=%llu\t"
+        "ordinary_victims=%llu\tpriority_victims=%llu\tinvalid_victims=%llu\t"
+        "true_hit_promotions=%llu\tsector_miss_no_promotion=%llu\t"
+        "mshr_merge_no_promotion=%llu\twriteback_hits_not_promoted=%llu\t"
+        "accepted_new_line_allocations=%llu\tdrrip_psel=%u\t"
+        "drrip_brrip_miss_counter=%llu\tdrrip_srrip_insertions=%llu\t"
+        "drrip_brrip_long_insertions=%llu\t"
+        "drrip_brrip_short_insertions=%llu\tdrrip_aging_rounds=%llu\t"
+        "drrip_psel_increments=%llu\tdrrip_psel_decrements=%llu\n",
+        m_core_id, m_config.c16_baseline_policy_name(),
+        static_cast<unsigned long long>(m_c16_diagnostics.accesses),
+        static_cast<unsigned long long>(m_c16_diagnostics.priority_resident),
+        static_cast<unsigned long long>(m_c16_diagnostics.priority_pending),
+        static_cast<unsigned long long>(m_c16_diagnostics.priority_peak_resident),
+        static_cast<unsigned long long>(m_c16_diagnostics.priority_peak_resident_plus_pending),
+        static_cast<unsigned long long>(m_c16_diagnostics.priority_target_accesses),
+        static_cast<unsigned long long>(m_c16_diagnostics.priority_selected_accesses),
+        static_cast<unsigned long long>(m_c16_diagnostics.priority_allocations),
+        static_cast<unsigned long long>(m_c16_diagnostics.priority_hits),
+        static_cast<unsigned long long>(m_c16_diagnostics.ordinary_victims),
+        static_cast<unsigned long long>(m_c16_diagnostics.priority_victims),
+        static_cast<unsigned long long>(m_c16_diagnostics.invalid_victims),
+        static_cast<unsigned long long>(m_c16_diagnostics.true_hit_promotions),
+        static_cast<unsigned long long>(m_c16_diagnostics.sector_miss_no_promotion),
+        static_cast<unsigned long long>(m_c16_diagnostics.mshr_merge_no_promotion),
+        static_cast<unsigned long long>(m_c16_diagnostics.writeback_hits_not_promoted),
+        static_cast<unsigned long long>(m_c16_diagnostics.accepted_new_line_allocations),
+        m_c16_drrip_psel,
+        static_cast<unsigned long long>(m_c16_brrip_miss_counter),
+        static_cast<unsigned long long>(m_c16_diagnostics.drrip_srrip_insertions),
+        static_cast<unsigned long long>(m_c16_diagnostics.drrip_brrip_long_insertions),
+        static_cast<unsigned long long>(m_c16_diagnostics.drrip_brrip_short_insertions),
+        static_cast<unsigned long long>(m_c16_diagnostics.drrip_aging_rounds),
+        static_cast<unsigned long long>(m_c16_diagnostics.drrip_psel_increments),
+        static_cast<unsigned long long>(m_c16_diagnostics.drrip_psel_decrements));
   }
   total_misses += (m_miss + m_sector_miss);
   total_access += m_access;
