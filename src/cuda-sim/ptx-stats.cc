@@ -166,6 +166,7 @@ void ptx_file_line_stats_add_exec_count(const ptx_instruction *pInsn) {
 // pipeline latency is the number of cycles a warp with this instruction spent
 // in the pipeline
 void ptx_stats::ptx_file_line_stats_add_latency(unsigned pc, unsigned latency) {
+  if (!enable_ptx_file_line_stats) return;
   const ptx_instruction *pInsn = gpgpu_ctx->pc_to_instruction(pc);
 
   if (pInsn != NULL)
@@ -178,6 +179,7 @@ void ptx_stats::ptx_file_line_stats_add_latency(unsigned pc, unsigned latency) {
 // dram traffic is counted in number of requests
 void ptx_stats::ptx_file_line_stats_add_dram_traffic(unsigned pc,
                                                      unsigned dram_traffic) {
+  if (!enable_ptx_file_line_stats) return;
   const ptx_instruction *pInsn = gpgpu_ctx->pc_to_instruction(pc);
 
   if (pInsn != NULL)
@@ -191,6 +193,7 @@ void ptx_stats::ptx_file_line_stats_add_dram_traffic(unsigned pc,
 // cycles involved
 void ptx_stats::ptx_file_line_stats_add_smem_bank_conflict(
     unsigned pc, unsigned n_way_bkconflict) {
+  if (!enable_ptx_file_line_stats) return;
   const ptx_instruction *pInsn = gpgpu_ctx->pc_to_instruction(pc);
 
   if (pInsn != NULL) {
@@ -206,6 +209,7 @@ void ptx_stats::ptx_file_line_stats_add_smem_bank_conflict(
 // requests generated
 void ptx_stats::ptx_file_line_stats_add_uncoalesced_gmem(unsigned pc,
                                                          unsigned n_access) {
+  if (!enable_ptx_file_line_stats) return;
   const ptx_instruction *pInsn = gpgpu_ctx->pc_to_instruction(pc);
 
   if (pInsn != NULL) {
@@ -265,6 +269,7 @@ void ptx_file_line_stats_create_exposed_latency_tracker(int n_shader_cores) {
 // add an inflight memory instruction
 void ptx_stats::ptx_file_line_stats_add_inflight_memory_insn(int sc_id,
                                                              unsigned pc) {
+  if (!enable_ptx_file_line_stats) return;
   const ptx_instruction *pInsn = gpgpu_ctx->pc_to_instruction(pc);
 
   inflight_mem_tracker[sc_id].add_count(pInsn);
@@ -273,6 +278,7 @@ void ptx_stats::ptx_file_line_stats_add_inflight_memory_insn(int sc_id,
 // remove an inflight memory instruction
 void ptx_stats::ptx_file_line_stats_sub_inflight_memory_insn(int sc_id,
                                                              unsigned pc) {
+  if (!enable_ptx_file_line_stats) return;
   const ptx_instruction *pInsn = gpgpu_ctx->pc_to_instruction(pc);
 
   inflight_mem_tracker[sc_id].sub_count(pInsn);
@@ -289,6 +295,7 @@ void ptx_file_line_stats_commit_exposed_latency(int sc_id,
 // attribute the number of warp divergence to a ptx instruction
 void ptx_stats::ptx_file_line_stats_add_warp_divergence(
     unsigned pc, unsigned n_way_divergence) {
+  if (!enable_ptx_file_line_stats) return;
   const ptx_instruction *pInsn = gpgpu_ctx->pc_to_instruction(pc);
 
   ptx_file_line_stats &line_stats = ptx_file_line_stats_tracker[ptx_file_line(
