@@ -622,6 +622,7 @@ class cache_config {
     m_oracle_elastic_sidecar = NULL;
     m_oracle_elastic_sidecar_sha256 = NULL;
     m_oracle_elastic_diagnostics = false;
+    m_oracle_m1f_stable_admission_enable = false;
     m_oracle_address_canary_log = NULL;
     m_oracle_address_canary_target_limit = 0;
     m_oracle_address_canary_exact_address = 0;
@@ -917,6 +918,17 @@ class cache_config {
   }
   bool oracle_elastic_target(const mem_fetch *mf,
                              unsigned *target_class = NULL) const;
+  bool oracle_elastic_protection_eligible(
+      const mem_fetch *mf, unsigned *target_class = NULL,
+      uint64_t *region_relative_line_index = NULL,
+      uint64_t *selection_hash = NULL) const;
+  bool oracle_elastic_address_protection_eligible(
+      new_addr_type address, unsigned *target_class = NULL,
+      uint64_t *region_relative_line_index = NULL,
+      uint64_t *selection_hash = NULL) const;
+  bool oracle_m1f_stable_admission_enabled() const {
+    return m_oracle_runtime.m1f_stable_admission_enabled();
+  }
   uint64_t oracle_elastic_global_lines() const {
     return m_oracle_runtime.global_line_budget();
   }
@@ -927,6 +939,7 @@ class cache_config {
   char *m_oracle_elastic_sidecar;
   char *m_oracle_elastic_sidecar_sha256;
   bool m_oracle_elastic_diagnostics;
+  bool m_oracle_m1f_stable_admission_enable;
   char *m_oracle_address_canary_log;
   unsigned m_oracle_address_canary_target_limit;
   unsigned long long m_oracle_address_canary_exact_address;
@@ -1123,6 +1136,8 @@ class tag_array {
       bool is_write, bool probe_mode, mem_fetch *mf) const;
   bool oracle_request_target(const mem_fetch *mf,
                              unsigned *target_class = NULL) const;
+  bool oracle_request_protection_eligible(
+      const mem_fetch *mf, unsigned *target_class = NULL) const;
   void oracle_verify_invariant_deep() const;
   void oracle_depart_line(unsigned idx);
   void oracle_commit_fill(unsigned idx);

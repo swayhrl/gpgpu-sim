@@ -12,6 +12,12 @@ ${CXX:-g++} -std=c++11 -Wall -Wextra -Werror -I"$src" \
   -o "$out/policy_test"
 "$out/policy_test"
 
+${CXX:-g++} -std=c++11 -Wall -Wextra -Werror -I"$src" \
+  "$src/oracle_elastic_residency.cc" \
+  "$src/tests/m1f_static_selector.cc" \
+  -o "$out/m1f_static_selector"
+echo "M1F_STATIC_SELECTOR_BUILD_PASS $out/m1f_static_selector"
+
 if [[ -z "${CUDA_INSTALL_PATH:-}" || ! -f "$CUDA_INSTALL_PATH/include/vector_types.h" ]]; then
   echo "CUDA_INSTALL_PATH with headers is required for metadata integration test" >&2
   exit 2

@@ -17,6 +17,19 @@ struct interval {
   std::string allocation;
 };
 
+// Frozen before any selection-distribution result was observed.
+// The seed is the first SHA-512 IV word; it was chosen as a public,
+// non-searched constant rather than tuned for this workload.
+const char *m1f_hash_version();
+uint64_t m1f_hash_seed();
+uint64_t m1f_b16_threshold();
+uint64_t m1f_stable_hash(unsigned target_class,
+                         uint64_t region_relative_line_index);
+uint64_t m1f_integer_threshold(uint64_t numerator, uint64_t denominator);
+bool m1f_stable_selected(unsigned target_class,
+                         uint64_t region_relative_line_index,
+                         uint64_t numerator, uint64_t denominator);
+
 struct candidate {
   unsigned index;
   bool invalid;
@@ -67,6 +80,8 @@ struct admission {
 
 struct diagnostic_counters {
   uint64_t target_accesses;
+  uint64_t selected_target_accesses;
+  uint64_t selection_filtered_admissions;
   uint64_t target_hits;
   uint64_t target_misses;
   uint64_t protected_fills;
@@ -88,6 +103,13 @@ struct diagnostic_counters {
   diagnostic_counters();
 };
 
+void account_target_access(diagnostic_counters *counters, bool oracle_target,
+                           bool protection_eligible, bool hit, bool miss);
+void account_selection_filtered_admission(diagnostic_counters *counters,
+                                          bool oracle_target,
+                                          bool protection_eligible,
+                                          bool admission_attempt);
+
 class oracle_config {
  public:
   oracle_config();
@@ -95,14 +117,23 @@ class oracle_config {
   void configure(bool enabled, uint64_t global_budget_bytes,
                  uint64_t exact_global_line_budget, unsigned line_bytes,
                  unsigned l2_instances, const char *sidecar_path,
-                 const char *accepted_sha256, bool diagnostics);
+                 const char *accepted_sha256, bool diagnostics,
+                 bool m1f_stable_admission = false);
 
   bool enabled() const { return m_enabled; }
   bool diagnostics_enabled() const { return m_diagnostics; }
+  bool m1f_stable_admission_enabled() const { return m_m1f_enabled; }
   uint64_t global_line_budget() const { return m_global_lines; }
   unsigned l2_instances() const { return m_instances; }
   uint64_t quota_for_instance(unsigned instance) const;
   bool lookup(uint64_t address, unsigned *target_class = 0) const;
+  bool lookup_identity(uint64_t address, unsigned *target_class,
+                       uint64_t *region_relative_line_index) const;
+  bool protection_eligible(uint64_t address, unsigned *target_class = 0,
+                           uint64_t *region_relative_line_index = 0,
+                           uint64_t *selection_hash = 0) const;
+  uint64_t m1f_threshold() const { return m_m1f_threshold; }
+  uint64_t m1f_seed() const { return m_m1f_seed; }
   const std::vector<interval> &intervals() const { return m_intervals; }
   const std::string &sidecar_sha256() const { return m_sidecar_sha256; }
 
@@ -113,7 +144,11 @@ class oracle_config {
 
   bool m_enabled;
   bool m_diagnostics;
+  bool m_m1f_enabled;
+  unsigned m_line_bytes;
   uint64_t m_global_lines;
+  uint64_t m_m1f_threshold;
+  uint64_t m_m1f_seed;
   unsigned m_instances;
   std::vector<uint64_t> m_quotas;
   std::vector<interval> m_intervals;

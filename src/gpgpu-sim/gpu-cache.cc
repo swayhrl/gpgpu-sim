@@ -92,7 +92,8 @@ void cache_config::init_oracle_elastic(unsigned l2_instances) {
         m_oracle_elastic_enable, m_oracle_elastic_quota_bytes,
         m_oracle_elastic_quota_lines, m_line_sz, l2_instances,
         m_oracle_elastic_sidecar, m_oracle_elastic_sidecar_sha256,
-        m_oracle_elastic_diagnostics);
+        m_oracle_elastic_diagnostics,
+        m_oracle_m1f_stable_admission_enable);
     oracle_elastic_residency::configure_address_observer(
         m_oracle_address_canary_log, m_oracle_address_canary_target_limit,
         m_oracle_address_canary_exact_address,
@@ -117,6 +118,25 @@ bool cache_config::oracle_elastic_target(const mem_fetch *mf,
       static_cast<int>(mf->get_access_type()), mf->get_is_write(),
       mf->get_request_uid());
   return target;
+}
+
+bool cache_config::oracle_elastic_protection_eligible(
+    const mem_fetch *mf, unsigned *target_class,
+    uint64_t *region_relative_line_index, uint64_t *selection_hash) const {
+  if (!m_oracle_runtime.enabled() || mf == NULL) return false;
+  if (!oracle_elastic_residency::target_request_eligible(
+          static_cast<unsigned>(mf->get_access_type()), mf->get_is_write(),
+          static_cast<unsigned>(GLOBAL_ACC_R)))
+    return false;
+  return oracle_elastic_address_protection_eligible(
+      mf->get_addr(), target_class, region_relative_line_index, selection_hash);
+}
+
+bool cache_config::oracle_elastic_address_protection_eligible(
+    new_addr_type address, unsigned *target_class,
+    uint64_t *region_relative_line_index, uint64_t *selection_hash) const {
+  return m_oracle_runtime.protection_eligible(
+      address, target_class, region_relative_line_index, selection_hash);
 }
 
 unsigned cache_config::hash_function(new_addr_type addr, unsigned m_nset,
@@ -271,6 +291,11 @@ void tag_array::init(int core_id, int type_id) {
 bool tag_array::oracle_request_target(const mem_fetch *mf,
                                       unsigned *target_class) const {
   return m_config.oracle_elastic_target(mf, target_class);
+}
+
+bool tag_array::oracle_request_protection_eligible(
+    const mem_fetch *mf, unsigned *target_class) const {
+  return m_config.oracle_elastic_protection_eligible(mf, target_class);
 }
 
 void tag_array::oracle_verify_invariant() const {
@@ -537,14 +562,15 @@ enum cache_request_status tag_array::oracle_probe(
     assert(m_config.m_alloc_policy == ON_MISS);
     return RESERVATION_FAIL;
   }
-  const bool target = oracle_request_target(mf);
+  const bool protection_eligible =
+      oracle_request_protection_eligible(mf);
   const oracle_elastic_residency::replacement_policy policy =
       m_config.m_replacement_policy == LRU
           ? oracle_elastic_residency::POLICY_LRU
           : oracle_elastic_residency::POLICY_FIFO;
   const oracle_elastic_residency::selection result =
       oracle_elastic_residency::choose_victim(
-          eligible, target,
+          eligible, protection_eligible,
           m_oracle_protected_occupancy + m_oracle_pending_protected,
           m_oracle_protected_quota, policy, true);
   if (result.status != oracle_elastic_residency::SELECTION_FOUND)
@@ -572,15 +598,18 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
   unsigned oracle_target_class = 0;
   const bool oracle_target =
       oracle_request_target(mf, &oracle_target_class);
+  unsigned eligible_target_class = 0;
+  const bool protection_eligible =
+      oracle_request_protection_eligible(mf, &eligible_target_class);
+  assert(!protection_eligible || oracle_target);
+  assert(!protection_eligible ||
+         eligible_target_class == oracle_target_class);
   enum cache_request_status status = probe(addr, idx, mf, mf->is_write());
   if (m_config.oracle_elastic_diagnostics_enabled()) {
-    if (oracle_target) {
-      ++m_oracle_diagnostics.target_accesses;
-      if (status == HIT || status == HIT_RESERVED)
-        ++m_oracle_diagnostics.target_hits;
-      else if (status == MISS || status == SECTOR_MISS)
-        ++m_oracle_diagnostics.target_misses;
-    }
+    oracle_elastic_residency::account_target_access(
+        &m_oracle_diagnostics, oracle_target, protection_eligible,
+        status == HIT || status == HIT_RESERVED,
+        status == MISS || status == SECTOR_MISS);
     if ((status == HIT || status == HIT_RESERVED) &&
         m_lines[idx]->oracle_protected())
       ++m_oracle_diagnostics.protected_hits;
@@ -599,12 +628,12 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
         const bool protected_victim =
             valid_victim && m_lines[idx]->oracle_protected();
         const bool quota_full =
-            oracle_target && m_oracle_protected_quota != 0 &&
+            protection_eligible && m_oracle_protected_quota != 0 &&
             m_oracle_protected_occupancy + m_oracle_pending_protected ==
                 m_oracle_protected_quota;
         const oracle_elastic_residency::admission oracle_admission =
             oracle_elastic_residency::decide_fill_admission(
-                oracle_target,
+                protection_eligible,
                 m_oracle_protected_occupancy + m_oracle_pending_protected,
                 m_oracle_protected_quota, !valid_victim, protected_victim,
                 true);
@@ -616,6 +645,8 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
             oracle_elastic_residency::
                 QUOTA_FULL_NO_LOCAL_PROTECTED_VICTIM;
         if (m_config.oracle_elastic_diagnostics_enabled()) {
+          oracle_elastic_residency::account_selection_filtered_admission(
+              &m_oracle_diagnostics, oracle_target, protection_eligible, true);
           if (quota_full) ++m_oracle_diagnostics.quota_full_events;
           if (protection_denied_invalid ||
               protection_denied_no_local_protected) {
@@ -627,11 +658,11 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
                     .denial_quota_full_no_local_protected;
           }
           if (valid_victim) {
-            if (oracle_target && protected_victim) {
+            if (protection_eligible && protected_victim) {
               ++m_oracle_diagnostics.target_protected_victims;
               if (quota_full)
                 ++m_oracle_diagnostics.protected_protected_replacements;
-            } else if (oracle_target) {
+            } else if (protection_eligible) {
               ++m_oracle_diagnostics.target_normal_victims;
             } else if (protected_victim) {
               ++m_oracle_diagnostics.normal_fallback_protected_victims;
@@ -639,7 +670,7 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
               ++m_oracle_diagnostics.normal_normal_victims;
             }
           }
-          if (!oracle_target &&
+          if (!protection_eligible &&
               m_oracle_protected_occupancy + m_oracle_pending_protected <
                   m_oracle_protected_quota)
             ++m_oracle_diagnostics.ordinary_borrowing_fills;
@@ -833,7 +864,10 @@ void tag_array::print(FILE *stream, unsigned &total_access,
     fprintf(stream,
             "oracle_elastic_l2\tinstance=%d\tquota=%llu\toccupancy=%llu\t"
             "occupancy_max=%llu\ttarget_accesses=%llu\ttarget_hits=%llu\t"
-            "target_misses=%llu\tprotected_fills=%llu\tprotected_hits=%llu\t"
+            "selected_target_accesses=%llu\t"
+            "selection_filtered_admissions=%llu\t"
+            "target_misses=%llu\tprotected_fills=%llu\t"
+            "successful_protected_admissions=%llu\tprotected_hits=%llu\t"
             "target_normal_victims=%llu\ttarget_protected_victims=%llu\t"
             "normal_normal_victims=%llu\tnormal_fallback_protected_victims=%llu\t"
             "quota_full_events=%llu\tordinary_borrowing_fills=%llu\t"
@@ -848,7 +882,10 @@ void tag_array::print(FILE *stream, unsigned &total_access,
             static_cast<unsigned long long>(m_oracle_protected_occupancy_max),
             static_cast<unsigned long long>(m_oracle_diagnostics.target_accesses),
             static_cast<unsigned long long>(m_oracle_diagnostics.target_hits),
+            static_cast<unsigned long long>(m_oracle_diagnostics.selected_target_accesses),
+            static_cast<unsigned long long>(m_oracle_diagnostics.selection_filtered_admissions),
             static_cast<unsigned long long>(m_oracle_diagnostics.target_misses),
+            static_cast<unsigned long long>(m_oracle_diagnostics.protected_fills),
             static_cast<unsigned long long>(m_oracle_diagnostics.protected_fills),
             static_cast<unsigned long long>(m_oracle_diagnostics.protected_hits),
             static_cast<unsigned long long>(m_oracle_diagnostics.target_normal_victims),

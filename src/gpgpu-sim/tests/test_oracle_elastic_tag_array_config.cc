@@ -129,7 +129,60 @@ int main() {
   assert(ordinary.ordinary_valid() == 0);
   ordinary.oracle_verify_invariant();
 
+  const char *m1f_sidecar = "/tmp/c16_oracle_m1f_tag_array_sidecar.tsv";
+  std::ofstream m1f_file(m1f_sidecar, std::ios::binary);
+  m1f_file << "ORACLE_ELASTIC_QWEIGHT_RESIDENCY_V1\t1\tMODELED_L2_GET_ADDR\n";
+  const unsigned long long m1f_region_bytes = 33947648ULL;
+  const unsigned long long m1f_stride = m1f_region_bytes + 128;
+  const unsigned long long m1f_base = 0x100000000ULL;
+  for (unsigned target_class = 1; target_class <= 28; ++target_class) {
+    const unsigned long long begin =
+        m1f_base + (target_class - 1) * m1f_stride;
+    m1f_file << "0x" << std::hex << begin << "\t0x"
+             << begin + m1f_region_bytes << std::dec << "\tlayer"
+             << target_class - 1 << ".up_proj.qweight\t"
+             << target_class << "\n";
+  }
+  m1f_file.close();
+  std::string m1f_digest =
+      oracle_elastic_residency::oracle_config::sha256_file(m1f_sidecar);
+  cache_config m1f_config;
+  m1f_config.m_config_string = sector_string;
+  m1f_config.init(sector_string, FuncCachePreferNone);
+  m1f_config.m_oracle_elastic_enable = true;
+  m1f_config.m_oracle_elastic_quota_bytes = 0;
+  m1f_config.m_oracle_elastic_quota_lines = 131072;
+  m1f_config.m_oracle_elastic_sidecar = const_cast<char *>(m1f_sidecar);
+  m1f_config.m_oracle_elastic_sidecar_sha256 =
+      const_cast<char *>(m1f_digest.c_str());
+  m1f_config.m_oracle_elastic_diagnostics = false;
+  m1f_config.m_oracle_m1f_stable_admission_enable = true;
+  m1f_config.init_oracle_elastic(16);
+  assert(m1f_config.oracle_m1f_stable_admission_enabled());
+  assert(m1f_config.oracle_elastic_global_lines() == 131072);
+  bool found_selected = false;
+  bool found_filtered = false;
+  for (unsigned line = 0; line < 4096; ++line) {
+    const unsigned long long address = m1f_base + line * 128ULL;
+    unsigned target_class = 0;
+    uint64_t line_index = ~uint64_t(0);
+    uint64_t hash = 0;
+    const bool selected =
+        m1f_config.oracle_elastic_address_protection_eligible(
+            address, &target_class, &line_index, &hash);
+    assert(target_class == 1 && line_index == line);
+    assert(selected ==
+           m1f_config.oracle_elastic_address_protection_eligible(address + 32));
+    found_selected |= selected;
+    found_filtered |= !selected;
+  }
+  assert(found_selected && found_filtered);
+  tag_array m1f_array(m1f_config, 0, 0);
+  assert(m1f_array.oracle_protected_quota() == 8192);
+  m1f_array.oracle_verify_invariant();
+
   remove(sidecar);
+  remove(m1f_sidecar);
   std::cout << "ORACLE_ELASTIC_TAG_ARRAY_CONFIG_TEST_PASS\n";
   return 0;
 }

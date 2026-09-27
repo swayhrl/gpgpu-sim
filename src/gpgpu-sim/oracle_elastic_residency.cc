@@ -15,6 +15,15 @@
 namespace oracle_elastic_residency {
 namespace {
 
+const char kM1fHashVersion[] = "C16_M1F_STABLE_ADMISSION_HASH_V1";
+const uint64_t kM1fHashSeed = 0x6a09e667f3bcc908ULL;
+const uint64_t kM1fB16Numerator = 131072ULL;
+const uint64_t kM1fFamilyLines = 7426048ULL;
+const uint64_t kM1fB16Threshold = 0x0484baf3b723b966ULL;
+const uint64_t kM1fRegionLines = 265216ULL;
+const unsigned kM1fClassCount = 28;
+const unsigned kM1fLineBytes = 128;
+
 class address_observer_state {
  public:
   address_observer_state()
@@ -220,8 +229,45 @@ selection denied(const candidate &row, victim_kind kind,
 
 }  // namespace
 
+const char *m1f_hash_version() { return kM1fHashVersion; }
+
+uint64_t m1f_hash_seed() { return kM1fHashSeed; }
+
+uint64_t m1f_b16_threshold() { return kM1fB16Threshold; }
+
+uint64_t m1f_stable_hash(unsigned target_class,
+                         uint64_t region_relative_line_index) {
+  uint64_t value = kM1fHashSeed ^
+                   (static_cast<uint64_t>(target_class) << 32) ^
+                   region_relative_line_index;
+  value += 0x9e3779b97f4a7c15ULL;
+  value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ULL;
+  value = (value ^ (value >> 27)) * 0x94d049bb133111ebULL;
+  return value ^ (value >> 31);
+}
+
+uint64_t m1f_integer_threshold(uint64_t numerator, uint64_t denominator) {
+  if (denominator == 0 || numerator > denominator)
+    throw std::runtime_error("invalid M1F fraction");
+  if (numerator == denominator) return std::numeric_limits<uint64_t>::max();
+  const __uint128_t scale = static_cast<__uint128_t>(1) << 64;
+  return static_cast<uint64_t>((scale * numerator) / denominator);
+}
+
+bool m1f_stable_selected(unsigned target_class,
+                         uint64_t region_relative_line_index,
+                         uint64_t numerator, uint64_t denominator) {
+  if (denominator == 0 || numerator > denominator)
+    throw std::runtime_error("invalid M1F fraction");
+  if (numerator == 0) return false;
+  if (numerator == denominator) return true;
+  return m1f_stable_hash(target_class, region_relative_line_index) <
+         m1f_integer_threshold(numerator, denominator);
+}
+
 diagnostic_counters::diagnostic_counters()
-    : target_accesses(0), target_hits(0), target_misses(0),
+    : target_accesses(0), selected_target_accesses(0),
+      selection_filtered_admissions(0), target_hits(0), target_misses(0),
       protected_fills(0), protected_hits(0), target_normal_victims(0),
       target_protected_victims(0), normal_normal_victims(0),
       normal_fallback_protected_victims(0), quota_full_events(0),
@@ -232,8 +278,27 @@ diagnostic_counters::diagnostic_counters()
       denial_quota_full_no_local_protected(0), occupancy_current(0),
       occupancy_max(0) {}
 
+void account_target_access(diagnostic_counters *counters, bool oracle_target,
+                           bool protection_eligible, bool hit, bool miss) {
+  if (!counters || !oracle_target) return;
+  ++counters->target_accesses;
+  if (protection_eligible) ++counters->selected_target_accesses;
+  if (hit) ++counters->target_hits;
+  if (miss) ++counters->target_misses;
+}
+
+void account_selection_filtered_admission(diagnostic_counters *counters,
+                                          bool oracle_target,
+                                          bool protection_eligible,
+                                          bool admission_attempt) {
+  if (counters && oracle_target && !protection_eligible && admission_attempt)
+    ++counters->selection_filtered_admissions;
+}
+
 oracle_config::oracle_config()
-    : m_enabled(false), m_diagnostics(false), m_global_lines(0), m_instances(0) {}
+    : m_enabled(false), m_diagnostics(false), m_m1f_enabled(false),
+      m_line_bytes(0), m_global_lines(0), m_m1f_threshold(0),
+      m_m1f_seed(kM1fHashSeed), m_instances(0) {}
 
 std::string oracle_config::sha256_file(const std::string &path) {
   std::ifstream file(path.c_str(), std::ios::in | std::ios::binary);
@@ -251,13 +316,20 @@ void oracle_config::configure(bool enabled, uint64_t global_budget_bytes,
                               uint64_t exact_global_line_budget,
                               unsigned line_bytes, unsigned l2_instances,
                               const char *sidecar_path,
-                              const char *accepted_sha256, bool diagnostics) {
+                              const char *accepted_sha256, bool diagnostics,
+                              bool m1f_stable_admission) {
   m_enabled = enabled;
   m_diagnostics = diagnostics;
+  m_m1f_enabled = m1f_stable_admission;
+  m_line_bytes = line_bytes;
+  m_m1f_seed = kM1fHashSeed;
+  m_m1f_threshold = 0;
   m_intervals.clear();
   m_quotas.clear();
   m_sidecar_sha256.clear();
   if (!enabled) {
+    if (m1f_stable_admission)
+      throw std::runtime_error("M1F requires oracle elastic mechanism enabled");
     m_global_lines = 0;
     m_instances = l2_instances;
     return;
@@ -281,6 +353,28 @@ void oracle_config::configure(bool enabled, uint64_t global_budget_bytes,
   if (!sidecar_path || !*sidecar_path || !accepted_sha256 || !*accepted_sha256)
     throw std::runtime_error("enabled oracle requires sidecar path and accepted SHA256");
   load_sidecar(sidecar_path, accepted_sha256);
+  if (m_m1f_enabled) {
+    if (line_bytes != kM1fLineBytes || m_global_lines != kM1fB16Numerator)
+      throw std::runtime_error("M1F V1 requires 128B lines and exact B16 quota");
+    bool classes[kM1fClassCount + 1] = {};
+    for (size_t i = 0; i < m_intervals.size(); ++i) {
+      const interval &item = m_intervals[i];
+      if (item.target_class < 1 || item.target_class > kM1fClassCount ||
+          classes[item.target_class])
+        throw std::runtime_error("M1F V1 requires unique target classes 1..28");
+      if ((item.begin % kM1fLineBytes) != 0 ||
+          (item.end % kM1fLineBytes) != 0 ||
+          (item.end - item.begin) / kM1fLineBytes != kM1fRegionLines)
+        throw std::runtime_error("M1F V1 target region geometry drift");
+      classes[item.target_class] = true;
+    }
+    if (m_intervals.size() != kM1fClassCount)
+      throw std::runtime_error("M1F V1 requires exact 28 target regions");
+    m_m1f_threshold = m1f_integer_threshold(kM1fB16Numerator,
+                                            kM1fFamilyLines);
+    if (m_m1f_threshold != kM1fB16Threshold)
+      throw std::runtime_error("M1F V1 frozen threshold drift");
+  }
 }
 
 uint64_t oracle_config::quota_for_instance(unsigned instance) const {
@@ -325,6 +419,12 @@ void oracle_config::load_sidecar(const std::string &path,
 }
 
 bool oracle_config::lookup(uint64_t address, unsigned *target_class) const {
+  return lookup_identity(address, target_class, 0);
+}
+
+bool oracle_config::lookup_identity(
+    uint64_t address, unsigned *target_class,
+    uint64_t *region_relative_line_index) const {
   if (!m_enabled) return false;
   size_t low = 0, high = m_intervals.size();
   while (low < high) {
@@ -336,10 +436,31 @@ bool oracle_config::lookup(uint64_t address, unsigned *target_class) const {
       low = mid + 1;
     else {
       if (target_class) *target_class = item.target_class;
+      if (region_relative_line_index) {
+        const uint64_t line_address = address - (address % m_line_bytes);
+        *region_relative_line_index = (line_address - item.begin) / m_line_bytes;
+      }
       return true;
     }
   }
   return false;
+}
+
+bool oracle_config::protection_eligible(
+    uint64_t address, unsigned *target_class,
+    uint64_t *region_relative_line_index, uint64_t *selection_hash) const {
+  unsigned local_class = 0;
+  uint64_t local_line = 0;
+  if (!lookup_identity(address, &local_class, &local_line)) return false;
+  if (target_class) *target_class = local_class;
+  if (region_relative_line_index) *region_relative_line_index = local_line;
+  if (!m_m1f_enabled) {
+    if (selection_hash) *selection_hash = 0;
+    return true;
+  }
+  const uint64_t hash = m1f_stable_hash(local_class, local_line);
+  if (selection_hash) *selection_hash = hash;
+  return hash < m_m1f_threshold;
 }
 
 selection choose_victim(const std::vector<candidate> &eligible,

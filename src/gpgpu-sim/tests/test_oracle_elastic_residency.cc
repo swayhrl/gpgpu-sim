@@ -84,6 +84,22 @@ static candidate row(unsigned index, bool invalid, bool protected_line,
   return value;
 }
 
+static void assert_same_selection(const selection &left,
+                                  const selection &right) {
+  assert(left.status == right.status);
+  assert(left.index == right.index);
+  assert(left.victim == right.victim);
+  assert(left.protect_fill == right.protect_fill);
+  assert(left.quota_full == right.quota_full);
+  assert(left.denial_reason == right.denial_reason);
+}
+
+static void assert_same_admission(const admission &left,
+                                  const admission &right) {
+  assert(left.protect_fill == right.protect_fill);
+  assert(left.denial_reason == right.denial_reason);
+}
+
 static unsigned baseline_reference(const std::vector<candidate> &rows,
                                    replacement_policy policy) {
   unsigned invalid = static_cast<unsigned>(-1);
@@ -340,6 +356,264 @@ static void test_sidecar_and_quota() {
   remove(path);
 }
 
+static std::string write_m1f_sidecar(const char *path) {
+  const uint64_t region_bytes = 33947648ULL;
+  const uint64_t stride = region_bytes + 128;
+  const uint64_t base = 0x100000000ULL;
+  std::ofstream file(path, std::ios::binary);
+  file << "ORACLE_ELASTIC_QWEIGHT_RESIDENCY_V1\t1\tMODELED_L2_GET_ADDR\n";
+  for (unsigned target_class = 1; target_class <= 28; ++target_class) {
+    const uint64_t begin = base + (target_class - 1) * stride;
+    file << "0x" << std::hex << begin << "\t0x" << begin + region_bytes
+         << std::dec << "\tlayer" << target_class - 1
+         << ".up_proj.qweight\t" << target_class << "\n";
+  }
+  file.close();
+  return oracle_config::sha256_file(path);
+}
+
+static void test_m1f_stable_admission() {
+  assert(std::string(m1f_hash_version()) ==
+         "C16_M1F_STABLE_ADMISSION_HASH_V1");
+  assert(m1f_hash_seed() == 0x6a09e667f3bcc908ULL);
+  assert(m1f_b16_threshold() == 0x0484baf3b723b966ULL);
+  assert(m1f_integer_threshold(131072, 7426048) == m1f_b16_threshold());
+  for (unsigned target_class = 1; target_class <= 28; ++target_class) {
+    for (uint64_t line = 0; line < 256; ++line) {
+      assert(!m1f_stable_selected(target_class, line, 0, 1));
+      assert(m1f_stable_selected(target_class, line, 1, 1));
+      const bool first =
+          m1f_stable_selected(target_class, line, 131072, 7426048);
+      const bool retry =
+          m1f_stable_selected(target_class, line, 131072, 7426048);
+      assert(first == retry);
+    }
+  }
+
+  const char *path = "/tmp/c16_oracle_m1f_sidecar_test.tsv";
+  const std::string digest = write_m1f_sidecar(path);
+  oracle_config m1;
+  m1.configure(true, 0, 131072, 128, 16, path, digest.c_str(), false,
+               false);
+  oracle_config m1f;
+  m1f.configure(true, 0, 131072, 128, 16, path, digest.c_str(), true,
+                true);
+  oracle_config m1f_decode_replay;
+  m1f_decode_replay.configure(true, 0, 131072, 128, 16, path,
+                              digest.c_str(), false, true);
+  assert(m1f.m1f_stable_admission_enabled());
+  assert(m1f.m1f_threshold() == m1f_b16_threshold());
+  assert(m1f.m1f_seed() == m1f_hash_seed());
+
+  const uint64_t region_bytes = 33947648ULL;
+  const uint64_t stride = region_bytes + 128;
+  const uint64_t base = 0x100000000ULL;
+  uint64_t selected_total = 0;
+  for (unsigned target_class = 1; target_class <= 28; ++target_class) {
+    const uint64_t begin = base + (target_class - 1) * stride;
+    uint64_t selected_class = 0;
+    for (uint64_t line = 0; line < 265216; ++line) {
+      const uint64_t address = begin + line * 128;
+      unsigned observed_class = 0;
+      uint64_t observed_line = ~uint64_t(0);
+      uint64_t hash = 0;
+      assert(m1.protection_eligible(address, &observed_class,
+                                    &observed_line, &hash));
+      assert(observed_class == target_class && observed_line == line);
+      const bool selected = m1f.protection_eligible(
+          address, &observed_class, &observed_line, &hash);
+      assert(selected == (hash < m1f_b16_threshold()));
+      assert(selected == m1f.protection_eligible(address));  // retry
+      assert(selected == m1f.protection_eligible(address + 32));
+      assert(selected == m1f.protection_eligible(address + 64));
+      assert(selected == m1f.protection_eligible(address + 96));
+      assert(selected == m1f_decode_replay.protection_eligible(address));
+      if (selected) ++selected_class;
+    }
+    // Qualification checks distribution without changing the frozen seed.
+    const uint64_t expected = 131072 / 28;
+    assert(selected_class > expected - 600 && selected_class < expected + 600);
+    selected_total += selected_class;
+  }
+  assert(selected_total > 131072 - 2000 && selected_total < 131072 + 2000);
+
+  // M1F OFF uses the exact target-bearing M1 decision inputs.  Fraction one
+  // is the same decision, while fraction zero takes the ordinary path and
+  // cannot produce a protected admission.
+  std::vector<candidate> directed;
+  directed.push_back(row(0, false, false, 30, 10));
+  directed.push_back(row(1, false, true, 5, 20));
+  directed.push_back(row(2, false, false, 10, 30));
+  const bool m1_off_target = m1.protection_eligible(base);
+  assert(m1_off_target && m1.lookup(base));
+  const selection m1_reference =
+      choose_victim(directed, true, 1, 2, POLICY_LRU, true);
+  const selection m1f_off =
+      choose_victim(directed, m1_off_target, 1, 2, POLICY_LRU, true);
+  assert_same_selection(m1_reference, m1f_off);
+  const admission m1_admission =
+      decide_fill_admission(true, 1, 2, false, false, true);
+  const admission m1f_off_admission =
+      decide_fill_admission(m1_off_target, 1, 2, false, false, true);
+  assert_same_admission(m1_admission, m1f_off_admission);
+
+  const bool fraction_one = m1f_stable_selected(1, 0, 1, 1);
+  assert(fraction_one);
+  assert_same_selection(
+      m1_reference,
+      choose_victim(directed, fraction_one, 1, 2, POLICY_LRU, true));
+  assert_same_admission(
+      m1_admission,
+      decide_fill_admission(fraction_one, 1, 2, false, false, true));
+
+  const bool fraction_zero = m1f_stable_selected(1, 0, 0, 1);
+  assert(!fraction_zero);
+  const selection ordinary_reference =
+      choose_victim(directed, false, 1, 2, POLICY_LRU, true);
+  assert_same_selection(
+      ordinary_reference,
+      choose_victim(directed, fraction_zero, 1, 2, POLICY_LRU, true));
+  const admission zero_admission =
+      decide_fill_admission(fraction_zero, 1, 2, false, false, true);
+  assert(!zero_admission.protect_fill);
+  assert(zero_admission.denial_reason == ADMISSION_DENIAL_NONE);
+
+  bool wrong_quota = false;
+  try {
+    oracle_config invalid;
+    invalid.configure(true, 0, 65536, 128, 16, path, digest.c_str(), false,
+                      true);
+  } catch (const std::runtime_error &) {
+    wrong_quota = true;
+  }
+  assert(wrong_quota);
+  bool mechanism_off = false;
+  try {
+    oracle_config invalid;
+    invalid.configure(false, 0, 0, 128, 16, path, digest.c_str(), false,
+                      true);
+  } catch (const std::runtime_error &) {
+    mechanism_off = true;
+  }
+  assert(mechanism_off);
+  remove(path);
+}
+
+struct toy_protected_pool {
+  struct entry {
+    unsigned target_class;
+    unsigned line;
+    uint64_t last_access;
+  };
+  size_t capacity;
+  uint64_t clock;
+  std::vector<entry> entries;
+  explicit toy_protected_pool(size_t value) : capacity(value), clock(1) {}
+
+  bool access(unsigned target_class, unsigned line, bool admit) {
+    for (size_t i = 0; i < entries.size(); ++i) {
+      if (entries[i].target_class == target_class &&
+          entries[i].line == line) {
+        entries[i].last_access = clock++;
+        return true;
+      }
+    }
+    if (!admit) return false;
+    entry incoming = {target_class, line, clock++};
+    if (entries.size() < capacity) {
+      entries.push_back(incoming);
+    } else {
+      size_t victim = 0;
+      for (size_t i = 1; i < entries.size(); ++i)
+        if (entries[i].last_access < entries[victim].last_access) victim = i;
+      entries[victim] = incoming;
+    }
+    return false;
+  }
+
+  bool contains(unsigned target_class, unsigned line) const {
+    for (size_t i = 0; i < entries.size(); ++i)
+      if (entries[i].target_class == target_class &&
+          entries[i].line == line)
+        return true;
+    return false;
+  }
+};
+
+static void test_toy_scan_survival_comparison() {
+  toy_protected_pool m1(4);
+  toy_protected_pool class_one(2);
+  toy_protected_pool class_two(2);
+  toy_protected_pool m1f(4);
+  unsigned m1_next_round_hits = 0;
+  unsigned quota_next_round_hits = 0;
+  unsigned m1f_next_round_hits = 0;
+  unsigned selected_lines = 0;
+  for (unsigned round = 0; round < 2; ++round) {
+    for (unsigned target_class = 1; target_class <= 2; ++target_class) {
+      for (unsigned line = 0; line < 8; ++line) {
+        const bool count = round == 1;
+        if (m1.access(target_class, line, true) && count)
+          ++m1_next_round_hits;
+        toy_protected_pool &quota =
+            target_class == 1 ? class_one : class_two;
+        if (quota.access(target_class, line, true) && count)
+          ++quota_next_round_hits;
+        const bool selected =
+            m1f_stable_selected(target_class, line, 1, 4);
+        if (round == 0 && selected) ++selected_lines;
+        if (m1f.access(target_class, line, selected) && count)
+          ++m1f_next_round_hits;
+      }
+    }
+  }
+  assert(m1.entries.size() == 4);
+  assert(class_one.entries.size() + class_two.entries.size() == 4);
+  assert(m1f.entries.size() == selected_lines);
+  assert(selected_lines == 3);  // Frozen seed result; it was not searched.
+  assert(m1_next_round_hits == 0);
+  assert(quota_next_round_hits == 0);
+  assert(m1f_next_round_hits == selected_lines);
+  assert(!m1.contains(1, 0));
+  assert(!class_one.contains(1, 0));
+  assert(m1f.contains(1, 4));
+  std::cout << "M1F_TOY_SURVIVAL_PASS"
+            << " m1_occupancy=" << m1.entries.size()
+            << " class_quota_occupancy="
+            << class_one.entries.size() + class_two.entries.size()
+            << " m1f_occupancy=" << m1f.entries.size()
+            << " m1_next_round_hits=" << m1_next_round_hits
+            << " class_quota_next_round_hits=" << quota_next_round_hits
+            << " m1f_next_round_hits=" << m1f_next_round_hits
+            << " m1_old_address_survived=0"
+            << " class_quota_old_address_survived=0"
+            << " m1f_old_address_survived=1"
+            << " old_address_class=1 old_address_line=4\n";
+}
+
+static void test_target_selection_accounting_identity() {
+  diagnostic_counters counters;
+  account_target_access(&counters, false, false, false, true);
+  account_selection_filtered_admission(&counters, false, false, true);
+  assert(counters.target_accesses == 0);
+  assert(counters.selection_filtered_admissions == 0);
+
+  account_target_access(&counters, true, false, false, true);
+  account_selection_filtered_admission(&counters, true, false, true);
+  assert(counters.target_accesses == 1);
+  assert(counters.selected_target_accesses == 0);
+  assert(counters.target_misses == 1);
+  assert(counters.selection_filtered_admissions == 1);
+
+  account_target_access(&counters, true, true, true, false);
+  account_selection_filtered_admission(&counters, true, true, false);
+  assert(counters.target_accesses == 2);
+  assert(counters.selected_target_accesses == 1);
+  assert(counters.target_hits == 1);
+  assert(counters.target_misses == 1);
+  assert(counters.selection_filtered_admissions == 1);
+}
+
 static void test_sha_and_exclusions() {
   const char *path = "/tmp/c16_oracle_elastic_sha_test";
   std::ofstream file(path, std::ios::binary);
@@ -386,10 +660,16 @@ int main() {
   test_selection();
   test_synthetic_mechanism_sequences();
   test_sidecar_and_quota();
+  test_m1f_stable_admission();
+  test_toy_scan_survival_comparison();
+  test_target_selection_accounting_identity();
   test_sha_and_exclusions();
   test_address_observer();
   diagnostic_counters counters;
-  assert(counters.target_accesses == 0 && counters.occupancy_current == 0);
+  assert(counters.target_accesses == 0 &&
+         counters.selected_target_accesses == 0 &&
+         counters.selection_filtered_admissions == 0 &&
+         counters.occupancy_current == 0);
   std::cout << "ORACLE_ELASTIC_QWEIGHT_RESIDENCY_POLICY_TEST_PASS\n";
   return 0;
 }
