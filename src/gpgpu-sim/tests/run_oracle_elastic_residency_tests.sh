@@ -27,6 +27,7 @@ ${CXX:-g++} -std=c++11 -O0 -ffunction-sections -fdata-sections \
   -Wl,--gc-sections -Wno-unused-parameter -Wno-reorder \
   -I"$src" -I"$repo_root/src" -I"$CUDA_INSTALL_PATH/include" \
   "$src/oracle_elastic_residency.cc" "$src/c16_strong_baselines.cc" \
+  "$src/c16_survival_observer.cc" \
   "$src/gpu-cache.cc" \
   "$src/gpu-misc.cc" "$src/hashing.cc" \
   "$src/tests/test_oracle_elastic_tag_array_config.cc" \

@@ -39,6 +39,7 @@
 #include "gpu-misc.h"
 #include "mem_fetch.h"
 #include "c16_strong_baselines.h"
+#include "c16_survival_observer.h"
 #include "oracle_elastic_residency.h"
 
 #include <iostream>
@@ -630,6 +631,13 @@ class cache_config {
     m_c16_baseline_enable = false;
     m_c16_baseline_policy = c16_strong_baselines::POLICY_NONE;
     m_c16_baseline_diagnostics = false;
+    m_c16_survival_observer_enable = false;
+    m_c16_survival_observer_log = NULL;
+    m_c16_survival_observer_target_class = 1;
+    m_c16_survival_snapshot_after_uid = 0;
+    m_c16_survival_d2_begin_uid = 0;
+    m_c16_survival_d2_mid_uid = 0;
+    m_c16_survival_d2_end_uid = 0;
   }
   void init(char *config, FuncCache status) {
     cache_status = status;
@@ -920,6 +928,7 @@ class cache_config {
   write_policy_t get_write_policy() { return m_write_policy; }
   void init_oracle_elastic(unsigned l2_instances);
   void init_c16_strong_baseline(unsigned l2_instances);
+  void init_c16_survival_observer();
   bool oracle_elastic_enabled() const { return m_oracle_runtime.enabled(); }
   bool oracle_elastic_diagnostics_enabled() const {
     return m_oracle_runtime.diagnostics_enabled();
@@ -959,6 +968,13 @@ class cache_config {
   bool m_c16_baseline_enable;
   unsigned m_c16_baseline_policy;
   bool m_c16_baseline_diagnostics;
+  bool m_c16_survival_observer_enable;
+  char *m_c16_survival_observer_log;
+  unsigned m_c16_survival_observer_target_class;
+  unsigned m_c16_survival_snapshot_after_uid;
+  unsigned m_c16_survival_d2_begin_uid;
+  unsigned m_c16_survival_d2_mid_uid;
+  unsigned m_c16_survival_d2_end_uid;
 
  protected:
   void exit_parse_error() {
@@ -1148,6 +1164,10 @@ class tag_array {
   mutable oracle_elastic_residency::diagnostic_counters m_oracle_diagnostics;
   mutable std::vector<unsigned char> m_c16_rrpv;
   std::vector<unsigned char> m_c16_priority_state;
+  std::vector<unsigned char> m_c16_ship_shct;
+  std::vector<unsigned short> m_c16_ship_signature;
+  std::vector<unsigned char> m_c16_ship_signature_valid;
+  std::vector<unsigned char> m_c16_ship_outcome;
   unsigned m_c16_drrip_psel;
   uint64_t m_c16_brrip_miss_counter;
   mutable c16_strong_baselines::diagnostics m_c16_diagnostics;

@@ -32,6 +32,11 @@ const char *policy_name(unsigned value);
 bool policy_value_valid(unsigned value);
 bool policy_needs_target_map(unsigned value);
 bool ship_sw_contract_complete();
+const char *ship_sw_version();
+uint64_t ship_sw_page_signature(uint64_t address);
+unsigned ship_sw_shct_index(uint64_t address);
+bool ship_sw_predict_resident(unsigned counter);
+unsigned ship_sw_train(unsigned counter, bool outcome);
 
 const char *stable_hash_version();
 uint64_t stable_hash_seed();
@@ -94,6 +99,13 @@ struct diagnostics {
   uint64_t drrip_psel_increments;
   uint64_t drrip_psel_decrements;
   uint64_t writeback_hits_not_promoted;
+  uint64_t ship_critical_allocations;
+  uint64_t ship_regular_predictions;
+  uint64_t ship_resident_predictions;
+  uint64_t ship_true_hit_outcomes;
+  uint64_t ship_positive_trainings;
+  uint64_t ship_negative_trainings;
+  uint64_t ship_noncritical_no_train;
   uint64_t priority_resident;
   uint64_t priority_pending;
   uint64_t priority_peak_resident;

@@ -20,9 +20,16 @@ ${CXX:-g++} -std=c++11 -O0 -ffunction-sections -fdata-sections \
   -Wl,--gc-sections -Wno-unused-parameter -Wno-reorder \
   -I"$src" -I"$repo_root/src" -I"$CUDA_INSTALL_PATH/include" \
   "$src/oracle_elastic_residency.cc" "$src/c16_strong_baselines.cc" \
+  "$src/c16_survival_observer.cc" \
   "$src/gpu-cache.cc" "$src/gpu-misc.cc" "$src/hashing.cc" \
   "$src/tests/test_c16_strong_baselines_tag_array.cc" \
   -o "$out/tag_array_test"
 "$out/tag_array_test"
+
+${CXX:-g++} -std=c++11 -Wall -Wextra -Werror -I"$src" \
+  "$src/c16_survival_observer.cc" \
+  "$src/tests/test_c16_survival_observer.cc" \
+  -o "$out/survival_observer_test"
+"$out/survival_observer_test"
 
 echo C16_STRONG_BASELINES_TEST_SUITE_PASS

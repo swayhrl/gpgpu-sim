@@ -117,13 +117,28 @@ static void test_gpu_event_contract() {
   assert(!event_inserts(EVENT_RESERVATION_FAIL_RETRY));
 }
 
+static void test_ship_sw_contract() {
+  assert(ship_sw_contract_complete());
+  assert(std::string(ship_sw_version()) == "C16_SHIP_SW_STYLE_V1");
+  const uint64_t address = 0x7ea94e025120ULL;
+  assert(ship_sw_page_signature(address) == (address >> 12));
+  assert(ship_sw_shct_index(address) == ((address >> 12) & 0x3fff));
+  assert(!ship_sw_predict_resident(0));
+  assert(ship_sw_predict_resident(1));
+  assert(ship_sw_train(0, false) == 0);
+  assert(ship_sw_train(0, true) == 1);
+  assert(ship_sw_train(7, true) == 7);
+  assert(ship_sw_train(3, false) == 2);
+}
+
 int main() {
   assert(policy_value_valid(POLICY_SHIP_SW));
-  assert(!ship_sw_contract_complete());
+  assert(ship_sw_contract_complete());
   test_priority();
   test_stable_selector();
   test_drrip();
   test_gpu_event_contract();
+  test_ship_sw_contract();
   std::cout << "C16_STRONG_BASELINES_POLICY_TEST_PASS\n";
   return 0;
 }

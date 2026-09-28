@@ -294,6 +294,34 @@ void memory_config::reg_options(class OptionParser *opp) {
       &m_L2_config.m_c16_baseline_diagnostics,
       "C16 baseline diagnostics; independent of functional enable", "0");
   option_parser_register(
+      opp, "-gpgpu_l2_c16_survival_observer_enable", OPT_BOOL,
+      &m_L2_config.m_c16_survival_observer_enable,
+      "enable diagnostics-only old-address generation observer", "0");
+  option_parser_register(
+      opp, "-gpgpu_l2_c16_survival_observer_log", OPT_CSTR,
+      &m_L2_config.m_c16_survival_observer_log,
+      "generation-survival observer TSV; empty disables output", "");
+  option_parser_register(
+      opp, "-gpgpu_l2_c16_survival_observer_target_class", OPT_UINT32,
+      &m_L2_config.m_c16_survival_observer_target_class,
+      "protected target class included in snapshot", "1");
+  option_parser_register(
+      opp, "-gpgpu_l2_c16_survival_snapshot_after_uid", OPT_UINT32,
+      &m_L2_config.m_c16_survival_snapshot_after_uid,
+      "freeze snapshot after this launch UID", "0");
+  option_parser_register(
+      opp, "-gpgpu_l2_c16_survival_d2_begin_uid", OPT_UINT32,
+      &m_L2_config.m_c16_survival_d2_begin_uid,
+      "emit/activate before this D2 launch UID", "0");
+  option_parser_register(
+      opp, "-gpgpu_l2_c16_survival_d2_mid_uid", OPT_UINT32,
+      &m_L2_config.m_c16_survival_d2_mid_uid,
+      "emit at this D2 mid-range launch UID", "0");
+  option_parser_register(
+      opp, "-gpgpu_l2_c16_survival_d2_end_uid", OPT_UINT32,
+      &m_L2_config.m_c16_survival_d2_end_uid,
+      "emit/deactivate after this D2 launch UID", "0");
+  option_parser_register(
       opp, "-gpgpu_l2_oracle_address_canary_log", OPT_CSTR,
       &m_L2_config.m_oracle_address_canary_log,
       "ADDRESS_INTEGRATION_CANARY_ONLY TSV output path", "");
@@ -961,6 +989,7 @@ void increment_x_then_y_then_z(dim3 &i, const dim3 &bound) {
 
 void gpgpu_sim::launch(kernel_info_t *kinfo) {
   unsigned kernelID = kinfo->get_uid();
+  c16_survival_observer::kernel_begin(kernelID);
   unsigned long long streamID = kinfo->get_streamID();
 
   kernel_time_t kernel_time = {gpu_tot_sim_cycle + gpu_sim_cycle, 0};
@@ -1092,6 +1121,7 @@ unsigned gpgpu_sim::finished_kernel() {
 
 void gpgpu_sim::set_kernel_done(kernel_info_t *kernel) {
   unsigned uid = kernel->get_uid();
+  c16_survival_observer::kernel_end(uid);
   last_uid = uid;
   unsigned long long streamID = kernel->get_streamID();
   last_streamID = streamID;

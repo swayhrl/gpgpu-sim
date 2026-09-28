@@ -157,12 +157,13 @@ void cache_config::init_c16_strong_baseline(unsigned l2_instances) {
         needs_target_map, 0, needs_target_map ? 1 : 0, m_line_sz,
         l2_instances, m_oracle_elastic_sidecar,
         m_oracle_elastic_sidecar_sha256, false);
-    if (m_c16_baseline_policy == POLICY_PRIORITY_STABLE) {
+    if (m_c16_baseline_policy == POLICY_PRIORITY_STABLE ||
+        m_c16_baseline_policy == POLICY_SHIP_SW) {
       const std::vector<oracle_elastic_residency::interval> &intervals =
           m_c16_baseline_target_map.intervals();
       if (intervals.size() != 28)
         throw std::runtime_error(
-            "PRIORITY_STABLE requires exact 28 target regions");
+            "C16 semantic baseline requires exact 28 target regions");
       bool classes[29] = {};
       for (size_t i = 0; i < intervals.size(); ++i) {
         const oracle_elastic_residency::interval &item = intervals[i];
@@ -171,12 +172,40 @@ void cache_config::init_c16_strong_baseline(unsigned l2_instances) {
             (item.end - item.begin) / 128 != 265216 ||
             item.begin % 128 || item.end % 128)
           throw std::runtime_error(
-              "PRIORITY_STABLE target geometry drift");
+              "C16 semantic baseline target geometry drift");
         classes[item.target_class] = true;
       }
     }
   } catch (const std::exception &error) {
     fprintf(stderr, "C16 strong baseline config error: %s\n", error.what());
+    abort();
+  }
+}
+
+void cache_config::init_c16_survival_observer() {
+  if (m_c16_survival_observer_enable &&
+      (!m_c16_survival_observer_log ||
+       !*m_c16_survival_observer_log ||
+       m_c16_survival_observer_target_class == 0 ||
+       m_c16_survival_snapshot_after_uid == 0 ||
+       m_c16_survival_d2_begin_uid == 0 ||
+       m_c16_survival_d2_mid_uid == 0 ||
+       m_c16_survival_d2_end_uid == 0 ||
+       m_c16_survival_d2_begin_uid > m_c16_survival_d2_mid_uid ||
+       m_c16_survival_d2_mid_uid > m_c16_survival_d2_end_uid)) {
+    fprintf(stderr,
+            "C16 survival observer requires log, class, and ordered nonzero boundaries\n");
+    abort();
+  }
+  try {
+    c16_survival_observer::configure(
+        m_c16_survival_observer_enable, m_c16_survival_observer_log,
+        m_c16_survival_observer_target_class,
+        m_c16_survival_snapshot_after_uid,
+        m_c16_survival_d2_begin_uid, m_c16_survival_d2_mid_uid,
+        m_c16_survival_d2_end_uid);
+  } catch (const std::exception &error) {
+    fprintf(stderr, "C16 survival observer config error: %s\n", error.what());
     abort();
   }
 }
@@ -391,6 +420,10 @@ void tag_array::init(int core_id, int type_id) {
           : 0;
   m_c16_rrpv.assign(m_config.get_max_num_lines(), 3);
   m_c16_priority_state.assign(m_config.get_max_num_lines(), 0);
+  m_c16_ship_shct.assign(16384, 0);
+  m_c16_ship_signature.assign(m_config.get_max_num_lines(), 0);
+  m_c16_ship_signature_valid.assign(m_config.get_max_num_lines(), 0);
+  m_c16_ship_outcome.assign(m_config.get_max_num_lines(), 0);
   m_c16_drrip_psel = 512;
   m_c16_brrip_miss_counter = 0;
   oracle_verify_invariant();
@@ -494,6 +527,20 @@ void tag_array::c16_baseline_verify() const {
 void tag_array::c16_baseline_depart_line(unsigned idx) {
   if (!m_config.c16_baseline_enabled()) return;
   assert(idx < m_c16_priority_state.size());
+  if (m_config.c16_baseline_policy() ==
+          c16_strong_baselines::POLICY_SHIP_SW &&
+      m_c16_ship_signature_valid[idx]) {
+    const unsigned signature = m_c16_ship_signature[idx];
+    assert(signature < m_c16_ship_shct.size());
+    const bool outcome = m_c16_ship_outcome[idx] != 0;
+    m_c16_ship_shct[signature] =
+        static_cast<unsigned char>(c16_strong_baselines::ship_sw_train(
+            m_c16_ship_shct[signature], outcome));
+    if (outcome)
+      ++m_c16_diagnostics.ship_positive_trainings;
+    else
+      ++m_c16_diagnostics.ship_negative_trainings;
+  }
   if (m_c16_priority_state[idx] == 1) {
     assert(m_c16_diagnostics.priority_pending > 0);
     --m_c16_diagnostics.priority_pending;
@@ -503,6 +550,9 @@ void tag_array::c16_baseline_depart_line(unsigned idx) {
   }
   m_c16_priority_state[idx] = 0;
   m_c16_rrpv[idx] = 3;
+  m_c16_ship_signature[idx] = 0;
+  m_c16_ship_signature_valid[idx] = 0;
+  m_c16_ship_outcome[idx] = 0;
   c16_baseline_verify();
 }
 
@@ -529,6 +579,8 @@ void tag_array::oracle_invalidate_line(unsigned idx,
                             !line->oracle_protected() &&
                             !line->oracle_pending_protected();
   line->set_status(INVALID, mask);
+  if (line->is_invalid_line())
+    c16_survival_observer::on_evict(line->m_block_addr);
   if (m_config.c16_baseline_enabled() && line->is_invalid_line())
     c16_baseline_depart_line(idx);
   if (m_config.oracle_elastic_enabled() && line->is_invalid_line()) {
@@ -783,7 +835,9 @@ enum cache_request_status tag_array::c16_baseline_probe(
   if (m_config.c16_baseline_policy() ==
           c16_strong_baselines::POLICY_PRIORITY_ALL ||
       m_config.c16_baseline_policy() ==
-          c16_strong_baselines::POLICY_PRIORITY_STABLE) {
+          c16_strong_baselines::POLICY_PRIORITY_STABLE ||
+      m_config.c16_baseline_policy() ==
+          c16_strong_baselines::POLICY_SHIP_SW) {
     selected = c16_strong_baselines::choose_priority_victim(
         eligible, m_config.m_replacement_policy == LRU);
   } else {
@@ -826,6 +880,8 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
   const bool c16_priority =
       m_config.c16_baseline_priority(mf, &c16_target_class);
   enum cache_request_status status = probe(addr, idx, mf, mf->is_write());
+  if (status == HIT)
+    c16_survival_observer::on_true_hit(mf->get_addr());
   if (m_config.c16_baseline_enabled()) {
     ++m_c16_diagnostics.accesses;
     if (c16_target) ++m_c16_diagnostics.priority_target_accesses;
@@ -835,6 +891,12 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
     else if (status == SECTOR_MISS)
       ++m_c16_diagnostics.sector_miss_no_promotion;
     else if (status == HIT) {
+      if (m_config.c16_baseline_policy() ==
+              c16_strong_baselines::POLICY_SHIP_SW &&
+          m_c16_ship_signature_valid[idx]) {
+        m_c16_ship_outcome[idx] = 1;
+        ++m_c16_diagnostics.ship_true_hit_outcomes;
+      }
       if (m_config.c16_baseline_policy() ==
           c16_strong_baselines::POLICY_DRRIP) {
         if (c16_rrip_hit_trainable(mf)) {
@@ -922,6 +984,7 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
             ++m_oracle_diagnostics.ordinary_borrowing_fills;
         }
         if (!m_lines[idx]->is_invalid_line()) {
+          c16_survival_observer::on_evict(m_lines[idx]->m_block_addr);
           evicted.m_has_valid_victim = true;
           evicted.m_telemetry_class = m_lines[idx]->get_telemetry_class();
         }
@@ -951,6 +1014,8 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
         const bool protect_fill =
             oracle_admission.protect_fill;
         m_lines[idx]->oracle_set_pending(protect_fill, oracle_target_class);
+        c16_survival_observer::on_line_allocate(
+            m_config.block_addr(addr), protect_fill, oracle_target_class);
         if (m_config.oracle_elastic_enabled()) {
           if (protect_fill)
             ++m_oracle_pending_protected;
@@ -965,6 +1030,28 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
             m_c16_priority_state[idx] = 1;
             ++m_c16_diagnostics.priority_pending;
             ++m_c16_diagnostics.priority_allocations;
+          } else if (policy == c16_strong_baselines::POLICY_SHIP_SW) {
+            if (c16_target) {
+              const unsigned signature =
+                  c16_strong_baselines::ship_sw_shct_index(mf->get_addr());
+              assert(signature < m_c16_ship_shct.size());
+              m_c16_ship_signature[idx] =
+                  static_cast<unsigned short>(signature);
+              m_c16_ship_signature_valid[idx] = 1;
+              m_c16_ship_outcome[idx] = 0;
+              ++m_c16_diagnostics.ship_critical_allocations;
+              if (c16_strong_baselines::ship_sw_predict_resident(
+                      m_c16_ship_shct[signature])) {
+                m_c16_priority_state[idx] = 1;
+                ++m_c16_diagnostics.priority_pending;
+                ++m_c16_diagnostics.priority_allocations;
+                ++m_c16_diagnostics.ship_resident_predictions;
+              } else {
+                ++m_c16_diagnostics.ship_regular_predictions;
+              }
+            } else {
+              ++m_c16_diagnostics.ship_noncritical_no_train;
+            }
           } else if (policy == c16_strong_baselines::POLICY_DRRIP) {
             const unsigned set_index = m_config.set_index(addr);
             const c16_strong_baselines::leader_role role =
@@ -1056,6 +1143,8 @@ void tag_array::fill(new_addr_type addr, unsigned time,
   // assert(status==MISS||status==SECTOR_MISS); // MSHR should have prevented
   // redundant memory request
   if (status == MISS) {
+    if (!m_lines[idx]->is_invalid_line())
+      c16_survival_observer::on_evict(m_lines[idx]->m_block_addr);
     oracle_depart_line(idx);
     c16_baseline_depart_line(idx);
     m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr), time,
@@ -1073,6 +1162,7 @@ void tag_array::fill(new_addr_type addr, unsigned time,
   m_lines[idx]->fill(time, mask, byte_mask);
   oracle_commit_fill(idx);
   c16_baseline_commit_fill(idx);
+  c16_survival_observer::on_fill(m_lines[idx]->m_block_addr);
   if (m_lines[idx]->is_modified_line() && !before) {
     m_dirty++;
   }
@@ -1085,6 +1175,7 @@ void tag_array::fill(unsigned index, unsigned time, mem_fetch *mf) {
                        mf->get_access_byte_mask());
   oracle_commit_fill(index);
   c16_baseline_commit_fill(index);
+  c16_survival_observer::on_fill(m_lines[index]->m_block_addr);
   m_lines[index]->set_telemetry_class(mf->get_telemetry_class());
   if (m_lines[index]->is_modified_line() && !before) {
     m_dirty++;
@@ -1097,6 +1188,7 @@ void tag_array::flush() {
 
   for (unsigned i = 0; i < m_config.get_num_lines(); i++)
     if (m_lines[i]->is_modified_line()) {
+      c16_survival_observer::on_evict(m_lines[i]->m_block_addr);
       oracle_depart_line(i);
       c16_baseline_depart_line(i);
       for (unsigned j = 0; j < SECTOR_CHUNCK_SIZE; j++) {
@@ -1113,6 +1205,8 @@ void tag_array::invalidate() {
   if (!is_used) return;
 
   for (unsigned i = 0; i < m_config.get_num_lines(); i++) {
+    if (!m_lines[i]->is_invalid_line())
+      c16_survival_observer::on_evict(m_lines[i]->m_block_addr);
     oracle_depart_line(i);
     c16_baseline_depart_line(i);
     for (unsigned j = 0; j < SECTOR_CHUNCK_SIZE; j++)
@@ -1210,6 +1304,11 @@ void tag_array::print(FILE *stream, unsigned &total_access,
     }
     assert(resident == m_c16_diagnostics.priority_resident);
     assert(pending == m_c16_diagnostics.priority_pending);
+    uint64_t ship_shct_nonzero = 0, ship_shct_sum = 0;
+    for (size_t i = 0; i < m_c16_ship_shct.size(); ++i) {
+      ship_shct_nonzero += m_c16_ship_shct[i] != 0;
+      ship_shct_sum += m_c16_ship_shct[i];
+    }
     fprintf(
         stream,
         "c16_strong_baseline_l2\tinstance=%d\tpolicy=%s\taccesses=%llu\t"
@@ -1224,7 +1323,12 @@ void tag_array::print(FILE *stream, unsigned &total_access,
         "drrip_brrip_miss_counter=%llu\tdrrip_srrip_insertions=%llu\t"
         "drrip_brrip_long_insertions=%llu\t"
         "drrip_brrip_short_insertions=%llu\tdrrip_aging_rounds=%llu\t"
-        "drrip_psel_increments=%llu\tdrrip_psel_decrements=%llu\n",
+        "drrip_psel_increments=%llu\tdrrip_psel_decrements=%llu\t"
+        "ship_critical_allocations=%llu\tship_regular_predictions=%llu\t"
+        "ship_resident_predictions=%llu\tship_true_hit_outcomes=%llu\t"
+        "ship_positive_trainings=%llu\tship_negative_trainings=%llu\t"
+        "ship_noncritical_no_train=%llu\tship_shct_nonzero=%llu\t"
+        "ship_shct_sum=%llu\n",
         m_core_id, m_config.c16_baseline_policy_name(),
         static_cast<unsigned long long>(m_c16_diagnostics.accesses),
         static_cast<unsigned long long>(m_c16_diagnostics.priority_resident),
@@ -1250,7 +1354,16 @@ void tag_array::print(FILE *stream, unsigned &total_access,
         static_cast<unsigned long long>(m_c16_diagnostics.drrip_brrip_short_insertions),
         static_cast<unsigned long long>(m_c16_diagnostics.drrip_aging_rounds),
         static_cast<unsigned long long>(m_c16_diagnostics.drrip_psel_increments),
-        static_cast<unsigned long long>(m_c16_diagnostics.drrip_psel_decrements));
+        static_cast<unsigned long long>(m_c16_diagnostics.drrip_psel_decrements),
+        static_cast<unsigned long long>(m_c16_diagnostics.ship_critical_allocations),
+        static_cast<unsigned long long>(m_c16_diagnostics.ship_regular_predictions),
+        static_cast<unsigned long long>(m_c16_diagnostics.ship_resident_predictions),
+        static_cast<unsigned long long>(m_c16_diagnostics.ship_true_hit_outcomes),
+        static_cast<unsigned long long>(m_c16_diagnostics.ship_positive_trainings),
+        static_cast<unsigned long long>(m_c16_diagnostics.ship_negative_trainings),
+        static_cast<unsigned long long>(m_c16_diagnostics.ship_noncritical_no_train),
+        static_cast<unsigned long long>(ship_shct_nonzero),
+        static_cast<unsigned long long>(ship_shct_sum));
   }
   total_misses += (m_miss + m_sector_miss);
   total_access += m_access;

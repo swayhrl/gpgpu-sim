@@ -46,7 +46,26 @@ bool policy_needs_target_map(unsigned value) {
          value == POLICY_SHIP_SW;
 }
 
-bool ship_sw_contract_complete() { return false; }
+bool ship_sw_contract_complete() { return true; }
+
+const char *ship_sw_version() { return "C16_SHIP_SW_STYLE_V1"; }
+
+uint64_t ship_sw_page_signature(uint64_t address) { return address >> 12; }
+
+unsigned ship_sw_shct_index(uint64_t address) {
+  return static_cast<unsigned>(ship_sw_page_signature(address) & 0x3fffULL);
+}
+
+bool ship_sw_predict_resident(unsigned counter) {
+  if (counter > 7) throw std::runtime_error("3-bit SHCT counter overflow");
+  return counter > 0;
+}
+
+unsigned ship_sw_train(unsigned counter, bool outcome) {
+  if (counter > 7) throw std::runtime_error("3-bit SHCT counter overflow");
+  if (outcome) return std::min(7U, counter + 1);
+  return counter > 0 ? counter - 1 : 0;
+}
 
 const char *stable_hash_version() {
   return "C16_M1F_STABLE_ADMISSION_HASH_V1";
@@ -188,6 +207,10 @@ diagnostics::diagnostics()
       drrip_brrip_long_insertions(0), drrip_brrip_short_insertions(0),
       drrip_aging_rounds(0), drrip_psel_increments(0),
       drrip_psel_decrements(0), writeback_hits_not_promoted(0),
+      ship_critical_allocations(0), ship_regular_predictions(0),
+      ship_resident_predictions(0), ship_true_hit_outcomes(0),
+      ship_positive_trainings(0), ship_negative_trainings(0),
+      ship_noncritical_no_train(0),
       priority_resident(0), priority_pending(0),
       priority_peak_resident(0), priority_peak_resident_plus_pending(0) {}
 

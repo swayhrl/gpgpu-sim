@@ -1,15 +1,15 @@
 # SHiP-SW-style contract status
 
-`SHIP_SW_IMPLEMENTATION_CONTRACT_INCOMPLETE`
+`C16_SHIP_SW_STYLE_V1_CONTRACT_CLOSED`
 
-Closed from original SHiP: underlying 2-bit SRRIP; zero SHCT predicts RRPV=3,
-positive predicts RRPV=2; a true hit promotes to zero and increments the
-stored insertion signature; an unreused eviction decrements that signature;
-the predictor estimates whether reuse occurs, not when.
+The user-authorized closeout freezes critical regions, 4KB page signature,
+per-subpartition 16K-entry/3-bit SHCT, low-14-bit index, no sampling,
+non-critical exclusion, eviction-time outcome training, and use of the
+qualified priority substrate. Unit and sector integration tests cover
+saturation, prediction, positive/negative training, collisions,
+non-critical no-training, repeated refills, and false-temporal-locality
+exclusions.
 
-Not uniquely closed by LR03/LR04/LR05 or the accepted source: the
-AutoScratch-style software region's fine-grained signature construction,
-finite SHCT entry/index/hash/collision contract, training sampling, and exact
-software request marking for C16. Giving only 28 class IDs would be an
-unapproved weakening; inventing a finer mapping would be a new scientific
-assumption. Policy ID 4 therefore rejects functional enable.
+This remains explicitly named a C16 SHiP-SW-style adaptation. It is not
+claimed to reproduce AutoScratch or original SHiP bit for bit, and it does not
+use M1 quota.

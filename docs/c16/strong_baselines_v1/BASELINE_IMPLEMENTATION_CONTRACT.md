@@ -1,7 +1,7 @@
 # C16 strong-baseline implementation contract V1
 
-Status: `VERIFIED_CODE` for PRIORITY_ALL, PRIORITY_STABLE, and DRRIP;
-`SHIP_SW_IMPLEMENTATION_CONTRACT_INCOMPLETE` for SHiP-SW-style.
+Status: `VERIFIED_CODE` for PRIORITY_ALL, PRIORITY_STABLE, DRRIP, and
+`C16_SHIP_SW_STYLE_V1`.
 
 ## Common control
 
@@ -54,9 +54,16 @@ anchor `floor(slot*nsets/64)` is used. SRRIP-leader accepted misses increment
 PSEL, BRRIP-leader accepted misses decrement it; followers use BRRIP at
 PSEL>=512.
 
-## SHiP-SW-style boundary
+## C16 SHiP-SW-style V1
 
-Policy ID 4 exists so configs and future merge contracts are stable, but it
-fails closed. LR03/LR05 close original SHiP training but do not uniquely close
-the software-region signature granularity, finite SHCT mapping/collision,
-sampling, and C16 software-marking contract. No guessed predictor is present.
+The closeout contract explicitly freezes the former open choices. Critical
+regions are the same 28 qweight intervals; signature is 4KB page identity
+`address >> 12`; each L2 subpartition owns 16K 3-bit SHCT entries indexed by
+`(address >> 12) & 0x3fff`; there is no sampling. Non-critical lines remain
+ordinary and never train. A zero counter predicts REGULAR and a positive
+counter predicts L2_RESIDENT, realized by the qualified priority substrate.
+Each critical line stores its insertion signature and an initially clear
+outcome. Only a true valid same-sector hit sets outcome. Eviction increments
+the stored counter for outcome=1 and decrements it for outcome=0, with 3-bit
+saturation. Sector miss, MSHR merge, retry, and fill do not train. There is no
+M1 quota. This is a C16 adaptation, not a bitwise AutoScratch reproduction.

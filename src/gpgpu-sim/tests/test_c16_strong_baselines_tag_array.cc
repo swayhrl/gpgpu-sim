@@ -40,6 +40,23 @@ class exposed_c16_tag_array : public tag_array {
 
   unsigned rrpv(unsigned index) const { return m_c16_rrpv[index]; }
   uint64_t resident() const { return m_c16_diagnostics.priority_resident; }
+
+  void install_ship(unsigned index, new_addr_type address, bool critical,
+                    bool outcome) {
+    install(index, address, 3, false);
+    if (critical) {
+      const unsigned signature =
+          c16_strong_baselines::ship_sw_shct_index(address);
+      m_c16_ship_signature[index] = static_cast<unsigned short>(signature);
+      m_c16_ship_signature_valid[index] = 1;
+      m_c16_ship_outcome[index] = outcome ? 1 : 0;
+    }
+  }
+
+  void depart(unsigned index) { c16_baseline_depart_line(index); }
+  unsigned ship_counter(new_addr_type address) const {
+    return m_c16_ship_shct[c16_strong_baselines::ship_sw_shct_index(address)];
+  }
 };
 
 static std::string write_sidecar(const char *path) {
@@ -124,6 +141,29 @@ int main() {
   assert(text.find("c16_strong_baseline_l2") != std::string::npos);
   assert(text.find("policy=DRRIP") != std::string::npos);
   assert(text.find("drrip_psel=512") != std::string::npos);
+
+  cache_config ship = make_config(c16_strong_baselines::POLICY_SHIP_SW,
+                                  sidecar, digest.c_str());
+  exposed_c16_tag_array ship_tags(ship);
+  const new_addr_type critical_address = 0x100000000ULL;
+  ship_tags.install_ship(0, critical_address, true, true);
+  ship_tags.depart(0);
+  assert(ship_tags.ship_counter(critical_address) == 1);
+  assert(c16_strong_baselines::ship_sw_predict_resident(
+      ship_tags.ship_counter(critical_address)));
+  ship_tags.install_ship(0, critical_address, true, false);
+  ship_tags.depart(0);
+  assert(ship_tags.ship_counter(critical_address) == 0);
+  for (unsigned i = 0; i < 12; ++i) {
+    ship_tags.install_ship(0, critical_address, true, true);
+    ship_tags.depart(0);
+  }
+  assert(ship_tags.ship_counter(critical_address) == 7);
+  const new_addr_type ordinary_address = 0x900000000ULL;
+  const unsigned ordinary_before = ship_tags.ship_counter(ordinary_address);
+  ship_tags.install_ship(0, ordinary_address, false, true);
+  ship_tags.depart(0);
+  assert(ship_tags.ship_counter(ordinary_address) == ordinary_before);
 
   remove(sidecar);
   std::cout << "C16_STRONG_BASELINES_TAG_ARRAY_TEST_PASS\n";
