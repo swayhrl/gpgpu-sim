@@ -15,7 +15,7 @@ struct scenario {
   exec_gpgpu_sim *gpu; memory_stats_t *stats; memory_partition_unit *part;
   memory_sub_partition *sp; partition_mf_allocator *alloc;
   std::map<unsigned, unsigned long long> responses;
-  explicit scenario(const char *base, const char *overlay, bool dirty=false, bool tvd=true, bool hold=false, unsigned sets=1, unsigned ft_mode=2)
+  explicit scenario(const char *base, const char *overlay, bool dirty=false, bool tvd=true, bool hold=false, unsigned sets=1, unsigned ft_mode=2, unsigned ways=1)
       : cfg(&context) {
     option_parser_t p=option_parser_create(); context.ptx_reg_options(p);
     context.func_sim->ptx_opcocde_latency_options(p); icnt_reg_options(p); cfg.reg_options(p);
@@ -25,7 +25,7 @@ struct scenario {
       "-gpgpu_dram_partition_queues","64:128:64:1", "-gpgpu_ep_l2_tvd_clean",tvd?"1":"0",
       "-gpgpu_ep_l2_tvd_dirty",dirty?"1":"0"};
     option_parser_cmdline(p,11,args);
-    std::string geometry="S:"+std::to_string(sets)+":128:1,L:B:m:L:L,A:128:1,256:0,32";
+    std::string geometry="S:"+std::to_string(sets)+":128:"+std::to_string(ways)+",L:B:m:L:L,A:128:1,256:0,32";
     const char *geo[]={"tvd-test","-gpgpu_cache:dl2",geometry.c_str()}; option_parser_cmdline(p,3,geo);
     if (hold) {
       const char *block[]={"tvd-test","-gpgpu_dram_partition_queues","2048:2:64:1",
@@ -253,6 +253,33 @@ static void partial_dirty_promotion(const char *base,const char *overlay) {
   puts("PASS production_partial_dirty_victim_WAD_only_no_false_sector_forward_or_promotion_deadlock");
 }
 
+static void primary_tag_geometry(const char *base,const char *overlay) {
+  scenario f(base,overlay,false,true,false,64,2,16);
+  auto first=f.push(0);f.await(first);
+  ep_l2::PayloadHandle original;
+  for(unsigned i=0;i<1024;++i) {
+    auto h=f.cache()->ep_l2_tag_payload_handle_for_test(i);
+    if(h.valid() && f.cache()->ep_l2_payload_for_test().inspect(h).owner==0) original=h;
+  }
+  assert(original.valid());
+  for(unsigned i=1;i<=16;++i) { auto uid=f.push(i*64*128);f.await(uid); }
+  auto dir=f.cache()->tvd_for_test();assert(dir->live(dir->find(0)));
+  auto read=f.push(0);f.await(read);assert(f.responses.at(read)==0);
+  auto write=f.push(0,true);f.await(write);
+  assert(!dir->live(dir->find(0)) && dir->stats().promotions==1);
+  unsigned matches=0;
+  for(unsigned i=0;i<1024;++i) {
+    auto h=f.cache()->ep_l2_tag_payload_handle_for_test(i);
+    if(!h.valid())continue;
+    assert(h.payload_id%4==i%4);
+    if(f.cache()->ep_l2_payload_for_test().inspect(h).owner==0) {assert(h==original);++matches;}
+  }
+  assert(matches==1);
+  auto current=f.push(0);f.await(current);assert(f.responses.at(current)==(unsigned long long)write+1);
+  f.drain();f.sp->flushL2();
+  puts("PASS production_primary_64sets_16ways_bank_class_preserved_same_handle_promotion");
+}
+
 int main(int argc,char **argv) {
   assert(argc==3 || argc==4);
   if (argc==4) {
@@ -277,4 +304,5 @@ int main(int argc,char **argv) {
   dirty_wad_full(argv[1],argv[2]);
   dirty_bank_pool_full(argv[1],argv[2]);
   partial_dirty_promotion(argv[1],argv[2]);
+  primary_tag_geometry(argv[1],argv[2]);
 }
