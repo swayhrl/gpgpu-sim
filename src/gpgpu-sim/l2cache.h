@@ -419,6 +419,11 @@ class memory_sub_partition {
   }
 
  private:
+  void ft_record_admission(const mem_fetch *mf);
+  void ft_record_response(const mem_fetch *mf);
+  std::set<unsigned> m_ft_live_requesters;
+  unsigned long long m_ft_unique_requesters = 0, m_ft_response_count = 0, m_ft_absorbed_count = 0;
+
   // data
   unsigned m_id;  //< the global sub partition ID
   const memory_config *m_config;

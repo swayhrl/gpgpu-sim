@@ -267,7 +267,7 @@ void l2_cache::send_write_request(mem_fetch *mf, cache_event event, unsigned tim
     assert(m_ft_wb.size() < m_config.m_ep_l2_wad_entries);
     assert(m_ft_wb.insert(std::make_pair(mf, r)).second);
     mf->set_ep_l2_payload_identity(p.staging.payload_id, p.staging.generation);
-    p.bound = true;
+    p.bound = true; ++m_ft_stats.wb_created;
     m_ft_stats.staged_max = std::max(m_ft_stats.staged_max, (unsigned long long)m_ft_wb.size());
   }
   data_cache::send_write_request(mf, event, time, events);
@@ -304,14 +304,15 @@ void l2_cache::lower_accepted(mem_fetch *mf, unsigned long long cycle) {
 void l2_cache::ft_print(FILE *fp, unsigned slice) const {
   if (!ft_enabled()) return;
   fprintf(fp, "EPL2FTV1|SUMMARY|slice=%u|mode=%u|wbuf=%u|physical_slots=%u|"
-      "accepted=%llu|wb_lower_accept=%llu|wbuf_full=%llu|pool_full=%llu|pin_block=%llu|"
+      "accepted=%llu|wb_created=%llu|wb_completed=%llu|wb_lower_accept=%llu|wbuf_full=%llu|pool_full=%llu|pin_block=%llu|"
       "bank_block=%llu|issue_block=%llu|copy_lines=%llu|copy_bytes=%llu|staging_reads=%llu|"
       "staged_max=%llu|staging_lifetime=%llu|borrow_resident=%llu|borrow_bypass=%llu|"
       "rollback=%llu|version_checks=%llu|wb_live=%u|wb_slots=%u|reserved=%u|read_refs=%u|"
       "role_free=%u|role_resident=%u|role_bypass=%u|ownership_consistent=%u|"
       "observed_cycles=%llu|wb_occupancy_sum=%llu|descriptor_responses=%llu\n",
       slice, m_config.m_ep_l2_ft_mode, m_config.m_ep_l2_wbuf_entries,
-      m_ep_l2_payload.physical_slots(), m_ft_stats.accepted, m_ft_stats.lower_accept,
+      m_ep_l2_payload.physical_slots(), m_ft_stats.accepted, m_ft_stats.wb_created,
+      m_ep_l2_wad_lifetime_count, m_ft_stats.lower_accept,
       m_ft_stats.wbuf_full, m_ft_stats.pool_full, m_ft_stats.pin_block,
       m_ft_stats.bank_block, m_ft_stats.issue_block, m_ft_stats.copy_lines,
       m_ft_stats.copy_lines * 128, m_ft_stats.staging_reads, m_ft_stats.staged_max,

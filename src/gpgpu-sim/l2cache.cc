@@ -1086,6 +1086,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE,
                        m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
         ep_l2_m0a_record_response_enqueue();
+        ft_record_response(mf);
         m_L2_icnt_queue->push(mf);
       } else {
         if (m_config->m_L2_config.m_write_alloc_policy == FETCH_ON_WRITE) {
@@ -1096,6 +1097,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
               IN_PARTITION_L2_TO_ICNT_QUEUE,
               m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
           ep_l2_m0a_record_response_enqueue();
+          ft_record_response(original_wr_mf);
           m_L2_icnt_queue->push(original_wr_mf);
         }
         m_request_tracker.erase(mf);
@@ -1141,6 +1143,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE,
                        m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
       ep_l2_m0a_record_response_enqueue();
+      ft_record_response(mf);
       m_L2_icnt_queue->push(mf);
       m_dram_L2_queue->pop();
     }
@@ -1379,6 +1382,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
                               m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
                                   m_memcpy_cycle_offset,
                               events);
+        if (status != RESERVATION_FAIL) ft_record_admission(mf);
         // This is the commit point: preview said admissible and access did
         // mutate/accept the request.  A defensive reservation failure is not
         // an admission and is intentionally excluded.
@@ -1453,7 +1457,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
               mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE,
                              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
               ep_l2_m0a_record_response_enqueue();
-              m_L2_icnt_queue->push(mf);
+              ft_record_response(mf);
+        m_L2_icnt_queue->push(mf);
             }
             m_icnt_L2_queue->pop();
           } else {
@@ -1474,7 +1479,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
               mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE,
                              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
               ep_l2_m0a_record_response_enqueue();
-              m_L2_icnt_queue->push(mf);
+              ft_record_response(mf);
+        m_L2_icnt_queue->push(mf);
             }
           }
           // L2 cache accepted request
@@ -2220,7 +2226,17 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
           stats.c7e_dram_scheduler_causal_block,
           stats.c7e_dram_to_l2_return_path_block,
           uid == (unsigned long long)-1 ? 1 : 0);
-  if (uid == (unsigned long long)-1) m_L2cache->ft_print(fp, m_id);
+  if (uid == (unsigned long long)-1 && m_L2cache->ft_enabled()) {
+    m_L2cache->ft_print(fp, m_id);
+    fprintf(fp, "EPL2FTV1|TERMINAL|slice=%u|unique_requesters=%llu|responses=%llu|"
+        "absorbed_writebacks=%llu|requester_live=%u|requester_exact_once=%u|"
+        "hardware_drained=%u|pending_lower_reads=%u|pending_returns=%u|pending_responses=%u\n",
+        m_id, m_ft_unique_requesters, m_ft_response_count, m_ft_absorbed_count,
+        (unsigned)m_ft_live_requesters.size(),
+        m_ft_live_requesters.empty() && m_ft_unique_requesters == m_ft_response_count ? 1 : 0,
+        l2_char_no_resource_leak() ? 1 : 0, m_L2cache->ft_pending_lower_reads(),
+        m_dram_L2_queue->get_length(), m_L2_icnt_queue->get_length());
+  }
   fprintf(fp,
           "EPL2B0V1|INVARIANT|slice=%u|kernel_uid=%llu|line_mshr_used=%u|"
           "line_mshr_capacity=%u|descriptor_used=%u|descriptor_free=%u|"
@@ -2252,7 +2268,9 @@ bool memory_sub_partition::l2_char_no_resource_leak() const {
          m_l2_block_state.empty() && m_L2cache->l2_char_no_pending_resources() &&
          m_L2cache->ep_l2_resident_pending() == 0 &&
          m_L2cache->ep_l2_payload_pending_operations() == 0 &&
-         m_L2cache->ep_l2_tag_payload_consistent() && m_L2cache->ft_drained();
+         m_L2cache->ep_l2_tag_payload_consistent() && m_L2cache->ft_drained() &&
+         (!m_L2cache->ft_enabled() || (m_ft_live_requesters.empty() &&
+          m_ft_unique_requesters == m_ft_response_count));
 }
 
 void memory_stats_t::visualizer_print(gzFile visualizer_file) {
@@ -2497,4 +2515,20 @@ void memory_sub_partition::visualizer_print(gzFile visualizer_file) {
   m_stats->L2_write_hit += temp_sub_stats.write_hits;
 
   clear_L2cache_stats_pw();
+}
+
+// Request tokens are allocated only at the real frontend commit and consumed
+// only at actual response queue enqueue. An absent/duplicate token asserts.
+// Globally fresh mem_fetch UIDs and single frontend pop establish non-reuse;
+// retain only live audit tokens, not an unbounded history of all requests.
+void memory_sub_partition::ft_record_admission(const mem_fetch *mf) {
+  if (!m_L2cache || !m_L2cache->ft_enabled()) return;
+  if (mf->get_access_type() == L1_WRBK_ACC) { ++m_ft_absorbed_count; return; }
+  assert(m_ft_live_requesters.insert(mf->get_request_uid()).second);
+  ++m_ft_unique_requesters;
+}
+void memory_sub_partition::ft_record_response(const mem_fetch *mf) {
+  if (!m_L2cache || !m_L2cache->ft_enabled()) return;
+  assert(m_ft_live_requesters.erase(mf->get_request_uid()) == 1);
+  ++m_ft_response_count;
 }
