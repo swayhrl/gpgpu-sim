@@ -103,8 +103,11 @@ class transactions {
 
   admission admit(uint64_t epoch, new_addr_type line, identity h,
                   tag_binding tag, mem_fetch *mf, unsigned mask,
-                  bool certified_line, request_kind kind) {
+                  bool certified_line, request_kind kind,
+                  unsigned initial_ready_sectors = 0) {
     check_mask(mask);
+    if (initial_ready_sectors & ~15U)
+      throw std::invalid_argument("invalid resident ready sectors");
     if (!m_epoch_open || epoch != m_epoch || !certified_line ||
         !m_oracle.contains(line) || kind != GLOBAL_DEMAND_READ) {
       ++stats.rejected_oracle;
@@ -135,6 +138,7 @@ class transactions {
     }
     e = entry(); e.live = e.attached = true; e.h = h; e.tag = tag;
     e.line = line; e.epoch = epoch; e.required = mask;
+    e.ready = initial_ready_sectors;
     e.waiters.push_back(waiter(d, mf, mask));
     ++stats.admits;
     return ACCEPTED;
@@ -188,13 +192,13 @@ class transactions {
 
   unsigned lower_needed(identity h) const {
     const entry &e = get(h);
-    return e.required & ~e.issued;
+    return e.required & ~(e.issued | e.ready);
   }
   // Called only after real lower-queue acceptance; no resource is freed here.
   void lower_accepted(identity h, unsigned mask) {
     check_mask(mask);
     entry &e = get(h);
-    if ((mask & ~e.required) || (mask & e.issued))
+    if ((mask & ~e.required) || (mask & (e.issued | e.ready)))
       throw std::logic_error("unrequested or repeated sector issue");
     unsigned duplicates = 0;
     for (unsigned i = 0; i < m_slots.size(); ++i)
@@ -242,9 +246,11 @@ class transactions {
     out.request = w.mf; out.sectors = w.sectors; out.transaction = h;
     return true;
   }
-  void commit_response(identity h, bool fifo_accepted) {
+  void commit_response(identity h, bool fifo_accepted, uint64_t cycle) {
     entry &e = get(h);
     if (!e.prepared) throw std::logic_error("response commit without read");
+    if (fifo_accepted && e.prepared_cycle != cycle)
+      throw std::logic_error("response enqueue outside granted read cycle");
     if (!fifo_accepted) {
       ++stats.response_backpressure; e.prepared = false; return;
     }
@@ -296,8 +302,8 @@ class transactions {
     return const_cast<transactions *>(this)->get(h);
   }
   void retire_if_done(entry &e) {
-    if (!e.waiters.empty() || e.prepared || e.required != e.ready ||
-        e.required != e.issued) return;
+    if (!e.waiters.empty() || e.prepared || (e.required & ~e.ready) ||
+        (e.issued & ~e.ready)) return;
     m_port.unpin(e.h);
     if (!e.attached) m_port.release(e.h);
     if (!m_features.line_mshr_bypass) m_shared.release_ro_line(e.line);

@@ -708,6 +708,8 @@ bool mshr_table::reserve_ro_descriptor(
   if (!m_descriptor_pool_size || !mf || sectors.none() ||
       targets_on_line(line) >= m_descriptor_per_line_cap ||
       m_free_descriptor_ids.empty()) return false;
+  for (unsigned n = 0; n < m_descriptor_pool.size(); ++n)
+    if (m_descriptor_pool[n].m_mf == mf) return false;
   const unsigned id = m_free_descriptor_ids.back();
   ep_l2_descriptor &d = m_descriptor_pool[id];
   assert(!d.m_mf && !d.m_ro_external);

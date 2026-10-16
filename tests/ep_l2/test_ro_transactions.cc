@@ -112,16 +112,16 @@ static void out_of_order_backpressure_and_waiter_protection() {
   response r;
   assert(!t.prepare_response(h,1,r)); // shared bank write/read arbitration
   assert(t.prepare_response(h,2,r)); assert(r.request==request(2));
-  t.commit_response(h,false);
+  t.commit_response(h,false,2);
   unsigned reads=p.reads;
   assert(t.prepare_response(h,3,r)); assert(p.reads==reads+1);
   assert(t.prepare_response(h,3,r)); assert(p.reads==reads+1);
   assert(shared.descriptor_count_used()==2);
-  t.commit_response(h,true); assert(shared.descriptor_count_used()==1);
+  t.commit_response(h,true,3); assert(shared.descriptor_count_used()==1);
   assert(!t.detach(h));
   assert(t.fill(h,2,4)); assert(!t.prepare_response(h,5,r));
   assert(t.fill(h,1,6)); assert(t.prepare_response(h,7,r));
-  assert(r.request==request(1)); t.commit_response(h,true);
+  assert(r.request==request(1)); t.commit_response(h,true,7);
   assert(shared.descriptor_count_used()==0 && t.drained());
   assert(p.tags[0].ready==7 && p.releases==0); // clean resident stays alive
   assert(t.end_epoch());
@@ -142,11 +142,11 @@ static void same_line_detached_instances_and_generation() {
   assert(!t.fill(a,1,1)); assert(t.fill(a,1,2));
   assert(p.tag_updates==updates && p.tags[0].h==b); // old fill cannot modify B
   response r;
-  assert(t.prepare_response(a,3,r));t.commit_response(a,false);
+  assert(t.prepare_response(a,3,r));t.commit_response(a,false,3);
   assert(p.slots[a.payload_id].allocated);
-  assert(t.prepare_response(a,4,r));t.commit_response(a,true);
+  assert(t.prepare_response(a,4,r));t.commit_response(a,true,4);
   assert(!p.slots[a.payload_id].allocated && p.slots[b.payload_id].allocated);
-  assert(t.prepare_response(b,5,r));t.commit_response(b,true);
+  assert(t.prepare_response(b,5,r));t.commit_response(b,true,5);
   assert(t.end_epoch() && shared.descriptor_count_used()==0);
   identity fresh=p.reserve(0,0x3000,1);
   assert(fresh.generation!=a.generation);
@@ -154,7 +154,7 @@ static void same_line_detached_instances_and_generation() {
   assert(t.admit(3,0x3000,fresh,p.binding(1),request(12),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
   bool rejected=false;try{t.fill(a,1,5);}catch(const std::logic_error&){rejected=true;}
   assert(rejected);t.lower_accepted(fresh,1);assert(t.detach(fresh));
-  assert(t.fill(fresh,1,6));assert(t.prepare_response(fresh,7,r));t.commit_response(fresh,true);
+  assert(t.fill(fresh,1,6));assert(t.prepare_response(fresh,7,r));t.commit_response(fresh,true,7);
   assert(t.end_epoch());
 }
 
@@ -169,7 +169,7 @@ static void descriptor_pool_is_shared_and_address_bounded() {
   assert(t.admit(4,0x5000,b,p.binding(1),request(801),1,true,GLOBAL_DEMAND_READ)==DESCRIPTOR_OR_ADDRESS_FULL);
   assert(shared.descriptor_count_used()==512 && shared.num_entries_used()==16);
   t.lower_accepted(a,1);assert(t.detach(a));assert(t.fill(a,1,1));response r;
-  assert(t.prepare_response(a,2,r));t.commit_response(a,true);
+  assert(t.prepare_response(a,2,r));t.commit_response(a,true,2);
   assert(shared.descriptor_count_used()==511);
   assert(t.admit(4,0x5000,b,p.binding(1),request(801),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
 
@@ -204,7 +204,7 @@ static void rejected_inputs_and_illegal_protocol() {
   violation=false;try{t.lower_accepted(h,1);}catch(const std::logic_error&){violation=true;}assert(violation);
   assert(t.fill(h,1,2));
   violation=false;try{t.fill(h,1,3);}catch(const std::logic_error&){violation=true;}assert(violation);
-  response r;assert(t.prepare_response(h,4,r));t.commit_response(h,true);
+  response r;assert(t.prepare_response(h,4,r));t.commit_response(h,true,4);
   assert(t.end_epoch());
 
   mshr_table::ro_descriptor_handle d,stale;
@@ -230,8 +230,8 @@ static void detach_only_uses_the_actual_line_mshr_limit() {
   identity b=p.reserve(1,0x9000,1);
   assert(t.admit(8,0x9000,b,p.binding(1),request(202),1,true,GLOBAL_DEMAND_READ)==LINE_MSHR_FULL);
   assert(t.fill(a,2,1));assert(t.fill(a,1,2));response r;
-  assert(t.prepare_response(a,3,r));t.commit_response(a,true);
-  assert(t.prepare_response(a,4,r));t.commit_response(a,true);
+  assert(t.prepare_response(a,3,r));t.commit_response(a,true,3);
+  assert(t.prepare_response(a,4,r));t.commit_response(a,true,4);
   assert(t.drained() && shared.num_entries_used()==127);
   assert(t.stats.duplicate_sectors==0 && p.releases==1);
   assert(t.end_epoch());
@@ -243,8 +243,51 @@ static void detach_only_uses_the_actual_line_mshr_limit() {
   assert(bypass.admit(9,0x9000,b,p.binding(1),request(301),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
   assert(shared.num_entries_used()==128 && shared.descriptor_count_used()==129);
   bypass.lower_accepted(b,1);assert(bypass.fill(b,1,5));
-  assert(bypass.prepare_response(b,6,r));bypass.commit_response(b,true);
+  assert(bypass.prepare_response(b,6,r));bypass.commit_response(b,true,6);
   assert(bypass.end_epoch() && shared.descriptor_count_used()==128);
+}
+
+static void partial_resident_and_cycle_grant_validation() {
+  mshr_table shared(128,32,512,32);reference_port p;
+  transactions t(shared,p,1168,certificate(),switches(true,true));t.begin_epoch(10,hash());
+  identity h=p.reserve(0,0xa000,0);
+  assert(t.admit(10,0xa000,h,p.binding(0),request(1000),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
+  t.lower_accepted(h,1);assert(t.fill(h,1,1));response r;
+  assert(t.prepare_response(h,2,r));
+  bool rejected=false;try{t.commit_response(h,true,3);}catch(const std::logic_error&){rejected=true;}
+  assert(rejected && shared.descriptor_count_used()==1);
+  assert(t.prepare_response(h,3,r));t.commit_response(h,true,3);
+  assert(t.drained() && p.tags[0].ready==1);
+  assert(t.admit(10,0xa000,h,p.binding(0),request(1001),2,true,GLOBAL_DEMAND_READ,1)==ACCEPTED);
+  assert(t.lower_needed(h)==2);
+  assert(t.merge(h,request(1001),2,10,true,GLOBAL_DEMAND_READ)==DESCRIPTOR_OR_ADDRESS_FULL);
+  t.lower_accepted(h,2);assert(t.fill(h,2,4));
+  assert(p.tags[0].ready==3); // sector miss must preserve already valid sector
+  assert(t.prepare_response(h,5,r));t.commit_response(h,true,5);
+  assert(t.end_epoch() && p.slots[h.payload_id].pins==0);
+}
+
+static void detached_address_cap_and_exactly_once_permuted_fills() {
+  mshr_table shared(128,32,512,32);reference_port p;
+  transactions t(shared,p,1168,certificate(),switches(true,true));t.begin_epoch(11,hash());
+  std::vector<identity> handles;
+  for(unsigned n=0;n<32;++n) {
+    identity h=p.reserve(n,0xc000,0);handles.push_back(h);
+    assert(t.admit(11,0xc000,h,p.binding(0),request(1100+n),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
+    t.lower_accepted(h,1);assert(t.detach(h));
+  }
+  identity refused=p.reserve(32,0xc000,0);
+  assert(t.admit(11,0xc000,refused,p.binding(0),request(1200),1,true,GLOBAL_DEMAND_READ)==DESCRIPTOR_OR_ADDRESS_FULL);
+  assert(shared.descriptor_count_used()==32 && shared.num_entries_used()==0);
+  assert(t.stats.duplicate_sectors==31 && t.stats.lower_sectors==32);
+  for(unsigned n=0;n<32;++n)assert(t.fill(handles[31-n],1,n+1));
+  std::set<mem_fetch*> seen;
+  for(unsigned n=0;n<32;++n) {
+    response r;assert(t.prepare_response(handles[n],33+n,r));
+    assert(r.request==request(1100+n));assert(seen.insert(r.request).second);
+    t.commit_response(handles[n],true,33+n);
+  }
+  assert(t.end_epoch() && shared.descriptor_count_used()==0 && p.releases==32);
 }
 
 int main() {
@@ -253,5 +296,7 @@ int main() {
   descriptor_pool_is_shared_and_address_bounded();
   rejected_inputs_and_illegal_protocol();
   detach_only_uses_the_actual_line_mshr_limit();
-  puts("EP-L2 Lane 3 RO production-module/reference tests: PASS (5 scenario groups)");
+  partial_resident_and_cycle_grant_validation();
+  detached_address_cap_and_exactly_once_permuted_fills();
+  puts("EP-L2 Lane 3 RO production-module/reference tests: PASS (7 scenario groups)");
 }
