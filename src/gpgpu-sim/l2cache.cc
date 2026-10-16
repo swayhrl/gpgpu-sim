@@ -2219,6 +2219,7 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
           stats.c7e_dram_scheduler_causal_block,
           stats.c7e_dram_to_l2_return_path_block,
           uid == (unsigned long long)-1 ? 1 : 0);
+  if (uid == (unsigned long long)-1) m_L2cache->ft_print(fp, m_id);
   fprintf(fp,
           "EPL2B0V1|INVARIANT|slice=%u|kernel_uid=%llu|line_mshr_used=%u|"
           "line_mshr_capacity=%u|descriptor_used=%u|descriptor_free=%u|"
