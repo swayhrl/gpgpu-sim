@@ -1525,9 +1525,11 @@ bool baseline_cache::bandwidth_management::fill_port_free() const {
 void baseline_cache::cycle() {
   if (!m_miss_queue.empty()) {
     mem_fetch *mf = m_miss_queue.front();
-    if (!m_memport->full(mf->size(), mf->get_is_write())) {
+    if (!m_memport->full(mf->size(), mf->get_is_write()) &&
+        lower_ready(mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle)) {
       m_miss_queue.pop_front();
       m_memport->push(mf);
+      lower_accepted(mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
     }
   }
   bool data_port_busy = !m_bandwidth_management.data_port_free();
@@ -1711,6 +1713,7 @@ void baseline_cache::send_read_request(new_addr_type addr,
       m_tag_array->access(block_addr, time, cache_index, wb, evicted, mf);
 
     m_mshrs.add(mshr_addr, mf);
+    descriptor_admitted(mf, cache_index);
     if (needs_lower_read) {
       m_extra_mf_fields[mf] = extra_mf_fields(
           mshr_addr, mf->get_addr(), cache_index, mf->get_data_size(), m_config);
@@ -1718,6 +1721,7 @@ void baseline_cache::send_read_request(new_addr_type addr,
       // In EP-L2 descriptor mode, the MSHR key is the line but each lower
       // transaction remains a 32-byte sector request.
       if (!m_config.ep_l2_descriptor_mode()) mf->set_addr(mshr_addr);
+      lower_read_enqueued(mf, cache_index);
       m_miss_queue.push_back(mf);
       mf->set_status(m_miss_queue_status, time);
       if (!wa) events.push_back(cache_event(READ_REQUEST_SENT));
@@ -1732,10 +1736,12 @@ void baseline_cache::send_read_request(new_addr_type addr,
       m_tag_array->access(block_addr, time, cache_index, wb, evicted, mf);
 
     m_mshrs.add(mshr_addr, mf);
+    descriptor_admitted(mf, cache_index);
     m_extra_mf_fields[mf] = extra_mf_fields(
         mshr_addr, mf->get_addr(), cache_index, mf->get_data_size(), m_config);
     mf->set_data_size(m_config.get_atom_sz());
     if (!m_config.ep_l2_descriptor_mode()) mf->set_addr(mshr_addr);
+    lower_read_enqueued(mf, cache_index);
     m_miss_queue.push_back(mf);
     mf->set_status(m_miss_queue_status, time);
     if (!wa) events.push_back(cache_event(READ_REQUEST_SENT));
@@ -2416,6 +2422,7 @@ enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
 enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events) {
+  if (ft_enabled()) return ft_access(addr, mf, time, events);
   m_ep_l2_last_payload_request_result = ep_l2_payload_store::GRANTED;
   unsigned payload_index = (unsigned)-1;
   bool payload_reserved = false;
@@ -2576,24 +2583,34 @@ void l2_cache::ep_l2_wad_complete(new_addr_type block_addr,
 }
 
 void l2_cache::fill(mem_fetch *mf, unsigned time) {
+  unsigned ft_cache_index = (unsigned)-1;
   if (m_ep_l2_payload.enabled()) {
     assert(mf->has_ep_l2_payload_identity());
     const unsigned id = mf->get_ep_l2_payload_id();
-    assert(id < ep_l2_payload_store::k_resident_slots);
+    assert(id < m_ep_l2_payload.physical_slots());
     extra_mf_fields_lookup::iterator e = m_extra_mf_fields.find(mf);
     assert(e != m_extra_mf_fields.end());
+    if (ft_enabled()) ft_cache_index = e->second.m_cache_index;
     const ep_l2_payload_store::payload_handle handle(
         id, mf->get_ep_l2_payload_generation());
     assert(tag_payload_handle(e->second.m_cache_index).payload_id == id &&
            tag_payload_handle(e->second.m_cache_index).generation ==
                handle.generation &&
            m_ep_l2_payload.handle_owner_matches(handle, e->second.m_block_addr));
+    if (ft_enabled() && mf->has_ft_wb_data()) {
+      ep_l2_payload_store::slot &slot = m_ep_l2_payload.inspect_mutable(handle);
+      for (unsigned sector = 0; sector < 4; ++sector)
+        if (mf->get_access_sector_mask().test(sector) && !slot.versions[sector])
+          slot.versions[sector] = mf->get_ft_wb_data()[sector];
+    }
     // A stale response must never land into a reused static payload slot.
     m_ep_l2_payload.complete_resident_fill(
         id, e->second.m_block_addr, mf->get_ep_l2_payload_generation(),
         mf->get_access_sector_mask(), mf->is_write());
   }
   baseline_cache::fill(mf, time);
+  if (ft_enabled() && m_tag_array->block_is_modified(ft_cache_index))
+    m_ep_l2_payload.mark_resident_dirty(tag_payload_handle(ft_cache_index).payload_id);
 }
 
 void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
@@ -2627,7 +2644,8 @@ void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
     plan.victim_valid = m_tag_array->block_is_valid(cache_index);
     plan.victim_dirty = m_tag_array->block_is_modified(cache_index);
     if (plan.victim_dirty && ep_l2_wad_enabled() &&
-        m_ep_l2_wad_entries_live.size() >= m_config.m_ep_l2_wad_entries) {
+        m_ep_l2_wad_entries_live.size() >= m_config.m_ep_l2_wad_entries &&
+        !(ft_enabled() && m_ft_pending.request == mf && m_ft_pending.wad)) {
       // The required WAD must be allocated before data_cache::access()
       // destructively replaces this victim.
       plan.probe_status = RESERVATION_FAIL;
@@ -2833,3 +2851,5 @@ void tex_cache::display_state(FILE *fp) const {
   }
 }
 /******************************************************************************************************************************************/
+
+#include "ep-l2-ft-cache.inc"
