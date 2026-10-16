@@ -2718,6 +2718,8 @@ class l2_cache : public data_cache {
   void invalidate() { tvd_epoch_cleanup(m_gpu_cycle_for_tvd()); data_cache::invalidate(); }
   void tvd_print(FILE *, unsigned);
   const tvd_directory *tvd_for_test() const { return m_tvd.get(); }
+  unsigned long long tvd_actual_lower_read_bytes() const { return m_ft_stats.lower_read_bytes; }
+  unsigned long long tvd_actual_lower_read_packets() const { return m_ft_stats.lower_read_packets; }
   bool ft_enabled() const { return m_config.m_ep_l2_ft_mode != 0; }
   void commit_next_access();
   mem_fetch *peek_next_access() const;
@@ -2815,11 +2817,11 @@ class l2_cache : public data_cache {
     unsigned long long accepted, wb_created, lower_accept, wbuf_full, pool_full, pin_block,
         bank_block, issue_block, copy_lines, staging_reads, staged_max,
         staging_lifetime, borrow_bypass, borrow_resident, rollback, data_checks,
-        observed_cycles, staging_occupancy_sum, descriptor_responses;
+        observed_cycles, staging_occupancy_sum, descriptor_responses, lower_read_packets, lower_read_bytes;
     ft_counters() : accepted(0), wb_created(0), lower_accept(0), wbuf_full(0), pool_full(0),
         pin_block(0), bank_block(0), issue_block(0), copy_lines(0), staging_reads(0),
         staged_max(0), staging_lifetime(0), borrow_bypass(0), borrow_resident(0),
-        rollback(0), data_checks(0), observed_cycles(0), staging_occupancy_sum(0), descriptor_responses(0) {}
+        rollback(0), data_checks(0), observed_cycles(0), staging_occupancy_sum(0), descriptor_responses(0), lower_read_packets(0), lower_read_bytes(0) {}
   };
   ft_replacement m_ft_pending;
   ft_counters m_ft_stats;

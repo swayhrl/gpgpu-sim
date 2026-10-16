@@ -119,9 +119,26 @@ static void clean_write_promotes_dirty_resident(const char *base,const char *ove
   puts("PASS production_clean_write_promotion_dirty_victim_real_wb_reference");
 }
 
+static void matched_actual_lower(const char *base,const char *overlay) {
+  unsigned long long packets[2], bytes[2];
+  for (unsigned on=0;on<2;++on) {
+    scenario f(base,overlay,false,on);
+    auto a=f.push(0);f.await(a);auto b=f.push(128,true);f.await(b);
+    auto read=f.push(0);f.await(read);assert(f.responses.at(read)==0);f.drain();
+    packets[on]=f.cache()->tvd_actual_lower_read_packets();
+    bytes[on]=f.cache()->tvd_actual_lower_read_bytes();
+    f.sp->flushL2();
+  }
+  assert(packets[0]==2 && packets[1]==1 && bytes[0]==64 && bytes[1]==32);
+  printf("MATCHED_LOWER|off_packets=%llu|on_packets=%llu|off_bytes=%llu|on_bytes=%llu\n",
+      packets[0],packets[1],bytes[0],bytes[1]);
+  puts("PASS production_matched_off_on_actual_lower_packets_bytes_NOT_DRAM_saved");
+}
+
 int main(int argc,char **argv) {
   assert(argc==3);
   clean_actual_frontend(argv[1],argv[2]);
   clean_partial_sector_fallback(argv[1],argv[2]);
   clean_write_promotes_dirty_resident(argv[1],argv[2]);
+  matched_actual_lower(argv[1],argv[2]);
 }

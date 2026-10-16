@@ -311,6 +311,9 @@ bool l2_cache::lower_ready(mem_fetch *mf, unsigned long long cycle) {
 }
 
 void l2_cache::lower_accepted(mem_fetch *mf, unsigned long long cycle) {
+  if (ft_enabled() && !mf->get_is_write()) {
+    ++m_ft_stats.lower_read_packets; m_ft_stats.lower_read_bytes += mf->get_data_size();
+  }
   if (!ft_enabled() || mf->get_access_type() != L2_WRBK_ACC) return;
   std::map<mem_fetch *,ft_wb_record>::iterator it = m_ft_wb.find(mf);
   assert(it != m_ft_wb.end());

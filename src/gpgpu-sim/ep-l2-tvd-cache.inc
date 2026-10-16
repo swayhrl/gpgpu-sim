@@ -82,6 +82,7 @@ void l2_cache::tvd_response_commit(mem_fetch *mf, unsigned long long now) {
   const auto h = m_tvd_read->handle();
   assert(m_tvd->response_commit(*m_tvd_read, now) == tvd_directory::OK);
   m_ep_l2_payload.unpin(h); m_tvd_read.reset(); m_tvd_lookup = NULL;
+  ++m_ft_stats.accepted;
 }
 
 bool l2_cache::tvd_promote(mem_fetch *mf, unsigned time, std::list<cache_event> &events) {

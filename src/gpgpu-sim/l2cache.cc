@@ -1171,6 +1171,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
     tvd_frontend_handled = result != l2_cache::TVD_NORMAL;
     if (result == l2_cache::TVD_RESPONSE) {
       mf->set_reply(); mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE, now);
+      ft_record_admission(mf);
       ep_l2_m0a_record_response_enqueue(); ft_record_response(mf);
       m_L2_icnt_queue->push(mf);
       m_L2cache->tvd_response_commit(mf, now);
