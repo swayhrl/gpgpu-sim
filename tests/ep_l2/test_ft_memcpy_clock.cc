@@ -9,6 +9,7 @@
 #include "../../src/option_parser.h"
 
 int main(int argc,char **argv) {
+  setvbuf(stdout,NULL,_IONBF,0);
   assert(argc==6);unsigned mode=std::stoul(argv[3]), c=std::stoul(argv[4]);
   gpgpu_context ctx;gpgpu_sim_config cfg(&ctx);option_parser_t p=option_parser_create();
   ctx.ptx_reg_options(p);ctx.func_sim->ptx_opcocde_latency_options(p);icnt_reg_options(p);cfg.reg_options(p);
@@ -24,7 +25,7 @@ int main(int argc,char **argv) {
   for(unsigned i=0;i<32;++i) bytes.set(i);
   mem_access_sector_mask_t sectors;sectors.set(0);
   const unsigned offset=std::stoul(argv[5]);
-  for(unsigned i=0;i<offset;++i) sp->force_l2_tag_update(0,0,sectors);
+  for(unsigned i=0;i<offset;++i) sp->force_l2_tag_update(0x10000000,0,sectors);
   // Retire warm tag metadata before requests; retain the accumulated native
   // memcpy ordering offset, as when warm lines were evicted before reuse.
   sp->invalidateL2();
