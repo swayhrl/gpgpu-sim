@@ -28,6 +28,20 @@ int main(int argc,char **argv) {
   const bool warm_hit=argc==7;
   for(unsigned i=0;i<offset;++i)
     sp->force_l2_tag_update(warm_hit ? 0 : 0x10000000,0,sectors);
+  unsigned warm_uid=0; bool warm_seen=!warm_hit;
+  if(warm_hit) {
+    auto read=alloc.alloc(0,GLOBAL_ACC_R,active,bytes,sectors,32,false,0,0,0,0,NULL,0);
+    warm_uid=read->get_request_uid(); sp->push(read,0);
+  }
+  auto collect=[&]() {
+    while(auto reply=sp->pop()) {
+      if(warm_hit && reply->get_request_uid()==warm_uid) {
+        assert(!warm_seen && reply->has_ft_wb_data() && reply->get_ft_wb_data()[0]==0);
+        warm_seen=true;
+      }
+      delete reply;
+    }
+  };
   unsigned violations=0, max_grants=0;
   auto one_cycle = [&]() {
     unsigned long long before[4];
@@ -50,7 +64,7 @@ int main(int argc,char **argv) {
   unsigned peak=0;bool separate_lifetimes=false;
   for(unsigned cycle=0;cycle<2000;++cycle) {
     one_cycle();
-    while(auto reply=sp->pop()) delete reply;
+    collect();
     peak=std::max(peak,sp->ft_wb_staged_for_test());
   }
   if(mode==1) assert(peak==c && sp->ep_l2_wad_occupancy()>c);
@@ -58,12 +72,12 @@ int main(int argc,char **argv) {
   part.l2_char_release_dram_issue_hold();
   for(unsigned i=0;i<200000 && part.busy();++i) {
     one_cycle();
-    while(auto reply=sp->pop()) delete reply;
+    collect();
     if(!sp->ft_wb_staged_for_test() && sp->ep_l2_wad_occupancy()) separate_lifetimes=true;
   }
   assert(!part.busy() && sp->l2_char_no_resource_leak());
   assert(!sp->ep_l2_wad_occupancy() && sp->ft_drained_for_test());
-  assert(separate_lifetimes);
+  assert(separate_lifetimes && warm_seen);
   sp->print_ep_l2_b0_snapshot(stdout,static_cast<unsigned long long>(-1));
   printf("CLOCK_AUDIT|offset=%u|violations=%u|max_grants_per_physical_bank_cycle=%u\n",offset,violations,max_grants);
   printf("FT real partition lower-full/WBUF/WAD/set_done mode=%u C=%u peak=%u PASS\n",mode,c,peak);
