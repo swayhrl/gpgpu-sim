@@ -413,14 +413,13 @@ class memory_sub_partition {
     return m_ep_l2_last_preview_block_reason;
   }
 
-  unsigned long long ft_bank_grants_for_test(unsigned bank) const {
-    return m_L2cache->ep_l2_payload_bank_grants(bank);
-  }
-
   void force_l2_tag_update(new_addr_type addr, unsigned time,
                            mem_access_sector_mask_t mask);
   bool ft_try_force_l2_tag_update(new_addr_type addr, unsigned time,
                                   mem_access_sector_mask_t mask);
+  unsigned long long ft_bank_grants_for_test(unsigned bank) const {
+    return m_L2cache->ep_l2_payload_bank_grants(bank);
+  }
   unsigned ft_memcpy_offset_for_test() const { return m_memcpy_cycle_offset; }
   l2_cache *ft_cache_for_test() { return m_L2cache; }
 
