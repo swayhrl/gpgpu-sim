@@ -4,6 +4,7 @@
 #include <array>
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 #include <map>
 #include "../../src/gpgpu-sim/gpu-cache.h"
 #include "../../src/gpgpu-sim/ep-l2-tvd-directory.h"
@@ -146,10 +147,157 @@ static void reference_versions_follow_payload_identity() {
   puts("PASS module_reference_versions_by_canonical_payload_handle");
 }
 
-int main() {
+static void dirty_data_forward_and_ordering() {
+  ep_l2_payload_store ram(2);
+  ram.assign_resident(8, 0x4000, NULL);
+  ram.mark_resident_dirty(8);
+  const handle h = ram.resident_handle(8);
+  directory d(128, true, true);
+  directory::ticket t = install(d, 0x4000, h, 5, 1, true, 0);
+  std::array<unsigned, 4> latest = {{109, 0, 37, 0}};
+  std::array<unsigned, 4> memory = {{3, 0, 37, 0}};
+  assert(latest[0] != memory[0]);
+  assert(d.mandatory() == 1 && !d.epoch_ready());
+  assert(d.lower_accept(t, false, 3) == directory::DATA_TRANSFER_UNPROVEN);
+  assert(d.at(t.index).status == directory::WB_STAGED && d.stats().lower_accepts == 0);
+  // Real WB data-read bank service precedes the independently owned lower
+  // packet snapshot. The snapshot exists only in this data/version fixture.
+  assert(ram.request(h, false, 4, 1, ep_l2_payload_store::WB_READOUT) == ep_l2_payload_store::GRANTED);
+  const std::array<unsigned, 4> lower_packet = latest;
+  assert(d.lower_accept(t, true, 5) == directory::OK);
+  assert(d.stats().wb_staging_slot_cycles == 5 && d.mandatory() == 1);
+  assert(d.lower_accept(t, true, 6) == directory::STALE);
+  assert(d.preview_access(0x4000, 1, directory::WRITE, 8, 9).status == directory::WAIT_WRITEBACK);
+  assert(d.preview_access(0x4000, 1, directory::ATOMIC, 8, 9).status == directory::WAIT_WRITEBACK);
+  assert(d.preview_access(0x4000, 2, directory::READ, 8, 9).status == directory::WAIT_WRITEBACK);
+  directory::observation o = d.preview_access(0x4000, 5, directory::READ, 8, 9);
+  assert(o.status == directory::READ_READY && o.dirty_forward);
+  directory::read_lease lease;
+  assert(d.begin_read(o, 5, lease) == directory::OK);
+  assert(ram.handle_owner_matches(lease.handle(), 0x4000));
+  assert(ram.request(lease.handle(), false, 9) == ep_l2_payload_store::GRANTED);
+  std::map<unsigned, std::array<unsigned, 4> > physical;
+  physical[h.payload_id] = latest;
+  for (unsigned s = 0; s < 4; ++s)
+    if (5 & (1u << s)) assert(physical[lease.handle().payload_id][s] == latest[s]);
+  assert(physical[lease.handle().payload_id][0] != memory[0]);
+  handle transfer;
+  assert(d.promote(t, transfer, 10) == directory::WAIT_WRITEBACK);
+  assert(d.reclaim(t, transfer, 10) == directory::WAIT_WRITEBACK);
+  // ICNT backpressure holds the read across real WB completion. Neither
+  // completing WAD nor requesting a promotion may discard that data reader.
+  memory[0] = lower_packet[0];
+  assert(d.set_done(t, 11) == directory::OK);
+  assert(memory[0] == latest[0] && d.at(t.index).status == directory::WB_COMPLETE);
+  assert(d.mandatory() == 0 && !d.epoch_ready());
+  assert(d.promote(t, transfer, 11) == directory::PINNED);
+  assert(d.stats().read_responses == 0);
+  assert(d.response_commit(lease, 12) == directory::OK);
+  assert(d.stats().dirty_forward_responses == 1 && d.stats().avoided_lower_bytes == 64);
+  assert(d.promote(t, transfer, 13) == directory::OK && transfer == h);
+  assert(d.stats().tvd_extra_retention_slot_cycles == 8);
+  // Now the previously waiting atomic can use the promoted authoritative
+  // handle; the old lower packet cannot overwrite that later version.
+  unsigned prior = physical[transfer.payload_id][0];
+  physical[transfer.payload_id][0] += 7;
+  assert(prior == 109 && physical[transfer.payload_id][0] == 116);
+  assert(lower_packet[0] == 109 && !d.occupied() && d.epoch_ready());
+  assert(d.set_done(t, 14) == directory::STALE);
+  puts("PASS dirty_lower_accept_independent_data_forward_wait_reference_versions");
+}
+
+static void mandatory_priority_and_shared_capacity() {
+  directory d(128, true, true);
+  for (unsigned i = 0; i < 128; ++i)
+    install(d, i * 128, handle(i, 1), 15, 1, true, i);
+  assert(d.mandatory() == 128 && d.occupied() == 128);
+  assert(d.preview_install(128 * 128, false).status == directory::DIRECTORY_FULL);
+  assert(d.preview_install(128 * 128, true).status == directory::DIRECTORY_FULL);
+  handle drop;
+  directory::ticket a = d.find(0), b = d.find(128);
+  assert(d.reclaim(a, drop, 128) == directory::WAIT_WRITEBACK);
+  assert(d.lower_accept(a, true, 128) == directory::OK);
+  assert(d.set_done(a, 129) == directory::OK);
+  assert(d.lower_accept(b, true, 130) == directory::OK);
+  assert(d.set_done(b, 131) == directory::OK);
+  // Install a younger clean item. Mandatory WB must reclaim it before an
+  // older WB-complete item, honoring the declared directory priority.
+  directory::ticket clean = install(d, 128 * 128, handle(128, 1), 15, 0, false, 132);
+  directory::install_plan p = d.preview_install(129 * 128, true);
+  assert(p.status == directory::OK && p.index == clean.index);
+  directory::observation o = d.preview_access(128 * 128, 1, directory::READ, 132, 133);
+  directory::read_lease lease;
+  assert(d.begin_read(o, 1, lease) == directory::OK);
+  directory::ticket fresh;
+  assert(d.commit_install(p, 129 * 128, handle(129, 1), 15, 1, 0, true, 133, fresh) == directory::STALE);
+  directory::install_plan q = d.preview_install(129 * 128, true);
+  assert(q.status == directory::OK && q.index == b.index);
+  assert(d.cancel_read(lease) == directory::OK);
+  p = d.preview_install(129 * 128, true);
+  assert(p.index == clean.index);
+  assert(d.commit_install(p, 130 * 128, handle(129, 1), 15, 1, 0, true, 134, fresh) == directory::INVALID_INPUT);
+  assert(d.commit_install(p, 129 * 128, handle(2, 1), 15, 1, 0, true, 134, fresh) == directory::INVALID_INPUT);
+  assert(d.commit_install(p, 129 * 128, handle(129, 1), 15, 1, 0, true, 134, fresh) == directory::OK);
+  assert(d.occupied() == 128 && d.mandatory() == 127);
+  for (unsigned i = 0; i < d.capacity(); ++i) {
+    directory::ticket t(i, d.at(i).incarnation);
+    if (d.at(i).status == directory::WB_STAGED) assert(d.lower_accept(t, true, 135) == directory::OK);
+  }
+  for (unsigned i = 0; i < d.capacity(); ++i) {
+    directory::ticket t(i, d.at(i).incarnation);
+    if (d.at(i).status == directory::WB_INFLIGHT) assert(d.set_done(t, 136) == directory::OK);
+  }
+  assert(d.epoch_ready());
+  for (unsigned i = 0; i < d.capacity(); ++i)
+    assert(d.reclaim(directory::ticket(i, d.at(i).incarnation), drop, 137) == directory::OK);
+  assert(!d.occupied());
+  puts("PASS dirty_128_wad_full_priority_pins_stale_rollback_epoch");
+}
+
+static void promotion_displaces_dirty_resident_atomically() {
+  directory d(128, true, true);
+  for (unsigned i = 0; i < 128; ++i)
+    install(d, i * 128, handle(i, 1), 15, 0, false, i);
+  const directory::ticket old = d.find(0);
+  directory::promotion_plan p = d.preview_dirty_promotion(old, 0x8000, handle(512, 3), 7, 3, 0);
+  assert(p.status == directory::OK && d.occupied() == 128 && d.mandatory() == 0);
+  // Simulated failed lower/pool credit preparation makes NO module commit.
+  assert(d.live(old) && !d.live(d.find(0x8000)));
+  handle promoted; directory::ticket wb;
+  assert(d.commit_dirty_promotion(p, 128, promoted, wb) == directory::OK);
+  assert(promoted == handle(0, 1) && !d.live(old) && wb.index == old.index);
+  assert(d.occupied() == 128 && d.mandatory() == 1 && d.at(wb.index).line == 0x8000);
+  assert(d.at(wb.index).payload == handle(512, 3));
+  assert(d.commit_dirty_promotion(p, 128, promoted, wb) == directory::STALE);
+  assert(d.preview_access(0x8000, 1, directory::ATOMIC, 128, 129).status == directory::WAIT_WRITEBACK);
+  assert(d.lower_accept(wb, true, 129) == directory::OK);
+  assert(d.set_done(wb, 130) == directory::OK);
+  assert(d.preview_access(0x8000, 8, directory::READ, 130, 131).status == directory::MISSING_SECTOR);
+  assert(d.preview_access(0x8000, 8, directory::WRITE, 130, 131).status == directory::PROMOTE_REQUIRED);
+  handle output;
+  assert(d.promote(wb, output, 131) == directory::OK && output == handle(512, 3));
+  assert(d.mandatory() == 0 && d.stats().promotions == 2);
+  // WB with no retained handle still occupies the shared mandatory slot,
+  // and disappears only at set_done (clean-only TVD mode).
+  directory clean_only(128, true, false);
+  directory::ticket w = install(clean_only, 0x9000, handle(), 1, 1, true, 0);
+  assert(clean_only.preview_access(0x9000, 1, directory::READ, 0, 1).status == directory::WAIT_WRITEBACK);
+  assert(clean_only.lower_accept(w, true, 1) == directory::OK);
+  assert(clean_only.set_done(w, 2) == directory::OK && !clean_only.occupied());
+  puts("PASS promotion_dirty_resident_full_directory_atomic_slot_reuse");
+}
+
+int main(int argc, char **argv) {
   clean_read_and_backpressure();
   sectors_and_promotions();
   capacity_reservations_and_epochs();
   reference_versions_follow_payload_identity();
-  puts("CLEAN_DIRECTORY_SUBSET_PASS; L2_CACHE_INTEGRATION_NOT_RUN; FULL_TVD_NOT_ASSERTED");
+  if (argc == 1 || std::strcmp(argv[1], "--clean") != 0) {
+    dirty_data_forward_and_ordering();
+    mandatory_priority_and_shared_capacity();
+    promotion_displaces_dirty_resident_atomically();
+    puts("CLEAN_DIRTY_DIRECTORY_MODULE_PASS; L2_CACHE_INTEGRATION_NOT_RUN; FULL_TVD_NOT_ASSERTED");
+  } else {
+    puts("CLEAN_DIRECTORY_SUBSET_PASS; L2_CACHE_INTEGRATION_NOT_RUN; FULL_TVD_NOT_ASSERTED");
+  }
 }

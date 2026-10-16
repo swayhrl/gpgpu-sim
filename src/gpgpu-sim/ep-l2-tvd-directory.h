@@ -46,7 +46,20 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     unsigned index;
     std::uint64_t revision;
     Handle displaced;
-    install_plan() : status(DIRECTORY_FULL), index(128), revision(0) {}
+    address_type line;
+    bool writeback;
+    install_plan() : status(DIRECTORY_FULL), index(128), revision(0), line(0),
+                     writeback(false) {}
+  };
+  struct promotion_plan {
+    result status;
+    ticket source;
+    std::uint64_t revision;
+    address_type victim_line;
+    Handle victim;
+    unsigned valid, dirty;
+    promotion_plan() : status(INVALID_INPUT), revision(0), victim_line(0),
+                       valid(0), dirty(0) {}
   };
   struct observation {
     result status;
@@ -124,7 +137,7 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
   // Non-mutating preview. Mandatory WB may reclaim clean/WB-complete entries;
   // opportunistic clean retention never preempts pending/inflight WB.
   install_plan preview_install(address_type line, bool dirty) const {
-    install_plan p; p.revision = m_revision;
+    install_plan p; p.revision = m_revision; p.line = line; p.writeback = dirty;
     if ((line & 127) || live(find(line))) { p.status = INVALID_INPUT; return p; }
     if (!dirty && !m_clean) { p.status = DISABLED; return p; }
     for (unsigned i = 0; i < m_capacity; ++i)
@@ -149,6 +162,7 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
                         bool writeback, cycle_type now, ticket &installed) {
     if (p.status != OK) return p.status;
     if (p.revision != m_revision || p.index >= m_capacity) return STALE;
+    if (p.line != line || p.writeback != writeback) return INVALID_INPUT;
     if ((line & 127) || live(find(line)) || (valid & ~15u) ||
         (dirty & ~valid) || pending || (!writeback && (!valid || dirty)) ||
         (!writeback && !handle.valid()) || (writeback && !dirty))
@@ -156,7 +170,7 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     if ((!writeback && !m_clean) || (writeback && handle.valid() && !m_dirty))
       return DISABLED;
     for (unsigned i = 0; i < m_capacity; ++i)
-      if (i != p.index && m_entries[i].status != EMPTY && handle.valid() &&
+      if (m_entries[i].status != EMPTY && handle.valid() &&
           same(m_entries[i].payload, handle)) return INVALID_INPUT;
     advance(now);
     entry &e = m_entries[p.index];
@@ -200,6 +214,7 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     entry &e = m_entries[o.identity.index];
     if (!sectors || (sectors & ~e.valid_sectors) ||
         !same(e.payload, o.payload)) return STALE;
+    if (e.readers == std::numeric_limits<unsigned>::max()) return DIRECTORY_FULL;
     ++e.readers; ++m_revision;
     lease.owner = this; lease.identity = o.identity; lease.payload = o.payload;
     lease.sectors = sectors; lease.forward = e.mandatory(); lease.active = true;
@@ -232,6 +247,41 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     if (e.mandatory()) return WAIT_WRITEBACK;
     if (e.readers) return PINNED;
     advance(now); transferred = e.payload; erase(e); ++m_stats.promotions;
+    return OK;
+  }
+  // Promotion can displace a dirty resident while all 128 address slots are
+  // occupied. Reuse the PROMOTED entry's address slot in one commit, rather
+  // than requiring a transient 129th slot or losing mandatory WAD state.
+  // Caller must pre-reserve the real WB/lower resources without mutation.
+  promotion_plan preview_dirty_promotion(ticket source, address_type victim_line,
+                                         Handle victim, unsigned valid,
+                                         unsigned dirty, unsigned pending) const {
+    promotion_plan p;
+    if (!m_dirty) { p.status = DISABLED; return p; }
+    if (!live(source)) { p.status = STALE; return p; }
+    const entry &e = m_entries[source.index];
+    if (e.mandatory()) { p.status = WAIT_WRITEBACK; return p; }
+    if (e.readers) { p.status = PINNED; return p; }
+    if ((victim_line & 127) || !victim.valid() || !dirty || (valid & ~15u) ||
+        (dirty & ~valid) || pending || live(find(victim_line))) return p;
+    for (unsigned i = 0; i < m_capacity; ++i)
+      if (m_entries[i].status != EMPTY && same(m_entries[i].payload, victim)) return p;
+    p.status = OK; p.source = source; p.revision = m_revision;
+    p.victim_line = victim_line; p.victim = victim; p.valid = valid; p.dirty = dirty;
+    return p;
+  }
+  result commit_dirty_promotion(const promotion_plan &p, cycle_type now,
+                                Handle &promoted, ticket &writeback) {
+    if (p.status != OK) return p.status;
+    if (p.revision != m_revision || !live(p.source)) return STALE;
+    entry &e = m_entries[p.source.index];
+    assert(!e.mandatory() && !e.readers);
+    advance(now); promoted = e.payload;
+    bump(e.incarnation); e.status = WB_STAGED; e.line = p.victim_line;
+    e.payload = p.victim; e.valid_sectors = p.valid; e.dirty_sectors = p.dirty;
+    e.age = ++m_age; e.born = now; e.lower_accepted = 0;
+    writeback = ticket(p.source.index, e.incarnation);
+    ++m_revision; ++m_stats.promotions; ++m_stats.dirty_installs;
     return OK;
   }
   // Clean missing-sector fallback/reclaim drops the old directory visibility
