@@ -229,6 +229,8 @@ static void read_version_reference(const char *base,const char *overlay) {
 
 int main(int argc,char **argv) {
   setvbuf(stdout,NULL,_IOLBF,0);
+  if(argc==5) { fixture invalid(argv[1],argv[2],std::stoul(argv[3]),std::stoul(argv[4]));
+    fputs("INVALID CONFIG WAS ACCEPTED\n",stderr);return 1; }
   assert(argc==3);
   for(unsigned mode=1;mode<=2;++mode) for(unsigned c: {8u,16u}) capacity_and_versions(argv[1],argv[2],mode,c);
   wad_full(argv[1],argv[2]);response_pins_and_sectors(argv[1],argv[2]);

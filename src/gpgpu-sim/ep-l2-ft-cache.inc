@@ -175,6 +175,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
         if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
           ++m_ft_stats.bank_block; return RESERVATION_FAIL;
         }
+        p.born = time; // actual source readout starts data-staging lifetime
         p.copy_versions = m_ep_l2_payload.inspect(p.victim).versions;
         p.phase = 1;
         return RESERVATION_FAIL;
@@ -202,6 +203,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
       }
     }
     if (p.dirty && m_config.m_ep_l2_ft_mode == 2) {
+      p.born = time; // in-place WB role starts at actual producer commit
       m_ep_l2_payload.transfer(p.victim, ep_l2_payload_store::WB, ep_l2_payload_store::WB_STAGED);
       if (p.victim.payload_id < 1024) ++m_ft_stats.borrow_resident;
       else if (p.victim.payload_id < 1152) ++m_ft_stats.borrow_bypass;
