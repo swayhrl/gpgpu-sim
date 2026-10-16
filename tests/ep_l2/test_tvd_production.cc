@@ -137,17 +137,18 @@ static void clean_partial_sector_fallback(const char *base,const char *overlay) 
   puts("PASS production_clean_missing_sector_fallback_epoch");
 }
 
-static void clean_write_promotes_dirty_resident(const char *base,const char *overlay) {
+static void clean_write_promotes_dirty_resident(const char *base,const char *overlay, bool atomic=false) {
   scenario f(base,overlay);auto a=f.push(0);f.await(a);
   auto old=f.cache()->ep_l2_tag_payload_handle_for_test(0);
   auto b=f.push(128,true);f.await(b);
-  auto w=f.push(0,true);f.await(w);
+  auto w=atomic?f.push_atomic(0):f.push(0,true);f.await(w);
   assert(f.cache()->ep_l2_tag_payload_handle_for_test(0)==old);
   assert(f.cache()->tvd_for_test()->stats().promotions==1);
   assert(!f.cache()->tvd_for_test()->live(f.cache()->tvd_for_test()->find(0)));
   auto read=f.push(0);f.await(read);assert(f.responses.at(read)==(unsigned long long)w+1);
   f.drain();f.cache()->tvd_print(stdout,0);f.sp->flushL2();
-  puts("PASS production_clean_write_promotion_dirty_victim_real_wb_reference");
+  puts(atomic?"PASS production_clean_atomic_promotion_dirty_victim_real_wb_reference":
+      "PASS production_clean_write_promotion_dirty_victim_real_wb_reference");
 }
 
 static void matched_actual_lower(const char *base,const char *overlay) {
@@ -268,6 +269,7 @@ int main(int argc,char **argv) {
   clean_actual_frontend(argv[1],argv[2]);
   clean_partial_sector_fallback(argv[1],argv[2]);
   clean_write_promotes_dirty_resident(argv[1],argv[2]);
+  clean_write_promotes_dirty_resident(argv[1],argv[2],true);
   matched_actual_lower(argv[1],argv[2]);
   dirty_forward_order(argv[1],argv[2],false);
   dirty_forward_order(argv[1],argv[2],true);
