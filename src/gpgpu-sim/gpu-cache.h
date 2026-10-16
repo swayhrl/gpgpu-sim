@@ -2360,6 +2360,8 @@ class ep_l2_payload_store {
                          unsigned long long sequence = (unsigned long long)-1,
                          operation_class op_class = RESIDENT_HIT_READ) {
     if (!enabled()) return GRANTED;
+    if (m_ft_mode && m_cycle != (unsigned long long)-1)
+      assert(cycle >= m_cycle && "FT bank clock must be physical and monotonic");
     if (m_cycle != cycle) {
       m_cycle = cycle;
       m_resident_reads = m_resident_writes = m_bypass_reads = m_bypass_writes = 0;

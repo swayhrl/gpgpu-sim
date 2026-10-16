@@ -79,6 +79,9 @@ void l2_cache::ft_rollback() {
 
 enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     unsigned time, std::list<cache_event> &events) {
+  // memcpy offset orders native Tag timestamps; it is not elapsed hardware
+  // time and must never reset the payload bank arbiter or WB/WAD lifetimes.
+  const unsigned long long physical_cycle = m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
   m_ep_l2_last_payload_request_result = ep_l2_payload_store::GRANTED;
   const new_addr_type owner = m_config.block_addr(addr);
   unsigned index = (unsigned)-1;
@@ -141,14 +144,14 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     // fills and lower drains cannot add entries to m_miss_queue.
     ft_replacement &p = m_ft_pending;
     p.request = mf; p.tag_index = index; p.dirty = dirty; p.victim = live ? victim : ep_l2::PayloadHandle();
-    p.born = time;
+    p.born = physical_cycle;
     p.landing_id = landing.valid() ? landing.payload_id :
         (m_config.m_ep_l2_ft_mode == 2 && live ? victim.payload_id : index);
     if (live) p.saved = m_ep_l2_payload.inspect(victim);
     if (dirty) {
       p.victim_address = m_tag_array->get_block(index)->m_block_addr;
       assert(m_ep_l2_wad_entries_live.insert(p.victim_address).second);
-      assert(m_ep_l2_wad_birth_cycle.insert(std::make_pair(p.victim_address, time)).second);
+      assert(m_ep_l2_wad_birth_cycle.insert(std::make_pair(p.victim_address, physical_cycle)).second);
       p.wad = true;
       if (m_config.m_ep_l2_ft_mode == 1)
         p.staging = m_ep_l2_payload.reserve(staging.payload_id,
@@ -171,18 +174,18 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
       // read and write cycles. Both compared organizations include this latch.
       if (p.phase == 0) {
         m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(p.victim,
-            false, time, (unsigned long long)-1, ep_l2_payload_store::WB_READOUT);
+            false, physical_cycle, (unsigned long long)-1, ep_l2_payload_store::WB_READOUT);
         if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
           ++m_ft_stats.bank_block; return RESERVATION_FAIL;
         }
-        p.born = time; // actual source readout starts data-staging lifetime
+        p.born = physical_cycle; // actual source readout starts data-staging lifetime
         p.copy_versions = m_ep_l2_payload.inspect(p.victim).versions;
         p.phase = 1;
         return RESERVATION_FAIL;
       }
       if (p.phase == 1) {
         m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(p.staging,
-            true, time, (unsigned long long)-1, ep_l2_payload_store::RESIDENT_WRITE);
+            true, physical_cycle, (unsigned long long)-1, ep_l2_payload_store::RESIDENT_WRITE);
         if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
           ++m_ft_stats.bank_block; return RESERVATION_FAIL;
         }
@@ -196,14 +199,14 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     // same-bank denial cannot expose a partially installed new generation.
     if (mf->get_is_write()) {
       m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(
-          ep_l2_payload_store::RESIDENT, p.landing_id, true, time,
+          ep_l2_payload_store::RESIDENT, p.landing_id, true, physical_cycle,
           (unsigned long long)-1, ep_l2_payload_store::RESIDENT_WRITE);
       if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
         ++m_ft_stats.bank_block; return RESERVATION_FAIL;
       }
     }
     if (p.dirty && m_config.m_ep_l2_ft_mode == 2) {
-      p.born = time; // in-place WB role starts at actual producer commit
+      p.born = physical_cycle; // in-place WB role starts at actual producer commit
       m_ep_l2_payload.transfer(p.victim, ep_l2_payload_store::WB, ep_l2_payload_store::WB_STAGED);
       if (p.victim.payload_id < 1024) ++m_ft_stats.borrow_resident;
       else if (p.victim.payload_id < 1152) ++m_ft_stats.borrow_bypass;
@@ -224,7 +227,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     }
     if (probe == HIT || mf->get_is_write()) {
       m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(h,
-          mf->get_is_write() || mf->isatomic(), time, (unsigned long long)-1,
+          mf->get_is_write() || mf->isatomic(), physical_cycle, (unsigned long long)-1,
           mf->get_is_write() || mf->isatomic() ? ep_l2_payload_store::RESIDENT_WRITE : ep_l2_payload_store::RESIDENT_HIT_READ);
       if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
         ++m_ft_stats.bank_block; return RESERVATION_FAIL;
