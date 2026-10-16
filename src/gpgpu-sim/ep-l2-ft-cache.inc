@@ -161,8 +161,11 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     if (dirty) {
       p.victim_address = m_tag_array->get_block(index)->m_block_addr;
       if (m_tvd) {
-        assert(tvd_install_victim(p.victim_address, m_config.m_ep_l2_tvd_dirty ? victim : ep_l2::PayloadHandle(),
-            p.saved.ready_sector_mask.to_ulong(), m_tag_array->get_block(index)->get_dirty_sector_mask().to_ulong(), true, time));
+        const unsigned dirty_mask = m_tag_array->get_block(index)->get_dirty_sector_mask().to_ulong();
+        const unsigned ready_mask = p.saved.ready_sector_mask.to_ulong();
+        const bool retain = m_config.m_ep_l2_tvd_dirty && (dirty_mask & ~ready_mask) == 0;
+        assert(tvd_install_victim(p.victim_address, retain ? victim : ep_l2::PayloadHandle(),
+            retain ? ready_mask : dirty_mask, dirty_mask, true, time));
       } else assert(m_ep_l2_wad_entries_live.insert(p.victim_address).second);
       assert(m_ep_l2_wad_birth_cycle.insert(std::make_pair(p.victim_address, time)).second);
       p.wad = true;
@@ -324,7 +327,7 @@ void l2_cache::lower_accepted(mem_fetch *mf, unsigned long long cycle) {
   if (m_tvd) {
     auto t = m_tvd->find(m_config.block_addr(mf->get_addr()));
     assert(m_tvd->lower_accept(t, true, cycle) == tvd_directory::OK);
-    if (m_config.m_ep_l2_tvd_dirty)
+    if (m_tvd->at(t.index).payload.valid())
       m_ep_l2_payload.transfer(it->second.handle, ep_l2_payload_store::TVD, ep_l2_payload_store::TVD_INFLIGHT);
     else m_ep_l2_payload.release(it->second.handle);
   } else m_ep_l2_payload.release(it->second.handle);

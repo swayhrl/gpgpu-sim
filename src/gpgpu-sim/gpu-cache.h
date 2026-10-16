@@ -2617,6 +2617,7 @@ class l2_cache : public data_cache {
     validate_ep_l2_mode_config();
     m_ft_last_wb_versions.fill(0);
     m_tvd_lookup = NULL; m_tvd_lookup_cycle = 0;
+    m_tvd_lookup_wait = m_tvd_wb_wait = m_tvd_bank_wait = m_tvd_resp_wait = 0;
     if (config.m_ep_l2_tvd_clean || config.m_ep_l2_tvd_dirty)
       m_tvd.reset(new ep_l2_tvd_directory<>(128, config.m_ep_l2_tvd_clean, config.m_ep_l2_tvd_dirty));
   }
@@ -2730,7 +2731,8 @@ class l2_cache : public data_cache {
   unsigned ft_pending_lower_reads() const { return m_ep_l2_payload.pending_sector_count(); }
   bool ft_reservation_active() const { return m_ft_pending.request != NULL; }
   bool ft_drained() const { return !ft_enabled() || (!m_ft_pending.request &&
-      m_ft_wb.empty() && m_ft_read_refs.empty() && !m_ep_l2_payload.wb_used()); }
+      m_ft_wb.empty() && m_ft_read_refs.empty() && !m_ep_l2_payload.wb_used() &&
+      (!m_tvd || (m_tvd->epoch_ready() && !m_tvd_read))); }
   bool lower_ready(mem_fetch *mf, unsigned long long cycle) override;
   void lower_accepted(mem_fetch *mf, unsigned long long cycle) override;
   void descriptor_admitted(mem_fetch *mf, unsigned cache_index) override;
@@ -2795,6 +2797,7 @@ class l2_cache : public data_cache {
   std::unique_ptr<tvd_directory::read_lease> m_tvd_read;
   mem_fetch *m_tvd_lookup;
   unsigned long long m_tvd_lookup_cycle;
+  unsigned long long m_tvd_lookup_wait, m_tvd_wb_wait, m_tvd_bank_wait, m_tvd_resp_wait;
   struct ft_replacement {
     mem_fetch *request;
     unsigned tag_index, phase, landing_id;

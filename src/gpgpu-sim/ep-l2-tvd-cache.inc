@@ -39,7 +39,7 @@ l2_cache::tvd_frontend_result l2_cache::tvd_frontend(mem_fetch *mf,
   if (tag == HIT || tag == SECTOR_MISS || tag == HIT_RESERVED) return TVD_NORMAL;
   if (m_tvd_lookup != mf) {
     assert(!m_tvd_read);
-    m_tvd_lookup = mf; m_tvd_lookup_cycle = now; return TVD_WAIT;
+    m_tvd_lookup = mf; m_tvd_lookup_cycle = now; ++m_tvd_lookup_wait; return TVD_WAIT;
   }
   if (now <= m_tvd_lookup_cycle) return TVD_WAIT;
   auto ticket = m_tvd->find(address);
@@ -48,13 +48,13 @@ l2_cache::tvd_frontend_result l2_cache::tvd_frontend(mem_fetch *mf,
   // Before lower acceptance the existing WB readout owns service. Forwarding
   // starts at actual INFLIGHT, before the generic WAD hazard check, and does
   // not wait for set_done. This also avoids aliasing WB/TVD bank retry tokens.
-  if (entry.status == tvd_directory::WB_STAGED) return TVD_WAIT;
+  if (entry.status == tvd_directory::WB_STAGED) { ++m_tvd_wb_wait; return TVD_WAIT; }
   auto op = mf->isatomic() ? tvd_directory::ATOMIC_OP :
             mf->get_is_write() ? tvd_directory::WRITE_OP : tvd_directory::READ_OP;
   auto observation = m_tvd->preview_access(address, mf->get_access_sector_mask().to_ulong(),
       op, m_tvd_lookup_cycle, now);
   if (observation.status == tvd_directory::WAIT_WRITEBACK ||
-      observation.status == tvd_directory::PINNED) return TVD_WAIT;
+      observation.status == tvd_directory::PINNED) { ++m_tvd_wb_wait; return TVD_WAIT; }
   if (op != tvd_directory::READ_OP) return TVD_NORMAL; // ft_access commits promotion
   if (observation.status == tvd_directory::MISSING_SECTOR) {
     ep_l2::PayloadHandle released;
@@ -62,7 +62,7 @@ l2_cache::tvd_frontend_result l2_cache::tvd_frontend(mem_fetch *mf,
     m_ep_l2_payload.release(released); return TVD_NORMAL;
   }
   if (observation.status != tvd_directory::READ_READY) return TVD_NORMAL;
-  if (!response_space) return TVD_WAIT;
+  if (!response_space) { ++m_tvd_resp_wait; return TVD_WAIT; }
   if (!m_tvd_read) {
     assert(m_ep_l2_payload.handle_owner_matches(observation.payload, address));
     m_tvd_read.reset(new tvd_directory::read_lease());
@@ -71,7 +71,7 @@ l2_cache::tvd_frontend_result l2_cache::tvd_frontend(mem_fetch *mf,
   }
   const auto h = m_tvd_read->handle();
   if (m_ep_l2_payload.request(h, false, now, (unsigned long long)-1,
-      ep_l2_payload_store::TVD_READ) != ep_l2_payload_store::GRANTED) return TVD_WAIT;
+      ep_l2_payload_store::TVD_READ) != ep_l2_payload_store::GRANTED) { ++m_tvd_bank_wait; return TVD_WAIT; }
   mf->set_ep_l2_payload_identity(h.payload_id, h.generation);
   mf->set_ft_wb_data(m_ep_l2_payload.inspect(h).versions);
   return TVD_RESPONSE;
@@ -156,10 +156,12 @@ void l2_cache::tvd_print(FILE *fp, unsigned slice) {
   m_tvd->advance(m_gpu_cycle_for_tvd()); const auto &s = m_tvd->stats();
   fprintf(fp, "EPL2TVDV2|SUMMARY|slice=%u|clean_installs=%llu|dirty_installs=%llu|"
       "read_responses=%llu|dirty_forward_responses=%llu|served_sectors=%llu|served_sector_bytes=%llu|"
-      "promotions=%llu|live=%u|mandatory=%u|role_tvd=%u|retention_slot_cycles=%llu\n", slice,
+      "promotions=%llu|live=%u|mandatory=%u|role_tvd=%u|retention_slot_cycles=%llu|"
+      "lookup_wait_cycles=%llu|wb_wait_cycles=%llu|bank_wait_cycles=%llu|icnt_wait_cycles=%llu\n", slice,
       (unsigned long long)s.clean_installs, (unsigned long long)s.dirty_installs,
       (unsigned long long)s.read_responses, (unsigned long long)s.dirty_forward_responses,
       (unsigned long long)s.served_sectors, (unsigned long long)s.served_sector_bytes,
       (unsigned long long)s.promotions, m_tvd->occupied(), m_tvd->mandatory(),
-      m_ep_l2_payload.tvd_used(), (unsigned long long)s.tvd_extra_retention_slot_cycles);
+      m_ep_l2_payload.tvd_used(), (unsigned long long)s.tvd_extra_retention_slot_cycles,
+      m_tvd_lookup_wait, m_tvd_wb_wait, m_tvd_bank_wait, m_tvd_resp_wait);
 }
