@@ -1074,7 +1074,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       m_l2_char_collector->record_mshr_response(
           m_L2cache->access_ready(),
           m_L2cache->access_ready() && m_L2_icnt_queue->full());
-    if (m_L2cache->access_ready() && !m_L2_icnt_queue->full()) {
+    if (m_L2cache->access_ready() && !m_L2_icnt_queue->full() &&
+        m_L2cache->ft_response_ready(m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle)) {
       // Keep the EP-L2 descriptor live until this response has actually been
       // accepted by the L2->ICNT queue below.
       mem_fetch *mf = m_L2cache->peek_next_access();
@@ -2219,6 +2220,7 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
           stats.c7e_dram_scheduler_causal_block,
           stats.c7e_dram_to_l2_return_path_block,
           uid == (unsigned long long)-1 ? 1 : 0);
+  if (uid == (unsigned long long)-1) m_L2cache->ft_print(fp, m_id);
   fprintf(fp,
           "EPL2B0V1|INVARIANT|slice=%u|kernel_uid=%llu|line_mshr_used=%u|"
           "line_mshr_capacity=%u|descriptor_used=%u|descriptor_free=%u|"
