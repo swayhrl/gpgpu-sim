@@ -669,6 +669,9 @@ bool mshr_table::full(new_addr_type block_addr) const {
 mshr_table::ep_l2_block_reason mshr_table::full_reason(
     new_addr_type block_addr) const {
   table::const_iterator i = m_data.find(block_addr);
+  if (m_descriptor_pool_size &&
+      targets_on_line(block_addr) >= m_descriptor_per_line_cap)
+    return EP_L2_BLOCK_PER_ADDRESS_CAP;
   if (i != m_data.end()) {
     const unsigned per_line_limit =
         m_descriptor_pool_size ? m_descriptor_per_line_cap : m_max_merged;
@@ -681,6 +684,55 @@ mshr_table::ep_l2_block_reason mshr_table::full_reason(
   if (m_descriptor_pool_size && m_free_descriptor_ids.empty())
     return EP_L2_BLOCK_DESCRIPTOR_POOL_FULL;
   return EP_L2_BLOCK_NONE;
+}
+
+unsigned mshr_table::ro_targets_on_line(new_addr_type line) const {
+  unsigned count = 0;
+  for (unsigned i = 0; i < m_descriptor_pool.size(); ++i)
+    if (m_descriptor_pool[i].m_ro_external &&
+        m_descriptor_pool[i].m_ro_line == line) ++count;
+  return count;
+}
+
+unsigned mshr_table::targets_on_line(new_addr_type line) const {
+  table::const_iterator entry = m_data.find(line);
+  return ro_targets_on_line(line) +
+         (entry == m_data.end() ? 0 : entry->second.m_list.size());
+}
+
+bool mshr_table::reserve_ro_descriptor(
+    new_addr_type line, mem_fetch *mf, const mem_access_sector_mask_t &sectors,
+    ro_descriptor_handle &result) {
+  result = ro_descriptor_handle();
+  if (!m_descriptor_pool_size || !mf || sectors.none() ||
+      targets_on_line(line) >= m_descriptor_per_line_cap ||
+      m_free_descriptor_ids.empty()) return false;
+  const unsigned id = m_free_descriptor_ids.back();
+  ep_l2_descriptor &d = m_descriptor_pool[id];
+  assert(!d.m_mf && !d.m_ro_external);
+  // Never permit a generation wrap to turn a stale descriptor into a live one.
+  assert(d.m_ro_generation != ~0ULL);
+  ++d.m_ro_generation;
+  d.m_mf = mf; d.m_sectors = sectors; d.m_ro_external = true;
+  d.m_ro_line = line; d.m_response_queued = false;
+  m_free_descriptor_ids.pop_back();
+  result = ro_descriptor_handle(id, d.m_ro_generation);
+  return true;
+}
+
+bool mshr_table::ro_descriptor_live(const ro_descriptor_handle &h) const {
+  return h.valid() && h.id < m_descriptor_pool.size() &&
+         m_descriptor_pool[h.id].m_ro_external &&
+         m_descriptor_pool[h.id].m_ro_generation == h.generation;
+}
+
+void mshr_table::release_ro_descriptor(const ro_descriptor_handle &h) {
+  assert(ro_descriptor_live(h));
+  ep_l2_descriptor &d = m_descriptor_pool[h.id];
+  const unsigned long long generation = d.m_ro_generation;
+  d = ep_l2_descriptor();
+  d.m_ro_generation = generation;
+  m_free_descriptor_ids.push_back(h.id);
 }
 
 bool mshr_table::needs_lower_read(
@@ -876,7 +928,9 @@ void mshr_table::commit_next_access() {
     assert(mf != entry->second.m_list.end());
     entry->second.m_descriptor_ids.erase(id);
     entry->second.m_list.erase(mf);
+    const unsigned long long ro_generation = descriptor.m_ro_generation;
     descriptor = ep_l2_descriptor();
+    descriptor.m_ro_generation = ro_generation;
     m_free_descriptor_ids.push_back(ready.m_descriptor_id);
     m_current_descriptor_response.pop_front();
     if (entry->second.m_list.empty()) m_data.erase(entry);

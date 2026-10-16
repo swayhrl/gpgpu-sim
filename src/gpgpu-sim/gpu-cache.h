@@ -1180,6 +1180,22 @@ class mshr_table {
                : m_descriptor_pool_size - m_free_descriptor_ids.size();
   }
   unsigned descriptor_pool_capacity() const { return m_descriptor_pool_size; }
+  // Lane 3's completion objects borrow the SAME fixed descriptor free-list.
+  // No second requester pool, line-MSHR entry, or address-indexed RO entry.
+  struct ro_descriptor_handle {
+    unsigned id;
+    unsigned long long generation;
+    ro_descriptor_handle(unsigned i = (unsigned)-1,
+                         unsigned long long g = 0) : id(i), generation(g) {}
+    bool valid() const { return id != (unsigned)-1; }
+  };
+  bool reserve_ro_descriptor(new_addr_type line, mem_fetch *mf,
+                             const mem_access_sector_mask_t &sectors,
+                             ro_descriptor_handle &result);
+  bool ro_descriptor_live(const ro_descriptor_handle &handle) const;
+  void release_ro_descriptor(const ro_descriptor_handle &handle);
+  unsigned ro_targets_on_line(new_addr_type line) const;
+  unsigned targets_on_line(new_addr_type line) const;
   void sector_masks(new_addr_type block_addr, mem_access_sector_mask_t &pending,
                     mem_access_sector_mask_t &issued,
                     mem_access_sector_mask_t &ready) const;
@@ -1218,7 +1234,12 @@ class mshr_table {
     mem_fetch *m_mf;
     mem_access_sector_mask_t m_sectors;
     bool m_response_queued;
-    ep_l2_descriptor() : m_mf(NULL), m_response_queued(false) {
+    bool m_ro_external;
+    new_addr_type m_ro_line;
+    unsigned long long m_ro_generation;
+    ep_l2_descriptor() : m_mf(NULL), m_response_queued(false),
+                        m_ro_external(false), m_ro_line(0),
+                        m_ro_generation(0) {
       m_sectors.reset();
     }
   };
