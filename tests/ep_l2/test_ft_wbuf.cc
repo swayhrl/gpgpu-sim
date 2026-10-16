@@ -33,10 +33,13 @@ struct fixture {
     option_parser_t p = option_parser_create();
     context.ptx_reg_options(p); context.func_sim->ptx_opcocde_latency_options(p);
     icnt_reg_options(p); config.reg_options(p);
-    option_parser_cfgfile(p,base); option_parser_cfgfile(p,overlay); config.init(); option_parser_destroy(p);
+    option_parser_cfgfile(p,base); option_parser_cfgfile(p,overlay);
+    std::string mode_s=std::to_string(mode), c_s=std::to_string(c);
+    const char *args[]={"ft-test","-gpgpu_ep_l2_ft_mode",mode_s.c_str(),"-gpgpu_ep_l2_wbuf_entries",c_s.c_str()};
+    option_parser_cmdline(p,5,args); config.init(); option_parser_destroy(p);
     gpu = new exec_gpgpu_sim(config,&context); memory = gpu->getMemoryConfig();
     cache_config &cc = const_cast<memory_config *>(memory)->m_L2_config;
-    cc.m_ep_l2_ft_mode = mode; cc.m_ep_l2_wbuf_entries = c;
+
     allocator = new partition_mf_allocator(memory);
     cache = new l2_cache("FT_TEST",cc,0,0,&port,allocator,IN_PARTITION_L2_MISS_QUEUE,gpu,L2_GPU_CACHE);
   }
