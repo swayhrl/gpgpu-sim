@@ -182,3 +182,8 @@ target_include_directories(ep_l2_ft_partition PRIVATE ${CUDAToolkit_INCLUDE_DIRS
 target_link_libraries(ep_l2_ft_partition PRIVATE -Wl,--start-group
     entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
     ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
+add_executable(ep_l2_ft_memcpy_clock EXCLUDE_FROM_ALL tests/ep_l2/test_ft_memcpy_clock.cc)
+target_include_directories(ep_l2_ft_memcpy_clock PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+target_link_libraries(ep_l2_ft_memcpy_clock PRIVATE -Wl,--start-group
+    entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
+    ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
