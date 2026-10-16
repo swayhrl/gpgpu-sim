@@ -2252,7 +2252,7 @@ bool memory_sub_partition::l2_char_no_resource_leak() const {
          m_l2_block_state.empty() && m_L2cache->l2_char_no_pending_resources() &&
          m_L2cache->ep_l2_resident_pending() == 0 &&
          m_L2cache->ep_l2_payload_pending_operations() == 0 &&
-         m_L2cache->ep_l2_tag_payload_consistent();
+         m_L2cache->ep_l2_tag_payload_consistent() && m_L2cache->ft_drained();
 }
 
 void memory_stats_t::visualizer_print(gzFile visualizer_file) {
@@ -2450,9 +2450,11 @@ mem_fetch *memory_sub_partition::top() {
 }
 
 void memory_sub_partition::set_done(mem_fetch *mf) {
-  if (mf->get_access_type() == L2_WRBK_ACC)
+  if (mf->get_access_type() == L2_WRBK_ACC) {
+    assert(!m_L2cache->ft_enabled() || mf->has_ft_wb_data());
     m_L2cache->ep_l2_wad_complete(
         mf->get_addr(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+  }
   m_request_tracker.erase(mf);
 }
 

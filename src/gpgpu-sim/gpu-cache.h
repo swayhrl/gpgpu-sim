@@ -2486,7 +2486,9 @@ class ep_l2_payload_store {
     return op.r == r && op.id == id && op.write == write;
   }
   unsigned pending_operations() const {
-    unsigned n = 0; for (unsigned b = 0; b < 4; ++b) n += m_pending[b].size(); return n;
+    unsigned n = 0; for (unsigned b = 0; b < 4; ++b) {
+      n += m_pending[b].size(); if (m_ft_mode) n += m_granted[b].size();
+    } return n;
   }
   bool ownership_consistent() const {
     std::set<new_addr_type> owners;
@@ -2687,6 +2689,8 @@ class l2_cache : public data_cache {
   void ft_print(FILE *fp, unsigned slice) const;
   unsigned ft_wb_staged() const { return m_ft_wb.size(); }
   bool ft_reservation_active() const { return m_ft_pending.request != NULL; }
+  bool ft_drained() const { return !ft_enabled() || (!m_ft_pending.request &&
+      m_ft_wb.empty() && m_ft_read_refs.empty() && !m_ep_l2_payload.wb_used()); }
   bool lower_ready(mem_fetch *mf, unsigned long long cycle) override;
   void lower_accepted(mem_fetch *mf, unsigned long long cycle) override;
   void descriptor_admitted(mem_fetch *mf, unsigned cache_index) override;
