@@ -1124,6 +1124,7 @@ bool memory_sub_partition::ep_l2_ideal_serve_read(
     else ++m_ideal_symbolic_bytes;
   }
   assert(m_ideal_responses.emplace(mf, std::move(snapshot)).second);
+  m_L2cache->ep_l2_ideal_touch_resident(mf, cycle);
   mf->set_reply();
   mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE, cycle);
   m_L2_icnt_queue->push(mf);
@@ -2149,16 +2150,20 @@ void memory_sub_partition::end_ep_l2_b0_kernel(FILE *fp,
 
 void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
                                                     unsigned long long uid) const {
-  if ((m_config->m_L2_config.m_ep_l2_ideal_meta ||
+  if ((m_config->m_L2_config.m_ep_l2_ideal_wb ||
+       m_config->m_L2_config.m_ep_l2_ideal_meta ||
        m_config->m_L2_config.m_ep_l2_ideal_read_hit) && uid == (unsigned long long)-1) {
-    fprintf(fp, "EPL2IDEALV1|scope=application|slice=%u|ideal_meta=%u|ideal_read_hit=%u|"
+    fprintf(fp, "EPL2IDEALV1|scope=application|slice=%u|ideal_meta=%u|ideal_read_hit=%u|ideal_wb=%u|"
+                "wb_data_full=%llu|diagnostic_wb_extra_slots=%u|"
                 "reference=BYTE_VERSION_SYMBOLS_WITH_OPTIONAL_KNOWN_VALUES|"
                 "reads_served=%llu|dependency_wait_attempts=%llu|bank_wait_attempts=%llu|"
                 "response_wait_attempts=%llu|known_bytes=%llu|symbolic_bytes=%llu|"
                 "line_mshr_full=%llu|descriptor_full=%llu|per_address_full=%llu|"
                 "reference_responses_live=%zu|reference_arrivals_live=%zu\n",
             m_id, m_config->m_L2_config.m_ep_l2_ideal_meta,
-            m_config->m_L2_config.m_ep_l2_ideal_read_hit, m_ideal_reads,
+            m_config->m_L2_config.m_ep_l2_ideal_read_hit,
+            m_config->m_L2_config.m_ep_l2_ideal_wb,
+            m_L2cache->ideal_wb_data_full(), m_L2cache->ideal_wb_extra_slots(), m_ideal_reads,
             m_ideal_dependency_wait, m_ideal_bank_wait, m_ideal_response_wait,
             m_ideal_known_bytes, m_ideal_symbolic_bytes,
             m_ep_l2_b0_accum.line_mshr_full_block,
