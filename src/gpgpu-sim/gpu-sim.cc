@@ -33,6 +33,7 @@
 #include "gpu-sim.h"
 
 #include <math.h>
+#include <limits>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -2331,6 +2332,28 @@ void shader_core_ctx::dump_warp_state(FILE *fout) const {
 
 void gpgpu_sim::perf_memcpy_to_gpu(size_t dst_start_addr, size_t count) {
   if (m_memory_config->m_perf_sim_memcpy) {
+    if (m_memory_config->m_L2_config.m_ep_l2_ft_mode) {
+      // FT host prefill must name the same complete address as its resident
+      // owner. The legacy unsigned temporary truncated 64-bit trace pointers.
+      // Touch each intersected 32B sector once, including unaligned endpoints;
+      // this remains untimed initialization, with no GPU bank operation.
+      if (!count) return;
+      assert(dst_start_addr <= std::numeric_limits<size_t>::max() - (count - 1));
+      const new_addr_type last = (dst_start_addr + count - 1) & ~new_addr_type(31);
+      for (new_addr_type wr_addr = dst_start_addr & ~new_addr_type(31);;
+           wr_addr += 32) {
+        addrdec_t raw_addr;
+        mem_access_sector_mask_t mask;
+        mask.set((wr_addr % 128) / 32);
+        m_memory_config->m_address_mapping.addrdec_tlx(wr_addr, &raw_addr);
+        const unsigned partition_id = raw_addr.sub_partition /
+            m_memory_config->m_n_sub_partition_per_memory_channel;
+        m_memory_partition_unit[partition_id]->handle_memcpy_to_gpu(
+            wr_addr, raw_addr.sub_partition, mask);
+        if (wr_addr == last) break;
+      }
+      return;
+    }
     // if(!m_config.trace_driven_mode)    //in trace-driven mode, CUDA runtime
     // can start nre data structure at any position 	assert (dst_start_addr %
     // 32

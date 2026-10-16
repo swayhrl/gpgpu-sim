@@ -428,10 +428,14 @@ class memory_sub_partition {
   }
 
   void force_l2_tag_update(new_addr_type addr, unsigned time,
-                           mem_access_sector_mask_t mask) {
-    m_L2cache->force_tag_access(addr, m_memcpy_cycle_offset + time, mask);
-    m_memcpy_cycle_offset += 1;
+                           mem_access_sector_mask_t mask);
+  bool ft_try_force_l2_tag_update(new_addr_type addr, unsigned time,
+                                  mem_access_sector_mask_t mask);
+  unsigned long long ft_bank_grants_for_test(unsigned bank) const {
+    return m_L2cache->ep_l2_payload_bank_grants(bank);
   }
+  unsigned ft_memcpy_offset_for_test() const { return m_memcpy_cycle_offset; }
+  l2_cache *ft_cache_for_test() { return m_L2cache; }
 
  private:
   void ft_record_admission(const mem_fetch *mf);

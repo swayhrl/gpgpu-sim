@@ -41,6 +41,17 @@ class ReferenceMemory {
       else known_.erase(line + b);
     }
   }
+  // Successful host prefill replaces selected sectors with fresh unknown
+  // version-zero symbols, matching the FT Payload contract. Never reset
+  // the producer clock or modify unselected bytes/older response copies.
+  void host_prefill(uint64_t line, const Mask &mask) {
+    assert((line & 127) == 0);
+    auto it = versions_.find(line);
+    for (unsigned b = 0; b < 128; ++b) if (mask[b]) {
+      if (it != versions_.end()) it->second[b] = 0;
+      known_.erase(line + b);
+    }
+  }
   std::vector<Byte> read(uint64_t line, const Mask &mask) const {
     assert((line & 127) == 0);
     std::vector<Byte> out;
