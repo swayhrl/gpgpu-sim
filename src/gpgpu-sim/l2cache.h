@@ -31,6 +31,7 @@
 
 #ifndef MC_PARTITION_INCLUDED
 #define MC_PARTITION_INCLUDED
+#include "ep-l2-ideal-reference.h"
 
 #include "../abstract_hardware_model.h"
 #include "dram.h"
@@ -353,6 +354,20 @@ class memory_sub_partition {
   void end_ep_l2_b0_kernel(FILE *fp, unsigned long long uid);
   bool l2_char_no_resource_leak() const;
 
+  // Reference bytes/versions are diagnostic state, outside the physical budget.
+  void ep_l2_ideal_seed(uint64_t address, const std::vector<uint8_t> &data) {
+    m_ideal_reference.seed(address, data);
+  }
+  void ep_l2_ideal_known_write(mem_fetch *mf,
+                              const ep_l2_ideal::ReferenceMemory::Data &data) {
+    m_ideal_known_writes[mf] = data;
+  }
+  const std::vector<ep_l2_ideal::Byte> &ep_l2_ideal_response(mem_fetch *mf) const {
+    return m_ideal_responses.at(mf);
+  }
+  unsigned long long ep_l2_ideal_reads_served() const { return m_ideal_reads; }
+  unsigned long long ep_l2_ideal_dependency_waits() const { return m_ideal_dependency_wait; }
+
   // EP-L2 C3b observation hooks.  They expose production state for directed
   // regressions and instrumentation only; none participate in admission.
   unsigned ep_l2_descriptor_count_used() const {
@@ -418,6 +433,19 @@ class memory_sub_partition {
 
  private:
   // data
+  bool ep_l2_ideal_serve_read(mem_fetch *mf, unsigned long long cycle);
+  void ep_l2_ideal_commit_producer(mem_fetch *mf);
+  ep_l2_ideal::ReferenceMemory m_ideal_reference;
+  std::map<mem_fetch *, std::vector<ep_l2_ideal::Byte>> m_ideal_responses;
+  std::map<mem_fetch *, ep_l2_ideal::ReferenceMemory::Data> m_ideal_known_writes;
+  std::map<mem_fetch *, unsigned long long> m_ideal_arrivals;
+  unsigned long long m_ideal_next_arrival = 0;
+  unsigned long long m_ideal_reads = 0;
+  unsigned long long m_ideal_response_wait = 0;
+  unsigned long long m_ideal_bank_wait = 0;
+  unsigned long long m_ideal_dependency_wait = 0;
+  unsigned long long m_ideal_symbolic_bytes = 0;
+  unsigned long long m_ideal_known_bytes = 0;
   unsigned m_id;  //< the global sub partition ID
   const memory_config *m_config;
   class l2_cache *m_L2cache;

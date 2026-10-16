@@ -586,6 +586,8 @@ class cache_config {
     // M0a is deliberately opt-in.  It is a telemetry sidecar and is never
     // consulted by the admission controller.
     m_ep_l2_m0a_stats = false;
+    m_ep_l2_ideal_meta = false;
+    m_ep_l2_ideal_read_hit = false;
   }
   void init(char *config, FuncCache status) {
     cache_status = status;
@@ -928,6 +930,9 @@ class cache_config {
   // EP-L2 B0 long-lived response descriptors. These deliberately do not
   // reuse m_miss_queue, which remains the short lower-issue queue.
   unsigned m_ep_l2_descriptor_pool_size;
+  // Lane 4 diagnostic only: dynamically backed metadata, never a budgeted mode.
+  bool m_ep_l2_ideal_meta;
+  bool m_ep_l2_ideal_read_hit;
   unsigned m_ep_l2_descriptor_per_line_cap;
   // EP-L2 write-address descriptors. Zero preserves the conventional path.
   unsigned m_ep_l2_wad_entries;
@@ -1112,11 +1117,13 @@ class mshr_table {
 
   mshr_table(unsigned num_entries, unsigned max_merged,
              unsigned descriptor_pool_size = 0,
-             unsigned descriptor_per_line_cap = 0)
+             unsigned descriptor_per_line_cap = 0,
+             bool ideal_meta = false)
       : m_num_entries(num_entries),
         m_max_merged(max_merged),
         m_descriptor_pool_size(descriptor_pool_size),
-        m_descriptor_per_line_cap(descriptor_per_line_cap)
+        m_descriptor_per_line_cap(descriptor_per_line_cap),
+        m_ideal_meta(ideal_meta)
 #if (tr1_hash_map_ismap == 0)
         ,
         m_data(2 * num_entries)
@@ -1177,9 +1184,9 @@ class mshr_table {
   unsigned descriptor_count_used() const {
     return m_descriptor_pool_size == 0
                ? num_targets_used()
-               : m_descriptor_pool_size - m_free_descriptor_ids.size();
+               : m_descriptor_pool.size() - m_free_descriptor_ids.size();
   }
-  unsigned descriptor_pool_capacity() const { return m_descriptor_pool_size; }
+  unsigned descriptor_pool_capacity() const { return m_descriptor_pool.size(); }
   void sector_masks(new_addr_type block_addr, mem_access_sector_mask_t &pending,
                     mem_access_sector_mask_t &issued,
                     mem_access_sector_mask_t &ready) const;
@@ -1213,6 +1220,8 @@ class mshr_table {
   const unsigned m_max_merged;
   const unsigned m_descriptor_pool_size;
   const unsigned m_descriptor_per_line_cap;
+  const bool m_ideal_meta;
+  void ensure_descriptor_available();
 
   struct ep_l2_descriptor {
     mem_fetch *m_mf;
@@ -1478,7 +1487,8 @@ class baseline_cache : public cache_t {
         m_tag_array(new tag_array(config, core_id, type_id)),
         m_mshrs(config.m_mshr_entries, config.m_mshr_max_merge,
                 config.m_ep_l2_descriptor_pool_size,
-                config.m_ep_l2_descriptor_per_line_cap),
+                config.m_ep_l2_descriptor_per_line_cap,
+                config.m_ep_l2_ideal_meta),
         m_bandwidth_management(config),
         m_level(level),
         m_gpu(gpu) {
@@ -2073,7 +2083,7 @@ class ep_l2_payload_store {
   static const unsigned k_physical_slots = 1152;
   static const unsigned k_resident_slots = 1024;
   static const unsigned k_bypass_slots = 128;
-  enum role { RESIDENT, BYPASS };
+  enum role { RESIDENT, BYPASS, IDEAL_REFERENCE };
   // A boolean cannot distinguish an ordinary target-payload retry from a
   // physical same-bank denial.  C6c needs that distinction both for correct
   // same-cycle admission and for meaningful B0-Banked telemetry.
@@ -2324,7 +2334,7 @@ class ep_l2_payload_store {
       if (used_port) return LEGACY_PORT_BUSY;
       ++used_port; return GRANTED;
     }
-    const unsigned global_id = r == RESIDENT ? id : k_resident_slots + id;
+    const unsigned global_id = r == BYPASS ? k_resident_slots + id : id;
     assert(global_id < k_physical_slots);
     const unsigned bank = global_id % 4;
     ++m_bank_attempts;
@@ -2402,7 +2412,7 @@ class ep_l2_payload_store {
   // order at the grant site.
   void enqueue(role r, unsigned id, bool write, unsigned long long sequence) {
     assert(banked());
-    const unsigned global_id = r == RESIDENT ? id : k_resident_slots + id;
+    const unsigned global_id = r == BYPASS ? k_resident_slots + id : id;
     assert(global_id < k_physical_slots);
     m_pending[global_id % 4].push_back(pending_op(r, id, write,
                                                    sequence == (unsigned long long)-1 ? m_next_sequence++ : sequence));
@@ -2411,7 +2421,7 @@ class ep_l2_payload_store {
                     unsigned long long *granted_sequence = NULL) {
     if (!enabled() || !banked()) return request(r, id, write, cycle) == GRANTED;
     if (m_cycle != cycle) { m_cycle = cycle; m_bank_granted.reset(); }
-    const unsigned global_id = r == RESIDENT ? id : k_resident_slots + id;
+    const unsigned global_id = r == BYPASS ? k_resident_slots + id : id;
     const unsigned bank = global_id % 4;
     if (m_bank_granted.test(bank) || m_pending[bank].empty()) return false;
     std::vector<pending_op> &q = m_pending[bank];
@@ -2650,6 +2660,23 @@ class l2_cache : public data_cache {
   bool ep_l2_wad_contains(new_addr_type block_addr) const {
     return m_ep_l2_wad_entries_live.count(block_addr) != 0;
   }
+  bool ep_l2_ideal_read_dependency(new_addr_type addr) const {
+    return ep_l2_wad_contains(m_config.block_addr(addr)) ||
+           m_mshrs.probe(m_config.mshr_addr(addr));
+  }
+  ep_l2_payload_store::request_result ep_l2_ideal_read_bank(
+      mem_fetch *mf, unsigned long long cycle) {
+    unsigned index = (unsigned)-1;
+    const cache_request_status status = m_tag_array->probe(
+        m_config.block_addr(mf->get_addr()), index, mf, false, true);
+    // Real residents keep their actual bank. Cold reads use the selected
+    // replacement landing's bank without allocating it. All-reserved has no
+    // selected way; define a stable diagnostic bank in that special case.
+    if (status == RESERVATION_FAIL)
+      index = (mf->get_addr() / m_config.get_line_sz()) % 4;
+    return m_ep_l2_payload.request(ep_l2_payload_store::IDEAL_REFERENCE, index,
+                                  false, cycle);
+  }
 
   // Inspect only: no LRU update, tag/sector allocation, MSHR change, queue
   // insertion, cache event, or normal cache statistic is permitted here.
@@ -2658,6 +2685,12 @@ class l2_cache : public data_cache {
 
  private:
   void validate_ep_l2_mode_config() const {
+    if ((m_config.m_ep_l2_ideal_meta && !m_config.ep_l2_descriptor_mode()) ||
+        (m_config.m_ep_l2_ideal_read_hit &&
+         (m_config.m_ep_l2_payload_mode != 2 || m_config.m_ep_l2_ideal_meta))) {
+      fprintf(stderr, "EP-L2 ideal mode requires target metadata/banked model; I_READ_HIT+I_META is not an admitted combination\n");
+      abort();
+    }
     if (m_config.m_ep_l2_payload_policy != 0 ||
         m_config.m_ep_l2_feature_unified_payload ||
         m_config.m_ep_l2_feature_ro_pending_state ||
