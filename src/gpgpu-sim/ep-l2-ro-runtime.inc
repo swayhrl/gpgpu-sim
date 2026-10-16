@@ -55,6 +55,30 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     tx.reset(new ep_l2_ro::transactions(c.m_mshrs,port,c.m_ep_l2_payload.physical_slots(),*cert,
       ep_l2_ro::switches(cfg.m_ro_tag_detach,cfg.m_ro_line_mshr_bypass)));
   }
+  uint64_t physical_cycle() const {
+    return c.m_gpu->gpu_sim_cycle+c.m_gpu->gpu_tot_sim_cycle;
+  }
+  void prefill_begin() const {
+    // The certified full application can start only once. A drained kernel
+    // boundary is not permission to mutate its whole-commandlist certificate.
+    if(ever_open || open || selected || !tx->drained())
+      throw std::logic_error("RO host prefill is initialization-only before epoch activation");
+  }
+  void prefill_complete(unsigned index,handle h,new_addr_type owner,
+                        mem_access_sector_mask_t mask) {
+    prefill_begin();unsigned actual=~0U;
+    const auto result=c.m_tag_array->probe(owner,actual,mask,true,true);
+    if(result!=HIT || actual!=index || index>=generations.size() ||
+       c.tag_payload_handle(index)!=h || !c.m_ep_l2_payload.handle_owner_matches(h,owner) ||
+       h.payload_id%4!=index%4)
+      throw std::logic_error("RO host prefill Tag/payload/bank identity mismatch");
+    const auto &slot=c.m_ep_l2_payload.inspect(h);
+    if(slot.allocation_role!=ep_l2_payload_store::RESIDENT || slot.pins ||
+       slot.pending_sector_mask.any() || (mask&~slot.ready_sector_mask).any())
+      throw std::logic_error("RO host prefill disturbed an active or incomplete owner");
+    if(generations[index]==~uint64_t(0))throw std::logic_error("RO Tag generation wrap");
+    ++generations[index];
+  }
   bool demand(const mem_fetch *m) const {
     return m->get_access_type()==GLOBAL_ACC_R && !m->get_is_write() && !m->isatomic() && !m->ro_lower_packet();
   }
@@ -161,15 +185,16 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     if(c.ep_l2_wad_contains(c.m_config.block_addr(m->get_addr()))) {p.probe_status=RESERVATION_FAIL;p.ep_l2_wad_same_address_hazard=true;}
     return true;
   }
-  void issue(mem_fetch *m,handle h,unsigned mask,unsigned time,std::list<cache_event>&events) {
+  void issue(mem_fetch *m,handle h,unsigned mask,unsigned /*tag_time*/,std::list<cache_event>&events) {
+    const uint64_t cycle=physical_cycle();
     for(unsigned n=0;n<4;++n)if(mask>>n&1) {
       mem_access_byte_mask_t bytes;for(unsigned b=n*32;b<n*32+32;++b)bytes.set(b);
       auto packet=c.m_memfetch_creator->alloc(c.m_config.block_addr(m->get_addr())+32*n,GLOBAL_ACC_R,
-        m->get_access_warp_mask(),bytes,mem_access_sector_mask_t(1<<n),32,false,time,-1,-1,-1,NULL,m->get_streamID());
+        m->get_access_warp_mask(),bytes,mem_access_sector_mask_t(1<<n),32,false,cycle,-1,-1,-1,NULL,m->get_streamID());
       packet->set_chip(m->get_tlx_addr().chip);packet->set_partition(m->get_sub_partition_id());
       packet->set_ft_wb_data(c.m_ep_l2_payload.inspect(h).versions);
       packet->set_ro_lower_packet();packet->set_ep_l2_payload_identity(h.payload_id,h.generation);
-      packet->set_status(c.m_miss_queue_status,time);c.m_miss_queue.push_back(packet);
+      packet->set_status(c.m_miss_queue_status,cycle);c.m_miss_queue.push_back(packet);
       events.push_back(cache_event(READ_REQUEST_SENT));
     }
   }
@@ -199,7 +224,7 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     issue(m,h,mask&~ready,time,events);++accepted_ro;
     if(wb) {
       auto packet=c.m_memfetch_creator->alloc(ev.m_block_addr,c.m_wrbk_type,m->get_access_warp_mask(),
-        ev.m_byte_mask,ev.m_sector_mask,ev.m_modified_size,true,time,-1,-1,-1,NULL,m->get_streamID());
+        ev.m_byte_mask,ev.m_sector_mask,ev.m_modified_size,true,physical_cycle(),-1,-1,-1,NULL,m->get_streamID());
       packet->set_chip(m->get_tlx_addr().chip);packet->set_partition(m->get_sub_partition_id());
       c.send_write_request(packet,WRITE_BACK_REQUEST_SENT,time,events);
     }
@@ -209,6 +234,7 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
   }
   bool has_response() const {handle h;return tx->ready_response(h,cursor);}
   bool prepare(uint64_t cycle) {
+    if(cycle!=physical_cycle())throw std::logic_error("RO response bank cycle must be physical GPU time");
     if(selected && response_cycle==cycle)return true;
     if(selected){tx->commit_response(reply.transaction,false,response_cycle);selected=false;}
     handle h;if(!tx->ready_response(h,cursor))return false;
@@ -241,6 +267,7 @@ bool l2_cache::access_ready() const {return (m_ro&&m_ro->has_response())||baseli
 bool l2_cache::ro_return(mem_fetch *m,unsigned long long cycle) {
   if(!m_ro||!m->ro_lower_packet())throw std::logic_error("RO return without runtime");
   if(!m->has_ft_wb_data())throw std::logic_error("RO return lacks reference versions");
+  if(cycle!=m_ro->physical_cycle())throw std::logic_error("RO return bank cycle must be physical GPU time");
   return m_ro->port.accept_return(*m_ro->tx,ep_l2::PayloadHandle(m->get_ep_l2_payload_id(),m->get_ep_l2_payload_generation()),
     m->get_access_sector_mask().to_ulong(),cycle,m->get_ft_wb_data());
 }

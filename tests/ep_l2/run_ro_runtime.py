@@ -30,6 +30,14 @@ def main():
     commands=[('runtime',[str(runtime),str(base),str(overlay),str(o/'binding.config'),str(o/'kernelslist.g')],None)]
     for d in [0,1]:
         for b in [0,1]:commands.append((f'partition_{d}{b}',[str(part),str(base),str(overlay),str(o/'binding.config'),str(o/'kernelslist.g'),str(d),str(b)],None))
+    # Repair qualification: real warmup establishes nonzero native Tag offset;
+    # independently count bank grants by physical GPU cycle for both budgets.
+    for entries in [8,16]:
+        for d in [0,1]:
+            for b in [0,1]:
+                commands.append((f'partition_warm_C{entries}_{d}{b}',
+                    [str(part),str(base),str(overlay),str(o/'binding.config'),str(o/'kernelslist.g'),
+                     str(d),str(b),'4096',str(entries)],None))
     commands.append(('r0_off_regression',[str(a.build.resolve()/'ep_l2_ft_directed'),str(base),str(overlay)],None))
     cases=[('range_hash',config.replace(sha(o/'ranges.csv'),'0'*64),'RO range SHA256 mismatch'),
            ('manifest_hash',config.replace(sha(o/'manifest.json'),'0'*64),'RO manifest SHA256 mismatch'),
@@ -50,7 +58,7 @@ def main():
             command=cmd,binary_sha256=sha(Path(cmd[0])),log_sha256=sha(log))
         rows.append(row);print(name,row['status'],flush=True)
         if not ok:raise RuntimeError(text[-4000:])
-    summary=dict(schema='EP_L2_RO_PRODUCTION_DIRECTED_R4',core_source_commit=a.source,
+    summary=dict(schema='EP_L2_RO_PRODUCTION_DIRECTED_R5',core_source_commit=a.source,
         status='PRODUCER_DIRECTED_PASS_NOT_LANE5_INDEPENDENT_QUALIFICATION',
         fixture='SYNTHETIC_SECTOR_VERSION_REFERENCE_NOT_SASS_NUMERICAL_OUTPUT',
         base_config_sha256=sha(base),overlay_config_sha256=sha(overlay),

@@ -3,6 +3,7 @@
 void l2_cache::force_tag_access(new_addr_type addr, unsigned time,
                                 mem_access_sector_mask_t mask) {
   if (!ft_enabled()) { baseline_cache::force_tag_access(addr, time, mask); return; }
+  if(m_ro)m_ro->prefill_begin();
   // Trace host memcpy prefill runs outside active hardware work. Never retire
   // a lower transaction, response reference or WB merely to warm a Tag.
   assert(ft_drained() && m_ep_l2_wad_entries_live.empty());
@@ -43,6 +44,7 @@ void l2_cache::force_tag_access(new_addr_type addr, unsigned time,
     if (mask.test(sector)) slot.versions[sector] = 0;
   slot.status = m_tag_array->block_is_modified(index) ?
       ep_l2_payload_store::RESIDENT_DIRTY : ep_l2_payload_store::RESIDENT_VALID;
+  if(m_ro)m_ro->prefill_complete(index,handle,owner,mask);
   assert(m_ep_l2_payload.ownership_consistent());
 }
 

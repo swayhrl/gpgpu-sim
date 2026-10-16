@@ -38,12 +38,14 @@ struct rig {
   }
   void tick(){gpu->gpu_sim_cycle=time++;cache->cycle();}
   cache_request_status admit(mem_fetch*m) {
+    gpu->gpu_sim_cycle=time;
     l2_access_plan plan;cache->preview_access(m->get_addr(),m,plan);
     std::list<cache_event> ev;auto r=cache->access(m->get_addr(),m,time,ev);tick();return r;
   }
   ep_l2::PayloadHandle tag(unsigned i=0){return cache->ep_l2_tag_payload_handle_for_test(i);}
   void issue(){port.blocked=false;for(unsigned n=0;n<2048&&!cache->miss_queue_empty();++n)tick();assert(cache->miss_queue_empty());}
   bool fill(mem_fetch*m){
+    gpu->gpu_sim_cycle=time;
     bool done;
     if(m->ro_lower_packet()) {
       std::array<unsigned long long,4> v;for(unsigned n=0;n<4;++n)v[n]=0x1000+(m->get_addr()/128)*4+n;
@@ -54,6 +56,7 @@ struct rig {
   }
   void consume(unsigned expected){
     for(unsigned n=0;n<10000&&replies.size()<expected;++n){
+      gpu->gpu_sim_cycle=time;
       if(cache->access_ready()&&cache->ft_response_ready(time)){
         auto m=cache->peek_next_access();assert(replies.insert(m->get_request_uid()).second);
         if(validate_reference && cache->ro_enabled() && m->get_access_type()==GLOBAL_ACC_R && m->get_addr()<0x40000) {
@@ -155,6 +158,24 @@ static void epoch_binding(const char *base,const char *overlay,const char *bindi
   try{f.admit(a);}catch(const std::logic_error&){rejected=true;}assert(rejected);delete a;
   puts("RO command binding, single full epoch and post-end access rejection PASS");
 }
+static void warmup_scope(const char *base,const char *overlay,const char *binding){
+  rig f(base,overlay,binding,1,1,1,false);f.validate_reference=false;
+  f.cache->force_tag_access(0,4096,mem_access_sector_mask_t(1));auto h=f.tag();
+  f.cache->force_tag_access(32,4097,mem_access_sector_mask_t(2));
+  f.cache->force_tag_access(0,4098,mem_access_sector_mask_t(1));
+  assert(f.tag()==h);const auto &slot=f.cache->ep_l2_payload_for_test().inspect(h);
+  assert(slot.ready_sector_mask.to_ulong()==3 && !slot.pins && slot.pending_sector_mask.none());
+  assert(slot.versions[0]==0 && slot.versions[1]==0);
+  assert(f.cache->ep_l2_payload_for_test().bank_grants()==0); // untimed initialization
+  f.cache->ro_bind_commandlist(rig::command.c_str());f.cache->ro_begin_epoch();
+  auto a=f.make(0);assert(f.admit(a)==HIT);assert(a->get_ft_wb_data()[0]==0);delete a;
+  bool rejected=false;try{f.cache->force_tag_access(0,8192,mem_access_sector_mask_t(1));}
+  catch(const std::logic_error&){rejected=true;}assert(rejected);
+  f.cache->ro_end_epoch();rejected=false;
+  try{f.cache->force_tag_access(0,8193,mem_access_sector_mask_t(1));}
+  catch(const std::logic_error&){rejected=true;}assert(rejected);
+  assert(f.tag()==h);puts("RO warmed handle/sector reuse and initialization-only scope PASS");
+}
 int main(int argc,char **argv){
   assert(argc==5);rig::command=argv[4];
   assert(ep_l2_ro::sha256("")=="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
@@ -162,5 +183,6 @@ int main(int argc,char **argv){
   for(unsigned d=0;d<2;++d)for(unsigned b=0;b<2;++b)modes(argv[1],argv[2],argv[3],d,b);
   sectors(argv[1],argv[2],argv[3]);capacity(argv[1],argv[2],argv[3]);classifier(argv[1],argv[2],argv[3]);
   dirty_victim(argv[1],argv[2],argv[3]);native_pin_guard(argv[1],argv[2],argv[3]);epoch_binding(argv[1],argv[2],argv[3]);
+  warmup_scope(argv[1],argv[2],argv[3]);
   puts("RO production runtime directed PASS");
 }
