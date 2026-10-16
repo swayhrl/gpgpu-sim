@@ -69,7 +69,7 @@ struct fixture {
   unsigned wad() { return cache->ep_l2_wad_occupancy(); }
   void drain_wb(std::map<new_addr_type,std::array<unsigned long long,4>> &reference) {
     port.blocked=false;
-    for(unsigned n=0;n<10000 && (staged() || !cache->miss_queue_empty());++n) {
+    for(unsigned n=0;n<10000 && (staged() || !cache->miss_queue_empty() || !port.packets.empty());++n) {
       cycle();
       while(!port.packets.empty()) {
         mem_fetch *mf=port.packets.front();port.packets.pop_front();
@@ -226,6 +226,7 @@ static void read_version_reference(const char *base,const char *overlay) {
 }
 
 int main(int argc,char **argv) {
+  setvbuf(stdout,NULL,_IOLBF,0);
   assert(argc==3);
   for(unsigned mode=1;mode<=2;++mode) for(unsigned c: {8u,16u}) capacity_and_versions(argv[1],argv[2],mode,c);
   wad_full(argv[1],argv[2]);response_pins_and_sectors(argv[1],argv[2]);
