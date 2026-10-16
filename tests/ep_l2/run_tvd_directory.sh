@@ -5,7 +5,7 @@ out=${EP_L2_LANE2_BUILD:-"$root/build/ft20261016_lane2_directed"}
 mkdir -p "$out"
 cuda_path=${CUDA_INSTALL_PATH:-/usr/local/cuda-11.8}
 flags=(-std=c++11 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-sign-compare
-       -Wno-unused-variable -Wno-deprecated-copy -O1 -g
+       -Wno-unused-variable -Wno-deprecated-copy -Wno-error=reorder -O1 -g
        -I"$cuda_path/include" -I"$root/src" -I"$root")
 if [[ ${EP_L2_SANITIZE:-0} == 1 ]]; then
   flags+=(-fsanitize=address,undefined -fno-omit-frame-pointer)
