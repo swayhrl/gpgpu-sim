@@ -25,6 +25,9 @@ int main(int argc,char **argv) {
   mem_access_sector_mask_t sectors;sectors.set(0);
   const unsigned offset=std::stoul(argv[5]);
   for(unsigned i=0;i<offset;++i) sp->force_l2_tag_update(0,0,sectors);
+  // Retire warm tag metadata before requests; retain the accumulated native
+  // memcpy ordering offset, as when warm lines were evicted before reuse.
+  sp->invalidateL2();
   unsigned violations=0, max_grants=0;
   auto one_cycle = [&]() {
     unsigned long long before[4];
