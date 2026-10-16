@@ -1458,7 +1458,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
                              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
               ep_l2_m0a_record_response_enqueue();
               ft_record_response(mf);
-        m_L2_icnt_queue->push(mf);
+              m_L2_icnt_queue->push(mf);
             }
             m_icnt_L2_queue->pop();
           } else {
@@ -1480,7 +1480,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
                              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
               ep_l2_m0a_record_response_enqueue();
               ft_record_response(mf);
-        m_L2_icnt_queue->push(mf);
+              m_L2_icnt_queue->push(mf);
             }
           }
           // L2 cache accepted request
