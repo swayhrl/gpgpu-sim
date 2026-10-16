@@ -2125,7 +2125,9 @@ class ep_l2_payload_store {
     FILL_WRITE,
     WB_READOUT,
     BYPASS_FILL,
-    BYPASS_READ
+    BYPASS_READ,
+    RO_FILL_WRITE,
+    RO_RESPONSE_READ
   };
   enum state {
     FREE,
@@ -2163,6 +2165,7 @@ class ep_l2_payload_store {
         m_bank_wait_cycles(0), m_bank_resident_hit_read(0),
         m_bank_resident_write(0), m_bank_fill_write(0),
         m_bank_wb_readout(0), m_bank_bypass_fill(0), m_bank_bypass_read(0),
+        m_bank_ro_fill_write(0), m_bank_ro_response_read(0),
         m_next_sequence(0) {
     m_slots.resize(k_physical_slots + wbuf);
     for (unsigned bank = 0; bank < 4; ++bank) {
@@ -2383,6 +2386,8 @@ class ep_l2_payload_store {
   unsigned long long bank_wb_readout() const { return m_bank_wb_readout; }
   unsigned long long bank_bypass_fill() const { return m_bank_bypass_fill; }
   unsigned long long bank_bypass_read() const { return m_bank_bypass_read; }
+  unsigned long long bank_ro_fill_write() const { return m_bank_ro_fill_write; }
+  unsigned long long bank_ro_response_read() const { return m_bank_ro_response_read; }
   // `sequence` is explicit for deterministic directed arbitration. Production
   // callers use their arrival order; a denied operation keeps that sequence
   // through its retry token in the per-bank pending list.
@@ -2579,6 +2584,8 @@ class ep_l2_payload_store {
       case WB_READOUT: ++m_bank_wb_readout; break;
       case BYPASS_FILL: ++m_bank_bypass_fill; break;
       case BYPASS_READ: ++m_bank_bypass_read; break;
+      case RO_FILL_WRITE: ++m_bank_ro_fill_write; break;
+      case RO_RESPONSE_READ: ++m_bank_ro_response_read; break;
     }
   }
   struct pending_op {
@@ -2600,7 +2607,7 @@ class ep_l2_payload_store {
       m_bank_true_conflict_events_by_bank[4], m_bank_wait_cycles_by_bank[4];
   unsigned long long m_bank_resident_hit_read, m_bank_resident_write,
       m_bank_fill_write, m_bank_wb_readout, m_bank_bypass_fill,
-      m_bank_bypass_read;
+      m_bank_bypass_read, m_bank_ro_fill_write, m_bank_ro_response_read;
   unsigned long long m_next_sequence;
   std::bitset<4> m_bank_granted; std::vector<slot> m_slots;
   std::vector<pending_op> m_pending[4], m_granted[4];

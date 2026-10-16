@@ -77,6 +77,7 @@ int main(){
   store.release(wb);assert(t.end_epoch());accounting(store);
   assert(shared.descriptor_count_used()==0&&store.pending_operations()==0);
   assert(t.stats.duplicate_sectors==1&&tags.reads==3);
+  assert(store.bank_ro_fill_write()==2&&store.bank_ro_response_read()==3);
   ep_l2_payload_store static_store(2,1,16);
   assert(!static_store.preview_free(ep_l2_payload_store::RO).valid());
   bool rejected=false;try{store_port invalid(static_store,tags);}catch(const std::invalid_argument&){rejected=true;}assert(rejected);

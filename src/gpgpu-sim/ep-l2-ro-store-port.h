@@ -55,7 +55,7 @@ class store_port : public payload_port {
     const auto &before=m_store.inspect(h);
     if((mask&~before.pending_sector_mask.to_ulong())!=0)
       throw std::logic_error("RO return sector has no landing obligation");
-    if(m_store.request(h,true,cycle,~0ULL,ep_l2_payload_store::FILL_WRITE)!=ep_l2_payload_store::GRANTED)
+    if(m_store.request(h,true,cycle,~0ULL,ep_l2_payload_store::RO_FILL_WRITE)!=ep_l2_payload_store::GRANTED)
       return false;
     auto &s=m_store.inspect_mutable(h);
     for(unsigned n=0;n<4;++n)if(mask>>n&1)s.versions[n]=(*m_return)[n];
@@ -65,7 +65,7 @@ class store_port : public payload_port {
     const auto &s=m_store.inspect(h);
     if((mask&~s.ready_sector_mask.to_ulong())!=0)
       throw std::logic_error("RO response requires all requested sectors");
-    if(m_store.request(h,false,cycle,~0ULL,ep_l2_payload_store::RESIDENT_HIT_READ)!=ep_l2_payload_store::GRANTED)
+    if(m_store.request(h,false,cycle,~0ULL,ep_l2_payload_store::RO_RESPONSE_READ)!=ep_l2_payload_store::GRANTED)
       return false;
     m_tags.read(h,mask,s.versions);return true;
   }
