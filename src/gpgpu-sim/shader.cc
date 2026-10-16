@@ -2932,8 +2932,8 @@ void ldst_unit::dtc_l1_r4c0_retire(const warp_inst_t &inst) {
 // below, not in the conventional L1D MSHR.
 bool ldst_unit::dtc_l1_finite_service_active() const {
   return m_config->dtc_l1_finite_service &&
-         (dtc_l1_paper_io_active() ||
-          (dtc_l1_paper_oo_active() && !dtc_l1_sector_oo_active()));
+         (m_config->dtc_l1_mode == static_cast<unsigned>(dtc_l1::mode::PAPER_IO) ||
+          m_config->dtc_l1_mode == static_cast<unsigned>(dtc_l1::mode::PAPER_OO));
 }
 
 bool ldst_unit::dtc_l1_service_collect(
