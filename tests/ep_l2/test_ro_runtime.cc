@@ -18,7 +18,7 @@ struct lower : mem_fetch_interface {
 struct rig {
   gpgpu_context ctx;gpgpu_sim_config cfg;exec_gpgpu_sim *gpu;
   partition_mf_allocator *alloc;l2_cache *cache;lower port;
-  unsigned time=1;std::set<unsigned> replies;
+  unsigned time=1;std::set<unsigned> replies;bool validate_reference=true;
   rig(const char *base,const char *overlay,const char *binding,unsigned d,unsigned b,unsigned sets=1,bool activate=true):cfg(&ctx) {
     option_parser_t p=option_parser_create();ctx.ptx_reg_options(p);ctx.func_sim->ptx_opcocde_latency_options(p);icnt_reg_options(p);cfg.reg_options(p);
     option_parser_cfgfile(p,base);option_parser_cfgfile(p,overlay);option_parser_cfgfile(p,binding);
@@ -56,7 +56,7 @@ struct rig {
     for(unsigned n=0;n<10000&&replies.size()<expected;++n){
       if(cache->access_ready()&&cache->ft_response_ready(time)){
         auto m=cache->peek_next_access();assert(replies.insert(m->get_request_uid()).second);
-        if(cache->ro_enabled() && m->get_access_type()==GLOBAL_ACC_R && m->get_addr()<0x40000) {
+        if(validate_reference && cache->ro_enabled() && m->get_access_type()==GLOBAL_ACC_R && m->get_addr()<0x40000) {
           assert(m->has_ft_wb_data());for(unsigned n=0;n<4;++n)if(m->get_access_sector_mask().test(n))
             assert(m->get_ft_wb_data()[n]==0x1000+(m->get_addr()/128)*4+n);
         }
@@ -136,6 +136,16 @@ static void dirty_victim(const char *base,const char *overlay,const char *bindin
   }
   f.consume(1);f.finish();puts("RO production dirty-victim WB/WAD/version retention PASS");
 }
+static void native_pin_guard(const char *base,const char *overlay,const char *binding){
+  rig f(base,overlay,binding,1,1);f.validate_reference=false;
+  auto native=f.make(0,TEXTURE_ACC_R);assert(f.admit(native)!=RESERVATION_FAIL);auto h=f.tag();
+  f.issue();auto p=f.port.packets.front();f.port.packets.pop_front();assert(!p->ro_lower_packet());while(!f.fill(p)){}
+  assert(f.cache->ep_l2_payload_for_test().inspect(h).pins==1);
+  auto reader=f.make(32);assert(f.admit(reader)!=RESERVATION_FAIL);f.issue();
+  p=f.port.packets.front();f.port.packets.pop_front();assert(!p->ro_lower_packet());while(!f.fill(p)){}
+  assert(f.cache->ep_l2_payload_for_test().inspect(h).allocation_role==ep_l2_payload_store::RESIDENT);
+  f.consume(2);f.finish();puts("RO refuses takeover of foreign native-response pins PASS");
+}
 static void epoch_binding(const char *base,const char *overlay,const char *binding){
   rig f(base,overlay,binding,1,1,1,false);
   bool rejected=false;try{f.cache->ro_begin_epoch();}catch(const std::logic_error&){rejected=true;}assert(rejected);
@@ -151,6 +161,6 @@ int main(int argc,char **argv){
   assert(ep_l2_ro::sha256("abc")=="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
   for(unsigned d=0;d<2;++d)for(unsigned b=0;b<2;++b)modes(argv[1],argv[2],argv[3],d,b);
   sectors(argv[1],argv[2],argv[3]);capacity(argv[1],argv[2],argv[3]);classifier(argv[1],argv[2],argv[3]);
-  dirty_victim(argv[1],argv[2],argv[3]);epoch_binding(argv[1],argv[2],argv[3]);
+  dirty_victim(argv[1],argv[2],argv[3]);native_pin_guard(argv[1],argv[2],argv[3]);epoch_binding(argv[1],argv[2],argv[3]);
   puts("RO production runtime directed PASS");
 }

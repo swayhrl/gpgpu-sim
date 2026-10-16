@@ -35,7 +35,7 @@ int main(int argc,char**argv){
     else if(sp->ep_l2_descriptor_count_used() && sp->top()!=NULL)backpressure=true;
     if(cycle>2000&&!part.busy())break;
   }
-  assert(seen==expected);assert(peak>0);assert(!part.busy());assert(sp->l2_char_no_resource_leak());
+  assert(seen==expected);assert(peak>0);assert(backpressure);assert(!part.busy());assert(sp->l2_char_no_resource_leak());
   sp->ro_end_epoch();sp->ro_cache_for_test()->ro_print(stdout,0);
   printf("RO actual partition detach=%s bypass=%s exact-once=%zu peak_descriptors=%u backpressure=%u PASS\n",argv[5],argv[6],seen.size(),peak,backpressure);
 }

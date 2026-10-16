@@ -107,7 +107,7 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     if(p!=MISS && p!=RESERVATION_FAIL) {
       const handle resident=c.tag_payload_handle(i);
       if(c.m_tag_array->block_is_modified(i) || (c.m_ep_l2_payload.handle_live(resident) &&
-          c.m_ep_l2_payload.inspect(resident).pending_sector_mask.any()))return false;
+          (c.m_ep_l2_payload.inspect(resident).pending_sector_mask.any() || c.m_ep_l2_payload.inspect(resident).pins)))return false;
     }
     return p!=HIT;
   }

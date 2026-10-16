@@ -28,7 +28,7 @@ class store_port : public payload_port {
   bool pin(identity h) {
     if(!m_store.handle_live(h))return false;
     const auto &s=m_store.inspect(h);
-    if(s.allocation_role==ep_l2_payload_store::RESIDENT && s.pending_sector_mask.none() && s.status!=ep_l2_payload_store::RESIDENT_DIRTY)
+    if(s.allocation_role==ep_l2_payload_store::RESIDENT && s.pending_sector_mask.none() && !s.pins && s.status!=ep_l2_payload_store::RESIDENT_DIRTY)
       m_store.transfer(h,ep_l2_payload_store::RO,ep_l2_payload_store::RO_FILL_ATTACHED);
     else if(s.allocation_role!=ep_l2_payload_store::RO)return false;
     m_store.pin(h);return true;
