@@ -9,3 +9,6 @@ ${CXX:-g++} -std=c++11 -O2 -Wall -Wextra -ffunction-sections -fdata-sections \
   "$root/tests/ep_l2/test_ro_transactions.cc" \
   "$root/src/gpgpu-sim/gpu-cache.cc" -Wl,--gc-sections -o "$out"
 "$out"
+${CXX:-g++} -std=c++11 -O2 -Wall -Wextra \
+  "$root/tests/ep_l2/test_ro_oracle_certificate.cc" -o "${out}_oracle"
+"${out}_oracle"

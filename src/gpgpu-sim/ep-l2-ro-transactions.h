@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include "gpu-cache.h"
+#include "ep-l2-ro-oracle.h"
 
 // Lane 3 independent production candidate. There is deliberately no allocator
 // here: the caller atomically reserves a landing through Lane 1's interface.
@@ -67,9 +68,10 @@ class transactions {
   } stats;
 
   transactions(mshr_table &shared, payload_port &port, unsigned payload_budget,
+                const oracle_certificate &certificate,
                 switches features = switches())
       : m_shared(shared), m_port(port), m_slots(payload_budget),
-        m_features(features), m_epoch(0), m_epoch_open(false) {
+        m_features(features), m_oracle(certificate), m_epoch(0), m_epoch_open(false) {
     if (shared.descriptor_pool_capacity() != 512 ||
         (payload_budget != 1168 && payload_budget != 1160))
       throw std::invalid_argument("RO requires shared D512 and C16/C8 payload budget");
@@ -78,7 +80,8 @@ class transactions {
   // The binding layer must have verified every input and oracle artifact hash.
   // This is a closed-world experimental oracle, not an inferred hardware bit.
   void begin_epoch(uint64_t epoch, const std::string &verified_manifest_sha256) {
-    if (m_epoch_open || !drained() || verified_manifest_sha256.size() != 64)
+    if (m_epoch_open || !drained() ||
+        verified_manifest_sha256 != m_oracle.manifest_sha256())
       throw std::logic_error("epoch start requires verified manifest and drain");
     m_epoch = epoch; m_epoch_open = true;
   }
@@ -103,7 +106,7 @@ class transactions {
                   bool certified_line, request_kind kind) {
     check_mask(mask);
     if (!m_epoch_open || epoch != m_epoch || !certified_line ||
-        kind != GLOBAL_DEMAND_READ) {
+        !m_oracle.contains(line) || kind != GLOBAL_DEMAND_READ) {
       ++stats.rejected_oracle;
       return NORMAL_PATH;
     }
@@ -154,7 +157,8 @@ class transactions {
                   uint64_t epoch, bool certified_line, request_kind kind) {
     check_mask(mask);
     entry &e = get(h);
-    if (epoch != e.epoch || !certified_line || kind != GLOBAL_DEMAND_READ) {
+    if (epoch != e.epoch || !certified_line || !m_oracle.contains(e.line) ||
+        kind != GLOBAL_DEMAND_READ) {
       ++stats.rejected_oracle;
       return NORMAL_PATH;
     }
@@ -253,10 +257,8 @@ class transactions {
     const entry &e = get(h); return e.issued & ~e.ready;
   }
   void assert_no_epoch_write(uint64_t epoch, new_addr_type line) const {
-    if (epoch == m_epoch && m_epoch_open)
-      for (unsigned i = 0; i < m_slots.size(); ++i)
-        if (m_slots[i].live && m_slots[i].line == line)
-          throw std::logic_error("oracle violation: writer to certified active line");
+    if (epoch == m_epoch && m_epoch_open && m_oracle.contains(line))
+      throw std::logic_error("oracle violation: writer to certified epoch line");
   }
 
  private:
@@ -305,6 +307,7 @@ class transactions {
   payload_port &m_port;
   std::vector<entry> m_slots;  // fixed bound: one completion per physical slot
   switches m_features;
+  const oracle_certificate &m_oracle;
   uint64_t m_epoch;
   bool m_epoch_open;
 };

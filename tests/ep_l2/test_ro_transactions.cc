@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <map>
 #include <set>
+#include <sstream>
 #include "../../src/gpgpu-sim/ep-l2-ro-transactions.h"
 
 using namespace ep_l2_ro;
@@ -93,10 +94,15 @@ class reference_port : public payload_port {
 };
 
 static std::string hash() { return std::string(64,'a'); }
+static const oracle_certificate &certificate() {
+  static std::istringstream ranges("first_line,last_line_inclusive\n0000000000001000,0000000000200000\n");
+  static oracle_certificate c(ranges,hash(),"TRACE_MODEL_CLOSED_WORLD");
+  return c;
+}
 
 static void out_of_order_backpressure_and_waiter_protection() {
   mshr_table shared(128,32,512,32); reference_port p;
-  transactions t(shared,p,1168,switches(true,true)); t.begin_epoch(1,hash());
+  transactions t(shared,p,1168,certificate(),switches(true,true)); t.begin_epoch(1,hash());
   identity h=p.reserve(0,0x1000,0);
   assert(t.admit(1,0x1000,h,p.binding(0),request(1),3,true,GLOBAL_DEMAND_READ)==ACCEPTED);
   assert(t.merge(h,request(2),4,1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
@@ -123,7 +129,7 @@ static void out_of_order_backpressure_and_waiter_protection() {
 
 static void same_line_detached_instances_and_generation() {
   mshr_table shared(128,32,512,32); reference_port p;
-  transactions t(shared,p,1168,switches(true,true));t.begin_epoch(2,hash());
+  transactions t(shared,p,1168,certificate(),switches(true,true));t.begin_epoch(2,hash());
   identity a=p.reserve(0,0x2000,0);
   assert(t.admit(2,0x2000,a,p.binding(0),request(10),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
   t.lower_accepted(a,1); assert(t.detach(a));
@@ -156,7 +162,7 @@ static void descriptor_pool_is_shared_and_address_bounded() {
   mshr_table shared(128,32,512,32); reference_port p;
   for(unsigned n=0;n<511;++n)
     shared.add_for_test(0x100000+(n/32)*128,request(100+n),mem_access_sector_mask_t(1));
-  transactions t(shared,p,1168,switches(true,true));t.begin_epoch(4,hash());
+  transactions t(shared,p,1168,certificate(),switches(true,true));t.begin_epoch(4,hash());
   identity a=p.reserve(0,0x4000,0);
   assert(t.admit(4,0x4000,a,p.binding(0),request(800),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
   identity b=p.reserve(1,0x5000,1);
@@ -168,7 +174,7 @@ static void descriptor_pool_is_shared_and_address_bounded() {
   assert(t.admit(4,0x5000,b,p.binding(1),request(801),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
 
   mshr_table per_line(128,32,512,32);reference_port p2;
-  transactions t2(per_line,p2,1168,switches(true,true));t2.begin_epoch(5,hash());
+  transactions t2(per_line,p2,1168,certificate(),switches(true,true));t2.begin_epoch(5,hash());
   identity h=p2.reserve(0,0x6000,0);
   assert(t2.admit(5,0x6000,h,p2.binding(0),request(900),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
   for(unsigned n=0;n<31;++n)assert(t2.merge(h,request(901+n),1,5,true,GLOBAL_DEMAND_READ)==ACCEPTED);
@@ -179,15 +185,16 @@ static void descriptor_pool_is_shared_and_address_bounded() {
 
 static void rejected_inputs_and_illegal_protocol() {
   mshr_table shared(128,32,512,32);reference_port p;
-  transactions off(shared,p,1168);off.begin_epoch(1,hash());
+  transactions off(shared,p,1168,certificate());off.begin_epoch(1,hash());
   identity h=p.reserve(0,0x7000,0);
   assert(off.admit(1,0x7000,h,p.binding(0),request(0),1,true,GLOBAL_DEMAND_READ)==NORMAL_PATH);
   assert(shared.descriptor_count_used()==0);
-  transactions t(shared,p,1168,switches(false,true));t.begin_epoch(6,hash());
+  transactions t(shared,p,1168,certificate(),switches(false,true));t.begin_epoch(6,hash());
   for(unsigned kind=SYNTHETIC_WRITE_ALLOCATE_READ;kind<=UNKNOWN_REQUEST;++kind)
     assert(t.admit(6,0x7000,h,p.binding(0),request(0),1,true,request_kind(kind))==NORMAL_PATH);
   assert(t.admit(6,0x7000,h,p.binding(0),request(0),1,false,GLOBAL_DEMAND_READ)==NORMAL_PATH);
   assert(t.admit(7,0x7000,h,p.binding(0),request(0),1,true,GLOBAL_DEMAND_READ)==NORMAL_PATH);
+  assert(t.admit(6,0x300000,h,p.binding(0),request(0),1,true,GLOBAL_DEMAND_READ)==NORMAL_PATH);
   assert(t.admit(6,0x7000,h,p.binding(0),request(0),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
   assert(t.merge(h,request(77),1,6,true,SYNTHETIC_WRITE_ALLOCATE_READ)==NORMAL_PATH);
   assert(!t.detach(h));
@@ -212,7 +219,7 @@ static void detach_only_uses_the_actual_line_mshr_limit() {
   mshr_table shared(128,32,512,32);reference_port p;
   for(unsigned n=0;n<127;++n)
     shared.add_for_test(0x100000+n*128,request(n),mem_access_sector_mask_t(1));
-  transactions t(shared,p,1168,switches(true,false));t.begin_epoch(8,hash());
+  transactions t(shared,p,1168,certificate(),switches(true,false));t.begin_epoch(8,hash());
   identity a=p.reserve(0,0x8000,0);
   assert(t.admit(8,0x8000,a,p.binding(0),request(200),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
   assert(shared.num_entries_used()==128);
@@ -232,7 +239,7 @@ static void detach_only_uses_the_actual_line_mshr_limit() {
   // With bypass enabled the SAME full native line-MSHR does not block RO;
   // requester descriptors and physical landing capacity remain bounded.
   shared.add_for_test(0x200000,request(300),mem_access_sector_mask_t(1));
-  transactions bypass(shared,p,1168,switches(false,true));bypass.begin_epoch(9,hash());
+  transactions bypass(shared,p,1168,certificate(),switches(false,true));bypass.begin_epoch(9,hash());
   assert(bypass.admit(9,0x9000,b,p.binding(1),request(301),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
   assert(shared.num_entries_used()==128 && shared.descriptor_count_used()==129);
   bypass.lower_accepted(b,1);assert(bypass.fill(b,1,5));
