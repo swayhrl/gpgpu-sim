@@ -22,6 +22,25 @@ int main() {
   quota.commit(5);
   assert(!quota.available(5));
 
+  // Production collection stage: independent refill/collection ports and
+  // absolute-cycle transfer quota. A blocked writeback never reacquires data.
+  dtc_l1::service_quota collection(4);
+  dtc_l1::service_entry a, b;
+  a.observe_ready(1, 6);
+  b.observe_ready(1, 1);
+  assert(!a.collect(1, collection));
+  assert(a.sectors_left == 6);
+  assert(!a.collect(2, collection));
+  assert(a.sectors_left == 2);
+  assert(!a.collect(2, collection));
+  assert(a.sectors_left == 2);
+  assert(!b.collect(2, collection) && b.sectors_left == 1);
+  assert(!a.collect(3, collection) && a.sectors_left == 0);
+  assert(!b.collect(3, collection) && b.sectors_left == 0);
+  assert(a.collect(4, collection) && b.collect(4, collection));
+  assert(a.collect(5, collection));  // retry after collector denial
+  assert(a.collect_done_cycle == 3 && a.collect_start_cycle == 2);
+
   dtc_l1::config cfg;
   cfg.finite_service = true;
   cfg.logical_sets = cfg.logical_ways = 1;

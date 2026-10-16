@@ -66,6 +66,22 @@ struct service_entry {
   uint64_t collect_done_cycle = UINT64_MAX;
   uint64_t collect_start_cycle = UINT64_MAX;
   unsigned sectors_left = 0;
+  void observe_ready(uint64_t cycle, unsigned sectors) {
+    assert(ready_cycle == UINT64_MAX && sectors);
+    ready_cycle = cycle;
+    sectors_left = sectors;
+  }
+  bool collect(uint64_t cycle, service_quota &port) {
+    assert(ready_cycle != UINT64_MAX);
+    if (cycle == ready_cycle) return false;
+    while (sectors_left && port.available(cycle)) {
+      if (collect_start_cycle == UINT64_MAX) collect_start_cycle = cycle;
+      port.commit(cycle);
+      --sectors_left;
+      if (!sectors_left) collect_done_cycle = cycle;
+    }
+    return !sectors_left && cycle > collect_done_cycle;
+  }
 };
 
 inline bool response_sector_is_new(uint8_t expected, uint8_t received,

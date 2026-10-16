@@ -2105,9 +2105,17 @@ void ldst_unit::get_dtc_l1_stats(
     dtc_l1::paper_frontend_stats &stats) const {
   if (dtc_l1_finite_service_active()) {
     dtc_l1::paper_frontend_stats service;
+    const uint64_t now = m_core->get_gpu()->global_cycle();
+    const uint64_t tail = now - (m_dtc_service_sample_cycle == UINT64_MAX
+                                    ? 0 : m_dtc_service_sample_cycle);
+    const uint64_t pib = dtc_l1_paper_io_active()
+                             ? m_dtc_l1_io_pib.size() : m_dtc_l1_oo_pib.size();
+    const uint64_t physical = dtc_l1_paper_io_active()
+                                 ? m_dtc_l1_io_frontend->allocated_lines()
+                                 : m_dtc_l1_oo_frontend->allocated_lines();
     service.finite_service = {
-        m_dtc_service_samples, m_dtc_service_pib_integral,
-        m_dtc_service_physical_integral, m_dtc_service_collected_sectors,
+        m_dtc_service_samples + tail, m_dtc_service_pib_integral + tail * pib,
+        m_dtc_service_physical_integral + tail * physical, m_dtc_service_collected_sectors,
         m_dtc_service_ready_to_complete_sum, m_dtc_service_retired,
         m_dtc_service_ready_to_collect_sum, m_dtc_service_collection_cycles,
         m_dtc_service_wb_wait,
@@ -2956,20 +2964,15 @@ bool ldst_unit::dtc_l1_service_collect(
   if (!dtc_l1_finite_service_active()) return true;
   const uint64_t cycle = m_core->get_gpu()->global_cycle();
   if (service.ready_cycle == UINT64_MAX) {
-    service.ready_cycle = cycle;
+    unsigned sectors = 0;
     for (const auto &reference : references)
-      service.sectors_left += __builtin_popcount(reference.sector_mask);
-    assert(service.sectors_left);
+      sectors += __builtin_popcount(reference.sector_mask);
+    service.observe_ready(cycle, sectors);
   }
-  if (cycle == service.ready_cycle) return false;
-  while (service.sectors_left && m_dtc_service_collect.available(cycle)) {
-    if (service.collect_start_cycle == UINT64_MAX) service.collect_start_cycle = cycle;
-    m_dtc_service_collect.commit(cycle);
-    --service.sectors_left;
-    ++m_dtc_service_collected_sectors;
-    if (!service.sectors_left) service.collect_done_cycle = cycle;
-  }
-  return !service.sectors_left && cycle > service.collect_done_cycle;
+  const unsigned before = service.sectors_left;
+  const bool collected = service.collect(cycle, m_dtc_service_collect);
+  m_dtc_service_collected_sectors += before - service.sectors_left;
+  return collected;
 }
 
 void ldst_unit::dtc_l1_service_retired(const dtc_l1::service_entry &service) {
@@ -4935,23 +4938,27 @@ void ldst_unit::cycle() {
   if (dtc_l1_finite_service_active()) {
     const uint64_t cycle = m_core->get_gpu()->global_cycle();
     if (m_dtc_service_sample_cycle != cycle) {
+      // Integrate [last edge,current edge), including clock-gated intervals.
+      // State cannot mutate without an LD/ST event; issue occurs after cycle().
+      const uint64_t delta = cycle - (m_dtc_service_sample_cycle == UINT64_MAX
+                                          ? 0 : m_dtc_service_sample_cycle);
       m_dtc_service_sample_cycle = cycle;
-      ++m_dtc_service_samples;
+      m_dtc_service_samples += delta;
       if (dtc_l1_paper_io_active()) {
+        m_dtc_service_pib_integral += delta * m_dtc_l1_io_pib.size();
+        m_dtc_service_physical_integral += delta * m_dtc_l1_io_frontend->allocated_lines();
         m_dtc_l1_io_frontend->advance_service(cycle);
-        m_dtc_service_pib_integral += m_dtc_l1_io_pib.size();
-        m_dtc_service_physical_integral += m_dtc_l1_io_frontend->allocated_lines();
       } else {
+        m_dtc_service_pib_integral += delta * m_dtc_l1_oo_pib.size();
+        m_dtc_service_physical_integral += delta * m_dtc_l1_oo_frontend->allocated_lines();
         m_dtc_l1_oo_frontend->advance_service(cycle);
-        m_dtc_service_pib_integral += m_dtc_l1_oo_pib.size();
-        m_dtc_service_physical_integral += m_dtc_l1_oo_frontend->allocated_lines();
       }
       auto observe_ready = [cycle](auto &entry) {
         if (entry.service.ready_cycle != UINT64_MAX) return;
-        entry.service.ready_cycle = cycle;
+        unsigned sectors = 0;
         for (const auto &reference : entry.references)
-          entry.service.sectors_left += __builtin_popcount(reference.sector_mask);
-        assert(entry.service.sectors_left);
+          sectors += __builtin_popcount(reference.sector_mask);
+        entry.service.observe_ready(cycle, sectors);
       };
       if (dtc_l1_paper_io_active()) {
         for (auto &entry : m_dtc_l1_io_pib)
