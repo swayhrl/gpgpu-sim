@@ -21,7 +21,7 @@ struct scenario {
     context.func_sim->ptx_opcocde_latency_options(p); icnt_reg_options(p); cfg.reg_options(p);
     option_parser_cfgfile(p,base); option_parser_cfgfile(p,overlay);
     const char *args[]={"tvd-test", "-gpgpu_ep_l2_ft_mode","2", "-gpgpu_ep_l2_wbuf_entries","16",
-      "-gpgpu_L2_queue","64:128:64:1", "-gpgpu_ep_l2_tvd_clean",tvd?"1":"0",
+      "-gpgpu_dram_partition_queues","64:128:64:1", "-gpgpu_ep_l2_tvd_clean",tvd?"1":"0",
       "-gpgpu_ep_l2_tvd_dirty",dirty?"1":"0"};
     option_parser_cmdline(p,11,args); cfg.init(); option_parser_destroy(p);
     gpu=new exec_gpgpu_sim(cfg,&context); const memory_config *mc=gpu->getMemoryConfig();

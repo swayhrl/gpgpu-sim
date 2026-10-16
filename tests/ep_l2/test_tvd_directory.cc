@@ -30,8 +30,8 @@ static void clean_read_and_backpressure() {
   directory::ticket t = install(d, 0x1000, h, 5, 0, false, 0);
   // Versioned sectors are outside the simulator, solely the test oracle.
   const std::array<unsigned, 4> bytes = {{71, 0, 103, 0}};
-  assert(d.preview_access(0x1000, 5, directory::READ, 4, 4).status == directory::LOOKUP_DELAY);
-  directory::observation o = d.preview_access(0x1000, 5, directory::READ, 4, 5);
+  assert(d.preview_access(0x1000, 5, directory::READ_OP, 4, 4).status == directory::LOOKUP_DELAY);
+  directory::observation o = d.preview_access(0x1000, 5, directory::READ_OP, 4, 5);
   assert(o.status == directory::READ_READY && o.payload.payload_id == h.payload_id);
   directory::read_lease lease;
   assert(d.begin_read(o, 5, lease) == directory::OK);
@@ -62,11 +62,11 @@ static void sectors_and_promotions() {
   directory d(128, true, false);
   handle h(3, 21), moved;
   directory::ticket t = install(d, 0x2000, h, 3, 0, false, 0);
-  assert(d.preview_access(0x2000, 4, directory::READ, 0, 1).status == directory::MISSING_SECTOR);
+  assert(d.preview_access(0x2000, 4, directory::READ_OP, 0, 1).status == directory::MISSING_SECTOR);
   assert(d.stats().read_responses == 0);
-  assert(d.preview_access(0x2000, 16, directory::READ, 0, 1).status == directory::INVALID_INPUT);
-  assert(d.preview_access(0x2000, 1, directory::WRITE, 0, 1).status == directory::PROMOTE_REQUIRED);
-  assert(d.preview_access(0x2000, 4, directory::ATOMIC, 0, 1).status == directory::PROMOTE_REQUIRED);
+  assert(d.preview_access(0x2000, 16, directory::READ_OP, 0, 1).status == directory::INVALID_INPUT);
+  assert(d.preview_access(0x2000, 1, directory::WRITE_OP, 0, 1).status == directory::PROMOTE_REQUIRED);
+  assert(d.preview_access(0x2000, 4, directory::ATOMIC_OP, 0, 1).status == directory::PROMOTE_REQUIRED);
   const std::array<unsigned, 4> data = {{11, 29, 0, 0}};
   // The future producer must first prepare tag/victim resources. A failed
   // preparation makes no call to promote and cannot partially remove TVD.
@@ -77,7 +77,7 @@ static void sectors_and_promotions() {
   resident[0] = 44;  // normal promoted write
   assert(data[0] == 11 && resident[0] == 44 && resident[1] == 29);
   t = install(d, 0x2080, handle(8, 1), 15, 0, false, 2);
-  assert(d.preview_access(0x2080, 1, directory::ATOMIC, 2, 3).status == directory::PROMOTE_REQUIRED);
+  assert(d.preview_access(0x2080, 1, directory::ATOMIC_OP, 2, 3).status == directory::PROMOTE_REQUIRED);
   assert(d.promote(t, moved, 3) == directory::OK);
   unsigned atomic_old = 44, atomic_value = atomic_old + 7;
   assert(atomic_old == 44 && atomic_value == 51);
@@ -126,7 +126,7 @@ static void reference_versions_follow_payload_identity() {
   reference[0x3000] = backing[7]; reference[0x3080] = backing[11];
   directory d(128, true, false);
   directory::ticket t = install(d, 0x3000, ram.resident_handle(7), 15, 0, false, 0);
-  directory::observation o = d.preview_access(0x3000, 10, directory::READ, 0, 1);
+  directory::observation o = d.preview_access(0x3000, 10, directory::READ_OP, 0, 1);
   directory::read_lease lease;
   assert(d.begin_read(o, 10, lease) == directory::OK);
   assert(ram.handle_owner_matches(lease.handle(), 0x3000));
@@ -167,10 +167,10 @@ static void dirty_data_forward_and_ordering() {
   assert(d.lower_accept(t, true, 5) == directory::OK);
   assert(d.stats().wb_staging_slot_cycles == 5 && d.mandatory() == 1);
   assert(d.lower_accept(t, true, 6) == directory::STALE);
-  assert(d.preview_access(0x4000, 1, directory::WRITE, 8, 9).status == directory::WAIT_WRITEBACK);
-  assert(d.preview_access(0x4000, 1, directory::ATOMIC, 8, 9).status == directory::WAIT_WRITEBACK);
-  assert(d.preview_access(0x4000, 2, directory::READ, 8, 9).status == directory::WAIT_WRITEBACK);
-  directory::observation o = d.preview_access(0x4000, 5, directory::READ, 8, 9);
+  assert(d.preview_access(0x4000, 1, directory::WRITE_OP, 8, 9).status == directory::WAIT_WRITEBACK);
+  assert(d.preview_access(0x4000, 1, directory::ATOMIC_OP, 8, 9).status == directory::WAIT_WRITEBACK);
+  assert(d.preview_access(0x4000, 2, directory::READ_OP, 8, 9).status == directory::WAIT_WRITEBACK);
+  directory::observation o = d.preview_access(0x4000, 5, directory::READ_OP, 8, 9);
   assert(o.status == directory::READ_READY && o.dirty_forward);
   directory::read_lease lease;
   assert(d.begin_read(o, 5, lease) == directory::OK);
@@ -225,7 +225,7 @@ static void mandatory_priority_and_shared_capacity() {
   directory::ticket clean = install(d, 128 * 128, handle(128, 1), 15, 0, false, 132);
   directory::install_plan p = d.preview_install(129 * 128, true);
   assert(p.status == directory::OK && p.index == clean.index);
-  directory::observation o = d.preview_access(128 * 128, 1, directory::READ, 132, 133);
+  directory::observation o = d.preview_access(128 * 128, 1, directory::READ_OP, 132, 133);
   directory::read_lease lease;
   assert(d.begin_read(o, 1, lease) == directory::OK);
   directory::ticket fresh;
@@ -269,11 +269,11 @@ static void promotion_displaces_dirty_resident_atomically() {
   assert(d.occupied() == 128 && d.mandatory() == 1 && d.at(wb.index).line == 0x8000);
   assert(d.at(wb.index).payload == handle(512, 3));
   assert(d.commit_dirty_promotion(p, 128, promoted, wb) == directory::STALE);
-  assert(d.preview_access(0x8000, 1, directory::ATOMIC, 128, 129).status == directory::WAIT_WRITEBACK);
+  assert(d.preview_access(0x8000, 1, directory::ATOMIC_OP, 128, 129).status == directory::WAIT_WRITEBACK);
   assert(d.lower_accept(wb, true, 129) == directory::OK);
   assert(d.set_done(wb, 130) == directory::OK);
-  assert(d.preview_access(0x8000, 8, directory::READ, 130, 131).status == directory::MISSING_SECTOR);
-  assert(d.preview_access(0x8000, 8, directory::WRITE, 130, 131).status == directory::PROMOTE_REQUIRED);
+  assert(d.preview_access(0x8000, 8, directory::READ_OP, 130, 131).status == directory::MISSING_SECTOR);
+  assert(d.preview_access(0x8000, 8, directory::WRITE_OP, 130, 131).status == directory::PROMOTE_REQUIRED);
   handle output;
   assert(d.promote(wb, output, 131) == directory::OK && output == handle(512, 3));
   assert(d.mandatory() == 0 && d.stats().promotions == 2);
@@ -281,7 +281,7 @@ static void promotion_displaces_dirty_resident_atomically() {
   // and disappears only at set_done (clean-only TVD mode).
   directory clean_only(128, true, false);
   directory::ticket w = install(clean_only, 0x9000, handle(), 1, 1, true, 0);
-  assert(clean_only.preview_access(0x9000, 1, directory::READ, 0, 1).status == directory::WAIT_WRITEBACK);
+  assert(clean_only.preview_access(0x9000, 1, directory::READ_OP, 0, 1).status == directory::WAIT_WRITEBACK);
   assert(clean_only.lower_accept(w, true, 1) == directory::OK);
   assert(clean_only.set_done(w, 2) == directory::OK && !clean_only.occupied());
   puts("PASS promotion_dirty_resident_full_directory_atomic_slot_reuse");

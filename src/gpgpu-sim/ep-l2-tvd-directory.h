@@ -16,7 +16,7 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
   typedef std::uint64_t address_type;
   typedef std::uint64_t cycle_type;
   enum state { EMPTY, CLEAN, WB_STAGED, WB_INFLIGHT, WB_COMPLETE };
-  enum operation { READ, WRITE, ATOMIC };
+  enum operation { READ_OP, WRITE_OP, ATOMIC_OP };
   enum result {
     DISABLED, ABSENT, LOOKUP_DELAY, READ_READY, PROMOTE_REQUIRED,
     WAIT_WRITEBACK, MISSING_SECTOR, PINNED, DIRECTORY_FULL,
@@ -198,9 +198,9 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     if (!live(t)) return observation(ABSENT);
     const entry &e = m_entries[t.index];
     observation o; o.identity = t; o.payload = e.payload;
-    if (op != READ && e.mandatory()) { o.status = WAIT_WRITEBACK; return o; }
+    if (op != READ_OP && e.mandatory()) { o.status = WAIT_WRITEBACK; return o; }
     if (!e.payload.valid()) { o.status = e.mandatory() ? WAIT_WRITEBACK : ABSENT; return o; }
-    if (op != READ) {
+    if (op != READ_OP) {
       o.status = e.readers ? PINNED : PROMOTE_REQUIRED; return o;
     }
     if ((sectors & ~e.valid_sectors) != 0) {

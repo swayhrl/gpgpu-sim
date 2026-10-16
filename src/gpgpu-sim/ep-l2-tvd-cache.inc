@@ -49,13 +49,13 @@ l2_cache::tvd_frontend_result l2_cache::tvd_frontend(mem_fetch *mf,
   // starts at actual INFLIGHT, before the generic WAD hazard check, and does
   // not wait for set_done. This also avoids aliasing WB/TVD bank retry tokens.
   if (entry.status == tvd_directory::WB_STAGED) return TVD_WAIT;
-  auto op = mf->isatomic() ? tvd_directory::ATOMIC :
-            mf->get_is_write() ? tvd_directory::WRITE : tvd_directory::READ;
+  auto op = mf->isatomic() ? tvd_directory::ATOMIC_OP :
+            mf->get_is_write() ? tvd_directory::WRITE_OP : tvd_directory::READ_OP;
   auto observation = m_tvd->preview_access(address, mf->get_access_sector_mask().to_ulong(),
       op, m_tvd_lookup_cycle, now);
   if (observation.status == tvd_directory::WAIT_WRITEBACK ||
       observation.status == tvd_directory::PINNED) return TVD_WAIT;
-  if (op != tvd_directory::READ) return TVD_NORMAL; // ft_access commits promotion
+  if (op != tvd_directory::READ_OP) return TVD_NORMAL; // ft_access commits promotion
   if (observation.status == tvd_directory::MISSING_SECTOR) {
     ep_l2::PayloadHandle released;
     if (m_tvd->reclaim(ticket, released, now) == tvd_directory::PINNED) return TVD_WAIT;
