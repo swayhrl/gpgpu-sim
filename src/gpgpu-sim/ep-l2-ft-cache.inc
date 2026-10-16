@@ -240,10 +240,11 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   }
   if (replacement && m_ft_pending.dirty) assert(m_ft_pending.bound);
   ep_l2_payload_store::slot &slot = m_ep_l2_payload.inspect_mutable(handle);
-  if (mf->get_is_write() || mf->isatomic()) {
+  if (mf->get_is_write() || (mf->isatomic() && probe == HIT)) {
     for (unsigned s = 0; s < 4; ++s)
       if (mf->get_access_sector_mask().test(s)) slot.versions[s] = (unsigned long long)mf->get_request_uid() + 1;
-    slot.ready_sector_mask |= mf->get_access_sector_mask();
+    if (mf->get_access_byte_mask().count() == m_config.get_atom_sz() || probe == HIT)
+      slot.ready_sector_mask |= mf->get_access_sector_mask();
   }
   if (m_tag_array->block_is_modified(index)) slot.status = ep_l2_payload_store::RESIDENT_DIRTY;
   else if (slot.pending_sector_mask.none()) slot.status = ep_l2_payload_store::RESIDENT_VALID;
