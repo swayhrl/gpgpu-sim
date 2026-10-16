@@ -15,12 +15,13 @@ struct scenario {
   exec_gpgpu_sim *gpu; memory_stats_t *stats; memory_partition_unit *part;
   memory_sub_partition *sp; partition_mf_allocator *alloc;
   std::map<unsigned, unsigned long long> responses;
-  explicit scenario(const char *base, const char *overlay, bool dirty=false, bool tvd=true, bool hold=false, unsigned sets=1)
+  explicit scenario(const char *base, const char *overlay, bool dirty=false, bool tvd=true, bool hold=false, unsigned sets=1, unsigned ft_mode=2)
       : cfg(&context) {
     option_parser_t p=option_parser_create(); context.ptx_reg_options(p);
     context.func_sim->ptx_opcocde_latency_options(p); icnt_reg_options(p); cfg.reg_options(p);
     option_parser_cfgfile(p,base); option_parser_cfgfile(p,overlay);
-    const char *args[]={"tvd-test", "-gpgpu_ep_l2_ft_mode","2", "-gpgpu_ep_l2_wbuf_entries","16",
+    const std::string mode=std::to_string(ft_mode);
+    const char *args[]={"tvd-test", "-gpgpu_ep_l2_ft_mode",mode.c_str(), "-gpgpu_ep_l2_wbuf_entries","16",
       "-gpgpu_dram_partition_queues","64:128:64:1", "-gpgpu_ep_l2_tvd_clean",tvd?"1":"0",
       "-gpgpu_ep_l2_tvd_dirty",dirty?"1":"0"};
     option_parser_cmdline(p,11,args);
@@ -47,12 +48,21 @@ struct scenario {
     return alloc->alloc(address,write?GLOBAL_ACC_W:GLOBAL_ACC_R,active,bytes,sectors,32,write,
         gpu->gpu_sim_cycle,0,0,0,NULL,0);
   }
+  unsigned push_partial_write(unsigned address) {
+    active_mask_t active; active.set(0); mem_access_byte_mask_t bytes;
+    unsigned sector=(address>>5)&3;
+    for(unsigned b=sector*32;b<sector*32+4;++b) bytes.set(b);
+    mem_access_sector_mask_t mask; mask.set(sector);
+    auto mf=alloc->alloc(address,GLOBAL_ACC_W,active,bytes,mask,32,true,gpu->gpu_sim_cycle,0,0,0,NULL,0);
+    unsigned uid=mf->get_request_uid();sp->push(mf,gpu->gpu_sim_cycle);return uid;
+  }
   unsigned push_atomic(unsigned address) {
     active_mask_t active; active.set(0); mem_access_byte_mask_t bytes;
     unsigned sector=(address>>5)&3;
     for(unsigned b=sector*32;b<sector*32+32;++b) bytes.set(b);
     mem_access_sector_mask_t mask; mask.set(sector);
     warp_inst_t instruction(gpu->getShaderCoreConfig()); instruction.initiation_interval=1;
+    instruction.space = memory_space_t(global_space);
     instruction.issue(active,0,gpu->gpu_sim_cycle,0,0,0);
     instruction.add_callback(0,NULL,NULL,NULL,true);
     mem_access_t access(GLOBAL_ACC_R,address,32,false,active,bytes,mask,&context);
@@ -226,8 +236,35 @@ static void dirty_bank_pool_full(const char *base,const char *overlay) {
   puts("PASS production_same_bank_pool_full_reclaims_only_completed_TVD_then_drains");
 }
 
+static void partial_dirty_promotion(const char *base,const char *overlay) {
+  scenario f(base,overlay,true); auto a=f.push(0);f.await(a);
+  auto handle=f.cache()->ep_l2_tag_payload_handle_for_test(0);
+  auto partial=f.push_partial_write(128);f.await(partial);
+  auto b=f.cache()->ep_l2_tag_payload_handle_for_test(0);
+  assert(f.cache()->ep_l2_payload_for_test().inspect(b).ready_sector_mask.none());
+  auto write=f.push(0,true);f.await(write);
+  assert(f.cache()->ep_l2_tag_payload_handle_for_test(0)==handle);
+  auto t=f.cache()->tvd_for_test()->find(128);
+  if (f.cache()->tvd_for_test()->live(t))
+    assert(!f.cache()->tvd_for_test()->at(t.index).payload.valid());
+  auto read=f.push(0);f.await(read);assert(f.responses.at(read)==(unsigned long long)write+1);
+  f.drain();f.sp->flushL2();
+  puts("PASS production_partial_dirty_victim_WAD_only_no_false_sector_forward_or_promotion_deadlock");
+}
+
 int main(int argc,char **argv) {
-  assert(argc==3);
+  assert(argc==3 || argc==4);
+  if (argc==4) {
+    std::string negative=argv[3];
+    if (negative=="--reject_static_tvd") { scenario illegal(argv[1],argv[2],true,true,false,1,1); return 77; }
+    if (negative=="--reject_old_tvd") { scenario illegal(argv[1],argv[2],true,true,false,1,0); return 77; }
+    if (negative=="--reject_live_epoch") {
+      scenario f(argv[1],argv[2],true,true,true);
+      auto a=f.push(0,true);f.await(a);auto b=f.push(128,true);f.await(b);
+      assert(f.cache()->ep_l2_wad_occupancy());f.sp->flushL2();return 77;
+    }
+    return 78;
+  }
   clean_actual_frontend(argv[1],argv[2]);
   clean_partial_sector_fallback(argv[1],argv[2]);
   clean_write_promotes_dirty_resident(argv[1],argv[2]);
@@ -237,4 +274,5 @@ int main(int argc,char **argv) {
   dirty_partial(argv[1],argv[2]);
   dirty_wad_full(argv[1],argv[2]);
   dirty_bank_pool_full(argv[1],argv[2]);
+  partial_dirty_promotion(argv[1],argv[2]);
 }

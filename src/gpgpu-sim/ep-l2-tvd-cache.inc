@@ -115,9 +115,12 @@ bool l2_cache::tvd_promote(mem_fetch *mf, unsigned time, std::list<cache_event> 
     if (!miss_queue_has_slots(1)) return false;
     assert(live);
     const auto saved = m_ep_l2_payload.inspect(victim);
+    const unsigned dirty_mask = block->get_dirty_sector_mask().to_ulong();
+    const unsigned ready_mask = saved.ready_sector_mask.to_ulong();
+    const bool retain = m_config.m_ep_l2_tvd_dirty && (dirty_mask & ~ready_mask) == 0;
     auto plan = m_tvd->preview_dirty_promotion(t, block->m_block_addr, victim,
-        saved.ready_sector_mask.to_ulong(), block->get_dirty_sector_mask().to_ulong(),
-        saved.pending_sector_mask.to_ulong());
+        retain ? ready_mask : dirty_mask, dirty_mask,
+        saved.pending_sector_mask.to_ulong(), retain);
     if (plan.status != tvd_directory::OK) return false;
     evicted_block_info evicted;
     evicted.set_info(block->m_block_addr, block->get_modified_size(),

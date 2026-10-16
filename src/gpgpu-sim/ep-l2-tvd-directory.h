@@ -58,8 +58,9 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     address_type victim_line;
     Handle victim;
     unsigned valid, dirty;
+    bool retain_payload;
     promotion_plan() : status(INVALID_INPUT), revision(0), victim_line(0),
-                       valid(0), dirty(0) {}
+                       valid(0), dirty(0), retain_payload(false) {}
   };
   struct observation {
     result status;
@@ -259,7 +260,7 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
   // Caller must pre-reserve the real WB/lower resources without mutation.
   promotion_plan preview_dirty_promotion(ticket source, address_type victim_line,
                                          Handle victim, unsigned valid,
-                                         unsigned dirty, unsigned pending) const {
+                                         unsigned dirty, unsigned pending, bool retain = true) const {
     promotion_plan p;
     if (!m_clean && !m_dirty) { p.status = DISABLED; return p; }
     if (!live(source)) { p.status = STALE; return p; }
@@ -272,6 +273,7 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
       if (m_entries[i].status != EMPTY && same(m_entries[i].payload, victim)) return p;
     p.status = OK; p.source = source; p.revision = m_revision;
     p.victim_line = victim_line; p.victim = victim; p.valid = valid; p.dirty = dirty;
+    p.retain_payload = m_dirty && retain;
     return p;
   }
   result commit_dirty_promotion(const promotion_plan &p, cycle_type now,
@@ -282,7 +284,7 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     assert(!e.mandatory() && !e.readers);
     advance(now); promoted = e.payload;
     bump(e.incarnation); e.status = WB_STAGED; e.line = p.victim_line;
-    e.payload = m_dirty ? p.victim : Handle(); e.valid_sectors = p.valid; e.dirty_sectors = p.dirty;
+    e.payload = p.retain_payload ? p.victim : Handle(); e.valid_sectors = p.valid; e.dirty_sectors = p.dirty;
     e.age = ++m_age; e.born = now; e.lower_accepted = 0;
     writeback = ticket(p.source.index, e.incarnation);
     ++m_revision; ++m_stats.promotions; ++m_stats.dirty_installs;
