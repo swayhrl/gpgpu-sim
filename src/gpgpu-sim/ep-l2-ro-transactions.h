@@ -14,15 +14,7 @@
 // Every requester uses the existing mshr_table's descriptor free-list.
 namespace ep_l2_ro {
 
-struct identity {
-  unsigned id;
-  uint64_t generation;
-  identity(unsigned i = ~0U, uint64_t g = 0) : id(i), generation(g) {}
-  bool valid() const { return id != ~0U; }
-  bool operator==(const identity &b) const {
-    return id == b.id && generation == b.generation;
-  }
-};
+typedef ep_l2::PayloadHandle identity;
 
 struct tag_binding {
   unsigned index;
@@ -36,6 +28,8 @@ class payload_port {
  public:
   virtual ~payload_port() {}
   virtual bool live(identity h, new_addr_type line) const = 0;
+  virtual bool pin(identity h) = 0;
+  virtual void unpin(identity h) = 0;
   virtual bool fill_write(identity h, unsigned sectors, uint64_t cycle) = 0;
   virtual bool response_read(identity h, unsigned sectors, uint64_t cycle) = 0;
   virtual bool tag_matches(tag_binding tag, identity h,
@@ -116,9 +110,9 @@ class transactions {
     // Detach-only uses the conventional MSHR adapter, not an invented pool.
     // Its production wiring remains a Lane-1 integration prerequisite.
     if (!m_features.line_mshr_bypass) return NORMAL_PATH;
-    if (line % 128 || h.id >= m_slots.size() || !m_port.live(h, line) ||
+    if (line % 128 || h.payload_id >= m_slots.size() || !m_port.live(h, line) ||
         !m_port.tag_matches(tag, h, line)) return TAG_BINDING_INVALID;
-    entry &e = m_slots[h.id];
+    entry &e = m_slots[h.payload_id];
     if (e.live) return TRANSACTION_SLOT_BUSY;
     // A current attached tag is the only merge lookup. Detached instances
     // never address-match a new request. Caller must not install two tags.
@@ -128,6 +122,10 @@ class transactions {
     mshr_table::ro_descriptor_handle d;
     if (!m_shared.reserve_ro_descriptor(line, mf, sector_mask(mask), d))
       return DESCRIPTOR_OR_ADDRESS_FULL;
+    if (!m_port.pin(h)) {
+      m_shared.release_ro_descriptor(d);
+      return TRANSACTION_SLOT_BUSY;
+    }
     e = entry(); e.live = e.attached = true; e.h = h; e.tag = tag;
     e.line = line; e.epoch = epoch; e.required = mask;
     e.waiters.push_back(waiter(d, mf, mask));
@@ -135,9 +133,14 @@ class transactions {
     return ACCEPTED;
   }
 
-  admission merge(identity h, mem_fetch *mf, unsigned mask) {
+  admission merge(identity h, mem_fetch *mf, unsigned mask,
+                  uint64_t epoch, bool certified_line, request_kind kind) {
     check_mask(mask);
     entry &e = get(h);
+    if (epoch != e.epoch || !certified_line || kind != GLOBAL_DEMAND_READ) {
+      ++stats.rejected_oracle;
+      return NORMAL_PATH;
+    }
     if (!e.attached || !m_port.tag_matches(e.tag, h, e.line))
       return NORMAL_PATH;
     mshr_table::ro_descriptor_handle d;
@@ -184,25 +187,26 @@ class transactions {
     entry &e = get(h);
     if ((mask & ~e.issued) || (mask & e.ready))
       throw std::logic_error("unexpected or repeated fill");
+    if (e.attached && !m_port.tag_matches(e.tag, h, e.line))
+      throw std::logic_error("stale attached fill tag generation");
     if (!m_port.fill_write(h, mask, cycle)) return false;
     e.ready |= mask;
     if (e.attached) {
-      if (!m_port.tag_matches(e.tag, h, e.line))
-        throw std::logic_error("stale attached fill tag generation");
       m_port.tag_ready(e.tag, h, e.line, e.ready);
     }
     retire_if_done(e);
     return true;
   }
-  // A granted data read can remain staged while the response FIFO is full.
-  // Repeated prepare/peek never rereads data or frees a descriptor.
+  // A read grant is cycle-local: a rejected enqueue must reread on retry.
+  // No hidden per-transaction response data buffer is provided.
   bool prepare_response(identity h, uint64_t cycle, response &out) {
     entry &e = get(h);
+    if (e.prepared && e.prepared_cycle != cycle) e.prepared = false;
     if (!e.prepared) {
       for (unsigned i = 0; i < e.waiters.size(); ++i) {
         if ((e.waiters[i].sectors & ~e.ready) == 0) {
           if (!m_port.response_read(h, e.waiters[i].sectors, cycle)) return false;
-          e.prepared = true; e.prepared_index = i;
+          e.prepared = true; e.prepared_index = i; e.prepared_cycle = cycle;
           break;
         }
       }
@@ -215,7 +219,9 @@ class transactions {
   void commit_response(identity h, bool fifo_accepted) {
     entry &e = get(h);
     if (!e.prepared) throw std::logic_error("response commit without read");
-    if (!fifo_accepted) { ++stats.response_backpressure; return; }
+    if (!fifo_accepted) {
+      ++stats.response_backpressure; e.prepared = false; return;
+    }
     m_shared.release_ro_descriptor(e.waiters[e.prepared_index].descriptor);
     e.waiters.erase(e.waiters.begin() + e.prepared_index);
     e.prepared = false; ++stats.responses;
@@ -242,10 +248,10 @@ class transactions {
   struct entry {
     bool live, attached, reuse_seen, prepared;
     unsigned required, issued, ready, prepared_index;
-    identity h; tag_binding tag; new_addr_type line; uint64_t epoch;
+    identity h; tag_binding tag; new_addr_type line; uint64_t epoch, prepared_cycle;
     std::vector<waiter> waiters;
     entry() : live(false), attached(false), reuse_seen(false), prepared(false),
-      required(0), issued(0), ready(0), prepared_index(0), line(0), epoch(0) {}
+      required(0), issued(0), ready(0), prepared_index(0), line(0), epoch(0), prepared_cycle(0) {}
   };
   static void check_mask(unsigned mask) {
     if (!mask || (mask & ~15U)) throw std::invalid_argument("invalid sector mask");
@@ -257,10 +263,10 @@ class transactions {
     return mem_access_sector_mask_t(mask);
   }
   entry &get(identity h) {
-    if (h.id >= m_slots.size() || !m_slots[h.id].live ||
-        !(m_slots[h.id].h == h) || !m_port.live(h, m_slots[h.id].line))
+    if (h.payload_id >= m_slots.size() || !m_slots[h.payload_id].live ||
+        !(m_slots[h.payload_id].h == h) || !m_port.live(h, m_slots[h.payload_id].line))
       throw std::logic_error("stale payload transaction generation");
-    return m_slots[h.id];
+    return m_slots[h.payload_id];
   }
   const entry &get(identity h) const {
     return const_cast<transactions *>(this)->get(h);
@@ -268,6 +274,7 @@ class transactions {
   void retire_if_done(entry &e) {
     if (!e.waiters.empty() || e.prepared || e.required != e.ready ||
         e.required != e.issued) return;
+    m_port.unpin(e.h);
     if (!e.attached) m_port.release(e.h);
     e.live = false;
   }

@@ -18,8 +18,9 @@ class reference_port : public payload_port {
     identity h;
     new_addr_type line;
     bool allocated;
+    unsigned pins;
     std::array<unsigned char,128> data;
-    landing() : line(0), allocated(false) { data.fill(0); }
+    landing() : line(0), allocated(false), pins(0) { data.fill(0); }
   };
   struct tag { identity h; new_addr_type line; uint64_t gen; unsigned ready;
     tag() : line(0), gen(0), ready(0) {} };
@@ -36,27 +37,31 @@ class reference_port : public payload_port {
   }
   identity reserve(unsigned id, new_addr_type line, unsigned ti) {
     assert(!slots[id].allocated);
-    landing &p=slots[id]; ++p.h.generation; p.h.id=id;
+    landing &p=slots[id]; ++p.h.generation; p.h.payload_id=id;
     p.line=line; p.allocated=true; p.data.fill(0);
     tag &t=tags[ti]; ++t.gen; t.h=p.h; t.line=line; t.ready=0;
     return p.h;
   }
   tag_binding binding(unsigned i) { return tag_binding(i,tags[i].gen); }
   bool live(identity h,new_addr_type line) const {
-    return h.id<slots.size() && slots[h.id].allocated &&
-      slots[h.id].h==h && slots[h.id].line==line;
+    return h.payload_id<slots.size() && slots[h.payload_id].allocated &&
+      slots[h.payload_id].h==h && slots[h.payload_id].line==line;
   }
   bool bank(identity h,uint64_t cycle) {
-    if(used_cycle[h.id%4]==cycle) return false;
-    used_cycle[h.id%4]=cycle; return true;
+    if(used_cycle[h.payload_id%4]==cycle) return false;
+    used_cycle[h.payload_id%4]=cycle; return true;
+  }
+  bool pin(identity h) { ++slots[h.payload_id].pins; return true; }
+  void unpin(identity h) {
+    assert(slots[h.payload_id].pins); --slots[h.payload_id].pins;
   }
   bool fill_write(identity h,unsigned mask,uint64_t cycle) {
-    assert(live(h,slots[h.id].line));
+    assert(live(h,slots[h.payload_id].line));
     if(!bank(h,cycle)) return false;
     ++fills;
     for(unsigned s=0;s<4;++s) if(mask>>s&1)
       for(unsigned b=s*32;b<(s+1)*32;++b)
-        slots[h.id].data[b]=memory(slots[h.id].line,b);
+        slots[h.payload_id].data[b]=memory(slots[h.payload_id].line,b);
     return true;
   }
   bool response_read(identity h,unsigned mask,uint64_t cycle) {
@@ -64,8 +69,8 @@ class reference_port : public payload_port {
     ++reads;
     for(unsigned s=0;s<4;++s) if(mask>>s&1)
       for(unsigned b=s*32;b<(s+1)*32;++b) {
-        observed[b]=slots[h.id].data[b];
-        assert(observed[b]==memory(slots[h.id].line,b));
+        observed[b]=slots[h.payload_id].data[b];
+        assert(observed[b]==memory(slots[h.payload_id].line,b));
       }
     return true;
   }
@@ -82,8 +87,8 @@ class reference_port : public payload_port {
     tags.erase(b.index);
   }
   void release(identity h) {
-    assert(slots[h.id].allocated && slots[h.id].h==h);
-    slots[h.id].allocated=false; ++releases;
+    assert(slots[h.payload_id].allocated && slots[h.payload_id].h==h && !slots[h.payload_id].pins);
+    slots[h.payload_id].allocated=false; ++releases;
   }
 };
 
@@ -94,7 +99,7 @@ static void out_of_order_backpressure_and_waiter_protection() {
   transactions t(shared,p,1168,switches(true,true)); t.begin_epoch(1,hash());
   identity h=p.reserve(0,0x1000,0);
   assert(t.admit(1,0x1000,h,p.binding(0),request(1),3,true,GLOBAL_DEMAND_READ)==ACCEPTED);
-  assert(t.merge(h,request(2),4)==ACCEPTED);
+  assert(t.merge(h,request(2),4,1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
   assert(!t.detach(h)); // second requester protects even if one retires
   assert(t.lower_needed(h)==7); t.lower_accepted(h,7);
   assert(t.fill(h,4,1)); assert(t.pending(h)==3);
@@ -103,7 +108,8 @@ static void out_of_order_backpressure_and_waiter_protection() {
   assert(t.prepare_response(h,2,r)); assert(r.request==request(2));
   t.commit_response(h,false);
   unsigned reads=p.reads;
-  assert(t.prepare_response(h,3,r)); assert(p.reads==reads);
+  assert(t.prepare_response(h,3,r)); assert(p.reads==reads+1);
+  assert(t.prepare_response(h,3,r)); assert(p.reads==reads+1);
   assert(shared.descriptor_count_used()==2);
   t.commit_response(h,true); assert(shared.descriptor_count_used()==1);
   assert(!t.detach(h));
@@ -131,9 +137,10 @@ static void same_line_detached_instances_and_generation() {
   assert(p.tag_updates==updates && p.tags[0].h==b); // old fill cannot modify B
   response r;
   assert(t.prepare_response(a,3,r));t.commit_response(a,false);
-  assert(p.slots[a.id].allocated);t.commit_response(a,true);
-  assert(!p.slots[a.id].allocated && p.slots[b.id].allocated);
-  assert(t.prepare_response(b,4,r));t.commit_response(b,true);
+  assert(p.slots[a.payload_id].allocated);
+  assert(t.prepare_response(a,4,r));t.commit_response(a,true);
+  assert(!p.slots[a.payload_id].allocated && p.slots[b.payload_id].allocated);
+  assert(t.prepare_response(b,5,r));t.commit_response(b,true);
   assert(t.end_epoch() && shared.descriptor_count_used()==0);
   identity fresh=p.reserve(0,0x3000,1);
   assert(fresh.generation!=a.generation);
@@ -141,7 +148,7 @@ static void same_line_detached_instances_and_generation() {
   assert(t.admit(3,0x3000,fresh,p.binding(1),request(12),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
   bool rejected=false;try{t.fill(a,1,5);}catch(const std::logic_error&){rejected=true;}
   assert(rejected);t.lower_accepted(fresh,1);assert(t.detach(fresh));
-  assert(t.fill(fresh,1,5));assert(t.prepare_response(fresh,6,r));t.commit_response(fresh,true);
+  assert(t.fill(fresh,1,6));assert(t.prepare_response(fresh,7,r));t.commit_response(fresh,true);
   assert(t.end_epoch());
 }
 
@@ -164,8 +171,8 @@ static void descriptor_pool_is_shared_and_address_bounded() {
   transactions t2(per_line,p2,1168,switches(true,true));t2.begin_epoch(5,hash());
   identity h=p2.reserve(0,0x6000,0);
   assert(t2.admit(5,0x6000,h,p2.binding(0),request(900),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
-  for(unsigned n=0;n<31;++n)assert(t2.merge(h,request(901+n),1)==ACCEPTED);
-  assert(t2.merge(h,request(999),1)==DESCRIPTOR_OR_ADDRESS_FULL);
+  for(unsigned n=0;n<31;++n)assert(t2.merge(h,request(901+n),1,5,true,GLOBAL_DEMAND_READ)==ACCEPTED);
+  assert(t2.merge(h,request(999),1,5,true,GLOBAL_DEMAND_READ)==DESCRIPTOR_OR_ADDRESS_FULL);
   assert(per_line.full_reason(0x6000)==mshr_table::EP_L2_BLOCK_PER_ADDRESS_CAP);
   assert(per_line.descriptor_count_used()==32);
 }

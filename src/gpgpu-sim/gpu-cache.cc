@@ -687,6 +687,7 @@ mshr_table::ep_l2_block_reason mshr_table::full_reason(
 }
 
 unsigned mshr_table::ro_targets_on_line(new_addr_type line) const {
+  if (!m_ro_descriptor_count) return 0;
   unsigned count = 0;
   for (unsigned i = 0; i < m_descriptor_pool.size(); ++i)
     if (m_descriptor_pool[i].m_ro_external &&
@@ -716,6 +717,7 @@ bool mshr_table::reserve_ro_descriptor(
   d.m_mf = mf; d.m_sectors = sectors; d.m_ro_external = true;
   d.m_ro_line = line; d.m_response_queued = false;
   m_free_descriptor_ids.pop_back();
+  ++m_ro_descriptor_count;
   result = ro_descriptor_handle(id, d.m_ro_generation);
   return true;
 }
@@ -732,6 +734,7 @@ void mshr_table::release_ro_descriptor(const ro_descriptor_handle &h) {
   const unsigned long long generation = d.m_ro_generation;
   d = ep_l2_descriptor();
   d.m_ro_generation = generation;
+  --m_ro_descriptor_count;
   m_free_descriptor_ids.push_back(h.id);
 }
 

@@ -1117,7 +1117,8 @@ class mshr_table {
       : m_num_entries(num_entries),
         m_max_merged(max_merged),
         m_descriptor_pool_size(descriptor_pool_size),
-        m_descriptor_per_line_cap(descriptor_per_line_cap)
+        m_descriptor_per_line_cap(descriptor_per_line_cap),
+        m_ro_descriptor_count(0)
 #if (tr1_hash_map_ismap == 0)
         ,
         m_data(2 * num_entries)
@@ -1230,6 +1231,7 @@ class mshr_table {
   const unsigned m_max_merged;
   const unsigned m_descriptor_pool_size;
   const unsigned m_descriptor_per_line_cap;
+  unsigned m_ro_descriptor_count;
 
   struct ep_l2_descriptor {
     mem_fetch *m_mf;
