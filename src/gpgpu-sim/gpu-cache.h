@@ -2744,14 +2744,14 @@ class l2_cache : public data_cache {
   void ft_rollback();
   struct ft_replacement {
     mem_fetch *request;
-    unsigned tag_index, phase;
+    unsigned tag_index, phase, landing_id;
     new_addr_type victim_address;
     ep_l2_payload_store::payload_handle victim, staging, landing;
     ep_l2_payload_store::slot saved;
     std::array<unsigned long long,4> copy_versions;
     unsigned long long born;
     bool dirty, wad, landing_reserved, bound;
-    ft_replacement() : request(NULL), tag_index(0), phase(0), victim_address(0),
+    ft_replacement() : request(NULL), tag_index(0), phase(0), landing_id((unsigned)-1), victim_address(0),
         born(0), dirty(false), wad(false), landing_reserved(false), bound(false) { copy_versions.fill(0); }
   };
   struct ft_wb_record {

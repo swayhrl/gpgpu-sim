@@ -133,6 +133,8 @@ static void response_pins_and_sectors(const char *base,const char *overlay) {
   mem_fetch *merged=f.make(0x1000,false,GLOBAL_ACC_R);assert(f.access(merged));
   mem_fetch *b=f.make(0x1020,false,GLOBAL_ACC_R);assert(f.access(b));
   auto h=f.resident();auto &pool=f.cache->ep_l2_payload_for_test();
+  mem_fetch *ordered_write=f.make(0x1000,true);
+  assert(!f.access(ordered_write,4));delete ordered_write;
   assert(pool.inspect(h).pins==3 && pool.inspect(h).pending_sector_mask.count()==2);
   for(unsigned n=0;n<16 && f.port.packets.size()<2;++n) f.cycle();
   assert(f.port.packets.size()==2);

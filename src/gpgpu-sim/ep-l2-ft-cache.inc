@@ -131,10 +131,10 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
       staging = m_ep_l2_payload.preview_free(ep_l2_payload_store::WB);
       if (!staging.valid()) { ++m_ft_stats.wbuf_full; return RESERVATION_FAIL; }
     }
-    if (m_config.m_ep_l2_ft_mode == 2 && dirty) {
+    if (m_config.m_ep_l2_ft_mode == 2 && (dirty || !live)) {
       landing = m_ep_l2_payload.preview_free(ep_l2_payload_store::RESIDENT, index % 4);
       if (!landing.valid()) { ++m_ft_stats.pool_full; return RESERVATION_FAIL; }
-      staging = victim;
+      if (dirty) staging = victim;
     }
     // The only producer is the serialized frontend head. While this token is
     // live no other frontend request can steal its prechecked issue slots;
@@ -142,6 +142,8 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     ft_replacement &p = m_ft_pending;
     p.request = mf; p.tag_index = index; p.dirty = dirty; p.victim = live ? victim : ep_l2::PayloadHandle();
     p.born = time;
+    p.landing_id = landing.valid() ? landing.payload_id :
+        (m_config.m_ep_l2_ft_mode == 2 && live ? victim.payload_id : index);
     if (live) p.saved = m_ep_l2_payload.inspect(victim);
     if (dirty) {
       p.victim_address = m_tag_array->get_block(index)->m_block_addr;
@@ -188,21 +190,24 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
         ++m_ft_stats.copy_lines; p.phase = 2;
       }
     }
+    // Locally absorbed writes consume an actual payload RAM write. Request
+    // the stable prospective ID before changing victim/tag ownership, so a
+    // same-bank denial cannot expose a partially installed new generation.
+    if (mf->get_is_write()) {
+      m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(
+          ep_l2_payload_store::RESIDENT, p.landing_id, true, time,
+          (unsigned long long)-1, ep_l2_payload_store::RESIDENT_WRITE);
+      if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
+        ++m_ft_stats.bank_block; return RESERVATION_FAIL;
+      }
+    }
     if (p.dirty && m_config.m_ep_l2_ft_mode == 2) {
       m_ep_l2_payload.transfer(p.victim, ep_l2_payload_store::WB, ep_l2_payload_store::WB_STAGED);
       if (p.victim.payload_id < 1024) ++m_ft_stats.borrow_resident;
       else if (p.victim.payload_id < 1152) ++m_ft_stats.borrow_bypass;
     }
     if (!p.landing_reserved) {
-      unsigned id = index;
-      if (m_config.m_ep_l2_ft_mode == 2) {
-        if (p.victim.valid()) id = p.victim.payload_id;
-        else {
-          const ep_l2::PayloadHandle available = m_ep_l2_payload.preview_free(ep_l2_payload_store::RESIDENT, index % 4);
-          if (!available.valid()) { ft_rollback(); ++m_ft_stats.pool_full; return RESERVATION_FAIL; }
-          id = available.payload_id;
-        }
-      }
+      const unsigned id = p.landing_id;
       if (m_ep_l2_payload.handle_live(p.victim)) m_ep_l2_payload.release(p.victim);
       p.landing = m_ep_l2_payload.reserve(id, ep_l2_payload_store::RESIDENT,
           owner, ep_l2_payload_store::RESIDENT_FILL_PENDING);
@@ -212,7 +217,10 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   } else {
     const ep_l2::PayloadHandle h = tag_payload_handle(index);
     assert(m_ep_l2_payload.handle_owner_matches(h, owner));
-    if (probe == HIT) {
+    if ((mf->get_is_write() || mf->isatomic()) && m_ep_l2_payload.inspect(h).pins) {
+      ++m_ft_stats.pin_block; return RESERVATION_FAIL;
+    }
+    if (probe == HIT || mf->get_is_write()) {
       m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(h,
           mf->get_is_write() || mf->isatomic(), time, (unsigned long long)-1,
           mf->get_is_write() || mf->isatomic() ? ep_l2_payload_store::RESIDENT_WRITE : ep_l2_payload_store::RESIDENT_HIT_READ);
