@@ -1,5 +1,51 @@
 // FT20261016 production integration. Included once by gpu-cache.cc.
 // The all-OFF path remains in the historical implementation.
+void l2_cache::force_tag_access(new_addr_type addr, unsigned time,
+                                mem_access_sector_mask_t mask) {
+  if (!ft_enabled()) { baseline_cache::force_tag_access(addr, time, mask); return; }
+  // Trace host memcpy prefill runs outside active hardware work. Never retire
+  // a lower transaction, response reference or WB merely to warm a Tag.
+  assert(ft_drained() && m_ep_l2_wad_entries_live.empty());
+  const new_addr_type owner = m_config.block_addr(addr);
+  unsigned index = (unsigned)-1;
+  const cache_request_status status = m_tag_array->probe(owner, index, mask, true, true);
+  assert(status != RESERVATION_FAIL && index < m_config.get_num_lines());
+  ep_l2::PayloadHandle handle = tag_payload_handle(index);
+  if (status == MISS) {
+    unsigned landing = index;
+    if (m_ep_l2_payload.handle_live(handle)) {
+      const ep_l2_payload_store::slot &old = m_ep_l2_payload.inspect(handle);
+      assert(old.allocation_role == ep_l2_payload_store::RESIDENT &&
+             !old.pins && old.pending_sector_mask.none());
+      landing = handle.payload_id;
+      m_ep_l2_payload.release(handle);
+    } else if (m_config.m_ep_l2_ft_mode == 2) {
+      const ep_l2::PayloadHandle free = m_ep_l2_payload.preview_free(
+          ep_l2_payload_store::RESIDENT, index % 4);
+      assert(free.valid());
+      landing = free.payload_id;
+    }
+    assert(landing % 4 == index % 4);
+    handle = m_ep_l2_payload.reserve(landing, ep_l2_payload_store::RESIDENT,
+        owner, ep_l2_payload_store::RESIDENT_VALID);
+    set_tag_payload_handle(index, handle);
+  } else {
+    assert(m_ep_l2_payload.handle_owner_matches(handle, owner));
+    const ep_l2_payload_store::slot &old = m_ep_l2_payload.inspect(handle);
+    assert(!old.pins && old.pending_sector_mask.none());
+  }
+  baseline_cache::force_tag_access(addr, time, mask);
+  ep_l2_payload_store::slot &slot = m_ep_l2_payload.inspect_mutable(handle);
+  slot.ready_sector_mask |= mask;
+  // Dataless host initialization has the same explicit version-zero symbol as
+  // ordinary untouched lower memory, not fabricated numerical payload bytes.
+  for (unsigned sector = 0; sector < 4; ++sector)
+    if (mask.test(sector)) slot.versions[sector] = 0;
+  slot.status = m_tag_array->block_is_modified(index) ?
+      ep_l2_payload_store::RESIDENT_DIRTY : ep_l2_payload_store::RESIDENT_VALID;
+  assert(m_ep_l2_payload.ownership_consistent());
+}
+
 void l2_cache::descriptor_admitted(mem_fetch *mf, unsigned index) {
   if (!ft_enabled()) return;
   const ep_l2::PayloadHandle h = tag_payload_handle(index);

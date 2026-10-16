@@ -2691,6 +2691,10 @@ class l2_cache : public data_cache {
   bool ft_response_ready(unsigned long long cycle);
   void cycle();
   void ft_print(FILE *fp, unsigned slice) const;
+  // Untimed host memcpy prefill must own payload storage as well as a Tag.
+  // The non-FT route retains the historical Tag-only initialization.
+  void force_tag_access(new_addr_type addr, unsigned time,
+                        mem_access_sector_mask_t mask);
   unsigned ft_wb_staged() const { return m_ft_wb.size(); }
   unsigned ft_pending_lower_reads() const { return m_ep_l2_payload.pending_sector_count(); }
   bool ft_reservation_active() const { return m_ft_pending.request != NULL; }
