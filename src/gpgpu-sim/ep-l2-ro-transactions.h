@@ -32,11 +32,13 @@ class payload_port {
   virtual bool pin(identity h) = 0;
   virtual void unpin(identity h) = 0;
   virtual bool fill_write(identity h, unsigned sectors, uint64_t cycle) = 0;
+  virtual void lower_accepted(identity, unsigned) {}
   virtual bool response_read(identity h, unsigned sectors, uint64_t cycle) = 0;
   virtual bool tag_matches(tag_binding tag, identity h,
                            new_addr_type line) const = 0;
   virtual void tag_ready(tag_binding tag, identity h,
-                          new_addr_type line, unsigned ready_sectors) = 0;
+                          new_addr_type line, unsigned ready_sectors,
+                          bool all_required_ready) = 0;
   virtual void tag_detach(tag_binding tag, identity h) = 0;
   virtual void release(identity h) = 0;
 };
@@ -182,7 +184,8 @@ class transactions {
     entry &e = get(h);
     // Conservative waiter-aware protection persists after a merged waiter
     // retires. No future reuse oracle is consumed by this policy.
-    if (!m_features.tag_detach || !e.attached || e.reuse_seen) return false;
+    if (!m_features.tag_detach || !e.attached || e.reuse_seen ||
+        !(e.required & ~e.ready)) return false;
     if (!m_port.tag_matches(e.tag, h, e.line))
       throw std::logic_error("tag reuse without detach handshake");
     m_port.tag_detach(e.tag, h); e.attached = false;
@@ -206,6 +209,7 @@ class transactions {
           m_slots[i].line == e.line) duplicates |= m_slots[i].issued & mask;
     stats.duplicate_sectors += bits(duplicates);
     stats.lower_sectors += bits(mask);
+    m_port.lower_accepted(h, mask);
     e.issued |= mask;
     if (!m_features.line_mshr_bypass)
       m_shared.ro_line_issue(e.line, sector_mask(mask));
@@ -222,7 +226,8 @@ class transactions {
     if (!m_features.line_mshr_bypass)
       m_shared.ro_line_ready(e.line, sector_mask(mask));
     if (e.attached) {
-      m_port.tag_ready(e.tag, h, e.line, e.ready);
+      m_port.tag_ready(e.tag, h, e.line, e.ready,
+                       (e.required & ~e.ready) == 0);
     }
     retire_if_done(e);
     return true;

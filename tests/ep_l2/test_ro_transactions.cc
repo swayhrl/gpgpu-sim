@@ -80,7 +80,7 @@ class reference_port : public payload_port {
     return t!=tags.end() && t->second.gen==b.generation &&
       t->second.h==h && t->second.line==line;
   }
-  void tag_ready(tag_binding b,identity h,new_addr_type line,unsigned ready) {
+  void tag_ready(tag_binding b,identity h,new_addr_type line,unsigned ready,bool) {
     assert(tag_matches(b,h,line)); tags[b.index].ready=ready; ++tag_updates;
   }
   void tag_detach(tag_binding b,identity h) {

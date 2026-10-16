@@ -2112,7 +2112,7 @@ class ep_l2_payload_store {
   static const unsigned k_physical_slots = 1152;
   static const unsigned k_resident_slots = 1024;
   static const unsigned k_bypass_slots = 128;
-  enum role { RESIDENT, BYPASS, WB };
+  enum role { RESIDENT, BYPASS, WB, RO };
   // A boolean cannot distinguish an ordinary target-payload retry from a
   // physical same-bank denial.  C6c needs that distinction both for correct
   // same-cycle admission and for meaningful B0-Banked telemetry.
@@ -2133,7 +2133,7 @@ class ep_l2_payload_store {
     RESIDENT_VALID,
     RESIDENT_DIRTY,
     BYPASS_FILL_PENDING,
-    BYPASS_READY, WB_RESERVED, WB_STAGED
+    BYPASS_READY, WB_RESERVED, WB_STAGED, RO_FILL_ATTACHED, RO_FILL_DETACHED
   };
   // This is the sole physical-payload identity.  mem_fetch already carries
   // the same pair across the lower request/response path.
@@ -2307,11 +2307,14 @@ class ep_l2_payload_store {
   }
   // FT public allocation primitives. Preview does not acquire a resource.
   unsigned physical_slots() const { return m_slots.size(); }
+  unsigned ft_mode() const { return m_ft_mode; }
+  unsigned ro_used() const { return used(RO); }
   unsigned wb_used() const { return used(WB); }
-  unsigned free_slots() const { return physical_slots() - used(RESIDENT) - used(BYPASS) - used(WB); }
+  unsigned free_slots() const { return physical_slots() - used(RESIDENT) - used(BYPASS) - used(WB) - used(RO); }
   const slot &inspect(const payload_handle &h) const { assert(handle_live(h)); return m_slots[h.payload_id]; }
   slot &inspect_mutable(const payload_handle &h) { assert(handle_live(h)); return m_slots[h.payload_id]; }
   payload_handle preview_free(role r, unsigned bank = (unsigned)-1) const {
+    if (r == RO && m_ft_mode != 2) return payload_handle();
     for (unsigned id = 0; id < m_slots.size(); ++id) {
       if (m_slots[id].occupied() || (bank != (unsigned)-1 && id % 4 != bank)) continue;
       if (m_ft_mode == 1 && ((r == WB && id < k_physical_slots) ||
@@ -2323,6 +2326,7 @@ class ep_l2_payload_store {
   }
   payload_handle reserve(unsigned id, role r, new_addr_type owner, state st) {
     assert(m_ft_mode && id < m_slots.size() && !m_slots[id].occupied());
+    assert(r != RO || m_ft_mode == 2);
     slot &s = m_slots[id];
     assert(s.generation != std::numeric_limits<unsigned>::max());
     ++s.generation; s.allocation_role = r; s.status = st; s.owner = owner;
@@ -2528,6 +2532,10 @@ class ep_l2_payload_store {
         if (!owners.insert(s.owner).second) return false;
       } else if (s.allocation_role == WB) {
         if (!m_ft_mode || (s.status != WB_RESERVED && s.status != WB_STAGED)) return false;
+      } else if (s.allocation_role == RO) {
+        // Equal-address detached transactions are legal independent owners.
+        if (m_ft_mode != 2 || (s.status != RO_FILL_ATTACHED &&
+                              s.status != RO_FILL_DETACHED)) return false;
       } else {
         if (i < k_resident_slots ||
             (s.status != BYPASS_FILL_PENDING && s.status != BYPASS_READY)) return false;

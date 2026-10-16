@@ -12,3 +12,8 @@ ${CXX:-g++} -std=c++11 -O2 -Wall -Wextra -ffunction-sections -fdata-sections \
 ${CXX:-g++} -std=c++11 -O2 -Wall -Wextra \
   "$root/tests/ep_l2/test_ro_oracle_certificate.cc" -o "${out}_oracle"
 "${out}_oracle"
+${CXX:-g++} -std=c++11 -O2 -ffunction-sections -fdata-sections \
+  -I"$cuda_root/include" -I"$root/src" -I"$root" \
+  "$root/tests/ep_l2/test_ro_store_port.cc" \
+  "$root/src/gpgpu-sim/gpu-cache.cc" -Wl,--gc-sections -o "${out}_store"
+"${out}_store"
