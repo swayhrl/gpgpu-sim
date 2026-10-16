@@ -38,6 +38,7 @@
 #include "../tr1_hash_map.h"
 #include "gpu-misc.h"
 #include "mem_fetch.h"
+#include "ep-l2-ft-interface.h"
 
 #include <iostream>
 #include <vector>
@@ -2119,13 +2120,7 @@ class ep_l2_payload_store {
   };
   // This is the sole physical-payload identity.  mem_fetch already carries
   // the same pair across the lower request/response path.
-  struct payload_handle {
-    unsigned payload_id;
-    unsigned generation;
-    payload_handle(unsigned id = (unsigned)-1, unsigned gen = 0)
-        : payload_id(id), generation(gen) {}
-    bool valid() const { return payload_id != (unsigned)-1; }
-  };
+  typedef ep_l2::PayloadHandle payload_handle;
   struct slot {
     role allocation_role;
     state status; new_addr_type owner; unsigned generation;
