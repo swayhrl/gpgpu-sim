@@ -413,8 +413,14 @@ class memory_sub_partition {
     return m_ep_l2_last_preview_block_reason;
   }
 
+  unsigned long long ft_bank_grants_for_test(unsigned bank) const {
+    return m_L2cache->ep_l2_payload_bank_grants(bank);
+  }
+
   void force_l2_tag_update(new_addr_type addr, unsigned time,
                            mem_access_sector_mask_t mask) {
+    assert((!m_L2cache->ft_enabled() || !busy()) &&
+           "FT host prefill requires an idle subpartition");
     m_L2cache->force_tag_access(addr, m_memcpy_cycle_offset + time, mask);
     m_memcpy_cycle_offset += 1;
   }

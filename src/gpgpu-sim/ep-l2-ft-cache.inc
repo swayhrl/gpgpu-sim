@@ -1,5 +1,80 @@
 // FT20261016 production integration. Included once by gpu-cache.cc.
 // The all-OFF path remains in the historical implementation.
+void l2_cache::force_tag_access(new_addr_type addr, unsigned time,
+                                mem_access_sector_mask_t mask) {
+  if (!ft_enabled()) { baseline_cache::force_tag_access(addr, time, mask); return; }
+  // Trace host memcpy prefill runs outside active hardware work. Never retire
+  // a lower transaction, response reference or WB merely to warm a Tag.
+  assert(ft_drained() && ep_l2_wad_occupancy() == 0);
+  assert(mask.count() == 1 && "FT host prefill requires one declared sector");
+  assert(!m_tvd_lookup && !m_tvd_read);
+  const new_addr_type owner = m_config.block_addr(addr);
+  unsigned index = (unsigned)-1;
+  const cache_request_status status = m_tag_array->probe(owner, index, mask, true, true);
+  assert(status != RESERVATION_FAIL && index < m_config.get_num_lines());
+  // Untimed initialization may replace clean data only. A dirty resident
+  // (including a same-owner partial-sector hit) needs a timed WB, which this
+  // host hook does not model. Reject before any Tag/directory/allocator edit.
+  assert(!m_tag_array->get_block(index)->is_reserved_line());
+  assert(!m_tag_array->block_is_modified(index) &&
+         "FT host prefill cannot discard dirty resident data");
+  ep_l2::PayloadHandle handle = tag_payload_handle(index);
+  if (m_ep_l2_payload.handle_live(handle)) {
+    const auto &old = m_ep_l2_payload.inspect(handle);
+    assert(old.allocation_role == ep_l2_payload_store::RESIDENT &&
+           old.status != ep_l2_payload_store::RESIDENT_DIRTY &&
+           !old.pins && old.pending_sector_mask.none());
+  }
+  // A host overwrite must not leave an older detached TVD copy authoritative.
+  // Preview all resources first; only optional, unpinned data may be dropped.
+  const auto alias = m_tvd ? m_tvd->find(owner) : tvd_directory::ticket();
+  const bool has_alias = m_tvd && m_tvd->live(alias);
+  if (has_alias) {
+    assert(status == MISS && "resident and TVD may not alias one line");
+    assert(m_tvd->at(alias.index).reclaimable());
+  }
+  unsigned landing = index;
+  if (status == MISS) {
+    if (m_ep_l2_payload.handle_live(handle)) {
+      landing = handle.payload_id;
+    } else if (m_config.m_ep_l2_ft_mode == 2) {
+      const ep_l2::PayloadHandle free = m_ep_l2_payload.preview_free(
+          ep_l2_payload_store::RESIDENT, index % 4);
+      const auto old_alias = has_alias ? m_tvd->at(alias.index).payload : ep_l2::PayloadHandle();
+      assert(free.valid() || (old_alias.valid() && old_alias.payload_id % 4 == index % 4));
+      landing = free.valid() ? free.payload_id : old_alias.payload_id;
+    }
+    assert(landing % 4 == index % 4);
+  } else {
+    assert(m_ep_l2_payload.handle_owner_matches(handle, owner));
+  }
+  if (has_alias) {
+    ep_l2::PayloadHandle old_alias;
+    assert(m_tvd->reclaim(alias, old_alias, m_gpu_cycle_for_tvd()) == tvd_directory::OK);
+    assert(m_ep_l2_payload.inspect(old_alias).pins == 0);
+    m_ep_l2_payload.release(old_alias);
+  }
+  if (status == MISS) {
+    if (m_ep_l2_payload.handle_live(handle)) m_ep_l2_payload.release(handle);
+    handle = m_ep_l2_payload.reserve(landing, ep_l2_payload_store::RESIDENT,
+        owner, ep_l2_payload_store::RESIDENT_VALID);
+    set_tag_payload_handle(index, handle);
+  }
+  baseline_cache::force_tag_access(addr, time, mask);
+  unsigned actual_index = (unsigned)-1;
+  assert(m_tag_array->probe(owner, actual_index, mask, true, true) == HIT &&
+         actual_index == index && "FT host prefill must bind the actual chosen Tag");
+  ep_l2_payload_store::slot &slot = m_ep_l2_payload.inspect_mutable(handle);
+  slot.ready_sector_mask |= mask;
+  // Dataless host initialization has the same explicit version-zero symbol as
+  // ordinary untouched lower memory, not fabricated numerical payload bytes.
+  for (unsigned sector = 0; sector < 4; ++sector)
+    if (mask.test(sector)) slot.versions[sector] = 0;
+  slot.status = m_tag_array->block_is_modified(index) ?
+      ep_l2_payload_store::RESIDENT_DIRTY : ep_l2_payload_store::RESIDENT_VALID;
+  assert(m_ep_l2_payload.ownership_consistent());
+}
+
 void l2_cache::descriptor_admitted(mem_fetch *mf, unsigned index) {
   if (!ft_enabled()) return;
   const ep_l2::PayloadHandle h = tag_payload_handle(index);
@@ -81,6 +156,9 @@ void l2_cache::ft_rollback(unsigned long long cycle) {
 
 enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     unsigned time, std::list<cache_event> &events) {
+  // memcpy offset orders native Tag timestamps; it is not elapsed hardware
+  // time and must never reset the payload bank arbiter or WB/WAD lifetimes.
+  const unsigned long long physical_cycle = m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
   m_ep_l2_last_payload_request_result = ep_l2_payload_store::GRANTED;
   const new_addr_type owner = m_config.block_addr(addr);
   if (m_tvd && (mf->get_is_write() || mf->isatomic()) && m_tvd->live(m_tvd->find(owner)))
@@ -144,7 +222,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     }
     if (m_config.m_ep_l2_ft_mode == 2 && (dirty || !live)) {
       landing = m_ep_l2_payload.preview_free(ep_l2_payload_store::RESIDENT, index % 4);
-      if (!landing.valid() && m_tvd && tvd_reclaim_one(index % 4, time))
+      if (!landing.valid() && m_tvd && tvd_reclaim_one(index % 4, physical_cycle))
         landing = m_ep_l2_payload.preview_free(ep_l2_payload_store::RESIDENT, index % 4);
       if (!landing.valid()) { ++m_ft_stats.pool_full; return RESERVATION_FAIL; }
       if (dirty) staging = victim;
@@ -154,7 +232,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     // fills and lower drains cannot add entries to m_miss_queue.
     ft_replacement &p = m_ft_pending;
     p.request = mf; p.tag_index = index; p.dirty = dirty; p.retain_clean = retain_clean; p.victim = live ? victim : ep_l2::PayloadHandle();
-    p.born = time;
+    p.born = physical_cycle;
     p.landing_id = landing.valid() ? landing.payload_id :
         (m_config.m_ep_l2_ft_mode == 2 && live ? victim.payload_id : index);
     if (live) p.saved = m_ep_l2_payload.inspect(victim);
@@ -165,9 +243,9 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
         const unsigned ready_mask = p.saved.ready_sector_mask.to_ulong();
         const bool retain = m_config.m_ep_l2_tvd_dirty && (dirty_mask & ~ready_mask) == 0;
         assert(tvd_install_victim(p.victim_address, retain ? victim : ep_l2::PayloadHandle(),
-            retain ? ready_mask : dirty_mask, dirty_mask, true, time));
+            retain ? ready_mask : dirty_mask, dirty_mask, true, physical_cycle));
       } else assert(m_ep_l2_wad_entries_live.insert(p.victim_address).second);
-      assert(m_ep_l2_wad_birth_cycle.insert(std::make_pair(p.victim_address, time)).second);
+      assert(m_ep_l2_wad_birth_cycle.insert(std::make_pair(p.victim_address, physical_cycle)).second);
       p.wad = true;
       if (m_config.m_ep_l2_ft_mode == 1)
         p.staging = m_ep_l2_payload.reserve(staging.payload_id,
@@ -190,18 +268,18 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
       // read and write cycles. Both compared organizations include this latch.
       if (p.phase == 0) {
         m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(p.victim,
-            false, time, (unsigned long long)-1, ep_l2_payload_store::WB_READOUT);
+            false, physical_cycle, (unsigned long long)-1, ep_l2_payload_store::WB_READOUT);
         if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
           ++m_ft_stats.bank_block; return RESERVATION_FAIL;
         }
-        p.born = time; // actual source readout starts data-staging lifetime
+        p.born = physical_cycle; // actual source readout starts data-staging lifetime
         p.copy_versions = m_ep_l2_payload.inspect(p.victim).versions;
         p.phase = 1;
         return RESERVATION_FAIL;
       }
       if (p.phase == 1) {
         m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(p.staging,
-            true, time, (unsigned long long)-1, ep_l2_payload_store::RESIDENT_WRITE);
+            true, physical_cycle, (unsigned long long)-1, ep_l2_payload_store::RESIDENT_WRITE);
         if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
           ++m_ft_stats.bank_block; return RESERVATION_FAIL;
         }
@@ -215,14 +293,14 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     // same-bank denial cannot expose a partially installed new generation.
     if (mf->get_is_write()) {
       m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(
-          ep_l2_payload_store::RESIDENT, p.landing_id, true, time,
+          ep_l2_payload_store::RESIDENT, p.landing_id, true, physical_cycle,
           (unsigned long long)-1, ep_l2_payload_store::RESIDENT_WRITE);
       if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
         ++m_ft_stats.bank_block; return RESERVATION_FAIL;
       }
     }
     if (p.dirty && m_config.m_ep_l2_ft_mode == 2) {
-      p.born = time; // in-place WB role starts at actual producer commit
+      p.born = physical_cycle; // in-place WB role starts at actual producer commit
       m_ep_l2_payload.transfer(p.victim, ep_l2_payload_store::WB, ep_l2_payload_store::WB_STAGED);
       if (p.victim.payload_id < 1024) ++m_ft_stats.borrow_resident;
       else if (p.victim.payload_id < 1152) ++m_ft_stats.borrow_bypass;
@@ -243,7 +321,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     }
     if (probe == HIT || mf->get_is_write()) {
       m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(h,
-          mf->get_is_write() || mf->isatomic(), time, (unsigned long long)-1,
+          mf->get_is_write() || mf->isatomic(), physical_cycle, (unsigned long long)-1,
           mf->get_is_write() || mf->isatomic() ? ep_l2_payload_store::RESIDENT_WRITE : ep_l2_payload_store::RESIDENT_HIT_READ);
       if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
         ++m_ft_stats.bank_block; return RESERVATION_FAIL;
@@ -254,13 +332,13 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   mf->set_ep_l2_payload_identity(handle.payload_id, handle.generation);
   const cache_request_status result = data_cache::access(addr, mf, time, events);
   if (result == RESERVATION_FAIL) {
-    if (replacement) ft_rollback(time);
+    if (replacement) ft_rollback(physical_cycle);
     return result;
   }
   if (replacement && m_ft_pending.dirty) assert(m_ft_pending.bound);
   if (replacement && m_ft_pending.retain_clean) {
     ft_replacement &p = m_ft_pending;
-    if (tvd_install_victim(p.saved.owner, p.victim, p.saved.ready_sector_mask.to_ulong(), 0, false, time))
+    if (tvd_install_victim(p.saved.owner, p.victim, p.saved.ready_sector_mask.to_ulong(), 0, false, physical_cycle))
       m_ep_l2_payload.transfer(p.victim, ep_l2_payload_store::TVD, ep_l2_payload_store::TVD_VALID);
     else m_ep_l2_payload.release(p.victim);
   }

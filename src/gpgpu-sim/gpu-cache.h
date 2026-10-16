@@ -2378,6 +2378,8 @@ class ep_l2_payload_store {
                          unsigned long long sequence = (unsigned long long)-1,
                          operation_class op_class = RESIDENT_HIT_READ) {
     if (!enabled()) return GRANTED;
+    if (m_ft_mode && m_cycle != (unsigned long long)-1)
+      assert(cycle >= m_cycle && "FT bank clock must be physical and monotonic");
     if (m_cycle != cycle) {
       m_cycle = cycle;
       m_resident_reads = m_resident_writes = m_bypass_reads = m_bypass_writes = 0;
@@ -2727,6 +2729,10 @@ class l2_cache : public data_cache {
   bool ft_response_ready(unsigned long long cycle);
   void cycle();
   void ft_print(FILE *fp, unsigned slice) const;
+  // Untimed host memcpy prefill must own payload storage as well as a Tag.
+  // The non-FT route retains the historical Tag-only initialization.
+  void force_tag_access(new_addr_type addr, unsigned time,
+                        mem_access_sector_mask_t mask);
   unsigned ft_wb_staged() const { return m_ft_wb.size(); }
   unsigned ft_pending_lower_reads() const { return m_ep_l2_payload.pending_sector_count(); }
   bool ft_reservation_active() const { return m_ft_pending.request != NULL; }

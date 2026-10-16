@@ -86,6 +86,7 @@ void l2_cache::tvd_response_commit(mem_fetch *mf, unsigned long long now) {
 }
 
 bool l2_cache::tvd_promote(mem_fetch *mf, unsigned time, std::list<cache_event> &events) {
+  const auto physical_cycle = m_gpu_cycle_for_tvd();
   const auto address = m_config.block_addr(mf->get_addr());
   auto t = m_tvd->find(address);
   if (!m_tvd->live(t)) return true;
@@ -125,12 +126,12 @@ bool l2_cache::tvd_promote(mem_fetch *mf, unsigned time, std::list<cache_event> 
     evicted_block_info evicted;
     evicted.set_info(block->m_block_addr, block->get_modified_size(),
         block->get_dirty_byte_mask(), block->get_dirty_sector_mask());
-    assert(m_tvd->commit_dirty_promotion(plan, time, promoted, wb_ticket) == tvd_directory::OK);
-    assert(m_ep_l2_wad_birth_cycle.insert(std::make_pair(evicted.m_block_addr, time)).second);
+    assert(m_tvd->commit_dirty_promotion(plan, physical_cycle, promoted, wb_ticket) == tvd_directory::OK);
+    assert(m_ep_l2_wad_birth_cycle.insert(std::make_pair(evicted.m_block_addr, physical_cycle)).second);
     m_ep_l2_payload.transfer(victim, ep_l2_payload_store::WB, ep_l2_payload_store::WB_STAGED);
     auto &p = m_ft_pending; p.request = mf; p.dirty = p.wad = true;
     p.tag_index = index; p.victim = p.staging = victim;
-    p.victim_address = evicted.m_block_addr; p.born = time;
+    p.victim_address = evicted.m_block_addr; p.born = physical_cycle;
     mem_fetch *packet = m_memfetch_creator->alloc(evicted.m_block_addr, L2_WRBK_ACC,
         mf->get_access_warp_mask(), evicted.m_byte_mask, evicted.m_sector_mask,
         evicted.m_modified_size, true, time, -1, -1, -1, NULL, mf->get_streamID());
@@ -138,7 +139,7 @@ bool l2_cache::tvd_promote(mem_fetch *mf, unsigned time, std::list<cache_event> 
     send_write_request(packet, cache_event(WRITE_BACK_REQUEST_SENT, evicted), time, events);
     assert(p.bound); p = ft_replacement();
   } else {
-    assert(m_tvd->promote(t, promoted, time) == tvd_directory::OK);
+    assert(m_tvd->promote(t, promoted, physical_cycle) == tvd_directory::OK);
     if (live) m_ep_l2_payload.release(victim);
   }
   m_ep_l2_payload.transfer(promoted, ep_l2_payload_store::RESIDENT, ep_l2_payload_store::RESIDENT_VALID);
