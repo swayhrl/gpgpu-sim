@@ -1,6 +1,8 @@
 // Complete production memory_sub_partition -> L2interface -> lower -> set_done.
 #include <cassert>
 #include <cstdio>
+#include <map>
+#include <string>
 #include "../../libcuda/gpgpu_context.h"
 #include "../../src/gpgpu-sim/gpu-sim.h"
 #include "../../src/gpgpu-sim/icnt_wrapper.h"
@@ -25,19 +27,41 @@ int main(int argc,char **argv) {
   for(unsigned i=0;i<32;++i) bytes.set(i);
   mem_access_sector_mask_t sectors;sectors.set(0);
   const unsigned offset=std::stoul(argv[5]);
-  const bool warm_hit=argc==7;
+  const std::string scenario=argc==7?argv[6]:"evicted";
+  assert(scenario=="evicted" || scenario=="--warm-hit" || scenario=="--warm-multi-sector" ||
+         scenario=="--reject-post-kernel" || scenario=="--reject-dirty-victim");
+  const bool multi=scenario=="--warm-multi-sector";
+  const bool warm_hit=scenario=="--warm-hit" || multi;
   for(unsigned i=0;i<offset;++i)
     sp->force_l2_tag_update(warm_hit ? 0 : 0x10000000,0,sectors);
-  unsigned warm_uid=0; bool warm_seen=!warm_hit;
+  if(multi) {
+    mem_access_sector_mask_t other;other.set(2);
+    for(unsigned i=0;i<3;++i) sp->force_l2_tag_update(64,offset+i,other);
+  }
+  if(scenario=="--reject-post-kernel") {
+    // No pending hardware remains; a new epoch alone must still reject reset
+    // to initial-memory symbols. This is not an active-WB-only guard.
+    gpu.gpu_tot_sim_cycle=1;
+    sp->force_l2_tag_update(0,offset,sectors);
+    return 77; // caller expects SIGABRT and the explicit scope guard message
+  }
+  std::map<unsigned,unsigned> warm_expected;
   if(warm_hit) {
     auto read=alloc.alloc(0,GLOBAL_ACC_R,active,bytes,sectors,32,false,0,0,0,0,NULL,0);
-    warm_uid=read->get_request_uid(); sp->push(read,0);
+    warm_expected[read->get_request_uid()]=0;sp->push(read,0);
+    if(multi) {
+      mem_access_byte_mask_t b;for(unsigned i=64;i<96;++i)b.set(i);
+      mem_access_sector_mask_t s;s.set(2);
+      auto second=alloc.alloc(64,GLOBAL_ACC_R,active,b,s,32,false,0,0,0,0,NULL,0);
+      warm_expected[second->get_request_uid()]=2;sp->push(second,0);
+    }
   }
   auto collect=[&]() {
     while(auto reply=sp->pop()) {
-      if(warm_hit && reply->get_request_uid()==warm_uid) {
-        assert(!warm_seen && reply->has_ft_wb_data() && reply->get_ft_wb_data()[0]==0);
-        warm_seen=true;
+      auto expected=warm_expected.find(reply->get_request_uid());
+      if(expected!=warm_expected.end()) {
+        assert(reply->has_ft_wb_data() && reply->get_ft_wb_data()[expected->second]==0);
+        warm_expected.erase(expected);
       }
       delete reply;
     }
@@ -67,6 +91,12 @@ int main(int argc,char **argv) {
     collect();
     peak=std::max(peak,sp->ft_wb_staged_for_test());
   }
+  if(scenario=="--reject-dirty-victim") {
+    // Real writes/WB pressure precede this attempted host overwrite. Never
+    // erase dirty data or pending WAD/payload state to make prefill succeed.
+    sp->force_l2_tag_update(0x20000000,offset,sectors);
+    return 77;
+  }
   if(mode==1) assert(peak==c && sp->ep_l2_wad_occupancy()>c);
   else assert(peak>c && sp->ep_l2_wad_occupancy()==128);
   part.l2_char_release_dram_issue_hold();
@@ -77,7 +107,7 @@ int main(int argc,char **argv) {
   }
   assert(!part.busy() && sp->l2_char_no_resource_leak());
   assert(!sp->ep_l2_wad_occupancy() && sp->ft_drained_for_test());
-  assert(separate_lifetimes && warm_seen);
+  assert(separate_lifetimes && warm_expected.empty());
   sp->print_ep_l2_b0_snapshot(stdout,static_cast<unsigned long long>(-1));
   printf("CLOCK_AUDIT|offset=%u|violations=%u|max_grants_per_physical_bank_cycle=%u\n",offset,violations,max_grants);
   printf("FT real partition lower-full/WBUF/WAD/set_done mode=%u C=%u peak=%u PASS\n",mode,c,peak);

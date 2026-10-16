@@ -3,13 +3,30 @@
 void l2_cache::force_tag_access(new_addr_type addr, unsigned time,
                                 mem_access_sector_mask_t mask) {
   if (!ft_enabled()) { baseline_cache::force_tag_access(addr, time, mask); return; }
+  // The supported dataless host prefill is initial initialization only. A
+  // later DMA epoch needs its own data/version and dirty-victim protocol;
+  // silently resetting a GPU-produced sector to the initial symbol is invalid.
+  if (m_gpu->gpu_sim_cycle || m_gpu->gpu_tot_sim_cycle ||
+      m_ft_stats.observed_cycles || m_ft_stats.accepted) {
+    fprintf(stderr, "EP-L2 FT host prefill supports only untimed initial initialization; post-kernel reuse rejected\n");
+    abort();
+  }
+  if (mask.none()) {
+    fprintf(stderr, "EP-L2 FT host prefill requires nonempty initialized sectors\n");
+    abort();
+  }
   // Trace host memcpy prefill runs outside active hardware work. Never retire
   // a lower transaction, response reference or WB merely to warm a Tag.
   assert(ft_drained() && m_ep_l2_wad_entries_live.empty());
   const new_addr_type owner = m_config.block_addr(addr);
   unsigned index = (unsigned)-1;
   const cache_request_status status = m_tag_array->probe(owner, index, mask, true, true);
-  assert(status != RESERVATION_FAIL && index < m_config.get_num_lines());
+  assert((status == MISS || status == HIT || status == SECTOR_MISS) &&
+         index < m_config.get_num_lines());
+  if (m_tag_array->block_is_modified(index)) {
+    fprintf(stderr, "EP-L2 FT host prefill cannot discard or reset a dirty Tag victim\n");
+    abort();
+  }
   ep_l2::PayloadHandle handle = tag_payload_handle(index);
   if (status == MISS) {
     unsigned landing = index;
@@ -35,6 +52,10 @@ void l2_cache::force_tag_access(new_addr_type addr, unsigned time,
     assert(!old.pins && old.pending_sector_mask.none());
   }
   baseline_cache::force_tag_access(addr, time, mask);
+  unsigned actual_index = (unsigned)-1;
+  const cache_request_status after = m_tag_array->probe(owner, actual_index, mask, true, true);
+  assert(after == HIT && actual_index == index &&
+         m_ep_l2_payload.handle_owner_matches(handle, owner));
   ep_l2_payload_store::slot &slot = m_ep_l2_payload.inspect_mutable(handle);
   slot.ready_sector_mask |= mask;
   // Dataless host initialization has the same explicit version-zero symbol as
