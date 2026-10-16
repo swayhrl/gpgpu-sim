@@ -9,8 +9,9 @@
 #include <limits>
 #include <stdexcept>
 #include <utility>
+#include "ep-l2-ft-interface.h"
 
-template <class Handle> class ep_l2_tvd_directory {
+template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
  public:
   typedef std::uint64_t address_type;
   typedef std::uint64_t cycle_type;
@@ -132,7 +133,10 @@ template <class Handle> class ep_l2_tvd_directory {
       }
     for (unsigned i = 0; i < m_capacity; ++i) {
       if (!m_entries[i].reclaimable()) continue;
-      if (p.index == 128 || m_entries[i].age < m_entries[p.index].age)
+      if (p.index == 128 ||
+          (dirty && m_entries[i].status == CLEAN && m_entries[p.index].status != CLEAN) ||
+          ((!dirty || m_entries[i].status == m_entries[p.index].status) &&
+           m_entries[i].age < m_entries[p.index].age))
         p.index = i;
     }
     if (p.index != 128) { p.status = OK; p.displaced = m_entries[p.index].payload; }
@@ -151,6 +155,9 @@ template <class Handle> class ep_l2_tvd_directory {
       return INVALID_INPUT;
     if ((!writeback && !m_clean) || (writeback && handle.valid() && !m_dirty))
       return DISABLED;
+    for (unsigned i = 0; i < m_capacity; ++i)
+      if (i != p.index && m_entries[i].status != EMPTY && handle.valid() &&
+          same(m_entries[i].payload, handle)) return INVALID_INPUT;
     advance(now);
     entry &e = m_entries[p.index];
     assert(e.status == EMPTY || e.reclaimable());
@@ -177,11 +184,14 @@ template <class Handle> class ep_l2_tvd_directory {
     observation o; o.identity = t; o.payload = e.payload;
     if (op != READ && e.mandatory()) { o.status = WAIT_WRITEBACK; return o; }
     if (!e.payload.valid()) { o.status = e.mandatory() ? WAIT_WRITEBACK : ABSENT; return o; }
+    if (op != READ) {
+      o.status = e.readers ? PINNED : PROMOTE_REQUIRED; return o;
+    }
     if ((sectors & ~e.valid_sectors) != 0) {
       o.status = e.mandatory() ? WAIT_WRITEBACK : MISSING_SECTOR; return o;
     }
     o.dirty_forward = e.mandatory();
-    o.status = op == READ ? READ_READY : (e.readers ? PINNED : PROMOTE_REQUIRED);
+    o.status = READ_READY;
     return o;
   }
   result begin_read(const observation &o, unsigned sectors, read_lease &lease) {
@@ -192,7 +202,7 @@ template <class Handle> class ep_l2_tvd_directory {
         !same(e.payload, o.payload)) return STALE;
     ++e.readers; ++m_revision;
     lease.owner = this; lease.identity = o.identity; lease.payload = o.payload;
-    lease.sectors = sectors; lease.forward = o.dirty_forward; lease.active = true;
+    lease.sectors = sectors; lease.forward = e.mandatory(); lease.active = true;
     return OK;
   }
   // Invoke ONLY after real payload bank service and successful response enqueue.
@@ -263,7 +273,8 @@ template <class Handle> class ep_l2_tvd_directory {
       const entry &e = m_entries[i];
       if (!e.payload.valid()) continue;
       if (e.status == WB_STAGED) m_stats.wb_staging_slot_cycles += delta;
-      if (e.status == WB_INFLIGHT) m_stats.tvd_extra_retention_slot_cycles += delta;
+      if (e.status == WB_INFLIGHT || e.status == WB_COMPLETE)
+        m_stats.tvd_extra_retention_slot_cycles += delta;
     }
     m_clock = now;
   }

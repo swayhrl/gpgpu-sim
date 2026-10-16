@@ -65,6 +65,7 @@ static void sectors_and_promotions() {
   assert(d.stats().read_responses == 0);
   assert(d.preview_access(0x2000, 16, directory::READ, 0, 1).status == directory::INVALID_INPUT);
   assert(d.preview_access(0x2000, 1, directory::WRITE, 0, 1).status == directory::PROMOTE_REQUIRED);
+  assert(d.preview_access(0x2000, 4, directory::ATOMIC, 0, 1).status == directory::PROMOTE_REQUIRED);
   const std::array<unsigned, 4> data = {{11, 29, 0, 0}};
   // The future producer must first prepare tag/victim resources. A failed
   // preparation makes no call to promote and cannot partially remove TVD.
@@ -113,9 +114,42 @@ static void capacity_reservations_and_epochs() {
   puts("PASS shared_128_capacity_failed_prepare_stale_epoch");
 }
 
+static void reference_versions_follow_payload_identity() {
+  ep_l2_payload_store ram(2);
+  ram.assign_resident(7, 0x3000, NULL);
+  ram.assign_resident(11, 0x3080, NULL);
+  std::map<unsigned, std::array<unsigned, 4> > backing;
+  std::map<unsigned long long, std::array<unsigned, 4> > reference;
+  backing[7] = {{17, 23, 31, 47}};
+  backing[11] = {{59, 61, 73, 89}};
+  reference[0x3000] = backing[7]; reference[0x3080] = backing[11];
+  directory d(128, true, false);
+  directory::ticket t = install(d, 0x3000, ram.resident_handle(7), 15, 0, false, 0);
+  directory::observation o = d.preview_access(0x3000, 10, directory::READ, 0, 1);
+  directory::read_lease lease;
+  assert(d.begin_read(o, 10, lease) == directory::OK);
+  assert(ram.handle_owner_matches(lease.handle(), 0x3000));
+  assert(ram.request(lease.handle(), false, 1) == ep_l2_payload_store::GRANTED);
+  for (unsigned sector = 0; sector < 4; ++sector)
+    if (10 & (1u << sector))
+      assert(backing[lease.handle().payload_id][sector] == reference[0x3000][sector]);
+  assert(d.response_commit(lease, 2) == directory::OK);
+  handle promoted;
+  assert(d.promote(t, promoted, 3) == directory::OK);
+  // The producer's data/version oracle changes the same physical storage;
+  // copying the current resident's payload 11 would fail this comparison.
+  backing[promoted.payload_id][0] = 113; reference[0x3000][0] = 113;
+  unsigned returned = backing[promoted.payload_id][2];
+  backing[promoted.payload_id][2] += 5; reference[0x3000][2] += 5;
+  assert(returned == 31 && backing[promoted.payload_id] == reference[0x3000]);
+  assert(backing[11] == reference[0x3080] && !d.live(t));
+  puts("PASS module_reference_versions_by_canonical_payload_handle");
+}
+
 int main() {
   clean_read_and_backpressure();
   sectors_and_promotions();
   capacity_reservations_and_epochs();
+  reference_versions_follow_payload_identity();
   puts("CLEAN_DIRECTORY_SUBSET_PASS; L2_CACHE_INTEGRATION_NOT_RUN; FULL_TVD_NOT_ASSERTED");
 }
