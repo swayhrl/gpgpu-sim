@@ -2116,6 +2116,10 @@ class ldst_unit : public pipelined_simd_unit {
                                dtc_l1_m4_operation operation);
   void dtc_l1_m4_observe_complete(const warp_inst_t &inst);
   bool dtc_l1_oo_select_ready(uint64_t *uid) const;
+  bool dtc_l1_finite_service_active() const;
+  bool dtc_l1_service_collect(dtc_l1::service_entry &service,
+                            const std::vector<dtc_l1::line_reference> &references);
+  void dtc_l1_service_retired(const dtc_l1::service_entry &service);
   void print_dtc_l1_stats(FILE *fp) const;
   gpgpu_sim *m_gpu;
 
@@ -2138,6 +2142,21 @@ class ldst_unit : public pipelined_simd_unit {
   Scoreboard *m_scoreboard;
 
   std::deque<mem_fetch *> m_next_global;
+  dtc_l1::service_quota m_dtc_service_refill;
+  dtc_l1::service_quota m_dtc_service_create;
+  dtc_l1::service_quota m_dtc_service_inject;
+  dtc_l1::service_quota m_dtc_service_retire;
+  dtc_l1::service_quota m_dtc_service_collect{4};
+  uint64_t m_dtc_service_sample_cycle = UINT64_MAX;
+  uint64_t m_dtc_service_samples = 0;
+  uint64_t m_dtc_service_pib_integral = 0;
+  uint64_t m_dtc_service_physical_integral = 0;
+  uint64_t m_dtc_service_ready_to_complete_sum = 0;
+  uint64_t m_dtc_service_ready_to_collect_sum = 0;
+  uint64_t m_dtc_service_collection_cycles = 0;
+  uint64_t m_dtc_service_wb_wait = 0;
+  uint64_t m_dtc_service_retired = 0;
+  uint64_t m_dtc_service_collected_sectors = 0;
   warp_inst_t m_next_wb;
   unsigned m_writeback_arb;  // round-robin arbiter for writeback contention
                              // between L1T, L1C, shared
@@ -2177,6 +2196,7 @@ class ldst_unit : public pipelined_simd_unit {
     size_t next_reference = 0;
     dtc_l1_m4_operation operation = dtc_l1_m4_operation::CACHEABLE_LOAD;
     bool source_completed = false;
+    dtc_l1::service_entry service;
   };
   struct dtc_l1_io_lower_candidate {
     unsigned inst_uid = 0;
@@ -2256,6 +2276,7 @@ class ldst_unit : public pipelined_simd_unit {
     size_t next_reference = 0;
     dtc_l1_m4_operation operation = dtc_l1_m4_operation::CACHEABLE_LOAD;
     bool source_completed = false;
+    dtc_l1::service_entry service;
   };
   struct dtc_l1_oo_lower_candidate {
     unsigned inst_uid = 0;
@@ -2474,6 +2495,7 @@ class shader_core_config : public core_config {
   // Default-off DTC-L1 paper front-end controls.  They intentionally do not
   // reuse the conventional L1 bank/MSHR controls so LEGACY remains untouched.
   unsigned dtc_l1_mode;
+  bool dtc_l1_finite_service;
   unsigned dtc_l1_pib_entries;
   unsigned dtc_l1_mshr_entries;
   unsigned dtc_l1_debug_event_limit;

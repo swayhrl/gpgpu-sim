@@ -2930,6 +2930,47 @@ void ldst_unit::dtc_l1_r4c0_retire(const warp_inst_t &inst) {
 // references.  It deliberately never calls l1_cache::access(): physical
 // state, merge state, and lower ownership live in io_frontend and the queues
 // below, not in the conventional L1D MSHR.
+bool ldst_unit::dtc_l1_finite_service_active() const {
+  return m_config->dtc_l1_finite_service &&
+         (dtc_l1_paper_io_active() ||
+          (dtc_l1_paper_oo_active() && !dtc_l1_sector_oo_active()));
+}
+
+bool ldst_unit::dtc_l1_service_collect(
+    dtc_l1::service_entry &service,
+    const std::vector<dtc_l1::line_reference> &references) {
+  if (!dtc_l1_finite_service_active()) return true;
+  const uint64_t cycle = m_core->get_gpu()->global_cycle();
+  if (service.ready_cycle == UINT64_MAX) {
+    service.ready_cycle = cycle;
+    for (const auto &reference : references)
+      service.sectors_left += __builtin_popcount(reference.sector_mask);
+    assert(service.sectors_left);
+  }
+  if (cycle == service.ready_cycle) return false;
+  while (service.sectors_left && m_dtc_service_collect.available(cycle)) {
+    if (service.collect_start_cycle == UINT64_MAX) service.collect_start_cycle = cycle;
+    m_dtc_service_collect.commit(cycle);
+    --service.sectors_left;
+    ++m_dtc_service_collected_sectors;
+    if (!service.sectors_left) service.collect_done_cycle = cycle;
+  }
+  return !service.sectors_left && cycle > service.collect_done_cycle;
+}
+
+void ldst_unit::dtc_l1_service_retired(const dtc_l1::service_entry &service) {
+  if (!dtc_l1_finite_service_active()) return;
+  const uint64_t cycle = m_core->get_gpu()->global_cycle();
+  assert(service.ready_cycle != UINT64_MAX &&
+         service.collect_done_cycle != UINT64_MAX && !service.sectors_left);
+  m_dtc_service_retire.commit(cycle);
+  m_dtc_service_ready_to_complete_sum += cycle - service.ready_cycle;
+  m_dtc_service_ready_to_collect_sum += service.collect_start_cycle - service.ready_cycle;
+  m_dtc_service_collection_cycles += service.collect_done_cycle - service.collect_start_cycle + 1;
+  m_dtc_service_wb_wait += cycle - service.collect_done_cycle - 1;
+  ++m_dtc_service_retired;
+}
+
 bool ldst_unit::dtc_l1_io_memory_cycle(
     warp_inst_t &inst, mem_stage_stall_type &stall_reason,
     mem_stage_access_type &access_type) {
@@ -2970,9 +3011,21 @@ bool ldst_unit::dtc_l1_io_memory_cycle(
       access_type = G_MEM_LD;
       return false;
     }
-    if (!m_dtc_l1_io_frontend->try_serve_tag(cycle,
-                                              reference.line_address)) {
+    if (dtc_l1_finite_service_active() &&
+        entry->service.tag_grant_cycle != UINT64_MAX) {
+      if (cycle <= entry->service.tag_grant_cycle) {
+        stall_reason = COAL_STALL;
+        access_type = G_MEM_LD;
+        return false;
+      }
+    } else if (!m_dtc_l1_io_frontend->try_serve_tag(cycle,
+                                                   reference.line_address)) {
       stall_reason = BK_CONF;
+      access_type = G_MEM_LD;
+      return false;
+    } else if (dtc_l1_finite_service_active()) {
+      entry->service.tag_grant_cycle = cycle;
+      stall_reason = COAL_STALL;
       access_type = G_MEM_LD;
       return false;
     }
@@ -2991,6 +3044,7 @@ bool ldst_unit::dtc_l1_io_memory_cycle(
           {uid, result.physical, reference.line_address});
     }
     ++entry->next_reference;
+    entry->service.tag_grant_cycle = UINT64_MAX;
   }
 
   if (entry->next_reference != entry->references.size()) {
@@ -3012,7 +3066,9 @@ void ldst_unit::dtc_l1_io_issue_lower_requests() {
   // If the global cap is full, retain the DTC-owned candidate and retry; the
   // physical allocation remains Pending and cannot be mistaken for a fill.
   if (!m_dtc_l1_io_lower_create_queue.empty() &&
+      (!dtc_l1_finite_service_active() || m_dtc_service_create.available(cycle)) &&
       m_core->get_gpu()->dtc_l1_try_acquire_lower_request()) {
+    if (dtc_l1_finite_service_active()) m_dtc_service_create.commit(cycle);
     const dtc_l1_io_lower_candidate candidate =
         m_dtc_l1_io_lower_create_queue.front();
     dtc_l1_io_pib_entry *entry = dtc_l1_io_find_entry(candidate.inst_uid);
@@ -3048,7 +3104,9 @@ void ldst_unit::dtc_l1_io_issue_lower_requests() {
   // issue width.  Interconnect backpressure leaves the request owned here.
   if (!m_dtc_l1_io_lower_issue_queue.empty()) {
     mem_fetch *mf = m_dtc_l1_io_lower_issue_queue.front();
-    if (!m_icnt->full(mf->size(), false)) {
+    if ((!dtc_l1_finite_service_active() || m_dtc_service_inject.available(cycle)) &&
+        !m_icnt->full(mf->size(), false)) {
+      if (dtc_l1_finite_service_active()) m_dtc_service_inject.commit(cycle);
       mf->set_status(IN_ICNT_TO_MEM, cycle);
       m_icnt->push(mf);
       m_dtc_l1_io_lower_issue_queue.pop_front();
@@ -3072,8 +3130,7 @@ bool ldst_unit::dtc_l1_io_consume_response(mem_fetch *mf) {
   const unsigned sector =
       static_cast<unsigned>((mf->get_addr() - record.line_address) / 32);
   if (mf->get_is_write() || aligned_address != record.line_address ||
-      sector >= dtc_l1::kSectorsPerLogicalLine ||
-      (record.response_sector_mask & (1U << sector))) {
+      !dtc_l1::response_sector_is_new(0xF, record.response_sector_mask, sector)) {
     ++m_dtc_l1_io_inflight_identity_mismatch;
     assert(false && "IO response identity/address mismatch");
   }
@@ -3137,6 +3194,9 @@ void ldst_unit::dtc_l1_io_complete_instruction(const warp_inst_t &inst,
 }
 
 bool ldst_unit::dtc_l1_io_writeback_head() {
+  const uint64_t service_cycle = m_core->get_gpu()->global_cycle();
+  if (dtc_l1_finite_service_active() &&
+      !m_dtc_service_retire.available(service_cycle)) return false;
   if (!dtc_l1_paper_io_active() || m_dtc_l1_io_pib.empty() ||
       !m_dtc_l1_io_frontend->head_ready()) {
     return false;
@@ -3151,6 +3211,7 @@ bool ldst_unit::dtc_l1_io_writeback_head() {
     assert(entry.source_completed && entry.references.empty());
     const bool retired = m_dtc_l1_io_frontend->retire_head(entry.inst.get_uid());
     assert(retired);
+    if (dtc_l1_finite_service_active()) m_dtc_service_retire.commit(service_cycle);
     m_dtc_l1_io_pib.pop_front();
     ++m_dtc_l1_io_retire_count;
     ++m_dtc_l1_m4_observation_retires;
@@ -3160,6 +3221,7 @@ bool ldst_unit::dtc_l1_io_writeback_head() {
   // source instruction is not drained until every coalesced 128B reference
   // in its PIB entry has been handed to that frontend.
   if (entry.next_reference != entry.references.size()) return false;
+  if (!dtc_l1_service_collect(entry.service, entry.references)) return false;
   m_next_wb = entry.inst;
   if (!m_operand_collector->writeback(m_next_wb)) {
     ++m_dtc_l1_io_ready_but_wb_blocked_cycles;
@@ -3171,6 +3233,7 @@ bool ldst_unit::dtc_l1_io_writeback_head() {
   dtc_l1_r4c1_record_ready(entry.inst,
                             static_cast<unsigned>(entry.next_reference),
                             static_cast<unsigned>(entry.references.size()), "IO");
+  dtc_l1_service_retired(entry.service);
   dtc_l1_io_complete_instruction(
       entry.inst, dtc_l1_r4c3_registered_dependencies(entry.inst));
   const bool retired = m_dtc_l1_io_frontend->retire_head(entry.inst.get_uid());
@@ -3235,13 +3298,22 @@ bool ldst_unit::dtc_l1_oo_memory_cycle(
       access_type = G_MEM_LD;
       return false;
     }
-    const bool tag_served = dtc_l1_sector_oo_active()
+    const bool prior_grant = dtc_l1_finite_service_active() &&
+                            entry->service.tag_grant_cycle != UINT64_MAX;
+    const bool tag_served = prior_grant || (dtc_l1_sector_oo_active()
                                 ? m_dtc_l1_sector_frontend->try_serve_tag(
                                       cycle, reference.line_address)
                                 : m_dtc_l1_oo_frontend->try_serve_tag(
-                                      cycle, reference.line_address);
+                                      cycle, reference.line_address));
     if (!tag_served) {
       stall_reason = BK_CONF;
+      access_type = G_MEM_LD;
+      return false;
+    }
+    if (dtc_l1_finite_service_active() &&
+        (!prior_grant || cycle <= entry->service.tag_grant_cycle)) {
+      if (!prior_grant) entry->service.tag_grant_cycle = cycle;
+      stall_reason = COAL_STALL;
       access_type = G_MEM_LD;
       return false;
     }
@@ -3279,6 +3351,7 @@ bool ldst_unit::dtc_l1_oo_memory_cycle(
       }
     }
     ++entry->next_reference;
+    entry->service.tag_grant_cycle = UINT64_MAX;
   }
   if (entry->next_reference != entry->references.size()) {
     stall_reason = COAL_STALL;
@@ -3294,7 +3367,9 @@ void ldst_unit::dtc_l1_oo_issue_lower_requests() {
   const unsigned long long cycle =
       m_core->get_gpu()->gpu_sim_cycle + m_core->get_gpu()->gpu_tot_sim_cycle;
   if (!m_dtc_l1_oo_lower_create_queue.empty() &&
+      (!dtc_l1_finite_service_active() || m_dtc_service_create.available(cycle)) &&
       m_core->get_gpu()->dtc_l1_try_acquire_lower_request()) {
+    if (dtc_l1_finite_service_active()) m_dtc_service_create.commit(cycle);
     const dtc_l1_oo_lower_candidate candidate =
         m_dtc_l1_oo_lower_create_queue.front();
     dtc_l1_oo_pib_entry *entry = dtc_l1_oo_find_entry(candidate.inst_uid);
@@ -3337,7 +3412,9 @@ void ldst_unit::dtc_l1_oo_issue_lower_requests() {
   // Frozen lower issue width: one request per SM/cycle.
   if (!m_dtc_l1_oo_lower_issue_queue.empty()) {
     mem_fetch *mf = m_dtc_l1_oo_lower_issue_queue.front();
-    if (!m_icnt->full(mf->size(), false)) {
+    if ((!dtc_l1_finite_service_active() || m_dtc_service_inject.available(cycle)) &&
+        !m_icnt->full(mf->size(), false)) {
+      if (dtc_l1_finite_service_active()) m_dtc_service_inject.commit(cycle);
       mf->set_status(IN_ICNT_TO_MEM, cycle);
       m_icnt->push(mf);
       m_dtc_l1_oo_lower_issue_queue.pop_front();
@@ -3359,9 +3436,8 @@ bool ldst_unit::dtc_l1_oo_consume_response(mem_fetch *mf) {
   const unsigned sector =
       static_cast<unsigned>((mf->get_addr() - record.line_address) / 32);
   if (mf->get_is_write() || aligned_address != record.line_address ||
-      sector >= dtc_l1::kSectorsPerLogicalLine ||
-      !(record.expected_sector_mask & (1U << sector)) ||
-      (record.response_sector_mask & (1U << sector))) {
+      !dtc_l1::response_sector_is_new(record.expected_sector_mask,
+                                     record.response_sector_mask, sector)) {
     assert(false && "OO response identity/address mismatch");
   }
   record.response_sector_mask |= static_cast<uint8_t>(1U << sector);
@@ -3420,6 +3496,9 @@ void ldst_unit::dtc_l1_oo_complete_instruction(const warp_inst_t &inst,
 }
 
 bool ldst_unit::dtc_l1_oo_writeback_ready() {
+  const uint64_t service_cycle = m_core->get_gpu()->global_cycle();
+  if (dtc_l1_finite_service_active() &&
+      !m_dtc_service_retire.available(service_cycle)) return false;
   if (!dtc_l1_paper_oo_active()) return false;
   uint64_t uid = 0;
   const bool ready = dtc_l1_oo_select_ready(&uid);
@@ -3436,6 +3515,7 @@ bool ldst_unit::dtc_l1_oo_writeback_ready() {
                                 : m_dtc_l1_oo_frontend->retire_ready_uid(cycle,
                                                                          uid);
     assert(retired_ok);
+    if (dtc_l1_finite_service_active()) m_dtc_service_retire.commit(service_cycle);
     for (auto it = m_dtc_l1_oo_pib.begin(); it != m_dtc_l1_oo_pib.end(); ++it)
       if (it->inst.get_uid() == uid) {
         m_dtc_l1_oo_pib.erase(it);
@@ -3448,6 +3528,7 @@ bool ldst_unit::dtc_l1_oo_writeback_ready() {
             : m_dtc_l1_oo_frontend->out_of_order_retires();
     return true;
   }
+  if (!dtc_l1_service_collect(entry->service, entry->references)) return false;
   m_next_wb = entry->inst;
   if (!m_operand_collector->writeback(m_next_wb)) {
     ++m_dtc_l1_oo_ready_but_wb_blocked_cycles;
@@ -3461,6 +3542,7 @@ bool ldst_unit::dtc_l1_oo_writeback_ready() {
                             static_cast<unsigned>(entry->references.size()), "OO");
   const unsigned dependencies =
       dtc_l1_r4c3_registered_dependencies(entry->inst);
+  dtc_l1_service_retired(entry->service);
   dtc_l1_oo_complete_instruction(entry->inst, dependencies);
   uint64_t retired = 0;
   const bool retired_ok = dtc_l1_sector_oo_active()
@@ -3556,6 +3638,28 @@ void ldst_unit::dtc_l1_io_identity_event(const char *event,
 }
 
 void ldst_unit::print_dtc_l1_stats(FILE *fp) const {
+  if (dtc_l1_finite_service_active()) {
+    fprintf(fp, "DTC_SERVICE_V1 sm=%u samples=%llu pib_integral=%llu "
+                "physical_integral=%llu collected_sectors=%llu "
+                "fully_ready_to_complete_sum=%llu retired=%llu "
+                "ready_to_collect_sum=%llu collection_cycles=%llu wb_wait=%llu "
+                "map_loss_to_free_sum=%llu map_loss_to_free_count=%llu\n",
+            m_sid, (unsigned long long)m_dtc_service_samples,
+            (unsigned long long)m_dtc_service_pib_integral,
+            (unsigned long long)m_dtc_service_physical_integral,
+            (unsigned long long)m_dtc_service_collected_sectors,
+            (unsigned long long)m_dtc_service_ready_to_complete_sum,
+            (unsigned long long)m_dtc_service_retired,
+            (unsigned long long)m_dtc_service_ready_to_collect_sum,
+            (unsigned long long)m_dtc_service_collection_cycles,
+            (unsigned long long)m_dtc_service_wb_wait,
+            (unsigned long long)(dtc_l1_paper_io_active() ?
+                m_dtc_l1_io_frontend->map_loss_to_free_sum() :
+                m_dtc_l1_oo_frontend->map_loss_to_free_sum()),
+            (unsigned long long)(dtc_l1_paper_io_active() ?
+                m_dtc_l1_io_frontend->map_loss_to_free_count() :
+                m_dtc_l1_oo_frontend->map_loss_to_free_count()));
+  }
   if (!dtc_l1_paper_base_active()) return;
   const dtc_l1::paper_frontend &front_end = *m_dtc_l1_frontend;
   fprintf(fp, "DTC_L1_mode = PAPER_BASE\n");
@@ -4192,6 +4296,11 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
     abort();
   }
   dtc_l1::config dtc_config;
+  dtc_config.finite_service = dtc_l1_finite_service_active();
+  if (m_config->dtc_l1_finite_service && !dtc_config.finite_service) {
+    fprintf(stderr, "Finite service V1 is scoped to PAPER_IO/PAPER_OO only\n");
+    abort();
+  }
   // M1 attaches the shared admission/Tag layer only to PAPER_BASE.  Later
   // stages enable IO/OO after their distinct retirement semantics exist.
   dtc_config.selected_mode =
@@ -4809,6 +4918,42 @@ inst->space.get_type() != shared_space) { unsigned warp_id = inst->warp_id();
 }
 */
 void ldst_unit::cycle() {
+  if (dtc_l1_finite_service_active()) {
+    const uint64_t cycle = m_core->get_gpu()->global_cycle();
+    if (m_dtc_service_sample_cycle != cycle) {
+      m_dtc_service_sample_cycle = cycle;
+      ++m_dtc_service_samples;
+      if (dtc_l1_paper_io_active()) {
+        m_dtc_l1_io_frontend->advance_service(cycle);
+        m_dtc_service_pib_integral += m_dtc_l1_io_pib.size();
+        m_dtc_service_physical_integral += m_dtc_l1_io_frontend->allocated_lines();
+      } else {
+        m_dtc_l1_oo_frontend->advance_service(cycle);
+        m_dtc_service_pib_integral += m_dtc_l1_oo_pib.size();
+        m_dtc_service_physical_integral += m_dtc_l1_oo_frontend->allocated_lines();
+      }
+      auto observe_ready = [cycle](auto &entry) {
+        if (entry.service.ready_cycle != UINT64_MAX) return;
+        entry.service.ready_cycle = cycle;
+        for (const auto &reference : entry.references)
+          entry.service.sectors_left += __builtin_popcount(reference.sector_mask);
+        assert(entry.service.sectors_left);
+      };
+      if (dtc_l1_paper_io_active()) {
+        for (auto &entry : m_dtc_l1_io_pib)
+          if (entry.operation == dtc_l1_m4_operation::CACHEABLE_LOAD &&
+              entry.next_reference == entry.references.size() &&
+              m_dtc_l1_io_frontend->entry_ready_for(entry.inst.get_uid()))
+            observe_ready(entry);
+      } else {
+        for (auto &entry : m_dtc_l1_oo_pib)
+          if (entry.operation == dtc_l1_m4_operation::CACHEABLE_LOAD &&
+              entry.next_reference == entry.references.size() &&
+              m_dtc_l1_oo_frontend->entry_ready_for(entry.inst.get_uid()))
+            observe_ready(entry);
+      }
+    }
+  }
   if (dtc_l1_paper_base_active()) {
     m_dtc_l1_frontend->sample_cycle(m_core->get_gpu()->gpu_sim_cycle +
                                     m_core->get_gpu()->gpu_tot_sim_cycle);
@@ -4844,6 +4989,20 @@ void ldst_unit::cycle() {
          !m_response_fifo.empty()) {
     mem_fetch *mf = m_response_fifo.front();
     dtc_l1_io_identity_event("RESPONSE_FIFO", *mf);
+    if (dtc_l1_finite_service_active()) {
+      const unsigned root_uid = mf->get_original_mf()
+                                    ? mf->get_original_mf()->get_request_uid()
+                                    : mf->get_request_uid();
+      const bool owned = m_dtc_l1_io_inflight.count(mf->get_request_uid()) ||
+                         m_dtc_l1_io_inflight.count(root_uid) ||
+                         m_dtc_l1_oo_inflight.count(mf->get_request_uid()) ||
+                         m_dtc_l1_oo_inflight.count(root_uid);
+      if (owned) {
+        const uint64_t cycle = m_core->get_gpu()->global_cycle();
+        if (!m_dtc_service_refill.available(cycle)) break;
+        m_dtc_service_refill.commit(cycle);
+      }
+    }
 
     // This ownership dispatch intentionally precedes every conventional L1D
     // response path.  A DTC IO response has no baseline_cache MSHR record.

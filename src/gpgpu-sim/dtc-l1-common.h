@@ -25,6 +25,7 @@ constexpr unsigned kSectorsPerLogicalLine = 4;
 enum class mode { LEGACY, PAPER_BASE, PAPER_IO, PAPER_OO, MODERN_OO_SECTOR };
 
 struct config {
+  bool finite_service = false;
   mode selected_mode = mode::LEGACY;
   unsigned pib_entries = 8;
   unsigned tag_banks = 4;
@@ -39,6 +40,39 @@ struct config {
   unsigned oo_pib_entries = 128;
   unsigned ref_count_bits = 13;
 };
+
+// Absolute core-cycle quota; checking availability never consumes a grant.
+// Commit only after the owning operation actually succeeds.
+class service_quota {
+ public:
+  explicit service_quota(unsigned width = 1) : m_width(width) { assert(width); }
+  bool available(uint64_t cycle) const {
+    return cycle != m_cycle || m_used < m_width;
+  }
+  void commit(uint64_t cycle) {
+    assert(available(cycle));
+    if (cycle != m_cycle) { m_cycle = cycle; m_used = 0; }
+    ++m_used;
+  }
+ private:
+  unsigned m_width;
+  unsigned m_used = 0;
+  uint64_t m_cycle = UINT64_MAX;
+};
+
+struct service_entry {
+  uint64_t tag_grant_cycle = UINT64_MAX;
+  uint64_t ready_cycle = UINT64_MAX;
+  uint64_t collect_done_cycle = UINT64_MAX;
+  uint64_t collect_start_cycle = UINT64_MAX;
+  unsigned sectors_left = 0;
+};
+
+inline bool response_sector_is_new(uint8_t expected, uint8_t received,
+                                   unsigned sector) {
+  return sector < kSectorsPerLogicalLine && (expected & (1U << sector)) &&
+         !(received & (1U << sector));
+}
 
 // Completion ownership is separate from the frontend's physical-line state.
 // An LD/ST instruction may retire only after its registered 128B dependency
@@ -213,6 +247,7 @@ class io_frontend {
     tag_entry *victim = select_victim(line);
     if (victim->valid) {
       ++m_tag_evictions;
+      if (m_cfg.finite_service) m_service_map_loss[victim->physical.id] = cycle;
       if (!m_phys[victim->physical.id].ready)
         m_evicted_pending_lines[victim->line] = victim->physical;
       owner->release_on_retire.push_back(victim->physical);
@@ -238,6 +273,31 @@ class io_frontend {
     assert(identity.id < m_phys.size());
     physical_line &line = m_phys[identity.id];
     assert(line.allocated && line.generation == identity.generation);
+    if (m_cfg.finite_service) {
+      assert(m_service_cycle != UINT64_MAX);
+      assert(!line.ready);
+      for (const auto &pending : m_service_returns)
+        assert(pending.first.id != identity.id ||
+               pending.first.generation != identity.generation);
+      m_service_returns.push_back({identity, m_service_cycle + 1});
+      return;
+    }
+    complete_now(identity);
+  }
+
+  void advance_service(uint64_t cycle) {
+    if (!m_cfg.finite_service || cycle == m_service_cycle) return;
+    m_service_cycle = cycle;
+    while (!m_service_returns.empty() &&
+           m_service_returns.front().second <= cycle) {
+      complete_now(m_service_returns.front().first);
+      m_service_returns.pop_front();
+    }
+  }
+
+  void complete_now(physical_identity identity) {
+    physical_line &line = m_phys[identity.id];
+    assert(line.allocated && line.generation == identity.generation);
     line.ready = true;
     for (auto it = m_evicted_pending_lines.begin();
          it != m_evicted_pending_lines.end();) {
@@ -251,6 +311,13 @@ class io_frontend {
 
   bool head_ready() const {
     return !m_entries.empty() && entry_ready(m_entries.front());
+  }
+  uint64_t map_loss_to_free_sum() const { return m_service_map_loss_sum; }
+  uint64_t map_loss_to_free_count() const { return m_service_map_loss_count; }
+  bool entry_ready_for(uint64_t uid) const {
+    for (const entry &owner : m_entries)
+      if (owner.uid == uid) return entry_ready(owner);
+    return false;
   }
 
   uint64_t head_uid() const {
@@ -356,8 +423,24 @@ class io_frontend {
     return -1;
   }
   bool entry_ready(const entry &e) const { if (e.has_unresolved_line || e.external_dependencies) return false; for (const physical_identity id : e.references) if (!m_phys[id.id].ready || m_phys[id.id].generation != id.generation) return false; return true; }
-  void release(physical_identity identity) { physical_line &line = m_phys[identity.id]; assert(line.generation == identity.generation); line.allocated = false; line.ready = false; ++m_releases; sample_resource_extrema(); }
+  void release(physical_identity identity) {
+    physical_line &line = m_phys[identity.id];
+    assert(line.generation == identity.generation);
+    if (m_cfg.finite_service) {
+      const auto lost = m_service_map_loss.find(identity.id);
+      assert(lost != m_service_map_loss.end());
+      m_service_map_loss_sum += m_service_cycle - lost->second;
+      ++m_service_map_loss_count;
+      m_service_map_loss.erase(lost);
+    }
+    line.allocated = false; line.ready = false;
+    ++m_releases; sample_resource_extrema();
+  }
   config m_cfg; std::vector<tag_entry> m_tags; std::vector<physical_line> m_phys; std::deque<entry> m_entries;
+  uint64_t m_service_cycle = UINT64_MAX;
+  std::map<unsigned, uint64_t> m_service_map_loss;
+  uint64_t m_service_map_loss_sum = 0, m_service_map_loss_count = 0;
+  std::deque<std::pair<physical_identity, uint64_t>> m_service_returns;
   uint64_t m_cycle = UINT64_MAX, m_lru_clock = 0, m_new_misses = 0, m_retires = 0;
   uint64_t m_tag_evictions = 0, m_duplicate_after_eviction = 0,
            m_partial_allocation_events = 0, m_valid_hits = 0,
@@ -486,6 +569,7 @@ class oo_frontend {
       physical_line &old = m_phys[victim->physical.id];
       assert(old.allocated && old.tag_valid);
       old.tag_valid = false;
+      if (m_cfg.finite_service) m_service_map_loss[victim->physical.id] = cycle;
       ++m_tag_evictions;
       if (old.ref_count == 0) {
         release(victim->physical);
@@ -525,6 +609,14 @@ class oo_frontend {
            "OO fill must match the original physical generation");
     physical_line &physical = m_phys[identity.id];
     assert(!physical.ready && "OO fill must wake each waiter exactly once");
+    if (m_cfg.finite_service) {
+      assert(m_service_cycle != UINT64_MAX);
+      for (const auto &pending : m_service_returns)
+        assert(pending.physical.id != identity.id ||
+               pending.physical.generation != identity.generation);
+      m_service_returns.push_back({identity, m_service_cycle + 1, 0});
+      return;
+    }
     physical.ready = true;
     for (const waiter &waiting : physical.waiters) {
       entry *owner = find_entry_by_slot(waiting.slot, waiting.slot_generation);
@@ -535,6 +627,35 @@ class oo_frontend {
       ++m_wakeups;
     }
     physical.waiters.clear();
+    assert_shadow_refs();
+  }
+
+  // The physical allocation remains Pending until its finite metadata work
+  // finishes. Late merges append to the same generation's waiter vector;
+  // entries with a zero count still cannot retire while physical.ready=false.
+  void advance_service(uint64_t cycle) {
+    if (!m_cfg.finite_service || cycle == m_service_cycle) return;
+    m_service_cycle = cycle;
+    unsigned budget = 4;
+    while (!m_service_returns.empty() &&
+           m_service_returns.front().ready_cycle <= cycle) {
+      auto &pending = m_service_returns.front();
+      assert(fill_identity_matches(pending.physical));
+      auto &physical = m_phys[pending.physical.id];
+      while (budget && pending.next_waiter < physical.waiters.size()) {
+        const auto &waiting = physical.waiters[pending.next_waiter++];
+        entry *owner = find_entry_by_slot(waiting.slot, waiting.slot_generation);
+        assert(owner && has_reference(*owner, pending.physical));
+        assert(owner->pending_dependencies);
+        --owner->pending_dependencies;
+        ++m_wakeups;
+        --budget;
+      }
+      if (pending.next_waiter != physical.waiters.size()) break;
+      physical.ready = true;
+      physical.waiters.clear();
+      m_service_returns.pop_front();
+    }
     assert_shadow_refs();
   }
 
@@ -619,6 +740,8 @@ class oo_frontend {
   uint64_t retires() const { return m_retires; }
   uint64_t out_of_order_retires() const { return m_out_of_order_retires; }
   uint64_t wakeups() const { return m_wakeups; }
+  uint64_t map_loss_to_free_sum() const { return m_service_map_loss_sum; }
+  uint64_t map_loss_to_free_count() const { return m_service_map_loss_count; }
   uint64_t tag_evictions() const { return m_tag_evictions; }
   uint64_t immediate_reclaims() const { return m_immediate_reclaims; }
   uint64_t deferred_reclaims() const { return m_deferred_reclaims; }
@@ -793,12 +916,28 @@ class oo_frontend {
     physical_line &physical = m_phys[identity.id];
     assert(physical.allocated && physical.generation == identity.generation &&
            !physical.tag_valid && !physical.ref_count);
+    if (m_cfg.finite_service) {
+      const auto lost = m_service_map_loss.find(identity.id);
+      assert(lost != m_service_map_loss.end());
+      m_service_map_loss_sum += m_service_cycle - lost->second;
+      ++m_service_map_loss_count;
+      m_service_map_loss.erase(lost);
+    }
     physical.allocated = false;
     physical.ready = false;
     physical.waiters.clear();
   }
 
   config m_cfg;
+  struct service_return {
+    physical_identity physical;
+    uint64_t ready_cycle;
+    size_t next_waiter;
+  };
+  std::map<unsigned, uint64_t> m_service_map_loss;
+  uint64_t m_service_map_loss_sum = 0, m_service_map_loss_count = 0;
+  uint64_t m_service_cycle = UINT64_MAX;
+  std::deque<service_return> m_service_returns;
   std::vector<tag_entry> m_tags;
   std::vector<physical_line> m_phys;
   std::vector<slot_state> m_slots;

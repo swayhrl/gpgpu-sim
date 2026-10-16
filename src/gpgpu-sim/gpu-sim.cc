@@ -405,6 +405,9 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_dtc_l1_pib_entries", OPT_UINT32,
                          &dtc_l1_pib_entries,
                          "DTC-L1 pending-instruction entries", "8");
+  option_parser_register(opp, "-gpgpu_dtc_l1_finite_service", OPT_BOOL,
+                         &dtc_l1_finite_service,
+                         "Opt-in preregistered whole-line DTC finite service V1", "0");
   option_parser_register(opp, "-gpgpu_dtc_l1_mshr_entries", OPT_UINT32,
                          &dtc_l1_mshr_entries,
                          "DTC-L1 Paper Base traditional MSHR entries", "32");
