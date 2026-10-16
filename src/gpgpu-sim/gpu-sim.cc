@@ -275,6 +275,12 @@ void memory_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_ep_l2_payload_mode", OPT_UINT32,
                          &m_L2_config.m_ep_l2_payload_mode,
                          "EP-L2 payload mode: 0=off, 1=Legacy, 2=Banked", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_ft_mode", OPT_UINT32,
+                         &m_L2_config.m_ep_l2_ft_mode,
+                         "FT mode: 0 old static, 1 finite WBUF, 2 unified WB", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_wbuf_entries", OPT_UINT32,
+                         &m_L2_config.m_ep_l2_wbuf_entries,
+                         "Additional WB payload budget: 0 off, 8 sensitivity, 16 primary", "0");
   option_parser_register(opp, "-gpgpu_ep_l2_payload_policy", OPT_UINT32,
                          &m_L2_config.m_ep_l2_payload_policy,
                          "EP-L2 payload policy: 0=static (only M1-supported policy)", "0");

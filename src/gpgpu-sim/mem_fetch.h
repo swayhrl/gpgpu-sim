@@ -28,6 +28,7 @@
 
 #ifndef MEM_FETCH_H
 #define MEM_FETCH_H
+#include <array>
 
 #include <bitset>
 #include "../abstract_hardware_model.h"
@@ -130,6 +131,10 @@ class mem_fetch {
   mem_fetch *get_original_mf() { return original_mf; }
   mem_fetch *get_original_wr_mf() { return original_wr_mf; }
 
+  void set_ft_wb_data(const std::array<unsigned long long,4> &v) { m_ft_wb_data = v; m_ft_wb_data_valid = true; }
+  bool has_ft_wb_data() const { return m_ft_wb_data_valid; }
+  const std::array<unsigned long long,4> &get_ft_wb_data() const { assert(m_ft_wb_data_valid); return m_ft_wb_data; }
+
   // EP-L2 B0 response identity carrier. C3 only carries the pair; C5 will
   // assign/reclaim payload slots for resident and bypass responses.
   void set_ep_l2_payload_identity(unsigned payload_id, unsigned generation) {
@@ -145,6 +150,8 @@ class mem_fetch {
   }
 
  private:
+  std::array<unsigned long long,4> m_ft_wb_data;
+  bool m_ft_wb_data_valid;
   // request source information
   unsigned m_request_uid;
   unsigned m_sid;
