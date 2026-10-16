@@ -41,6 +41,7 @@ struct fixture {
     const char *geoargs[]={"ft-test","-gpgpu_cache:dl2",geometry.c_str()};
     option_parser_cmdline(p,3,geoargs); config.init(); option_parser_destroy(p);
     gpu = new exec_gpgpu_sim(config,&context); memory = gpu->getMemoryConfig();
+    gpu->gpu_sim_cycle = time;
     cache_config &cc = const_cast<memory_config *>(memory)->m_L2_config;
 
     allocator = new partition_mf_allocator(memory);
@@ -55,7 +56,12 @@ struct fixture {
     mem_access_sector_mask_t mask;mask.set(sector);
     return allocator->alloc(a,type,active,bytes,mask,32,wr,time,0,0,0,NULL,0);
   }
-  void cycle() { gpu->gpu_sim_cycle=time++; cache->cycle(); }
+  void cycle() {
+    // Every direct fill/response/access and cache lower callback must use the
+    // same physical cycle; native fixture time must never run one cycle ahead.
+    assert(gpu->gpu_sim_cycle == time && gpu->gpu_tot_sim_cycle == 0);
+    cache->cycle(); gpu->gpu_sim_cycle = ++time;
+  }
   bool access(mem_fetch *mf, unsigned limit=32) {
     for(unsigned n=0;n<limit;++n) {
       std::list<cache_event> events;

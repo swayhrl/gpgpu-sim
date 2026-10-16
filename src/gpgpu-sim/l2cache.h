@@ -416,7 +416,6 @@ class memory_sub_partition {
     return m_ep_l2_last_preview_block_reason;
   }
 
-
   void force_l2_tag_update(new_addr_type addr, unsigned time,
                            mem_access_sector_mask_t mask);
   bool ft_try_force_l2_tag_update(new_addr_type addr, unsigned time,
