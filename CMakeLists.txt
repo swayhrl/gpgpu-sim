@@ -174,4 +174,5 @@ install(CODE "execute_process\(\
 # Explicit, lightweight production-path FT test; never part of the normal build.
 add_executable(ep_l2_ft_directed EXCLUDE_FROM_ALL tests/ep_l2/test_ft_wbuf.cc)
 target_include_directories(ep_l2_ft_directed PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
-target_link_libraries(ep_l2_ft_directed PRIVATE entrypoint)
+target_link_libraries(ep_l2_ft_directed PRIVATE -Wl,--start-group
+    entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group)
