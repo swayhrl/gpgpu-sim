@@ -120,12 +120,6 @@ class transactions {
         !m_port.tag_matches(tag, h, line)) return TAG_BINDING_INVALID;
     entry &e = m_slots[h.payload_id];
     if (e.live) return TRANSACTION_SLOT_BUSY;
-    // A current attached tag is the only merge lookup. Detached instances
-    // never address-match a new request. Caller must not install two tags.
-    for (unsigned i = 0; i < m_slots.size(); ++i)
-      if (m_slots[i].live && (m_slots[i].attached || !m_features.line_mshr_bypass) &&
-          m_slots[i].line == line)
-        return TAG_BINDING_INVALID;
     if (!m_features.line_mshr_bypass && !m_shared.reserve_ro_line(line))
       return LINE_MSHR_FULL;
     mshr_table::ro_descriptor_handle d;
@@ -142,6 +136,7 @@ class transactions {
     e.line = line; e.epoch = epoch; e.required = mask;
     e.ready = initial_ready_sectors;
     e.waiters.push_back(waiter(d, mf, mask));
+    if(!m_features.line_mshr_bypass)m_shared.bind_ro_line(line,h);
     ++stats.admits;
     return ACCEPTED;
   }
@@ -149,13 +144,19 @@ class transactions {
   // Tag lookup supplies the attached match. Only detach-with-MSHR mode may
   // discover a detached transaction by the conventional line index.
   bool merge_target(new_addr_type line, identity &result) const {
-    for (unsigned i = 0; i < m_slots.size(); ++i)
-      if (m_slots[i].live && m_slots[i].line == line &&
-          ((m_slots[i].attached && m_port.tag_matches(m_slots[i].tag,
-                                                    m_slots[i].h, line)) ||
-           (!m_features.line_mshr_bypass && m_shared.probe(line)))) {
-        result = m_slots[i].h; return true;
-      }
+    return !m_features.line_mshr_bypass && m_shared.lookup_ro_line(line,result);
+  }
+  bool live(identity h) const {
+    return h.payload_id<m_slots.size() && m_slots[h.payload_id].live && m_slots[h.payload_id].h==h;
+  }
+  unsigned scheduled(identity h) const { const entry &e=get(h);return e.required|e.ready; }
+  bool attached(identity h) const { return get(h).attached; }
+  bool ready_response(identity &h, unsigned start=0) const {
+    for(unsigned n=0;n<m_slots.size();++n) {
+      const entry &e=m_slots[(n+start)%m_slots.size()];
+      if(!e.live)continue;
+      for(const auto &w:e.waiters)if(!(w.sectors&~e.ready)){h=e.h;return true;}
+    }
     return false;
   }
 
@@ -180,6 +181,10 @@ class transactions {
     return ACCEPTED;
   }
 
+  bool can_detach(identity h) const {
+    const entry &e=get(h);
+    return m_features.tag_detach && e.attached && !e.reuse_seen && (e.required&~e.ready);
+  }
   bool detach(identity h) {
     entry &e = get(h);
     // Conservative waiter-aware protection persists after a merged waiter

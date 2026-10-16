@@ -644,6 +644,8 @@ class gpgpu_sim : public gpgpu_t {
   void dump_pipeline(int mask, int s, int m) const;
 
   void perf_memcpy_to_gpu(size_t dst_start_addr, size_t count);
+  void ep_l2_ro_begin_epoch();
+  void ep_l2_ro_end_epoch();
 
   // The next three functions added to be used by the functional simulation
   // function
@@ -707,6 +709,7 @@ class gpgpu_sim : public gpgpu_t {
  protected:
   ///// data /////
   class simt_core_cluster **m_cluster;
+  bool m_ro_epoch_started=false;
   class memory_partition_unit **m_memory_partition_unit;
   class memory_sub_partition **m_memory_sub_partition;
 

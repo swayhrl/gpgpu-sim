@@ -582,6 +582,8 @@ class cache_config {
     m_ep_l2_payload_mode = 0;
     m_ep_l2_ft_mode = 0;
     m_ep_l2_wbuf_entries = 0;
+    m_ro_tag_detach = m_ro_line_mshr_bypass = false;
+    m_ro_ranges = m_ro_ranges_sha256 = m_ro_manifest_sha256 = m_ro_scope = NULL;
     m_ep_l2_payload_policy = 0;
     m_ep_l2_feature_unified_payload = false;
     m_ep_l2_feature_ro_pending_state = false;
@@ -940,6 +942,8 @@ class cache_config {
   unsigned m_ep_l2_payload_mode;
   unsigned m_ep_l2_ft_mode;
   unsigned m_ep_l2_wbuf_entries;
+  bool m_ro_tag_detach, m_ro_line_mshr_bypass;
+  char *m_ro_ranges, *m_ro_ranges_sha256, *m_ro_manifest_sha256, *m_ro_scope;
   // M1 is infrastructure: functional mechanism bits default OFF.
   // Policy 0 is the only currently supported static policy.
   unsigned m_ep_l2_payload_policy;
@@ -1205,6 +1209,8 @@ class mshr_table {
   unsigned ro_targets_on_line(new_addr_type line) const;
   unsigned targets_on_line(new_addr_type line) const;
   bool reserve_ro_line(new_addr_type line);
+  void bind_ro_line(new_addr_type line, ep_l2::PayloadHandle h);
+  bool lookup_ro_line(new_addr_type line, ep_l2::PayloadHandle &h) const;
   void release_ro_line(new_addr_type line);
   void ro_line_issue(new_addr_type line, const mem_access_sector_mask_t &mask);
   void ro_line_ready(new_addr_type line, const mem_access_sector_mask_t &mask);
@@ -1262,6 +1268,7 @@ class mshr_table {
     std::list<unsigned> m_descriptor_ids;
     bool m_has_atomic;
     bool m_ro_line_owner;
+    ep_l2::PayloadHandle m_ro_handle;
     mem_access_sector_mask_t m_pending_sectors;
     mem_access_sector_mask_t m_issued_sectors;
     mem_access_sector_mask_t m_ready_sectors;
@@ -2619,7 +2626,9 @@ class ep_l2_payload_store {
 
 /// Models second level shared cache with global write-back
 /// and write-allocate policies
+class ep_l2_ro_runtime;
 class l2_cache : public data_cache {
+  friend class ep_l2_ro_runtime;
  public:
   l2_cache(const char *name, cache_config &config, int core_id, int type_id,
            mem_fetch_interface *memport, mem_fetch_allocator *mfcreator,
@@ -2637,9 +2646,17 @@ class l2_cache : public data_cache {
         m_ep_l2_tag_payload(ep_l2_payload_store::k_resident_slots) {
     validate_ep_l2_mode_config();
     m_ft_last_wb_versions.fill(0);
+    ro_init();
   }
 
-  virtual ~l2_cache() {}
+  virtual ~l2_cache();
+  bool ro_enabled() const { return m_ro != NULL; }
+  void ro_begin_epoch();
+  void ro_end_epoch();
+  bool ro_drained() const;
+  bool ro_return(mem_fetch *, unsigned long long);
+  void ro_print(FILE *, unsigned) const;
+  bool access_ready() const;
 
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
@@ -2735,8 +2752,8 @@ class l2_cache : public data_cache {
   unsigned ft_wb_staged() const { return m_ft_wb.size(); }
   unsigned ft_pending_lower_reads() const { return m_ep_l2_payload.pending_sector_count(); }
   bool ft_reservation_active() const { return m_ft_pending.request != NULL; }
-  bool ft_drained() const { return !ft_enabled() || (!m_ft_pending.request &&
-      m_ft_wb.empty() && m_ft_read_refs.empty() && !m_ep_l2_payload.wb_used()); }
+  bool ft_drained() const { return ro_drained() && (!ft_enabled() || (!m_ft_pending.request &&
+      m_ft_wb.empty() && m_ft_read_refs.empty() && !m_ep_l2_payload.wb_used())); }
   bool lower_ready(mem_fetch *mf, unsigned long long cycle) override;
   void lower_accepted(mem_fetch *mf, unsigned long long cycle) override;
   void descriptor_admitted(mem_fetch *mf, unsigned cache_index) override;
@@ -2872,6 +2889,8 @@ class l2_cache : public data_cache {
   unsigned long long m_ep_l2_wad_lifetime_count;
   unsigned long long m_ep_l2_wad_lifetime_max;
   std::map<unsigned long long, unsigned long long> m_ep_l2_wad_lifetime_hist;
+  ep_l2_ro_runtime *m_ro;
+  void ro_init();
   ep_l2_payload_store m_ep_l2_payload;
   ep_l2_payload_store::request_result m_ep_l2_last_payload_request_result;
   std::vector<ep_l2_payload_store::payload_handle> m_ep_l2_tag_payload;

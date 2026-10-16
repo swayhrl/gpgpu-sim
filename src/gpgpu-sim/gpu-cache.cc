@@ -36,6 +36,7 @@
 #include <assert.h>
 #include "gpu-sim.h"
 #include "hashing.h"
+#include "ep-l2-ro-runtime.inc"
 
 namespace {
 struct l2_char_tag_state {
@@ -745,6 +746,15 @@ bool mshr_table::reserve_ro_line(new_addr_type line) {
     return false;
   m_data[line].m_ro_line_owner = true;
   return true;
+}
+
+void mshr_table::bind_ro_line(new_addr_type line, ep_l2::PayloadHandle h) {
+  assert(m_data.at(line).m_ro_line_owner); m_data.at(line).m_ro_handle=h;
+}
+bool mshr_table::lookup_ro_line(new_addr_type line, ep_l2::PayloadHandle &h) const {
+  auto it=m_data.find(line);
+  if(it==m_data.end() || !it->second.m_ro_line_owner)return false;
+  h=it->second.m_ro_handle;return true;
 }
 
 void mshr_table::release_ro_line(new_addr_type line) {
@@ -2515,7 +2525,12 @@ enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
 enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events) {
-  if (ft_enabled()) return ft_access(addr, mf, time, events);
+  if (m_ro) m_ro->check_access(mf);
+  if (ft_enabled()) {
+    const auto r=ft_access(addr, mf, time, events);
+    if(m_ro && r!=RESERVATION_FAIL)m_ro->record_accepted(mf);
+    return r;
+  }
   m_ep_l2_last_payload_request_result = ep_l2_payload_store::GRANTED;
   unsigned payload_index = (unsigned)-1;
   bool payload_reserved = false;
@@ -2709,6 +2724,7 @@ void l2_cache::fill(mem_fetch *mf, unsigned time) {
 void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
                               l2_access_plan &plan) const {
   plan = l2_access_plan();
+  if (m_ro && m_ro->preview(mf,plan)) return;
   if (!exact_l2_admission()) return;
 
   plan.exact = true;
@@ -2728,6 +2744,9 @@ void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
   plan.probe_status =
       m_tag_array->probe(block_addr, cache_index, mf, mf->is_write(), true);
   plan.cache_index = cache_index;
+  if (plan.probe_status == RESERVATION_FAIL && m_ro && m_ro->detachable(addr,cache_index)) {
+    plan.probe_status=MISS;plan.cache_index=cache_index;
+  }
   if (plan.probe_status == RESERVATION_FAIL) {
     plan.ep_l2_tag_set_all_reserved = true;
     return;

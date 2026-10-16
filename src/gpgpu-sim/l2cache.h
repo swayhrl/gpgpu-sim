@@ -336,6 +336,9 @@ class memory_sub_partition {
   void l2_char_hold_returnq(unsigned cycles);
   unsigned ft_wb_staged_for_test() const { return m_L2cache->ft_wb_staged(); }
   bool ft_drained_for_test() const { return m_L2cache->ft_drained(); }
+  void ro_begin_epoch(){m_L2cache->ro_begin_epoch();}
+  void ro_end_epoch(){m_L2cache->ro_end_epoch();}
+  l2_cache *ro_cache_for_test(){return m_L2cache;}
 
   void visualizer_print(gzFile visualizer_file);
   void print_cache_stat(unsigned &accesses, unsigned &misses) const;

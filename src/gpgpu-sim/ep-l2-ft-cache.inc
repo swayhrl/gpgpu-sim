@@ -18,6 +18,7 @@ void l2_cache::lower_read_enqueued(mem_fetch *mf, unsigned index) {
 }
 
 mem_fetch *l2_cache::peek_next_access() const {
+  if(m_ro && m_ro->selected)return m_ro->reply.request;
   mem_fetch *mf = baseline_cache::peek_next_access();
   if (ft_enabled()) {
     std::map<mem_fetch *,ep_l2::PayloadHandle>::const_iterator it = m_ft_read_refs.find(mf);
@@ -28,6 +29,7 @@ mem_fetch *l2_cache::peek_next_access() const {
 }
 
 bool l2_cache::ft_response_ready(unsigned long long cycle) {
+  if(m_ro && m_ro->has_response())return m_ro->prepare(cycle);
   if (!ft_enabled()) return true;
   mem_fetch *mf = baseline_cache::peek_next_access();
   std::map<mem_fetch *,ep_l2::PayloadHandle>::const_iterator it = m_ft_read_refs.find(mf);
@@ -45,6 +47,7 @@ void l2_cache::cycle() {
 }
 
 void l2_cache::commit_next_access() {
+  if(m_ro && m_ro->selected){m_ro->commit(m_gpu->gpu_sim_cycle+m_gpu->gpu_tot_sim_cycle);return;}
   if (!ft_enabled()) { baseline_cache::commit_next_access(); return; }
   // A synthetic write-allocate response may already have been deleted by the
   // frontend. Use its pointer only as an identity key, never dereference it.
@@ -81,9 +84,16 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     unsigned time, std::list<cache_event> &events) {
   m_ep_l2_last_payload_request_result = ep_l2_payload_store::GRANTED;
   const new_addr_type owner = m_config.block_addr(addr);
+  if(m_ro) {
+    cache_request_status merged;
+    if(m_ro->merge_existing(mf,time,events,merged))return merged;
+  }
+  const bool ro_new=m_ro && m_ro->new_request(mf);
   unsigned index = (unsigned)-1;
   cache_request_status probe = m_tag_array->probe(owner, index, mf, mf->is_write(), true);
+  if(probe==RESERVATION_FAIL && m_ro){m_ro->relieve(addr);probe=m_tag_array->probe(owner,index,mf,mf->is_write(),true);}
   if (probe == RESERVATION_FAIL) return RESERVATION_FAIL;
+  if(ro_new && (!m_ro->capacity(mf,false) || !miss_queue_has_slots(mf->get_access_sector_mask().count()+(probe==MISS && m_tag_array->block_is_modified(index)))))return RESERVATION_FAIL;
   if (m_ft_pending.request && m_ft_pending.request != mf) return RESERVATION_FAIL;
   if (ep_l2_wad_contains(owner)) { ++m_ep_l2_wad_same_address_wait_count; return RESERVATION_FAIL; }
 
@@ -111,7 +121,9 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     const bool read = !mf->get_is_write();
     const new_addr_type key = m_config.mshr_addr(addr);
     unsigned slots = dirty ? 1 : 0;
-    if (read) {
+    if(ro_new) {
+      slots+=mf->get_access_sector_mask().count();
+    } else if (read) {
       if (m_mshrs.full(key)) return RESERVATION_FAIL;
       if (m_mshrs.needs_lower_read(key, mf->get_access_sector_mask())) ++slots;
     } else if (m_config.m_write_alloc_policy == WRITE_ALLOCATE) {
@@ -233,7 +245,8 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   }
   const ep_l2::PayloadHandle handle = tag_payload_handle(index);
   mf->set_ep_l2_payload_identity(handle.payload_id, handle.generation);
-  const cache_request_status result = data_cache::access(addr, mf, time, events);
+  const cache_request_status result = ro_new ? m_ro->accept_new(mf,index,probe,time,events) :
+      data_cache::access(addr, mf, time, events);
   if (result == RESERVATION_FAIL) {
     if (replacement) ft_rollback();
     return result;
@@ -288,6 +301,10 @@ bool l2_cache::lower_ready(mem_fetch *mf, unsigned long long cycle) {
 }
 
 void l2_cache::lower_accepted(mem_fetch *mf, unsigned long long cycle) {
+  if(mf->ro_lower_packet()) {
+    if(!m_ro)throw std::logic_error("RO lower acceptance without runtime");
+    m_ro->tx->lower_accepted(ep_l2::PayloadHandle(mf->get_ep_l2_payload_id(),mf->get_ep_l2_payload_generation()),mf->get_access_sector_mask().to_ulong());return;
+  }
   if (!ft_enabled() || mf->get_access_type() != L2_WRBK_ACC) return;
   std::map<mem_fetch *,ft_wb_record>::iterator it = m_ft_wb.find(mf);
   assert(it != m_ft_wb.end());

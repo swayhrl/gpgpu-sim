@@ -31,6 +31,7 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 #include "gpu-sim.h"
+#include <stdexcept>
 
 #include <math.h>
 #include <signal.h>
@@ -275,6 +276,18 @@ void memory_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_ep_l2_wbuf_entries", OPT_UINT32,
                          &m_L2_config.m_ep_l2_wbuf_entries,
                          "Additional WB payload budget: 0 off, 8 sensitivity, 16 primary", "0");
+  option_parser_register(opp,"-gpgpu_ep_l2_ro_tag_detach",OPT_BOOL,
+      &m_L2_config.m_ro_tag_detach,"RO pending Tag detach (closed-world oracle)","0");
+  option_parser_register(opp,"-gpgpu_ep_l2_ro_line_mshr_bypass",OPT_BOOL,
+      &m_L2_config.m_ro_line_mshr_bypass,"RO independent completion without native Line-MSHR","0");
+  option_parser_register(opp,"-gpgpu_ep_l2_ro_ranges",OPT_CSTR,
+      &m_L2_config.m_ro_ranges,"Verified whole-commandlist oracle ranges","");
+  option_parser_register(opp,"-gpgpu_ep_l2_ro_ranges_sha256",OPT_CSTR,
+      &m_L2_config.m_ro_ranges_sha256,"Verified range bytes SHA256","");
+  option_parser_register(opp,"-gpgpu_ep_l2_ro_manifest_sha256",OPT_CSTR,
+      &m_L2_config.m_ro_manifest_sha256,"Preflight verified full-epoch manifest SHA256","");
+  option_parser_register(opp,"-gpgpu_ep_l2_ro_scope",OPT_CSTR,
+      &m_L2_config.m_ro_scope,"Explicit TRACE_MODEL_CLOSED_WORLD acknowledgement","");
   option_parser_register(opp, "-gpgpu_ep_l2_payload_policy", OPT_UINT32,
                          &m_L2_config.m_ep_l2_payload_policy,
                          "EP-L2 payload policy: 0=static (only M1-supported policy)", "0");
@@ -869,6 +882,7 @@ void increment_x_then_y_then_z(dim3 &i, const dim3 &bound) {
 }
 
 void gpgpu_sim::launch(kernel_info_t *kinfo) {
+  ep_l2_ro_begin_epoch();
   unsigned kernelID = kinfo->get_uid();
   unsigned long long streamID = kinfo->get_streamID();
 
@@ -2321,6 +2335,7 @@ void shader_core_ctx::dump_warp_state(FILE *fout) const {
 }
 
 void gpgpu_sim::perf_memcpy_to_gpu(size_t dst_start_addr, size_t count) {
+  if(m_ro_epoch_started)throw std::logic_error("host write inside certified whole-commandlist epoch");
   if (m_memory_config->m_perf_sim_memcpy) {
     // if(!m_config.trace_driven_mode)    //in trace-driven mode, CUDA runtime
     // can start nre data structure at any position 	assert (dst_start_addr %
@@ -2497,4 +2512,20 @@ void sst_gpgpu_sim::SST_cycle() {
   // launch device kernel
   gpgpu_ctx->device_runtime->launch_one_device_kernel();
 #endif
+}
+
+void gpgpu_sim::ep_l2_ro_begin_epoch() {
+  if(m_ro_epoch_started || !(m_memory_config->m_L2_config.m_ro_tag_detach || m_memory_config->m_L2_config.m_ro_line_mshr_bypass))return;
+  if(active())throw std::logic_error("RO epoch requires drained initialization");
+  for(unsigned i=0;i<m_memory_config->m_n_mem;++i)
+    for(unsigned j=0;j<m_memory_config->m_n_sub_partition_per_memory_channel;++j)
+      m_memory_partition_unit[i]->get_sub_partition(j)->ro_begin_epoch();
+  m_ro_epoch_started=true;
+}
+void gpgpu_sim::ep_l2_ro_end_epoch() {
+  if(!m_ro_epoch_started)return;
+  if(active())throw std::logic_error("RO epoch end requires full hardware drain");
+  for(unsigned i=0;i<m_memory_config->m_n_mem;++i)
+    for(unsigned j=0;j<m_memory_config->m_n_sub_partition_per_memory_channel;++j)
+      m_memory_partition_unit[i]->get_sub_partition(j)->ro_end_epoch();
 }

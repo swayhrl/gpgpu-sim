@@ -1114,7 +1114,11 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
     --m_l2_char_returnq_hold_remaining;
   } else if (!m_dram_L2_queue->empty()) {
     mem_fetch *mf = m_dram_L2_queue->top();
-    if (!m_config->m_L2_config.disabled() && m_L2cache->waiting_for_fill(mf)) {
+    if(mf->ro_lower_packet()) {
+      if(m_L2cache->ro_return(mf,m_gpu->gpu_sim_cycle+m_gpu->gpu_tot_sim_cycle)) {
+        m_dram_L2_queue->pop();delete mf;
+      }
+    } else if (!m_config->m_L2_config.disabled() && m_L2cache->waiting_for_fill(mf)) {
       // Target payload modes replace the legacy FillPort with the resident
       // payload RAM write port. The returned transaction's landing identity
       // selects the physical target slot; no hard-coded slot may be used.
@@ -2228,6 +2232,7 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
           uid == (unsigned long long)-1 ? 1 : 0);
   if (uid == (unsigned long long)-1 && m_L2cache->ft_enabled()) {
     m_L2cache->ft_print(fp, m_id);
+    m_L2cache->ro_print(fp,m_id);
     fprintf(fp, "EPL2FTV1|TERMINAL|slice=%u|unique_requesters=%llu|responses=%llu|"
         "absorbed_writebacks=%llu|requester_live=%u|requester_exact_once=%u|"
         "hardware_drained=%u|pending_lower_reads=%u|pending_returns=%u|pending_responses=%u\n",

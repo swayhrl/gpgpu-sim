@@ -3,7 +3,7 @@
 #include "ep-l2-ro-transactions.h"
 
 namespace ep_l2_ro {
-// Lane 1 supplies actual tag_array/generation visibility and response wiring.
+// Actual Tag callback is supplied by the production l2_cache runtime.
 class tag_port {
  public:
   virtual ~tag_port() {}
@@ -13,7 +13,7 @@ class tag_port {
   virtual void read(identity,unsigned,const std::array<unsigned long long,4>&) = 0;
 };
 
-// Executable binding against Lane-1 10d7f4fe. Owns NO data array/allocator.
+// Executable binding against Lane-1 R0. Owns NO data array/allocator.
 class store_port : public payload_port {
  public:
   store_port(ep_l2_payload_store &store,tag_port &tags)
@@ -38,6 +38,8 @@ class store_port : public payload_port {
     auto &s=m_store.inspect_mutable(h);
     if ((s.pending_sector_mask.to_ulong()|s.ready_sector_mask.to_ulong())&mask)
       throw std::logic_error("RO lower sector already outstanding/ready");
+    if(s.allocation_role==ep_l2_payload_store::RESIDENT)
+      m_store.transfer(h,ep_l2_payload_store::RO,ep_l2_payload_store::RO_FILL_ATTACHED);
     s.pending_sector_mask|=mem_access_sector_mask_t(mask);
   }
   // Borrow the actual return packet's version tokens for one callback only.

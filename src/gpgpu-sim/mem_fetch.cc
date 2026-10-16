@@ -70,6 +70,7 @@ mem_fetch::mem_fetch(const mem_access_t &access, const warp_inst_t *inst,
   m_status_change = cycle;
   m_mem_config = config;
   icnt_flit_size = config->icnt_flit_size;
+  m_ro_lower=false;
   m_ft_wb_data_valid = false; m_ft_wb_data.fill(0);
   m_ep_l2_payload_id = (unsigned)-1;
   m_ep_l2_payload_generation = 0;
