@@ -56,12 +56,15 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
       ep_l2_ro::switches(cfg.m_ro_tag_detach,cfg.m_ro_line_mshr_bypass)));
   }
   uint64_t physical_cycle() const {
-    return c.m_gpu->gpu_sim_cycle+c.m_gpu->gpu_tot_sim_cycle;
+    return c.ft_physical_cycle();
+  }
+  bool prefill_allowed() const {
+    return !ever_open && !open && !selected && tx->drained();
   }
   void prefill_begin() const {
     // The certified full application can start only once. A drained kernel
     // boundary is not permission to mutate its whole-commandlist certificate.
-    if(ever_open || open || selected || !tx->drained())
+    if(!prefill_allowed())
       throw std::logic_error("RO host prefill is initialization-only before epoch activation");
   }
   void prefill_complete(unsigned index,handle h,new_addr_type owner,

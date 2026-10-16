@@ -169,9 +169,12 @@ static void warmup_scope(const char *base,const char *overlay,const char *bindin
   assert(f.cache->ep_l2_payload_for_test().bank_grants()==0); // untimed initialization
   f.cache->ro_bind_commandlist(rig::command.c_str());f.cache->ro_begin_epoch();
   auto a=f.make(0);assert(f.admit(a)==HIT);assert(a->get_ft_wb_data()[0]==0);delete a;
+  const auto before_reject_grants=f.cache->ep_l2_payload_for_test().bank_grants();
+  assert(!f.cache->ft_try_force_tag_access(0,8191,mem_access_sector_mask_t(1)));
+  assert(f.tag()==h && f.cache->ep_l2_payload_for_test().bank_grants()==before_reject_grants);
   bool rejected=false;try{f.cache->force_tag_access(0,8192,mem_access_sector_mask_t(1));}
   catch(const std::logic_error&){rejected=true;}assert(rejected);
-  f.cache->ro_end_epoch();rejected=false;
+  f.cache->ro_end_epoch();assert(!f.cache->ft_try_force_tag_access(0,8193,mem_access_sector_mask_t(1)));rejected=false;
   try{f.cache->force_tag_access(0,8193,mem_access_sector_mask_t(1));}
   catch(const std::logic_error&){rejected=true;}assert(rejected);
   assert(f.tag()==h);puts("RO warmed handle/sector reuse and initialization-only scope PASS");
