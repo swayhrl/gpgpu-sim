@@ -2103,6 +2103,20 @@ void ldst_unit::get_cache_stats(cache_stats &cs) {
 
 void ldst_unit::get_dtc_l1_stats(
     dtc_l1::paper_frontend_stats &stats) const {
+  if (dtc_l1_finite_service_active()) {
+    dtc_l1::paper_frontend_stats service;
+    service.finite_service = {
+        m_dtc_service_samples, m_dtc_service_pib_integral,
+        m_dtc_service_physical_integral, m_dtc_service_collected_sectors,
+        m_dtc_service_ready_to_complete_sum, m_dtc_service_retired,
+        m_dtc_service_ready_to_collect_sum, m_dtc_service_collection_cycles,
+        m_dtc_service_wb_wait,
+        dtc_l1_paper_io_active() ? m_dtc_l1_io_frontend->map_loss_to_free_sum()
+                               : m_dtc_l1_oo_frontend->map_loss_to_free_sum(),
+        dtc_l1_paper_io_active() ? m_dtc_l1_io_frontend->map_loss_to_free_count()
+                               : m_dtc_l1_oo_frontend->map_loss_to_free_count()};
+    stats.add(service);
+  }
   // Statistics are collected only after the simulator has drained.  A live
   // cacheable-load ledger here would mean that a DTC instruction escaped its
   // exactly-once completion path, so make that terminal condition fatal.
@@ -5697,6 +5711,17 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
             static_cast<unsigned long long>(
                 total.m4_source_reachable_fence_ops));
   };
+  if (m_shader_config->dtc_l1_finite_service) {
+    const char *names[] = {"samples", "pib_integral", "physical_integral",
+        "collected_sectors", "fully_ready_to_complete_sum", "retired",
+        "ready_to_collect_sum", "collection_cycles", "wb_wait",
+        "map_loss_to_free_sum", "map_loss_to_free_count"};
+    assert(total.finite_service[4] == total.finite_service[6] +
+           total.finite_service[7] + total.finite_service[8]);
+    for (size_t i = 0; i < total.finite_service.size(); ++i)
+      fprintf(fout, "DTC_SERVICE_V1_%s = %llu\n", names[i],
+              (unsigned long long)total.finite_service[i]);
+  }
   if (mode == static_cast<unsigned>(dtc_l1::mode::PAPER_IO)) {
     assert(total.io_inflight_current == 0);
     assert(total.io_pib_occupancy == 0);

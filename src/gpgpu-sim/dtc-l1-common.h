@@ -1473,6 +1473,7 @@ class sector_oo_frontend {
 // A value snapshot lets the normal SM/cluster aggregation path emit a compact
 // kernel summary without exposing mutable front-end state.
 struct paper_frontend_stats {
+  std::array<uint64_t, 11> finite_service = {};
   uint64_t admits = 0;
   uint64_t retires = 0;
   uint64_t tag_requests = 0;
@@ -1579,6 +1580,8 @@ struct paper_frontend_stats {
   uint64_t m4_source_reachable_fence_ops = 0;
 
   void add(const paper_frontend_stats &other) {
+    for (size_t i = 0; i < finite_service.size(); ++i)
+      finite_service[i] += other.finite_service[i];
     admits += other.admits;
     retires += other.retires;
     tag_requests += other.tag_requests;
