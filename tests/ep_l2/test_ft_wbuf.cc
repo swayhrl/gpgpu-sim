@@ -28,7 +28,7 @@ struct fixture {
   l2_cache *cache;
   lower_port port;
   unsigned time;
-  fixture(const char *base, const char *overlay, unsigned mode, unsigned c)
+  fixture(const char *base, const char *overlay, unsigned mode, unsigned c, unsigned sets=1)
       : config(&context), gpu(NULL), memory(NULL), allocator(NULL), cache(NULL), time(1) {
     option_parser_t p = option_parser_create();
     context.ptx_reg_options(p); context.func_sim->ptx_opcocde_latency_options(p);
@@ -36,7 +36,10 @@ struct fixture {
     option_parser_cfgfile(p,base); option_parser_cfgfile(p,overlay);
     std::string mode_s=std::to_string(mode), c_s=std::to_string(c);
     const char *args[]={"ft-test","-gpgpu_ep_l2_ft_mode",mode_s.c_str(),"-gpgpu_ep_l2_wbuf_entries",c_s.c_str()};
-    option_parser_cmdline(p,5,args); config.init(); option_parser_destroy(p);
+    option_parser_cmdline(p,5,args);
+    std::string geometry="S:"+std::to_string(sets)+":128:1,L:B:m:L:L,A:128:1,256:0,32";
+    const char *geoargs[]={"ft-test","-gpgpu_cache:dl2",geometry.c_str()};
+    option_parser_cmdline(p,3,geoargs); config.init(); option_parser_destroy(p);
     gpu = new exec_gpgpu_sim(config,&context); memory = gpu->getMemoryConfig();
     cache_config &cc = const_cast<memory_config *>(memory)->m_L2_config;
 
@@ -92,7 +95,8 @@ static void capacity_and_versions(const char *base,const char *overlay,unsigned 
     assert(f.access(w));
     auto h=f.resident(); auto &slot=f.cache->ep_l2_payload_for_test().inspect(h);
     assert(h.payload_id%4==0 && slot.versions[0]==(unsigned long long)w->get_request_uid()+1);
-    reference[i*128]=slot.versions;
+    std::array<unsigned long long,4> expected={{(unsigned long long)w->get_request_uid()+1,0,0,0}};
+    reference[i*128]=expected;
     delete w;
   }
   assert(f.staged()==n-1 && f.wad()==n-1);
@@ -115,7 +119,7 @@ static void wad_full(const char *base,const char *overlay) {
   std::map<new_addr_type,std::array<unsigned long long,4>> ref;
   for(unsigned i=0;i<129;++i) {
     mem_fetch *w=f.make(i*128,true);assert(f.access(w));
-    ref[i*128]=f.cache->ep_l2_payload_for_test().inspect(f.resident()).versions;delete w;
+    ref[i*128]={{(unsigned long long)w->get_request_uid()+1,0,0,0}};delete w;
   }
   assert(f.wad()==128 && f.staged()==128);
   auto h=f.resident();mem_fetch *blocked=f.make(129*128,true);
@@ -144,16 +148,87 @@ static void response_pins_and_sectors(const char *base,const char *overlay) {
   mem_fetch *replacement=f.make(0x2000,true);assert(!f.access(replacement,8));
   assert(f.resident()==h);
   unsigned replies=0;
-  while(f.cache->access_ready()) { f.cache->commit_next_access();++replies; }
+  while(f.cache->access_ready()) {
+    if(f.cache->ft_response_ready(f.time)) { f.cache->peek_next_access();f.cache->commit_next_access();++replies; }
+    f.cycle();
+  }
   assert(replies==3 && pool.inspect(h).pins==0);
   assert(f.access(replacement));delete replacement;delete a;delete b;delete merged;
   assert(!f.cache->ft_reservation_active());
   puts("FT sector identity, merge, fill and response-backpressure pins PASS");
 }
 
+static void same_bank_pool_full(const char *base,const char *overlay) {
+  fixture f(base,overlay,2,16,1024);
+  std::map<new_addr_type,std::array<unsigned long long,4>> ref;
+  for(unsigned i=0;i<1024;++i) {
+    mem_fetch *w=f.make(i*128,true);assert(f.access(w));
+    ref[i*128]={{(unsigned long long)w->get_request_uid()+1,0,0,0}};delete w;
+  }
+  // Fill all 36 spare bank-0 landings with real production dirty victims.
+  const unsigned stride=1024*128;
+  for(unsigned i=1;i<=36;++i) {
+    mem_fetch *w=f.make(i*stride,true);assert(f.access(w));
+    ref[i*stride]={{(unsigned long long)w->get_request_uid()+1,0,0,0}};delete w;
+  }
+  assert(f.staged()==36 && f.wad()==36);
+  auto h=f.resident();auto before=f.cache->ep_l2_payload_for_test().inspect(h);
+  mem_fetch *w=f.make(37*stride,true);
+  assert(!f.access(w,8));assert(f.resident()==h);
+  assert(f.cache->ep_l2_payload_for_test().inspect(h).versions==before.versions);
+  assert(!f.cache->ft_reservation_active());
+  f.drain_wb(ref); // send requires no new landing even when bank 0 was full
+  assert(f.access(w));delete w;f.drain_wb(ref);
+  puts("FT production same-bank pool-full, nonmutating refusal, WB progress PASS");
+}
+
+static void read_version_reference(const char *base,const char *overlay) {
+  fixture f(base,overlay,2,16);
+  std::map<new_addr_type,std::array<unsigned long long,4>> memory;
+  std::array<unsigned long long,4> expected={{0,0,0,0}};
+  for(unsigned sector=0;sector<2;++sector) {
+    mem_fetch *w=f.make(0x1000+32*sector,true);assert(f.access(w));
+    expected[sector]=(unsigned long long)w->get_request_uid()+1;delete w;
+  }
+  memory[0x1000]=expected;
+  mem_fetch *w=f.make(0x2000,true);assert(f.access(w));
+  memory[0x2000]={{(unsigned long long)w->get_request_uid()+1,0,0,0}};delete w;
+  f.drain_wb(memory);
+  mem_fetch *a=f.make(0x1000,false,GLOBAL_ACC_R), *b=f.make(0x1020,false,GLOBAL_ACC_R);
+  assert(f.access(a));assert(f.access(b));
+  // Independently retained lower-memory versions are attached by the memory
+  // fixture. The production fill and response paths must recover them exactly.
+  for(unsigned n=0;n<128 && (f.cache->mshr_entries_used() || !f.cache->miss_queue_empty());++n) {
+    f.cycle();
+    while(!f.port.packets.empty()) {
+      mem_fetch *mf=f.port.packets.front();f.port.packets.pop_front();
+      if(mf->get_access_type()==L2_WRBK_ACC) {
+        assert(mf->get_ft_wb_data()==memory.at(mf->get_addr()));
+        f.cache->ep_l2_wad_complete(mf->get_addr(),f.time);delete mf;
+      } else {
+        mf->set_ft_wb_data(memory.at(mf->get_addr() & ~127ull));
+        while(f.cache->ep_l2_payload_fill_request(mf,f.time)!=ep_l2_payload_store::GRANTED) f.cycle();
+        f.cache->fill(mf,f.time);f.cycle();
+      }
+    }
+    while(f.cache->access_ready()) {
+      if(!f.cache->ft_response_ready(f.time)) { f.cycle();continue; }
+      mem_fetch *r=f.cache->peek_next_access();
+      unsigned sector=(r->get_addr()>>5)&3;
+      assert(r->get_ft_wb_data()[sector]==expected[sector]);
+      f.cache->commit_next_access();f.cycle();
+    }
+  }
+  assert(!f.cache->mshr_entries_used());
+  mem_fetch *hit=f.make(0x1000,false,GLOBAL_ACC_R);assert(f.access(hit));
+  assert(hit->get_ft_wb_data()==expected);delete hit;delete a;delete b;
+  puts("FT independent store/WB/lower/fill/merged-response version reference PASS");
+}
+
 int main(int argc,char **argv) {
   assert(argc==3);
   for(unsigned mode=1;mode<=2;++mode) for(unsigned c: {8u,16u}) capacity_and_versions(argv[1],argv[2],mode,c);
   wad_full(argv[1],argv[2]);response_pins_and_sectors(argv[1],argv[2]);
+  same_bank_pool_full(argv[1],argv[2]);read_version_reference(argv[1],argv[2]);
   puts("FT production directed suite PASS");
 }

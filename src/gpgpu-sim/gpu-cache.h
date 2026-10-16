@@ -2681,6 +2681,9 @@ class l2_cache : public data_cache {
 
   bool ft_enabled() const { return m_config.m_ep_l2_ft_mode != 0; }
   void commit_next_access();
+  mem_fetch *peek_next_access() const;
+  bool ft_response_ready(unsigned long long cycle);
+  void cycle();
   void ft_print(FILE *fp, unsigned slice) const;
   unsigned ft_wb_staged() const { return m_ft_wb.size(); }
   bool ft_reservation_active() const { return m_ft_pending.request != NULL; }
@@ -2760,11 +2763,12 @@ class l2_cache : public data_cache {
   struct ft_counters {
     unsigned long long accepted, lower_accept, wbuf_full, pool_full, pin_block,
         bank_block, issue_block, copy_lines, staging_reads, staged_max,
-        staging_lifetime, borrow_bypass, borrow_resident, rollback, data_checks;
+        staging_lifetime, borrow_bypass, borrow_resident, rollback, data_checks,
+        observed_cycles, staging_occupancy_sum, descriptor_responses;
     ft_counters() : accepted(0), lower_accept(0), wbuf_full(0), pool_full(0),
         pin_block(0), bank_block(0), issue_block(0), copy_lines(0), staging_reads(0),
         staged_max(0), staging_lifetime(0), borrow_bypass(0), borrow_resident(0),
-        rollback(0), data_checks(0) {}
+        rollback(0), data_checks(0), observed_cycles(0), staging_occupancy_sum(0), descriptor_responses(0) {}
   };
   ft_replacement m_ft_pending;
   ft_counters m_ft_stats;

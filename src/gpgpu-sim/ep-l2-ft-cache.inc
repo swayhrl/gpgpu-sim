@@ -17,17 +17,45 @@ void l2_cache::lower_read_enqueued(mem_fetch *mf, unsigned index) {
       m_config.block_addr(mf->get_addr()), h.generation, mf->get_access_sector_mask());
 }
 
+mem_fetch *l2_cache::peek_next_access() const {
+  mem_fetch *mf = baseline_cache::peek_next_access();
+  if (ft_enabled()) {
+    std::map<mem_fetch *,ep_l2::PayloadHandle>::const_iterator it = m_ft_read_refs.find(mf);
+    assert(it != m_ft_read_refs.end());
+    mf->set_ft_wb_data(m_ep_l2_payload.inspect(it->second).versions);
+  }
+  return mf;
+}
+
+bool l2_cache::ft_response_ready(unsigned long long cycle) {
+  if (!ft_enabled()) return true;
+  mem_fetch *mf = baseline_cache::peek_next_access();
+  std::map<mem_fetch *,ep_l2::PayloadHandle>::const_iterator it = m_ft_read_refs.find(mf);
+  assert(it != m_ft_read_refs.end());
+  return m_ep_l2_payload.request(it->second, false, cycle,
+      (unsigned long long)-1, ep_l2_payload_store::RESIDENT_HIT_READ) == ep_l2_payload_store::GRANTED;
+}
+
+void l2_cache::cycle() {
+  baseline_cache::cycle();
+  if (ft_enabled()) {
+    ++m_ft_stats.observed_cycles;
+    m_ft_stats.staging_occupancy_sum += m_ep_l2_payload.wb_used();
+  }
+}
+
 void l2_cache::commit_next_access() {
   if (!ft_enabled()) { baseline_cache::commit_next_access(); return; }
   // A synthetic write-allocate response may already have been deleted by the
   // frontend. Use its pointer only as an identity key, never dereference it.
-  mem_fetch *mf = peek_next_access();
+  mem_fetch *mf = baseline_cache::peek_next_access();
   std::map<mem_fetch *,ep_l2::PayloadHandle>::iterator it = m_ft_read_refs.find(mf);
   assert(it != m_ft_read_refs.end());
   const ep_l2::PayloadHandle h = it->second;
   baseline_cache::commit_next_access();
   m_ep_l2_payload.unpin(h);
   m_ft_read_refs.erase(it);
+  ++m_ft_stats.descriptor_responses;
 }
 
 void l2_cache::ft_rollback() {
@@ -209,6 +237,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   }
   if (m_tag_array->block_is_modified(index)) slot.status = ep_l2_payload_store::RESIDENT_DIRTY;
   else if (slot.pending_sector_mask.none()) slot.status = ep_l2_payload_store::RESIDENT_VALID;
+  if (!mf->get_is_write()) mf->set_ft_wb_data(slot.versions);
   if (replacement) m_ft_pending = ft_replacement();
   ++m_ft_stats.accepted;
   m_tag_array->l2_char_tracking_refresh_line(index);
@@ -268,7 +297,8 @@ void l2_cache::ft_print(FILE *fp, unsigned slice) const {
       "bank_block=%llu|issue_block=%llu|copy_lines=%llu|copy_bytes=%llu|staging_reads=%llu|"
       "staged_max=%llu|staging_lifetime=%llu|borrow_resident=%llu|borrow_bypass=%llu|"
       "rollback=%llu|version_checks=%llu|wb_live=%u|wb_slots=%u|reserved=%u|read_refs=%u|"
-      "role_free=%u|role_resident=%u|role_bypass=%u|ownership_consistent=%u\n",
+      "role_free=%u|role_resident=%u|role_bypass=%u|ownership_consistent=%u|"
+      "observed_cycles=%llu|wb_occupancy_sum=%llu|descriptor_responses=%llu\n",
       slice, m_config.m_ep_l2_ft_mode, m_config.m_ep_l2_wbuf_entries,
       m_ep_l2_payload.physical_slots(), m_ft_stats.accepted, m_ft_stats.lower_accept,
       m_ft_stats.wbuf_full, m_ft_stats.pool_full, m_ft_stats.pin_block,
@@ -278,5 +308,6 @@ void l2_cache::ft_print(FILE *fp, unsigned slice) const {
       m_ft_stats.rollback, m_ft_stats.data_checks, (unsigned)m_ft_wb.size(),
       m_ep_l2_payload.wb_used(), m_ft_pending.request ? 1 : 0, (unsigned)m_ft_read_refs.size(),
       m_ep_l2_payload.free_slots(), m_ep_l2_payload.resident_used(), m_ep_l2_payload.bypass_used(),
-      m_ep_l2_payload.ownership_consistent() ? 1 : 0);
+      m_ep_l2_payload.ownership_consistent() ? 1 : 0, m_ft_stats.observed_cycles,
+      m_ft_stats.staging_occupancy_sum, m_ft_stats.descriptor_responses);
 }

@@ -1074,7 +1074,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       m_l2_char_collector->record_mshr_response(
           m_L2cache->access_ready(),
           m_L2cache->access_ready() && m_L2_icnt_queue->full());
-    if (m_L2cache->access_ready() && !m_L2_icnt_queue->full()) {
+    if (m_L2cache->access_ready() && !m_L2_icnt_queue->full() &&
+        m_L2cache->ft_response_ready(m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle)) {
       // Keep the EP-L2 descriptor live until this response has actually been
       // accepted by the L2->ICNT queue below.
       mem_fetch *mf = m_L2cache->peek_next_access();

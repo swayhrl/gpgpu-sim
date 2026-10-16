@@ -2595,6 +2595,12 @@ void l2_cache::fill(mem_fetch *mf, unsigned time) {
            tag_payload_handle(e->second.m_cache_index).generation ==
                handle.generation &&
            m_ep_l2_payload.handle_owner_matches(handle, e->second.m_block_addr));
+    if (ft_enabled() && mf->has_ft_wb_data()) {
+      ep_l2_payload_store::slot &slot = m_ep_l2_payload.inspect_mutable(handle);
+      for (unsigned sector = 0; sector < 4; ++sector)
+        if (mf->get_access_sector_mask().test(sector) && !slot.versions[sector])
+          slot.versions[sector] = mf->get_ft_wb_data()[sector];
+    }
     // A stale response must never land into a reused static payload slot.
     m_ep_l2_payload.complete_resident_fill(
         id, e->second.m_block_addr, mf->get_ep_l2_payload_generation(),
