@@ -286,6 +286,8 @@ void memory_config::reg_options(class OptionParser *opp) {
       &m_L2_config.m_ro_ranges_sha256,"Verified range bytes SHA256","");
   option_parser_register(opp,"-gpgpu_ep_l2_ro_manifest_sha256",OPT_CSTR,
       &m_L2_config.m_ro_manifest_sha256,"Preflight verified full-epoch manifest SHA256","");
+  option_parser_register(opp,"-gpgpu_ep_l2_ro_manifest",OPT_CSTR,
+      &m_L2_config.m_ro_manifest,"Verified full epoch manifest file","");
   option_parser_register(opp,"-gpgpu_ep_l2_ro_scope",OPT_CSTR,
       &m_L2_config.m_ro_scope,"Explicit TRACE_MODEL_CLOSED_WORLD acknowledgement","");
   option_parser_register(opp, "-gpgpu_ep_l2_payload_policy", OPT_UINT32,
@@ -2515,7 +2517,7 @@ void sst_gpgpu_sim::SST_cycle() {
 }
 
 void gpgpu_sim::ep_l2_ro_begin_epoch() {
-  if(m_ro_epoch_started || !(m_memory_config->m_L2_config.m_ro_tag_detach || m_memory_config->m_L2_config.m_ro_line_mshr_bypass))return;
+  if(m_ro_epoch_started || !m_memory_config->m_L2_config.ro_requested())return;
   if(active())throw std::logic_error("RO epoch requires drained initialization");
   for(unsigned i=0;i<m_memory_config->m_n_mem;++i)
     for(unsigned j=0;j<m_memory_config->m_n_sub_partition_per_memory_channel;++j)
@@ -2528,4 +2530,12 @@ void gpgpu_sim::ep_l2_ro_end_epoch() {
   for(unsigned i=0;i<m_memory_config->m_n_mem;++i)
     for(unsigned j=0;j<m_memory_config->m_n_sub_partition_per_memory_channel;++j)
       m_memory_partition_unit[i]->get_sub_partition(j)->ro_end_epoch();
+}
+
+void gpgpu_sim::ep_l2_ro_bind_commandlist(const char *path) {
+  if(!m_memory_config->m_L2_config.ro_requested())return;
+  if(m_ro_epoch_started)throw std::logic_error("commandlist binding after epoch activation");
+  for(unsigned i=0;i<m_memory_config->m_n_mem;++i)
+    for(unsigned j=0;j<m_memory_config->m_n_sub_partition_per_memory_channel;++j)
+      m_memory_partition_unit[i]->get_sub_partition(j)->ro_bind_commandlist(path);
 }

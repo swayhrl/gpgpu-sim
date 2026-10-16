@@ -29,7 +29,7 @@ mem_fetch *l2_cache::peek_next_access() const {
 }
 
 bool l2_cache::ft_response_ready(unsigned long long cycle) {
-  if(m_ro && m_ro->has_response())return m_ro->prepare(cycle);
+  if(m_ro && m_ro->has_response() && (m_ro->prefer_ro || !baseline_cache::access_ready()))return m_ro->prepare(cycle);
   if (!ft_enabled()) return true;
   mem_fetch *mf = baseline_cache::peek_next_access();
   std::map<mem_fetch *,ep_l2::PayloadHandle>::const_iterator it = m_ft_read_refs.find(mf);
@@ -58,6 +58,7 @@ void l2_cache::commit_next_access() {
   baseline_cache::commit_next_access();
   m_ep_l2_payload.unpin(h);
   m_ft_read_refs.erase(it);
+  if(m_ro)m_ro->prefer_ro=true;
   ++m_ft_stats.descriptor_responses;
 }
 
@@ -86,7 +87,13 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   const new_addr_type owner = m_config.block_addr(addr);
   if(m_ro) {
     cache_request_status merged;
-    if(m_ro->merge_existing(mf,time,events,merged))return merged;
+    if(m_ro->merge_existing(mf,time,events,merged)){
+      if(merged!=RESERVATION_FAIL){++m_ft_stats.accepted;
+        m_stats.inc_stats(mf->get_access_type(),MSHR_HIT,mf->get_streamID());
+        m_stats.inc_stats_pw(mf->get_access_type(),MSHR_HIT,mf->get_streamID());
+      }
+      return merged;
+    }
   }
   const bool ro_new=m_ro && m_ro->new_request(mf);
   unsigned index = (unsigned)-1;
@@ -260,7 +267,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
       slot.ready_sector_mask |= mf->get_access_sector_mask();
   }
   if (m_tag_array->block_is_modified(index)) slot.status = ep_l2_payload_store::RESIDENT_DIRTY;
-  else if (slot.pending_sector_mask.none()) slot.status = ep_l2_payload_store::RESIDENT_VALID;
+  else if (slot.pending_sector_mask.none() && slot.allocation_role!=ep_l2_payload_store::RO) slot.status = ep_l2_payload_store::RESIDENT_VALID;
   if (!mf->get_is_write()) mf->set_ft_wb_data(slot.versions);
   if (replacement) m_ft_pending = ft_replacement();
   ++m_ft_stats.accepted;

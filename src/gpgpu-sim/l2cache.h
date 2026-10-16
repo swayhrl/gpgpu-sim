@@ -336,6 +336,7 @@ class memory_sub_partition {
   void l2_char_hold_returnq(unsigned cycles);
   unsigned ft_wb_staged_for_test() const { return m_L2cache->ft_wb_staged(); }
   bool ft_drained_for_test() const { return m_L2cache->ft_drained(); }
+  void ro_bind_commandlist(const char *p){m_L2cache->ro_bind_commandlist(p);}
   void ro_begin_epoch(){m_L2cache->ro_begin_epoch();}
   void ro_end_epoch(){m_L2cache->ro_end_epoch();}
   l2_cache *ro_cache_for_test(){return m_L2cache;}

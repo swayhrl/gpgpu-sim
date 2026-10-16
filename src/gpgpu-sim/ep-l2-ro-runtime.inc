@@ -3,6 +3,8 @@
 #include "ep-l2-ro-sha256.h"
 #include <fstream>
 #include <memory>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
 class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
  public:
   typedef ep_l2_ro::identity handle;
@@ -11,15 +13,19 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
   ep_l2_ro::store_port port;
   std::unique_ptr<ep_l2_ro::transactions> tx;
   std::vector<uint64_t> generations;
-  bool open, ever_open, selected;
+  bool open, ever_open, selected, command_bound, prefer_ro;
+  std::string command_sha;
   ep_l2_ro::response reply;
   uint64_t response_cycle;
   unsigned cursor;
   uint64_t accepted_global_reads, accepted_candidates, accepted_ro;
   ep_l2_ro_runtime(l2_cache &cache) : c(cache), port(c.m_ep_l2_payload,*this),
-    generations(c.m_config.get_num_lines(),1),open(false),ever_open(false),selected(false),
+    generations(c.m_config.get_num_lines(),1),open(false),ever_open(false),selected(false),command_bound(false),prefer_ro(true),
     response_cycle(0),cursor(0),accepted_global_reads(0),accepted_candidates(0),accepted_ro(0) {
     const auto &cfg=c.m_config;
+    if(cfg.get_line_sz()!=128 || cfg.get_atom_sz()!=32 || cfg.m_alloc_policy!=ON_MISS ||
+       cfg.m_mshr_entries!=128 || cfg.m_ep_l2_descriptor_per_line_cap!=32)
+      throw std::invalid_argument("RO requires reviewed sector128/32 LineMSHR128 D512/address32 geometry");
     if(!cfg.m_ro_ranges || !cfg.m_ro_ranges_sha256 || !cfg.m_ro_manifest_sha256 || !cfg.m_ro_scope)
       throw std::invalid_argument("RO input binding absent");
     std::ifstream f(cfg.m_ro_ranges,std::ios::binary);
@@ -27,6 +33,23 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     std::string bytes((std::istreambuf_iterator<char>(f)),{});
     if(ep_l2_ro::sha256(bytes)!=cfg.m_ro_ranges_sha256)
       throw std::invalid_argument("RO range SHA256 mismatch");
+    if(!cfg.m_ro_manifest)throw std::invalid_argument("RO manifest missing");
+    std::ifstream mf(cfg.m_ro_manifest,std::ios::binary);
+    if(!mf)throw std::invalid_argument("RO manifest cannot be opened");
+    std::string manifest((std::istreambuf_iterator<char>(mf)),{});
+    if(ep_l2_ro::sha256(manifest)!=cfg.m_ro_manifest_sha256)throw std::invalid_argument("RO manifest SHA256 mismatch");
+    boost::property_tree::ptree doc;std::istringstream json(manifest);
+    boost::property_tree::read_json(json,doc);
+    if(doc.get<std::string>("schema")!="EP_L2_RO_ORACLE_V1" ||
+       doc.get<std::string>("epoch")!="whole_commandlist" ||
+       doc.get<std::string>("scope")!="TRACE_MODEL_CLOSED_WORLD" ||
+       doc.get<std::string>("address_domain")!="CANONICAL_GPU_GLOBAL_VA_NO_TRANSLATION_ALIAS" ||
+       !doc.get_child("unresolved_opcodes").empty())throw std::invalid_argument("RO unsupported/incomplete epoch certificate");
+    if(doc.get_child("artifacts").get<std::string>(boost::property_tree::ptree::path_type("certified_ranges.csv",'/'))!=cfg.m_ro_ranges_sha256)
+      throw std::invalid_argument("RO ranges not bound to manifest");
+    command_sha=doc.get<std::string>("commandlist_sha256");
+    if(command_sha.size()!=64 || command_sha.find_first_not_of("0123456789abcdef")!=std::string::npos)
+      throw std::invalid_argument("invalid RO command identity");
     std::istringstream ranges(bytes);
     cert.reset(new ep_l2_ro::oracle_certificate(ranges,cfg.m_ro_manifest_sha256,cfg.m_ro_scope));
     tx.reset(new ep_l2_ro::transactions(c.m_mshrs,port,c.m_ep_l2_payload.physical_slots(),*cert,
@@ -81,6 +104,11 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     if(!candidate(m))return false;
     handle h;if(target(m,h))return true;
     unsigned i=~0U;auto p=c.m_tag_array->probe(c.m_config.block_addr(m->get_addr()),i,m,false,true);
+    if(p!=MISS && p!=RESERVATION_FAIL) {
+      const handle resident=c.tag_payload_handle(i);
+      if(c.m_tag_array->block_is_modified(i) || (c.m_ep_l2_payload.handle_live(resident) &&
+          c.m_ep_l2_payload.inspect(resident).pending_sector_mask.any()))return false;
+    }
     return p!=HIT;
   }
   unsigned needed(mem_fetch *m,handle h) const {
@@ -190,7 +218,7 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
   }
   void commit(uint64_t cycle) {
     if(!selected)throw std::logic_error("RO response commit without grant");
-    tx->commit_response(reply.transaction,true,cycle);cursor=(reply.transaction.payload_id+1)%c.m_ep_l2_payload.physical_slots();selected=false;
+    tx->commit_response(reply.transaction,true,cycle);cursor=(reply.transaction.payload_id+1)%c.m_ep_l2_payload.physical_slots();selected=false;prefer_ro=false;
   }
 };
 void l2_cache::ro_init() {
@@ -199,7 +227,7 @@ void l2_cache::ro_init() {
 }
 l2_cache::~l2_cache(){delete m_ro;}
 void l2_cache::ro_begin_epoch(){if(m_ro){
-  if(m_ro->ever_open||!ft_drained()||m_mshrs.descriptor_count_used()||!m_miss_queue.empty()||ep_l2_wad_occupancy())
+  if(!m_ro->command_bound||m_ro->ever_open||!ft_drained()||m_mshrs.descriptor_count_used()||!m_miss_queue.empty()||ep_l2_wad_occupancy())
     throw std::logic_error("RO epoch activation requires complete prior drain");
   m_ro->tx->begin_epoch(1,m_ro->cert->manifest_sha256());m_ro->open=m_ro->ever_open=true;
 }}
@@ -223,4 +251,11 @@ void l2_cache::ro_print(FILE *f,unsigned slice) const {if(m_ro){
     (unsigned long long)m_ro->accepted_global_reads,(unsigned long long)m_ro->accepted_candidates,(unsigned long long)m_ro->accepted_ro,
     (unsigned long long)s.admits,(unsigned long long)s.merges,(unsigned long long)s.detached,(unsigned long long)s.lower_sectors,
     (unsigned long long)s.duplicate_sectors,(unsigned long long)s.responses,m_ro->tx->live_transactions(),m_ro->cert->manifest_sha256().c_str());
+}}
+
+void l2_cache::ro_bind_commandlist(const char *path){if(m_ro){
+  std::ifstream f(path,std::ios::binary);if(!f)throw std::invalid_argument("RO commandlist missing");
+  std::string bytes((std::istreambuf_iterator<char>(f)),{});
+  if(ep_l2_ro::sha256(bytes)!=m_ro->command_sha)throw std::invalid_argument("RO commandlist identity mismatch");
+  m_ro->command_bound=true;
 }}

@@ -583,7 +583,7 @@ class cache_config {
     m_ep_l2_ft_mode = 0;
     m_ep_l2_wbuf_entries = 0;
     m_ro_tag_detach = m_ro_line_mshr_bypass = false;
-    m_ro_ranges = m_ro_ranges_sha256 = m_ro_manifest_sha256 = m_ro_scope = NULL;
+    m_ro_ranges = m_ro_ranges_sha256 = m_ro_manifest_sha256 = m_ro_scope = m_ro_manifest = NULL;
     m_ep_l2_payload_policy = 0;
     m_ep_l2_feature_unified_payload = false;
     m_ep_l2_feature_ro_pending_state = false;
@@ -822,6 +822,7 @@ class cache_config {
             m_line_sz * m_nset * m_assoc, m_nset, m_assoc, m_line_sz);
   }
 
+  bool ro_requested() const {return m_ro_tag_detach||m_ro_line_mshr_bypass;}
   virtual unsigned set_index(new_addr_type addr) const;
 
   virtual unsigned get_max_cache_multiplier() const {
@@ -943,7 +944,7 @@ class cache_config {
   unsigned m_ep_l2_ft_mode;
   unsigned m_ep_l2_wbuf_entries;
   bool m_ro_tag_detach, m_ro_line_mshr_bypass;
-  char *m_ro_ranges, *m_ro_ranges_sha256, *m_ro_manifest_sha256, *m_ro_scope;
+  char *m_ro_ranges, *m_ro_ranges_sha256, *m_ro_manifest_sha256, *m_ro_scope, *m_ro_manifest;
   // M1 is infrastructure: functional mechanism bits default OFF.
   // Policy 0 is the only currently supported static policy.
   unsigned m_ep_l2_payload_policy;
@@ -968,6 +969,7 @@ class cache_config {
   friend class l2_cache;
   friend class memory_sub_partition;
   friend class memory_config;
+  friend class ep_l2_ro_runtime;
 };
 
 class l1d_cache_config : public cache_config {
@@ -2651,6 +2653,7 @@ class l2_cache : public data_cache {
 
   virtual ~l2_cache();
   bool ro_enabled() const { return m_ro != NULL; }
+  void ro_bind_commandlist(const char *);
   void ro_begin_epoch();
   void ro_end_epoch();
   bool ro_drained() const;

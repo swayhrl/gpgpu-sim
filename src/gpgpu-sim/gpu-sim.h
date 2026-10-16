@@ -644,6 +644,7 @@ class gpgpu_sim : public gpgpu_t {
   void dump_pipeline(int mask, int s, int m) const;
 
   void perf_memcpy_to_gpu(size_t dst_start_addr, size_t count);
+  void ep_l2_ro_bind_commandlist(const char *);
   void ep_l2_ro_begin_epoch();
   void ep_l2_ro_end_epoch();
 
