@@ -23,6 +23,12 @@ int main(int argc,char**argv){
   const unsigned offset=argc==9?std::stoul(argv[7]):0;
   for(unsigned i=0;i<offset;++i)sp->force_l2_tag_update((i%2)*32,0,mem_access_sector_mask_t(1<<(i%2)));
   sp->ro_begin_epoch();
+  const bool ro_on=std::stoul(argv[5])||std::stoul(argv[6]);
+  const auto activated_offset=sp->ft_memcpy_offset_for_test();
+  if(ro_on) {
+    assert(!sp->ft_try_force_l2_tag_update(0,0,mem_access_sector_mask_t(1)));
+    assert(sp->ft_memcpy_offset_for_test()==activated_offset);
+  }
   active_mask_t act;act.set(0);std::set<unsigned> expected,seen;
   for(unsigned i=0;i<4;++i){unsigned addr=offset ? (i==0?0:i==1?96:(i%2)*128) : (i%2)*128;
     unsigned sector=(addr>>5)&3;
@@ -44,7 +50,12 @@ int main(int argc,char**argv){
   }
   assert(violations==0);
   assert(seen==expected);assert(peak>0);assert(backpressure);assert(!part.busy());assert(sp->l2_char_no_resource_leak());
-  sp->ro_end_epoch();sp->ro_cache_for_test()->ro_print(stdout,0);
+  sp->ro_end_epoch();
+  if(ro_on) {
+    assert(!sp->ft_try_force_l2_tag_update(0,gpu.gpu_sim_cycle,mem_access_sector_mask_t(1)));
+    assert(sp->ft_memcpy_offset_for_test()==activated_offset);
+  }
+  sp->ro_cache_for_test()->ro_print(stdout,0);
   printf("RO_PHYSICAL_CLOCK|offset=%u|violations=%u|max_grants_per_physical_bank_cycle=%u\n",offset,violations,max_grants);
   printf("RO actual partition detach=%s bypass=%s exact-once=%zu peak_descriptors=%u backpressure=%u PASS\n",argv[5],argv[6],seen.size(),peak,backpressure);
 }
