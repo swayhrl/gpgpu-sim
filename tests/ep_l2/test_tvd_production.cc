@@ -102,6 +102,10 @@ struct scenario {
   void collect() {
     while(auto mf=sp->pop()) {
       assert(!responses.count(mf->get_request_uid()));
+      // Zero is an explicit sector-version label. A missing read payload must
+      // not silently become zero and make warmed/clean read assertions pass.
+      assert((mf->get_is_write() || mf->has_ft_wb_data()) &&
+             "FT/TVD read response requires explicit sector-version backing");
       unsigned sector=(mf->get_addr()>>5)&3;
       responses[mf->get_request_uid()]=mf->has_ft_wb_data()?mf->get_ft_wb_data()[sector]:0;
       delete mf;
