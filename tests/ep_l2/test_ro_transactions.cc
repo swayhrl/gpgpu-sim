@@ -189,6 +189,7 @@ static void rejected_inputs_and_illegal_protocol() {
   assert(t.admit(6,0x7000,h,p.binding(0),request(0),1,false,GLOBAL_DEMAND_READ)==NORMAL_PATH);
   assert(t.admit(7,0x7000,h,p.binding(0),request(0),1,true,GLOBAL_DEMAND_READ)==NORMAL_PATH);
   assert(t.admit(6,0x7000,h,p.binding(0),request(0),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
+  assert(t.merge(h,request(77),1,6,true,SYNTHETIC_WRITE_ALLOCATE_READ)==NORMAL_PATH);
   assert(!t.detach(h));
   bool violation=false;try{t.assert_no_epoch_write(6,0x7000);}catch(const std::logic_error&){violation=true;}assert(violation);
   violation=false;try{t.fill(h,1,1);}catch(const std::logic_error&){violation=true;}assert(violation);
@@ -207,10 +208,43 @@ static void rejected_inputs_and_illegal_protocol() {
   assert(!shared.ro_descriptor_live(stale));shared.release_ro_descriptor(d);
 }
 
+static void detach_only_uses_the_actual_line_mshr_limit() {
+  mshr_table shared(128,32,512,32);reference_port p;
+  for(unsigned n=0;n<127;++n)
+    shared.add_for_test(0x100000+n*128,request(n),mem_access_sector_mask_t(1));
+  transactions t(shared,p,1168,switches(true,false));t.begin_epoch(8,hash());
+  identity a=p.reserve(0,0x8000,0);
+  assert(t.admit(8,0x8000,a,p.binding(0),request(200),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
+  assert(shared.num_entries_used()==128);
+  t.lower_accepted(a,1);assert(t.detach(a));
+  identity lookup;assert(t.merge_target(0x8000,lookup) && lookup==a);
+  assert(t.merge(a,request(201),2,8,true,GLOBAL_DEMAND_READ)==ACCEPTED);
+  assert(t.lower_needed(a)==2);t.lower_accepted(a,2);
+  identity b=p.reserve(1,0x9000,1);
+  assert(t.admit(8,0x9000,b,p.binding(1),request(202),1,true,GLOBAL_DEMAND_READ)==LINE_MSHR_FULL);
+  assert(t.fill(a,2,1));assert(t.fill(a,1,2));response r;
+  assert(t.prepare_response(a,3,r));t.commit_response(a,true);
+  assert(t.prepare_response(a,4,r));t.commit_response(a,true);
+  assert(t.drained() && shared.num_entries_used()==127);
+  assert(t.stats.duplicate_sectors==0 && p.releases==1);
+  assert(t.end_epoch());
+
+  // With bypass enabled the SAME full native line-MSHR does not block RO;
+  // requester descriptors and physical landing capacity remain bounded.
+  shared.add_for_test(0x200000,request(300),mem_access_sector_mask_t(1));
+  transactions bypass(shared,p,1168,switches(false,true));bypass.begin_epoch(9,hash());
+  assert(bypass.admit(9,0x9000,b,p.binding(1),request(301),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
+  assert(shared.num_entries_used()==128 && shared.descriptor_count_used()==129);
+  bypass.lower_accepted(b,1);assert(bypass.fill(b,1,5));
+  assert(bypass.prepare_response(b,6,r));bypass.commit_response(b,true);
+  assert(bypass.end_epoch() && shared.descriptor_count_used()==128);
+}
+
 int main() {
   out_of_order_backpressure_and_waiter_protection();
   same_line_detached_instances_and_generation();
   descriptor_pool_is_shared_and_address_bounded();
   rejected_inputs_and_illegal_protocol();
-  puts("EP-L2 Lane 3 RO production-module/reference tests: PASS (4 scenario groups)");
+  detach_only_uses_the_actual_line_mshr_limit();
+  puts("EP-L2 Lane 3 RO production-module/reference tests: PASS (5 scenario groups)");
 }

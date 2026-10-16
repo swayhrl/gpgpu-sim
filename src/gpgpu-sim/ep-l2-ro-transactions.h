@@ -43,7 +43,7 @@ class payload_port {
 enum request_kind { GLOBAL_DEMAND_READ, SYNTHETIC_WRITE_ALLOCATE_READ,
                     STORE, ATOMIC, WRITEBACK, UNKNOWN_REQUEST };
 enum admission { ACCEPTED, NORMAL_PATH, DESCRIPTOR_OR_ADDRESS_FULL,
-                 TRANSACTION_SLOT_BUSY, TAG_BINDING_INVALID };
+                 TRANSACTION_SLOT_BUSY, TAG_BINDING_INVALID, LINE_MSHR_FULL };
 
 struct switches {
   bool tag_detach, line_mshr_bypass;
@@ -107,9 +107,7 @@ class transactions {
       ++stats.rejected_oracle;
       return NORMAL_PATH;
     }
-    // Detach-only uses the conventional MSHR adapter, not an invented pool.
-    // Its production wiring remains a Lane-1 integration prerequisite.
-    if (!m_features.line_mshr_bypass) return NORMAL_PATH;
+    if (!m_features.line_mshr_bypass && !m_features.tag_detach) return NORMAL_PATH;
     if (line % 128 || h.payload_id >= m_slots.size() || !m_port.live(h, line) ||
         !m_port.tag_matches(tag, h, line)) return TAG_BINDING_INVALID;
     entry &e = m_slots[h.payload_id];
@@ -117,13 +115,19 @@ class transactions {
     // A current attached tag is the only merge lookup. Detached instances
     // never address-match a new request. Caller must not install two tags.
     for (unsigned i = 0; i < m_slots.size(); ++i)
-      if (m_slots[i].live && m_slots[i].attached && m_slots[i].line == line)
+      if (m_slots[i].live && (m_slots[i].attached || !m_features.line_mshr_bypass) &&
+          m_slots[i].line == line)
         return TAG_BINDING_INVALID;
+    if (!m_features.line_mshr_bypass && !m_shared.reserve_ro_line(line))
+      return LINE_MSHR_FULL;
     mshr_table::ro_descriptor_handle d;
-    if (!m_shared.reserve_ro_descriptor(line, mf, sector_mask(mask), d))
+    if (!m_shared.reserve_ro_descriptor(line, mf, sector_mask(mask), d)) {
+      if (!m_features.line_mshr_bypass) m_shared.release_ro_line(line);
       return DESCRIPTOR_OR_ADDRESS_FULL;
+    }
     if (!m_port.pin(h)) {
       m_shared.release_ro_descriptor(d);
+      if (!m_features.line_mshr_bypass) m_shared.release_ro_line(line);
       return TRANSACTION_SLOT_BUSY;
     }
     e = entry(); e.live = e.attached = true; e.h = h; e.tag = tag;
@@ -131,6 +135,19 @@ class transactions {
     e.waiters.push_back(waiter(d, mf, mask));
     ++stats.admits;
     return ACCEPTED;
+  }
+
+  // Tag lookup supplies the attached match. Only detach-with-MSHR mode may
+  // discover a detached transaction by the conventional line index.
+  bool merge_target(new_addr_type line, identity &result) const {
+    for (unsigned i = 0; i < m_slots.size(); ++i)
+      if (m_slots[i].live && m_slots[i].line == line &&
+          ((m_slots[i].attached && m_port.tag_matches(m_slots[i].tag,
+                                                    m_slots[i].h, line)) ||
+           (!m_features.line_mshr_bypass && m_shared.probe(line)))) {
+        result = m_slots[i].h; return true;
+      }
+    return false;
   }
 
   admission merge(identity h, mem_fetch *mf, unsigned mask,
@@ -141,7 +158,8 @@ class transactions {
       ++stats.rejected_oracle;
       return NORMAL_PATH;
     }
-    if (!e.attached || !m_port.tag_matches(e.tag, h, e.line))
+    if ((e.attached && !m_port.tag_matches(e.tag, h, e.line)) ||
+        (!e.attached && m_features.line_mshr_bypass))
       return NORMAL_PATH;
     mshr_table::ro_descriptor_handle d;
     if (!m_shared.reserve_ro_descriptor(e.line, mf, sector_mask(mask), d))
@@ -181,6 +199,8 @@ class transactions {
     stats.duplicate_sectors += bits(duplicates);
     stats.lower_sectors += bits(mask);
     e.issued |= mask;
+    if (!m_features.line_mshr_bypass)
+      m_shared.ro_line_issue(e.line, sector_mask(mask));
   }
   bool fill(identity h, unsigned mask, uint64_t cycle) {
     check_mask(mask);
@@ -191,6 +211,8 @@ class transactions {
       throw std::logic_error("stale attached fill tag generation");
     if (!m_port.fill_write(h, mask, cycle)) return false;
     e.ready |= mask;
+    if (!m_features.line_mshr_bypass)
+      m_shared.ro_line_ready(e.line, sector_mask(mask));
     if (e.attached) {
       m_port.tag_ready(e.tag, h, e.line, e.ready);
     }
@@ -276,6 +298,7 @@ class transactions {
         e.required != e.issued) return;
     m_port.unpin(e.h);
     if (!e.attached) m_port.release(e.h);
+    if (!m_features.line_mshr_bypass) m_shared.release_ro_line(e.line);
     e.live = false;
   }
   mshr_table &m_shared;

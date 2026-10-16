@@ -738,6 +738,39 @@ void mshr_table::release_ro_descriptor(const ro_descriptor_handle &h) {
   m_free_descriptor_ids.push_back(h.id);
 }
 
+bool mshr_table::reserve_ro_line(new_addr_type line) {
+  if (m_data.find(line) != m_data.end() || m_data.size() >= m_num_entries)
+    return false;
+  m_data[line].m_ro_line_owner = true;
+  return true;
+}
+
+void mshr_table::release_ro_line(new_addr_type line) {
+  table::iterator e = m_data.find(line);
+  assert(e != m_data.end() && e->second.m_ro_line_owner);
+  assert(e->second.m_pending_sectors.none() && ro_targets_on_line(line) == 0);
+  e->second.m_ro_line_owner = false;
+  if (e->second.m_list.empty()) m_data.erase(e);
+}
+
+void mshr_table::ro_line_issue(new_addr_type line,
+                              const mem_access_sector_mask_t &mask) {
+  table::iterator e = m_data.find(line);
+  assert(e != m_data.end() && e->second.m_ro_line_owner);
+  assert((mask & e->second.m_issued_sectors).none());
+  e->second.m_issued_sectors |= mask;
+  e->second.m_pending_sectors |= mask;
+}
+
+void mshr_table::ro_line_ready(new_addr_type line,
+                              const mem_access_sector_mask_t &mask) {
+  table::iterator e = m_data.find(line);
+  assert(e != m_data.end() && e->second.m_ro_line_owner);
+  assert((mask & ~e->second.m_pending_sectors).none());
+  e->second.m_pending_sectors &= ~mask;
+  e->second.m_ready_sectors |= mask;
+}
+
 bool mshr_table::needs_lower_read(
     new_addr_type block_addr, const mem_access_sector_mask_t &sectors) const {
   if (!m_descriptor_pool_size) return !probe(block_addr);
@@ -936,7 +969,8 @@ void mshr_table::commit_next_access() {
     descriptor.m_ro_generation = ro_generation;
     m_free_descriptor_ids.push_back(ready.m_descriptor_id);
     m_current_descriptor_response.pop_front();
-    if (entry->second.m_list.empty()) m_data.erase(entry);
+    if (entry->second.m_list.empty() && !entry->second.m_ro_line_owner)
+      m_data.erase(entry);
     return;
   }
 

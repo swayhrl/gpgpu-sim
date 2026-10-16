@@ -1198,6 +1198,10 @@ class mshr_table {
   void release_ro_descriptor(const ro_descriptor_handle &handle);
   unsigned ro_targets_on_line(new_addr_type line) const;
   unsigned targets_on_line(new_addr_type line) const;
+  bool reserve_ro_line(new_addr_type line);
+  void release_ro_line(new_addr_type line);
+  void ro_line_issue(new_addr_type line, const mem_access_sector_mask_t &mask);
+  void ro_line_ready(new_addr_type line, const mem_access_sector_mask_t &mask);
   void sector_masks(new_addr_type block_addr, mem_access_sector_mask_t &pending,
                     mem_access_sector_mask_t &issued,
                     mem_access_sector_mask_t &ready) const;
@@ -1251,10 +1255,11 @@ class mshr_table {
     std::list<mem_fetch *> m_list;
     std::list<unsigned> m_descriptor_ids;
     bool m_has_atomic;
+    bool m_ro_line_owner;
     mem_access_sector_mask_t m_pending_sectors;
     mem_access_sector_mask_t m_issued_sectors;
     mem_access_sector_mask_t m_ready_sectors;
-    mshr_entry() : m_has_atomic(false) {
+    mshr_entry() : m_has_atomic(false), m_ro_line_owner(false) {
       m_pending_sectors.reset();
       m_issued_sectors.reset();
       m_ready_sectors.reset();
