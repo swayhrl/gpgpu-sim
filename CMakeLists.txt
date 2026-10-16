@@ -183,12 +183,10 @@ target_link_libraries(ep_l2_ft_partition PRIVATE -Wl,--start-group
     entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
     ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
 
-# R1 integration qualification uses the reviewed Lane 4 production fixtures.
-# These targets never participate in ordinary simulator builds.
-foreach(ideal_test ideal_wb ideal_meta ideal_meta_integrated ideal_read_hit)
-  add_executable(ep_l2_${ideal_test} EXCLUDE_FROM_ALL tests/ep_l2/test_${ideal_test}.cc)
-  target_include_directories(ep_l2_${ideal_test} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
-  target_link_libraries(ep_l2_${ideal_test} PRIVATE -Wl,--start-group
+foreach(repair_test ft_memcpy_clock ft_host_prefill)
+  add_executable(ep_l2_${repair_test} EXCLUDE_FROM_ALL tests/ep_l2/test_${repair_test}.cc)
+  target_include_directories(ep_l2_${repair_test} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+  target_link_libraries(ep_l2_${repair_test} PRIVATE -Wl,--start-group
       entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
       ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
 endforeach()

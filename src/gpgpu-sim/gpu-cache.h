@@ -591,9 +591,6 @@ class cache_config {
     // M0a is deliberately opt-in.  It is a telemetry sidecar and is never
     // consulted by the admission controller.
     m_ep_l2_m0a_stats = false;
-    m_ep_l2_ideal_meta = false;
-    m_ep_l2_ideal_read_hit = false;
-    m_ep_l2_ideal_wb = false;
   }
   void init(char *config, FuncCache status) {
     cache_status = status;
@@ -936,10 +933,6 @@ class cache_config {
   // EP-L2 B0 long-lived response descriptors. These deliberately do not
   // reuse m_miss_queue, which remains the short lower-issue queue.
   unsigned m_ep_l2_descriptor_pool_size;
-  // Lane 4 diagnostic only: dynamically backed metadata, never a budgeted mode.
-  bool m_ep_l2_ideal_meta;
-  bool m_ep_l2_ideal_read_hit;
-  bool m_ep_l2_ideal_wb;
   unsigned m_ep_l2_descriptor_per_line_cap;
   // EP-L2 write-address descriptors. Zero preserves the conventional path.
   unsigned m_ep_l2_wad_entries;
@@ -1126,13 +1119,11 @@ class mshr_table {
 
   mshr_table(unsigned num_entries, unsigned max_merged,
              unsigned descriptor_pool_size = 0,
-             unsigned descriptor_per_line_cap = 0,
-             bool ideal_meta = false)
+             unsigned descriptor_per_line_cap = 0)
       : m_num_entries(num_entries),
         m_max_merged(max_merged),
         m_descriptor_pool_size(descriptor_pool_size),
-        m_descriptor_per_line_cap(descriptor_per_line_cap),
-        m_ideal_meta(ideal_meta)
+        m_descriptor_per_line_cap(descriptor_per_line_cap)
 #if (tr1_hash_map_ismap == 0)
         ,
         m_data(2 * num_entries)
@@ -1193,9 +1184,9 @@ class mshr_table {
   unsigned descriptor_count_used() const {
     return m_descriptor_pool_size == 0
                ? num_targets_used()
-               : m_descriptor_pool.size() - m_free_descriptor_ids.size();
+               : m_descriptor_pool_size - m_free_descriptor_ids.size();
   }
-  unsigned descriptor_pool_capacity() const { return m_descriptor_pool.size(); }
+  unsigned descriptor_pool_capacity() const { return m_descriptor_pool_size; }
   void sector_masks(new_addr_type block_addr, mem_access_sector_mask_t &pending,
                     mem_access_sector_mask_t &issued,
                     mem_access_sector_mask_t &ready) const;
@@ -1229,8 +1220,6 @@ class mshr_table {
   const unsigned m_max_merged;
   const unsigned m_descriptor_pool_size;
   const unsigned m_descriptor_per_line_cap;
-  const bool m_ideal_meta;
-  void ensure_descriptor_available();
 
   struct ep_l2_descriptor {
     mem_fetch *m_mf;
@@ -1496,8 +1485,7 @@ class baseline_cache : public cache_t {
         m_tag_array(new tag_array(config, core_id, type_id)),
         m_mshrs(config.m_mshr_entries, config.m_mshr_max_merge,
                 config.m_ep_l2_descriptor_pool_size,
-                config.m_ep_l2_descriptor_per_line_cap,
-                config.m_ep_l2_ideal_meta),
+                config.m_ep_l2_descriptor_per_line_cap),
         m_bandwidth_management(config),
         m_level(level),
         m_gpu(gpu) {
@@ -2096,7 +2084,7 @@ class ep_l2_payload_store {
   static const unsigned k_physical_slots = 1152;
   static const unsigned k_resident_slots = 1024;
   static const unsigned k_bypass_slots = 128;
-  enum role { RESIDENT, BYPASS, WB, IDEAL_REFERENCE };
+  enum role { RESIDENT, BYPASS, WB };
   // A boolean cannot distinguish an ordinary target-payload retry from a
   // physical same-bank denial.  C6c needs that distinction both for correct
   // same-cycle admission and for meaningful B0-Banked telemetry.
@@ -2138,10 +2126,8 @@ class ep_l2_payload_store {
     }
     bool occupied() const { return status != FREE; }
   };
-  ep_l2_payload_store(unsigned mode = 0, unsigned ft_mode = 0, unsigned wbuf = 0,
-                      bool ideal_wb = false)
-      : m_mode(mode), m_ft_mode(ft_mode), m_wbuf(wbuf), m_ideal_wb(ideal_wb),
-        m_cycle((unsigned long long)-1),
+  ep_l2_payload_store(unsigned mode = 0, unsigned ft_mode = 0, unsigned wbuf = 0)
+      : m_mode(mode), m_ft_mode(ft_mode), m_wbuf(wbuf), m_cycle((unsigned long long)-1),
         m_resident_reads(0), m_resident_writes(0), m_bypass_reads(0),
         m_bypass_writes(0), m_bank_logical_ops(0), m_bank_attempts(0),
         m_bank_grants(0), m_bank_retry_attempts(0),
@@ -2293,9 +2279,6 @@ class ep_l2_payload_store {
   }
   // FT public allocation primitives. Preview does not acquire a resource.
   unsigned physical_slots() const { return m_slots.size(); }
-  unsigned diagnostic_wb_extra_slots() const {
-    return m_slots.size() - (k_physical_slots + m_wbuf);
-  }
   unsigned wb_used() const { return used(WB); }
   unsigned pending_sector_count() const { unsigned n=0;
     for (const slot &s : m_slots) n += s.pending_sector_mask.count(); return n; }
@@ -2310,19 +2293,9 @@ class ep_l2_payload_store {
           (r == BYPASS && (id < k_resident_slots || id >= k_physical_slots)))) continue;
       return payload_handle(id, m_slots[id].generation + 1);
     }
-    // A prospective ID is not an allocation. Only reserve() below grows the
-    // diagnostic backing after WAD/issue/ordering checks have succeeded.
-    if (m_ideal_wb && r == WB) {
-      assert(m_ft_mode == 1 && m_slots.size() < std::numeric_limits<unsigned>::max());
-      return payload_handle(static_cast<unsigned>(m_slots.size()), 1);
-    }
     return payload_handle();
   }
   payload_handle reserve(unsigned id, role r, new_addr_type owner, state st) {
-    if (id == m_slots.size() && m_ideal_wb && r == WB) {
-      assert(m_ft_mode == 1 && id < std::numeric_limits<unsigned>::max());
-      m_slots.push_back(slot());
-    }
     assert(m_ft_mode && id < m_slots.size() && !m_slots[id].occupied());
     slot &s = m_slots[id];
     assert(s.generation != std::numeric_limits<unsigned>::max());
@@ -2387,6 +2360,8 @@ class ep_l2_payload_store {
                          unsigned long long sequence = (unsigned long long)-1,
                          operation_class op_class = RESIDENT_HIT_READ) {
     if (!enabled()) return GRANTED;
+    if (m_ft_mode && m_cycle != (unsigned long long)-1)
+      assert(cycle >= m_cycle && "FT bank clock must be physical and monotonic");
     if (m_cycle != cycle) {
       m_cycle = cycle;
       m_resident_reads = m_resident_writes = m_bypass_reads = m_bypass_writes = 0;
@@ -2585,9 +2560,7 @@ class ep_l2_payload_store {
     role r; unsigned id; bool write; unsigned long long sequence;
     bool true_conflict; unsigned long long first_conflict_cycle;
   };
-  unsigned m_mode, m_ft_mode, m_wbuf;
-  bool m_ideal_wb;
-  unsigned long long m_cycle;
+  unsigned m_mode, m_ft_mode, m_wbuf; unsigned long long m_cycle;
   unsigned m_resident_reads, m_resident_writes, m_bypass_reads, m_bypass_writes;
   unsigned long long m_bank_logical_ops, m_bank_attempts, m_bank_grants,
       m_bank_retry_attempts, m_bank_true_conflict_ops,
@@ -2618,7 +2591,7 @@ class l2_cache : public data_cache {
         m_ep_l2_wad_lifetime_sum(0), m_ep_l2_wad_lifetime_count(0),
         m_ep_l2_wad_lifetime_max(0),
         m_ep_l2_payload(config.m_ep_l2_payload_mode, config.m_ep_l2_ft_mode,
-                         config.m_ep_l2_wbuf_entries, config.m_ep_l2_ideal_wb),
+                         config.m_ep_l2_wbuf_entries),
         m_ep_l2_last_payload_request_result(ep_l2_payload_store::GRANTED),
         m_ep_l2_tag_payload(ep_l2_payload_store::k_resident_slots) {
     validate_ep_l2_mode_config();
@@ -2718,12 +2691,14 @@ class l2_cache : public data_cache {
   bool ft_response_ready(unsigned long long cycle);
   void cycle();
   void ft_print(FILE *fp, unsigned slice) const;
+  // Untimed host memcpy prefill must own payload storage as well as a Tag.
+  // The non-FT route retains the historical Tag-only initialization.
+  void force_tag_access(new_addr_type addr, unsigned time,
+                        mem_access_sector_mask_t mask);
+  bool ft_try_force_tag_access(new_addr_type addr, unsigned time,
+                               mem_access_sector_mask_t mask);
+  unsigned long long ft_physical_cycle() const;
   unsigned ft_wb_staged() const { return m_ft_wb.size(); }
-  unsigned long long ideal_wb_data_full() const { return m_ft_stats.wbuf_full; }
-  unsigned ideal_wb_extra_slots() const { return m_ep_l2_payload.diagnostic_wb_extra_slots(); }
-  unsigned long long ft_copy_lines() const { return m_ft_stats.copy_lines; }
-  unsigned long long ft_staging_reads() const { return m_ft_stats.staging_reads; }
-  unsigned long long ft_lower_accepts() const { return m_ft_stats.lower_accept; }
   unsigned ft_pending_lower_reads() const { return m_ep_l2_payload.pending_sector_count(); }
   bool ft_reservation_active() const { return m_ft_pending.request != NULL; }
   bool ft_drained() const { return !ft_enabled() || (!m_ft_pending.request &&
@@ -2771,32 +2746,6 @@ class l2_cache : public data_cache {
   bool ep_l2_wad_contains(new_addr_type block_addr) const {
     return m_ep_l2_wad_entries_live.count(block_addr) != 0;
   }
-  bool ep_l2_ideal_read_dependency(new_addr_type addr) const {
-    return ep_l2_wad_contains(m_config.block_addr(addr)) ||
-           m_mshrs.probe(m_config.mshr_addr(addr));
-  }
-  ep_l2_payload_store::request_result ep_l2_ideal_read_bank(
-      mem_fetch *mf, unsigned long long cycle) {
-    unsigned index = (unsigned)-1;
-    const cache_request_status status = m_tag_array->probe(
-        m_config.block_addr(mf->get_addr()), index, mf, false, true);
-    // Real residents keep their actual bank. Cold reads use the selected
-    // replacement landing's bank without allocating it. All-reserved has no
-    // selected way; define a stable diagnostic bank in that special case.
-    if (status == RESERVATION_FAIL)
-      index = (mf->get_addr() / m_config.get_line_sz()) % 4;
-    return m_ep_l2_payload.request(ep_l2_payload_store::IDEAL_REFERENCE, index,
-                                  false, cycle);
-  }
-  void ep_l2_ideal_touch_resident(mem_fetch *mf, unsigned long long cycle) {
-    unsigned index = (unsigned)-1;
-    const new_addr_type line = m_config.block_addr(mf->get_addr());
-    if (m_tag_array->probe(line, index, mf, false, true) == HIT) {
-      // Preserve normal hit replacement age; a cold reference does not
-      // fabricate a resident tag or evict a real dirty producer.
-      m_tag_array->access(line, cycle, index, mf);
-    }
-  }
 
   // Inspect only: no LRU update, tag/sector allocation, MSHR change, queue
   // insertion, cache event, or normal cache statistic is permitted here.
@@ -2843,18 +2792,6 @@ class l2_cache : public data_cache {
   std::map<mem_fetch *,ep_l2_payload_store::payload_handle> m_ft_read_refs;
   std::array<unsigned long long,4> m_ft_last_wb_versions;
   void validate_ep_l2_mode_config() const {
-    if ((m_config.m_ep_l2_ideal_wb && m_config.m_ep_l2_ft_mode != 1) ||
-        (m_config.m_ep_l2_ideal_read_hit &&
-         (m_config.m_ep_l2_ideal_wb || m_config.m_ep_l2_ft_mode == 2))) {
-      fprintf(stderr, "I_WB requires static finite-WBUF source; I_READ_HIT is a standalone reference mode\n");
-      abort();
-    }
-    if ((m_config.m_ep_l2_ideal_meta && !m_config.ep_l2_descriptor_mode()) ||
-        (m_config.m_ep_l2_ideal_read_hit &&
-         (m_config.m_ep_l2_payload_mode != 2 || m_config.m_ep_l2_ideal_meta))) {
-      fprintf(stderr, "EP-L2 ideal mode requires target metadata/banked model; I_READ_HIT+I_META is not an admitted combination\n");
-      abort();
-    }
     if (m_config.m_ep_l2_ft_mode > 2 ||
         (!m_config.m_ep_l2_ft_mode && m_config.m_ep_l2_wbuf_entries) ||
         (m_config.m_ep_l2_ft_mode &&

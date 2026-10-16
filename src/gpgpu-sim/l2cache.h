@@ -31,7 +31,6 @@
 
 #ifndef MC_PARTITION_INCLUDED
 #define MC_PARTITION_INCLUDED
-#include "ep-l2-ideal-reference.h"
 
 #include "../abstract_hardware_model.h"
 #include "dram.h"
@@ -356,20 +355,6 @@ class memory_sub_partition {
   void end_ep_l2_b0_kernel(FILE *fp, unsigned long long uid);
   bool l2_char_no_resource_leak() const;
 
-  // Reference bytes/versions are diagnostic state, outside the physical budget.
-  void ep_l2_ideal_seed(uint64_t address, const std::vector<uint8_t> &data) {
-    m_ideal_reference.seed(address, data);
-  }
-  void ep_l2_ideal_known_write(mem_fetch *mf,
-                              const ep_l2_ideal::ReferenceMemory::Data &data) {
-    m_ideal_known_writes[mf] = data;
-  }
-  const std::vector<ep_l2_ideal::Byte> &ep_l2_ideal_response(mem_fetch *mf) const {
-    return m_ideal_responses.at(mf);
-  }
-  unsigned long long ep_l2_ideal_reads_served() const { return m_ideal_reads; }
-  unsigned long long ep_l2_ideal_dependency_waits() const { return m_ideal_dependency_wait; }
-
   // EP-L2 C3b observation hooks.  They expose production state for directed
   // regressions and instrumentation only; none participate in admission.
   unsigned ep_l2_descriptor_count_used() const {
@@ -427,11 +412,19 @@ class memory_sub_partition {
     return m_ep_l2_last_preview_block_reason;
   }
 
-  void force_l2_tag_update(new_addr_type addr, unsigned time,
-                           mem_access_sector_mask_t mask) {
-    m_L2cache->force_tag_access(addr, m_memcpy_cycle_offset + time, mask);
-    m_memcpy_cycle_offset += 1;
+  unsigned long long ft_bank_grants_for_test(unsigned bank) const {
+    return m_L2cache->ep_l2_payload_bank_grants(bank);
   }
+
+  void force_l2_tag_update(new_addr_type addr, unsigned time,
+                           mem_access_sector_mask_t mask);
+  bool ft_try_force_l2_tag_update(new_addr_type addr, unsigned time,
+                                  mem_access_sector_mask_t mask);
+  unsigned long long ft_bank_grants_for_test(unsigned bank) const {
+    return m_L2cache->ep_l2_payload_bank_grants(bank);
+  }
+  unsigned ft_memcpy_offset_for_test() const { return m_memcpy_cycle_offset; }
+  l2_cache *ft_cache_for_test() { return m_L2cache; }
 
  private:
   void ft_record_admission(const mem_fetch *mf);
@@ -440,19 +433,6 @@ class memory_sub_partition {
   unsigned long long m_ft_unique_requesters = 0, m_ft_response_count = 0, m_ft_absorbed_count = 0;
 
   // data
-  bool ep_l2_ideal_serve_read(mem_fetch *mf, unsigned long long cycle);
-  void ep_l2_ideal_commit_producer(mem_fetch *mf);
-  ep_l2_ideal::ReferenceMemory m_ideal_reference;
-  std::map<mem_fetch *, std::vector<ep_l2_ideal::Byte>> m_ideal_responses;
-  std::map<mem_fetch *, ep_l2_ideal::ReferenceMemory::Data> m_ideal_known_writes;
-  std::map<mem_fetch *, unsigned long long> m_ideal_arrivals;
-  unsigned long long m_ideal_next_arrival = 0;
-  unsigned long long m_ideal_reads = 0;
-  unsigned long long m_ideal_response_wait = 0;
-  unsigned long long m_ideal_bank_wait = 0;
-  unsigned long long m_ideal_dependency_wait = 0;
-  unsigned long long m_ideal_symbolic_bytes = 0;
-  unsigned long long m_ideal_known_bytes = 0;
   unsigned m_id;  //< the global sub partition ID
   const memory_config *m_config;
   class l2_cache *m_L2cache;
