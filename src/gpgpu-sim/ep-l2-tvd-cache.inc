@@ -1,6 +1,6 @@
 // Lane 2: production consumers of the sole Lane 1 R0 payload store.
 unsigned long long l2_cache::m_gpu_cycle_for_tvd() const {
-  return m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle;
+  return ft_physical_cycle();
 }
 
 bool l2_cache::tvd_install_victim(new_addr_type address, ep_l2::PayloadHandle h,

@@ -1,61 +1,99 @@
 // FT20261016 production integration. Included once by gpu-cache.cc.
 // The all-OFF path remains in the historical implementation.
+unsigned long long l2_cache::ft_physical_cycle() const {
+  return m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
+}
+
 void l2_cache::force_tag_access(new_addr_type addr, unsigned time,
                                 mem_access_sector_mask_t mask) {
   if (!ft_enabled()) { baseline_cache::force_tag_access(addr, time, mask); return; }
-  // Trace host memcpy prefill runs outside active hardware work. Never retire
-  // a lower transaction, response reference or WB merely to warm a Tag.
-  assert(ft_drained() && ep_l2_wad_occupancy() == 0);
-  assert(mask.count() == 1 && "FT host prefill requires one declared sector");
-  assert(!m_tvd_lookup && !m_tvd_read);
+  if (!ft_try_force_tag_access(addr, time, mask)) {
+    fprintf(stderr, "EP-L2 host prefill requires quiescent clean ownership; no pending/dirty victim may be discarded\n");
+    abort();
+  }
+}
+
+bool l2_cache::ft_try_force_tag_access(new_addr_type addr, unsigned time,
+                                      mem_access_sector_mask_t mask) {
+  // This is untimed host initialization, not a source of GPU bank grants or
+  // free WB service. Fail BEFORE changing Tag, generation, owner or offset.
+  if (!ft_enabled() || m_config.m_cache_type != SECTOR || mask.count() != 1 ||
+      !ft_drained() || ep_l2_wad_occupancy() || m_tvd_lookup || m_tvd_read ||
+      mshr_entries_used() || !miss_queue_empty() ||
+      m_ep_l2_payload.pending_sector_count() || m_ep_l2_payload.pending_operations())
+    return false;
   const new_addr_type owner = m_config.block_addr(addr);
   unsigned index = (unsigned)-1;
   const cache_request_status status = m_tag_array->probe(owner, index, mask, true, true);
-  assert(status != RESERVATION_FAIL && index < m_config.get_num_lines());
-  // Untimed initialization may replace clean data only. A dirty resident
-  // (including a same-owner partial-sector hit) needs a timed WB, which this
-  // host hook does not model. Reject before any Tag/directory/allocator edit.
-  assert(!m_tag_array->get_block(index)->is_reserved_line());
-  assert(!m_tag_array->block_is_modified(index) &&
-         "FT host prefill cannot discard dirty resident data");
+  if (status == RESERVATION_FAIL || status == HIT_RESERVED ||
+      index >= m_config.get_num_lines() || m_tag_array->block_is_modified(index) ||
+      m_tag_array->get_block(index)->is_reserved_line())
+    return false;
   ep_l2::PayloadHandle handle = tag_payload_handle(index);
-  if (m_ep_l2_payload.handle_live(handle)) {
-    const auto &old = m_ep_l2_payload.inspect(handle);
-    assert(old.allocation_role == ep_l2_payload_store::RESIDENT &&
-           old.status != ep_l2_payload_store::RESIDENT_DIRTY &&
-           !old.pins && old.pending_sector_mask.none());
+  const bool live = m_ep_l2_payload.handle_live(handle);
+  if (live) {
+    const ep_l2_payload_store::slot &old = m_ep_l2_payload.inspect(handle);
+    if (old.allocation_role != ep_l2_payload_store::RESIDENT || old.pins ||
+        old.pending_sector_mask.any() || old.status == ep_l2_payload_store::RESIDENT_DIRTY ||
+        handle.payload_id % 4 != index % 4)
+      return false;
   }
-  // A host overwrite must not leave an older detached TVD copy authoritative.
-  // Preview all resources first; only optional, unpinned data may be dropped.
+  // TVD is another visibility of this exact host address. Preview all guards
+  // before removing its optional copy; failed try-prefill changes no state.
   const auto alias = m_tvd ? m_tvd->find(owner) : tvd_directory::ticket();
   const bool has_alias = m_tvd && m_tvd->live(alias);
+  ep_l2::PayloadHandle alias_payload;
   if (has_alias) {
-    assert(status == MISS && "resident and TVD may not alias one line");
-    assert(m_tvd->at(alias.index).reclaimable());
+    const auto &entry = m_tvd->at(alias.index);
+    alias_payload = entry.payload;
+    if (status != MISS || !entry.reclaimable() ||
+        entry.incarnation == std::numeric_limits<std::uint64_t>::max() ||
+        !m_ep_l2_payload.handle_owner_matches(alias_payload, owner))
+      return false;
+    const auto &slot = m_ep_l2_payload.inspect(alias_payload);
+    if (slot.allocation_role != ep_l2_payload_store::TVD || slot.pins ||
+        slot.pending_sector_mask.any() ||
+        alias_payload.generation == std::numeric_limits<unsigned>::max())
+      return false;
   }
   unsigned landing = index;
   if (status == MISS) {
-    if (m_ep_l2_payload.handle_live(handle)) {
+    if (live) {
+      // release and reserve each advance the generation; check both before
+      // mutating either visibility. Epoch exhaustion is a refusal, not reuse.
+      if (handle.generation >= std::numeric_limits<unsigned>::max() - 1)
+        return false;
       landing = handle.payload_id;
     } else if (m_config.m_ep_l2_ft_mode == 2) {
       const ep_l2::PayloadHandle free = m_ep_l2_payload.preview_free(
           ep_l2_payload_store::RESIDENT, index % 4);
-      const auto old_alias = has_alias ? m_tvd->at(alias.index).payload : ep_l2::PayloadHandle();
-      assert(free.valid() || (old_alias.valid() && old_alias.payload_id % 4 == index % 4));
-      landing = free.valid() ? free.payload_id : old_alias.payload_id;
+      if (free.valid()) {
+        if (!free.generation) return false; // preview must not wrap generation
+        landing = free.payload_id;
+      } else {
+        if (!alias_payload.valid() || alias_payload.payload_id % 4 != index % 4 ||
+            alias_payload.generation >= std::numeric_limits<unsigned>::max() - 1)
+          return false;
+        landing = alias_payload.payload_id;
+      }
+    } else {
+      const ep_l2_payload_store::slot &free = m_ep_l2_payload.resident(landing);
+      if (free.occupied() || free.generation == std::numeric_limits<unsigned>::max())
+        return false;
     }
     assert(landing % 4 == index % 4);
-  } else {
-    assert(m_ep_l2_payload.handle_owner_matches(handle, owner));
+  } else if (!m_ep_l2_payload.handle_owner_matches(handle, owner)) {
+    return false;
   }
+  // Commit starts here: every resource and refusal has been previewed above.
   if (has_alias) {
-    ep_l2::PayloadHandle old_alias;
-    assert(m_tvd->reclaim(alias, old_alias, m_gpu_cycle_for_tvd()) == tvd_directory::OK);
-    assert(m_ep_l2_payload.inspect(old_alias).pins == 0);
-    m_ep_l2_payload.release(old_alias);
+    ep_l2::PayloadHandle released;
+    assert(m_tvd->reclaim(alias, released, ft_physical_cycle()) == tvd_directory::OK);
+    assert(released == alias_payload);
+    m_ep_l2_payload.release(released);
   }
   if (status == MISS) {
-    if (m_ep_l2_payload.handle_live(handle)) m_ep_l2_payload.release(handle);
+    if (live) m_ep_l2_payload.release(handle);
     handle = m_ep_l2_payload.reserve(landing, ep_l2_payload_store::RESIDENT,
         owner, ep_l2_payload_store::RESIDENT_VALID);
     set_tag_payload_handle(index, handle);
@@ -63,7 +101,7 @@ void l2_cache::force_tag_access(new_addr_type addr, unsigned time,
   baseline_cache::force_tag_access(addr, time, mask);
   unsigned actual_index = (unsigned)-1;
   assert(m_tag_array->probe(owner, actual_index, mask, true, true) == HIT &&
-         actual_index == index && "FT host prefill must bind the actual chosen Tag");
+         actual_index == index && "host prefill must commit the pre-reserved Tag index");
   ep_l2_payload_store::slot &slot = m_ep_l2_payload.inspect_mutable(handle);
   slot.ready_sector_mask |= mask;
   // Dataless host initialization has the same explicit version-zero symbol as
@@ -73,6 +111,7 @@ void l2_cache::force_tag_access(new_addr_type addr, unsigned time,
   slot.status = m_tag_array->block_is_modified(index) ?
       ep_l2_payload_store::RESIDENT_DIRTY : ep_l2_payload_store::RESIDENT_VALID;
   assert(m_ep_l2_payload.ownership_consistent());
+  return true;
 }
 
 void l2_cache::descriptor_admitted(mem_fetch *mf, unsigned index) {
@@ -158,7 +197,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     unsigned time, std::list<cache_event> &events) {
   // memcpy offset orders native Tag timestamps; it is not elapsed hardware
   // time and must never reset the payload bank arbiter or WB/WAD lifetimes.
-  const unsigned long long physical_cycle = m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
+  const unsigned long long physical_cycle = ft_physical_cycle();
   m_ep_l2_last_payload_request_result = ep_l2_payload_store::GRANTED;
   const new_addr_type owner = m_config.block_addr(addr);
   if (m_tvd && (mf->get_is_write() || mf->isatomic()) && m_tvd->live(m_tvd->find(owner)))

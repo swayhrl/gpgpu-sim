@@ -418,12 +418,11 @@ class memory_sub_partition {
   }
 
   void force_l2_tag_update(new_addr_type addr, unsigned time,
-                           mem_access_sector_mask_t mask) {
-    assert((!m_L2cache->ft_enabled() || !busy()) &&
-           "FT host prefill requires an idle subpartition");
-    m_L2cache->force_tag_access(addr, m_memcpy_cycle_offset + time, mask);
-    m_memcpy_cycle_offset += 1;
-  }
+                           mem_access_sector_mask_t mask);
+  bool ft_try_force_l2_tag_update(new_addr_type addr, unsigned time,
+                                  mem_access_sector_mask_t mask);
+  unsigned ft_memcpy_offset_for_test() const { return m_memcpy_cycle_offset; }
+  l2_cache *ft_cache_for_test() { return m_L2cache; }
 
  private:
   void ft_record_admission(const mem_fetch *mf);

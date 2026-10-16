@@ -43,7 +43,7 @@ struct scenario {
   }
   // Real host prefill hook, with actual memcpy offset accumulation. It may
   // initialize one declared sector only and must not perform a GPU bank op.
-  void warm(unsigned address, unsigned repeats=1) {
+  void warm(new_addr_type address, unsigned repeats=1) {
     mem_access_sector_mask_t mask; mask.set((address>>5)&3);
     const auto physical_cycle=gpu->gpu_tot_sim_cycle+gpu->gpu_sim_cycle;
     unsigned long long before[4];
@@ -52,9 +52,20 @@ struct scenario {
     assert(gpu->gpu_tot_sim_cycle+gpu->gpu_sim_cycle==physical_cycle);
     for(unsigned b=0;b<4;++b) assert(sp->ft_bank_grants_for_test(b)==before[b]);
   }
+  bool try_warm(new_addr_type address) {
+    mem_access_sector_mask_t mask;mask.set((address>>5)&3);
+    const auto offset=sp->ft_memcpy_offset_for_test();
+    unsigned long long before[4];
+    for(unsigned b=0;b<4;++b)before[b]=sp->ft_bank_grants_for_test(b);
+    const bool accepted=sp->ft_try_force_l2_tag_update(address,
+        gpu->gpu_tot_sim_cycle+gpu->gpu_sim_cycle,mask);
+    assert(sp->ft_memcpy_offset_for_test()==offset+(accepted?1:0));
+    for(unsigned b=0;b<4;++b)assert(sp->ft_bank_grants_for_test(b)==before[b]);
+    return accepted;
+  }
   ~scenario() { delete alloc; delete part; delete stats; delete gpu; }
   l2_cache *cache() { return sp->tvd_cache_for_test(); }
-  mem_fetch *make(unsigned address, bool write=false) {
+  mem_fetch *make(new_addr_type address, bool write=false) {
     active_mask_t active; active.set(0); mem_access_byte_mask_t bytes;
     const unsigned sector=(address>>5)&3;
     for(unsigned i=sector*32;i<sector*32+32;++i) bytes.set(i);
@@ -62,7 +73,7 @@ struct scenario {
     return alloc->alloc(address,write?GLOBAL_ACC_W:GLOBAL_ACC_R,active,bytes,sectors,32,write,
         gpu->gpu_sim_cycle,0,0,0,NULL,0);
   }
-  unsigned push_partial_write(unsigned address) {
+  unsigned push_partial_write(new_addr_type address) {
     active_mask_t active; active.set(0); mem_access_byte_mask_t bytes;
     unsigned sector=(address>>5)&3;
     for(unsigned b=sector*32;b<sector*32+4;++b) bytes.set(b);
@@ -70,7 +81,7 @@ struct scenario {
     auto mf=alloc->alloc(address,GLOBAL_ACC_W,active,bytes,mask,32,true,gpu->gpu_sim_cycle,0,0,0,NULL,0);
     unsigned uid=mf->get_request_uid();sp->push(mf,gpu->gpu_sim_cycle);return uid;
   }
-  unsigned push_atomic(unsigned address) {
+  unsigned push_atomic(new_addr_type address) {
     active_mask_t active; active.set(0); mem_access_byte_mask_t bytes;
     unsigned sector=(address>>5)&3;
     for(unsigned b=sector*32;b<sector*32+32;++b) bytes.set(b);
@@ -84,7 +95,7 @@ struct scenario {
     assert(mf->isatomic()); unsigned uid=mf->get_request_uid();
     sp->push(mf,gpu->gpu_sim_cycle); return uid;
   }
-  unsigned push(unsigned address, bool write=false) {
+  unsigned push(new_addr_type address, bool write=false) {
     auto mf=make(address,write); unsigned uid=mf->get_request_uid();
     sp->push(mf,gpu->gpu_sim_cycle); return uid;
   }
@@ -387,10 +398,47 @@ static void warm_primary_geometry(const char *base,const char *overlay) {
   puts("PASS repair_warm_primary64x16_actual_chosen_tag_and_bank_identity");
 }
 
+static void candidate62_try_prefill_tvd(const char *base,const char *overlay) {
+  scenario f(base,overlay,true);
+  const new_addr_type a=0x100000000ULL;
+  f.warm(a,4096);
+  auto original=f.cache()->ep_l2_tag_payload_handle_for_test(0);
+  auto w=f.push(a+128,true);
+  for(unsigned n=0;n<10000 && !f.sp->ep_l2_l2icnt_occupancy();++n)f.step(false);
+  assert(f.sp->ep_l2_l2icnt_occupancy()==1);
+  auto dir=f.cache()->tvd_for_test();auto alias=dir->find(a);
+  assert(dir->live(alias) && !dir->live(dir->find(a&0xffffffffULL)));
+  const auto before=dir->at(alias.index);
+  const auto slot=f.cache()->ep_l2_payload_for_test().inspect(original);
+  auto resident=f.cache()->ep_l2_tag_payload_handle_for_test(0);
+  assert(!f.try_warm(a)); // real held response prevents mutation
+  assert(dir->live(alias) && dir->at(alias.index).age==before.age &&
+         dir->at(alias.index).payload==original);
+  assert(f.cache()->ep_l2_payload_for_test().inspect(original).versions==slot.versions &&
+         f.cache()->ep_l2_tag_payload_handle_for_test(0)==resident);
+  f.collect();assert(f.responses.count(w));f.drain();
+  assert(!f.try_warm(a)); // drained but selected resident is dirty
+  assert(dir->live(alias) && dir->at(alias.index).age==before.age &&
+         f.cache()->ep_l2_tag_payload_handle_for_test(0)==resident);
+  auto read=f.push(a+256);f.await(read);f.drain();
+  auto unrelated=dir->find(a+128);assert(dir->live(unrelated));
+  assert(f.try_warm(a)); // exact optional alias only, after real dirty WB
+  assert(!dir->live(alias) && !dir->live(dir->find(a)) && dir->live(unrelated));
+  assert(!f.cache()->ep_l2_payload_for_test().handle_live(original));
+  auto h=f.cache()->ep_l2_tag_payload_handle_for_test(0);
+  assert(f.cache()->ep_l2_payload_for_test().inspect(h).owner==a);
+  auto final=f.push(a);f.await(final);assert(f.responses.at(final)==0);
+  f.drain();f.sp->flushL2();assert(!dir->occupied());f.clock_report();
+  puts("PASS candidate62_try_prefill_TVD_refusal_atomicity_full_address_exact_alias");
+}
+
 int main(int argc,char **argv) {
   assert(argc==3 || argc==4);
   if (argc==4) {
     std::string negative=argv[3];
+    if (negative=="--candidate62-gates") {
+      candidate62_try_prefill_tvd(argv[1],argv[2]);return 0;
+    }
     if (negative=="--repair-gates") {
       warm_sectors_then_tvd(argv[1],argv[2],16);
       warm_sectors_then_tvd(argv[1],argv[2],8);

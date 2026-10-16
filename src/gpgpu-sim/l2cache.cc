@@ -408,6 +408,30 @@ void memory_partition_unit::c7e_record_dram_success(bool read, bool write,
   }
 }
 
+bool memory_sub_partition::ft_try_force_l2_tag_update(
+    new_addr_type addr, unsigned time, mem_access_sector_mask_t mask) {
+  // Check the actual frontend/response/lower tracker too: an empty cache MSHR
+  // alone does not mean the enclosing hardware or a response has drained.
+  if (!m_L2cache->ft_enabled() || !l2_char_no_resource_leak()) return false;
+  if (!m_L2cache->ft_try_force_tag_access(addr, m_memcpy_cycle_offset + time, mask))
+    return false;
+  ++m_memcpy_cycle_offset;
+  return true;
+}
+
+void memory_sub_partition::force_l2_tag_update(
+    new_addr_type addr, unsigned time, mem_access_sector_mask_t mask) {
+  if (!m_config->m_L2_config.disabled() && m_L2cache->ft_enabled()) {
+    if (!ft_try_force_l2_tag_update(addr, time, mask)) {
+      fprintf(stderr, "EP-L2 host prefill rejected: hardware must be drained and selected owner clean\n");
+      abort();
+    }
+    return;
+  }
+  m_L2cache->force_tag_access(addr, m_memcpy_cycle_offset + time, mask);
+  ++m_memcpy_cycle_offset;
+}
+
 void memory_partition_unit::handle_memcpy_to_gpu(
     size_t addr, unsigned global_subpart_id, mem_access_sector_mask_t mask) {
   unsigned p = global_sub_partition_id_to_local_id(global_subpart_id);

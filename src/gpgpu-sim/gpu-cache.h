@@ -2733,6 +2733,9 @@ class l2_cache : public data_cache {
   // The non-FT route retains the historical Tag-only initialization.
   void force_tag_access(new_addr_type addr, unsigned time,
                         mem_access_sector_mask_t mask);
+  bool ft_try_force_tag_access(new_addr_type addr, unsigned time,
+                               mem_access_sector_mask_t mask);
+  unsigned long long ft_physical_cycle() const;
   unsigned ft_wb_staged() const { return m_ft_wb.size(); }
   unsigned ft_pending_lower_reads() const { return m_ep_l2_payload.pending_sector_count(); }
   bool ft_reservation_active() const { return m_ft_pending.request != NULL; }
