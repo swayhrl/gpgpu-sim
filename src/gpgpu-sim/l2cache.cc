@@ -1163,10 +1163,25 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
   // completed, but the current frontend head has not been admitted yet.
   l2_char_sample(m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
 
+  bool tvd_frontend_handled = false;
+  if (!m_config->m_L2_config.disabled() && m_L2cache->tvd_enabled() && !m_icnt_L2_queue->empty()) {
+    mem_fetch *mf = m_icnt_L2_queue->top();
+    const auto now = m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
+    const auto result = m_L2cache->tvd_frontend(mf, now, !m_L2_icnt_queue->full());
+    tvd_frontend_handled = result != l2_cache::TVD_NORMAL;
+    if (result == l2_cache::TVD_RESPONSE) {
+      mf->set_reply(); mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE, now);
+      ep_l2_m0a_record_response_enqueue(); ft_record_response(mf);
+      m_L2_icnt_queue->push(mf);
+      m_L2cache->tvd_response_commit(mf, now);
+      m_icnt_L2_queue->pop();
+    }
+  }
+
   // New L2 texture accesses and/or non-texture accesses.  A full L2-to-DRAM
   // FIFO is not a frontend prerequisite: hits, MSHR merges, and locally
   // absorbed writes must only wait for resources they actually consume.
-  if (!m_icnt_L2_queue->empty()) {
+  if (!tvd_frontend_handled && !m_icnt_L2_queue->empty()) {
     mem_fetch *mf = m_icnt_L2_queue->top();
     if (!m_config->m_L2_config.disabled() &&
         ((m_config->m_L2_texure_only && mf->istexture()) ||
@@ -1187,7 +1202,9 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
           !m_L2cache->miss_queue_has_slots(2);
       bool admit = false;
       l2_admission_inputs admission;
-      if (plan.exact) {
+      if (plan.ep_l2_tvd_candidate) {
+        admit = !m_L2_icnt_queue->full();
+      } else if (plan.exact) {
         // C7d exact target telemetry is sourced from the same non-mutating
         // production preview used for admission.  None of these counters are
         // read by the controller.

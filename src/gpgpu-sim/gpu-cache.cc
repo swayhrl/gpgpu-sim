@@ -2578,8 +2578,15 @@ void l2_cache::ep_l2_wad_complete(new_addr_type block_addr,
   m_ep_l2_wad_lifetime_max = std::max(m_ep_l2_wad_lifetime_max, lifetime);
   ++m_ep_l2_wad_lifetime_hist[lifetime];
   m_ep_l2_wad_birth_cycle.erase(birth);
-  const size_t erased = m_ep_l2_wad_entries_live.erase(normalized);
-  assert(erased == 1);
+  if (m_tvd) {
+    auto t = m_tvd->find(normalized);
+    assert(m_tvd->live(t));
+    auto h = m_tvd->at(t.index).payload;
+    assert(m_tvd->set_done(t, cycle) == tvd_directory::OK);
+    if (h.valid()) m_ep_l2_payload.transfer(h, ep_l2_payload_store::TVD, ep_l2_payload_store::TVD_VALID);
+  } else {
+    const size_t erased = m_ep_l2_wad_entries_live.erase(normalized); assert(erased == 1);
+  }
 }
 
 void l2_cache::fill(mem_fetch *mf, unsigned time) {
@@ -2624,6 +2631,9 @@ void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
   plan.l1_writeback_absorbed = mf->get_access_type() == L1_WRBK_ACC;
 
   new_addr_type block_addr = m_config.block_addr(addr);
+  if (m_tvd && (mf->get_is_write() || mf->isatomic()) && m_tvd->live(m_tvd->find(block_addr))) {
+    plan.ep_l2_tvd_candidate = true; plan.exact = false; return;
+  }
   if (ep_l2_wad_enabled() && plan.is_read && ep_l2_wad_contains(block_addr)) {
     // A WAD owns this old line until real writeback completion.  Treat the
     // frontend request as non-admissible before it can reach tag mutation.
@@ -2644,7 +2654,7 @@ void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
     plan.victim_valid = m_tag_array->block_is_valid(cache_index);
     plan.victim_dirty = m_tag_array->block_is_modified(cache_index);
     if (plan.victim_dirty && ep_l2_wad_enabled() &&
-        m_ep_l2_wad_entries_live.size() >= m_config.m_ep_l2_wad_entries &&
+        ep_l2_wad_occupancy() >= m_config.m_ep_l2_wad_entries &&
         !(ft_enabled() && m_ft_pending.request == mf && m_ft_pending.wad)) {
       // The required WAD must be allocated before data_cache::access()
       // destructively replaces this victim.
@@ -2853,3 +2863,5 @@ void tex_cache::display_state(FILE *fp) const {
 /******************************************************************************************************************************************/
 
 #include "ep-l2-ft-cache.inc"
+
+#include "ep-l2-tvd-cache.inc"

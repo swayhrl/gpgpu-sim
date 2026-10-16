@@ -39,6 +39,8 @@
 #include "gpu-misc.h"
 #include "mem_fetch.h"
 #include "ep-l2-ft-interface.h"
+#include "ep-l2-tvd-directory.h"
+#include <memory>
 
 #include <iostream>
 #include <array>
@@ -586,6 +588,7 @@ class cache_config {
     m_ep_l2_feature_unified_payload = false;
     m_ep_l2_feature_ro_pending_state = false;
     m_ep_l2_feature_tvd = false;
+    m_ep_l2_tvd_clean = m_ep_l2_tvd_dirty = false;
     m_ep_l2_feature_adaptive_policy = false;
     m_ep_l2_b0_stats = true;
     // M0a is deliberately opt-in.  It is a telemetry sidecar and is never
@@ -946,6 +949,7 @@ class cache_config {
   bool m_ep_l2_feature_unified_payload;
   bool m_ep_l2_feature_ro_pending_state;
   bool m_ep_l2_feature_tvd;
+  bool m_ep_l2_tvd_clean, m_ep_l2_tvd_dirty;
   bool m_ep_l2_feature_adaptive_policy;
   // Observational only. Disabling it must not change simulator timing.
   bool m_ep_l2_b0_stats;
@@ -1070,6 +1074,18 @@ class tag_array {
   void add_pending_line(mem_fetch *mf);
   void remove_pending_line(mem_fetch *mf);
   void inc_dirty() { m_dirty++; }
+  void tvd_bind(unsigned index, new_addr_type address, unsigned time, unsigned valid) {
+    cache_block_t *b = m_lines[index];
+    assert(valid && valid < 16);
+    if (b->is_modified_line()) { assert(m_dirty); --m_dirty; }
+    mem_access_sector_mask_t first; first.set(__builtin_ctz(valid));
+    b->allocate(m_config.tag(address), m_config.block_addr(address), time, first);
+    for (unsigned sector = 0; sector < 4; ++sector) {
+      mem_access_sector_mask_t mask; mask.set(sector);
+      b->set_status((valid & (1u << sector)) ? VALID : INVALID, mask);
+    }
+    l2_char_tracking_refresh_line(index);
+  }
 
  protected:
   // This constructor is intended for use only from derived classes that wish to
@@ -2042,7 +2058,7 @@ struct l2_access_plan {
         ep_l2_wad_same_address_hazard(false),
         ep_l2_wad_full(false),
         ep_l2_mshr_block_reason(mshr_table::EP_L2_BLOCK_NONE),
-        ep_l2_needs_lower_read(false) {}
+        ep_l2_needs_lower_read(false), ep_l2_tvd_candidate(false) {}
 
   bool exact;
   cache_request_status probe_status;
@@ -2075,6 +2091,7 @@ struct l2_access_plan {
   // additional admission input.
   mshr_table::ep_l2_block_reason ep_l2_mshr_block_reason;
   bool ep_l2_needs_lower_read;
+  bool ep_l2_tvd_candidate;
 };
 
 // C5/C6 metadata-only payload model. mem_fetch remains the functional data
@@ -2084,7 +2101,7 @@ class ep_l2_payload_store {
   static const unsigned k_physical_slots = 1152;
   static const unsigned k_resident_slots = 1024;
   static const unsigned k_bypass_slots = 128;
-  enum role { RESIDENT, BYPASS, WB };
+  enum role { RESIDENT, BYPASS, WB, TVD };
   // A boolean cannot distinguish an ordinary target-payload retry from a
   // physical same-bank denial.  C6c needs that distinction both for correct
   // same-cycle admission and for meaningful B0-Banked telemetry.
@@ -2097,7 +2114,7 @@ class ep_l2_payload_store {
     FILL_WRITE,
     WB_READOUT,
     BYPASS_FILL,
-    BYPASS_READ
+    BYPASS_READ, TVD_READ
   };
   enum state {
     FREE,
@@ -2105,7 +2122,7 @@ class ep_l2_payload_store {
     RESIDENT_VALID,
     RESIDENT_DIRTY,
     BYPASS_FILL_PENDING,
-    BYPASS_READY, WB_RESERVED, WB_STAGED
+    BYPASS_READY, WB_RESERVED, WB_STAGED, TVD_VALID, TVD_INFLIGHT
   };
   // This is the sole physical-payload identity.  mem_fetch already carries
   // the same pair across the lower request/response path.
@@ -2134,7 +2151,7 @@ class ep_l2_payload_store {
         m_bank_true_conflict_ops(0), m_bank_true_conflict_events(0),
         m_bank_wait_cycles(0), m_bank_resident_hit_read(0),
         m_bank_resident_write(0), m_bank_fill_write(0),
-        m_bank_wb_readout(0), m_bank_bypass_fill(0), m_bank_bypass_read(0),
+        m_bank_wb_readout(0), m_bank_bypass_fill(0), m_bank_bypass_read(0), m_bank_tvd_read(0),
         m_next_sequence(0) {
     m_slots.resize(k_physical_slots + wbuf);
     for (unsigned bank = 0; bank < 4; ++bank) {
@@ -2282,7 +2299,8 @@ class ep_l2_payload_store {
   unsigned wb_used() const { return used(WB); }
   unsigned pending_sector_count() const { unsigned n=0;
     for (const slot &s : m_slots) n += s.pending_sector_mask.count(); return n; }
-  unsigned free_slots() const { return physical_slots() - used(RESIDENT) - used(BYPASS) - used(WB); }
+  unsigned tvd_used() const { return used(TVD); }
+  unsigned free_slots() const { return physical_slots() - used(RESIDENT) - used(BYPASS) - used(WB) - used(TVD); }
   const slot &inspect(const payload_handle &h) const { assert(handle_live(h)); return m_slots[h.payload_id]; }
   slot &inspect_mutable(const payload_handle &h) { assert(handle_live(h)); return m_slots[h.payload_id]; }
   payload_handle preview_free(role r, unsigned bank = (unsigned)-1) const {
@@ -2504,6 +2522,9 @@ class ep_l2_payload_store {
         if (!owners.insert(s.owner).second) return false;
       } else if (s.allocation_role == WB) {
         if (!m_ft_mode || (s.status != WB_RESERVED && s.status != WB_STAGED)) return false;
+      } else if (s.allocation_role == TVD) {
+        if (!m_ft_mode || (s.status != TVD_VALID && s.status != TVD_INFLIGHT) ||
+            !owners.insert(s.owner).second) return false;
       } else {
         if (i < k_resident_slots ||
             (s.status != BYPASS_FILL_PENDING && s.status != BYPASS_READY)) return false;
@@ -2547,6 +2568,7 @@ class ep_l2_payload_store {
       case WB_READOUT: ++m_bank_wb_readout; break;
       case BYPASS_FILL: ++m_bank_bypass_fill; break;
       case BYPASS_READ: ++m_bank_bypass_read; break;
+      case TVD_READ: ++m_bank_tvd_read; break;
     }
   }
   struct pending_op {
@@ -2568,7 +2590,7 @@ class ep_l2_payload_store {
       m_bank_true_conflict_events_by_bank[4], m_bank_wait_cycles_by_bank[4];
   unsigned long long m_bank_resident_hit_read, m_bank_resident_write,
       m_bank_fill_write, m_bank_wb_readout, m_bank_bypass_fill,
-      m_bank_bypass_read;
+      m_bank_bypass_read, m_bank_tvd_read;
   unsigned long long m_next_sequence;
   std::bitset<4> m_bank_granted; std::vector<slot> m_slots;
   std::vector<pending_op> m_pending[4], m_granted[4];
@@ -2594,6 +2616,9 @@ class l2_cache : public data_cache {
         m_ep_l2_tag_payload(ep_l2_payload_store::k_resident_slots) {
     validate_ep_l2_mode_config();
     m_ft_last_wb_versions.fill(0);
+    m_tvd_lookup = NULL; m_tvd_lookup_cycle = 0;
+    if (config.m_ep_l2_tvd_clean || config.m_ep_l2_tvd_dirty)
+      m_tvd.reset(new ep_l2_tvd_directory<>(128, config.m_ep_l2_tvd_clean, config.m_ep_l2_tvd_dirty));
   }
 
   virtual ~l2_cache() {}
@@ -2683,6 +2708,16 @@ class l2_cache : public data_cache {
     return true;
   }
 
+  typedef ep_l2_tvd_directory<> tvd_directory;
+  bool tvd_enabled() const { return bool(m_tvd); }
+  enum tvd_frontend_result { TVD_NORMAL, TVD_WAIT, TVD_RESPONSE };
+  tvd_frontend_result tvd_frontend(mem_fetch *, unsigned long long, bool);
+  void tvd_response_commit(mem_fetch *, unsigned long long);
+  void tvd_epoch_cleanup(unsigned long long);
+  void flush() { tvd_epoch_cleanup(m_gpu_cycle_for_tvd()); data_cache::flush(); }
+  void invalidate() { tvd_epoch_cleanup(m_gpu_cycle_for_tvd()); data_cache::invalidate(); }
+  void tvd_print(FILE *, unsigned);
+  const tvd_directory *tvd_for_test() const { return m_tvd.get(); }
   bool ft_enabled() const { return m_config.m_ep_l2_ft_mode != 0; }
   void commit_next_access();
   mem_fetch *peek_next_access() const;
@@ -2704,7 +2739,7 @@ class l2_cache : public data_cache {
   // exist before tag_array::access can evict a dirty victim; release happens
   // only when the corresponding no-return writeback reaches set_done().
   void ep_l2_wad_complete(new_addr_type block_addr, unsigned long long cycle);
-  unsigned ep_l2_wad_occupancy() const { return m_ep_l2_wad_entries_live.size(); }
+  unsigned ep_l2_wad_occupancy() const { return m_tvd ? m_tvd->mandatory() : m_ep_l2_wad_entries_live.size(); }
   unsigned ep_l2_wad_capacity() const { return m_config.m_ep_l2_wad_entries; }
   unsigned long long ep_l2_wad_full_blocks() const {
     return m_ep_l2_wad_full_block_count;
@@ -2735,6 +2770,7 @@ class l2_cache : public data_cache {
     return m_ep_l2_wad_lifetime_max;
   }
   bool ep_l2_wad_contains(new_addr_type block_addr) const {
+    if (m_tvd) { auto t = m_tvd->find(block_addr); return m_tvd->live(t) && m_tvd->at(t.index).mandatory(); }
     return m_ep_l2_wad_entries_live.count(block_addr) != 0;
   }
 
@@ -2748,7 +2784,15 @@ class l2_cache : public data_cache {
       unsigned time, std::list<cache_event> &events);
   void send_write_request(mem_fetch *mf, cache_event request, unsigned time,
       std::list<cache_event> &events) override;
-  void ft_rollback();
+  void ft_rollback(unsigned long long cycle);
+  bool tvd_promote(mem_fetch *, unsigned, std::list<cache_event> &);
+  bool tvd_install_victim(new_addr_type, ep_l2::PayloadHandle, unsigned, unsigned, bool, unsigned long long);
+  bool tvd_reclaim_one(unsigned bank, unsigned long long);
+  unsigned long long m_gpu_cycle_for_tvd() const;
+  std::unique_ptr<tvd_directory> m_tvd;
+  std::unique_ptr<tvd_directory::read_lease> m_tvd_read;
+  mem_fetch *m_tvd_lookup;
+  unsigned long long m_tvd_lookup_cycle;
   struct ft_replacement {
     mem_fetch *request;
     unsigned tag_index, phase, landing_id;
@@ -2757,9 +2801,9 @@ class l2_cache : public data_cache {
     ep_l2_payload_store::slot saved;
     std::array<unsigned long long,4> copy_versions;
     unsigned long long born;
-    bool dirty, wad, landing_reserved, bound;
+    bool dirty, wad, landing_reserved, bound, retain_clean;
     ft_replacement() : request(NULL), tag_index(0), phase(0), landing_id((unsigned)-1), victim_address(0),
-        born(0), dirty(false), wad(false), landing_reserved(false), bound(false) { copy_versions.fill(0); }
+        born(0), dirty(false), wad(false), landing_reserved(false), bound(false), retain_clean(false) { copy_versions.fill(0); }
   };
   struct ft_wb_record {
     ep_l2_payload_store::payload_handle handle;
@@ -2783,6 +2827,10 @@ class l2_cache : public data_cache {
   std::map<mem_fetch *,ep_l2_payload_store::payload_handle> m_ft_read_refs;
   std::array<unsigned long long,4> m_ft_last_wb_versions;
   void validate_ep_l2_mode_config() const {
+    if ((m_config.m_ep_l2_tvd_clean || m_config.m_ep_l2_tvd_dirty) &&
+        (m_config.m_ep_l2_ft_mode != 2 || m_config.m_ep_l2_wad_entries != 128)) {
+      fprintf(stderr, "TVD requires unified FT mode and shared WAD128\n"); abort();
+    }
     if (m_config.m_ep_l2_ft_mode > 2 ||
         (!m_config.m_ep_l2_ft_mode && m_config.m_ep_l2_wbuf_entries) ||
         (m_config.m_ep_l2_ft_mode &&

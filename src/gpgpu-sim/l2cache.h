@@ -334,6 +334,7 @@ class memory_sub_partition {
   void dram_L2_queue_push(class mem_fetch *mf);
   // Directed-test hook. May only arm after a real response enters ReturnQ.
   void l2_char_hold_returnq(unsigned cycles);
+  l2_cache *tvd_cache_for_test() { return m_L2cache; }
   unsigned ft_wb_staged_for_test() const { return m_L2cache->ft_wb_staged(); }
   bool ft_drained_for_test() const { return m_L2cache->ft_drained(); }
 

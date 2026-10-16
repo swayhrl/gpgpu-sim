@@ -93,12 +93,14 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
   struct counters {
     std::uint64_t clean_installs, dirty_installs, reclaimed, skipped_clean;
     std::uint64_t read_responses, dirty_forward_responses, promotions;
+    std::uint64_t served_sectors, served_sector_bytes;
+    // DEPRECATED compatibility aliases: these are SERVED bytes, NOT DRAM savings.
     std::uint64_t avoided_lower_sectors, avoided_lower_bytes;
     std::uint64_t cancelled_reads, lower_accepts, wb_completions;
     std::uint64_t wb_staging_slot_cycles, tvd_extra_retention_slot_cycles;
     counters() : clean_installs(0), dirty_installs(0), reclaimed(0),
         skipped_clean(0), read_responses(0), dirty_forward_responses(0),
-        promotions(0), avoided_lower_sectors(0), avoided_lower_bytes(0),
+        promotions(0), served_sectors(0), served_sector_bytes(0), avoided_lower_sectors(0), avoided_lower_bytes(0),
         cancelled_reads(0), lower_accepts(0), wb_completions(0),
         wb_staging_slot_cycles(0), tvd_extra_retention_slot_cycles(0) {}
   };
@@ -230,7 +232,9 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     if (lease.forward) ++m_stats.dirty_forward_responses;
     unsigned count = 0;
     for (unsigned mask = lease.sectors; mask; mask >>= 1) count += mask & 1;
-    m_stats.avoided_lower_sectors += count; m_stats.avoided_lower_bytes += 32 * count;
+    m_stats.served_sectors += count; m_stats.served_sector_bytes += 32 * count;
+    m_stats.avoided_lower_sectors = m_stats.served_sectors;
+    m_stats.avoided_lower_bytes = m_stats.served_sector_bytes;
     return OK;
   }
   result cancel_read(read_lease &lease) {
@@ -257,7 +261,7 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
                                          Handle victim, unsigned valid,
                                          unsigned dirty, unsigned pending) const {
     promotion_plan p;
-    if (!m_dirty) { p.status = DISABLED; return p; }
+    if (!m_clean && !m_dirty) { p.status = DISABLED; return p; }
     if (!live(source)) { p.status = STALE; return p; }
     const entry &e = m_entries[source.index];
     if (e.mandatory()) { p.status = WAIT_WRITEBACK; return p; }
@@ -278,7 +282,7 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     assert(!e.mandatory() && !e.readers);
     advance(now); promoted = e.payload;
     bump(e.incarnation); e.status = WB_STAGED; e.line = p.victim_line;
-    e.payload = p.victim; e.valid_sectors = p.valid; e.dirty_sectors = p.dirty;
+    e.payload = m_dirty ? p.victim : Handle(); e.valid_sectors = p.valid; e.dirty_sectors = p.dirty;
     e.age = ++m_age; e.born = now; e.lower_accepted = 0;
     writeback = ticket(p.source.index, e.incarnation);
     ++m_revision; ++m_stats.promotions; ++m_stats.dirty_installs;
@@ -293,6 +297,11 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     if (e.readers) return PINNED;
     advance(now); released = e.payload; erase(e); ++m_stats.reclaimed;
     return OK;
+  }
+  result rollback_staged(ticket t, cycle_type now) {
+    if (!live(t) || m_entries[t.index].status != WB_STAGED) return STALE;
+    if (m_entries[t.index].readers) return PINNED;
+    advance(now); erase(m_entries[t.index]); return OK;
   }
   result lower_accept(ticket t, bool lower_has_independent_data, cycle_type now) {
     if (!live(t) || m_entries[t.index].status != WB_STAGED) return STALE;
