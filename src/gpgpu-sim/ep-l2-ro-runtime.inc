@@ -246,11 +246,12 @@ bool l2_cache::ro_return(mem_fetch *m,unsigned long long cycle) {
 }
 void l2_cache::ro_print(FILE *f,unsigned slice) const {if(m_ro){
   const auto &s=m_ro->tx->stats;
-  fprintf(f,"EPL2ROV1|SUMMARY|slice=%u|detach=%u|bypass=%u|accepted_global_reads=%llu|accepted_oracle_candidates=%llu|accepted_ro=%llu|transactions=%llu|merges=%llu|detached=%llu|lower_sectors=%llu|concurrent_duplicate_sectors=%llu|responses=%llu|live=%u|manifest=%s|scope=TRACE_MODEL_CLOSED_WORLD\n",
+  fprintf(f,"EPL2ROV1|SUMMARY|slice=%u|detach=%u|bypass=%u|accepted_global_reads=%llu|accepted_oracle_candidates=%llu|accepted_ro=%llu|transactions=%llu|merges=%llu|detached=%llu|lower_sectors=%llu|concurrent_duplicate_sectors=%llu|responses=%llu|ro_bank_fill_ops=%llu|ro_bank_response_ops=%llu|live=%u|manifest=%s|scope=TRACE_MODEL_CLOSED_WORLD\n",
     slice,m_config.m_ro_tag_detach,m_config.m_ro_line_mshr_bypass,
     (unsigned long long)m_ro->accepted_global_reads,(unsigned long long)m_ro->accepted_candidates,(unsigned long long)m_ro->accepted_ro,
     (unsigned long long)s.admits,(unsigned long long)s.merges,(unsigned long long)s.detached,(unsigned long long)s.lower_sectors,
-    (unsigned long long)s.duplicate_sectors,(unsigned long long)s.responses,m_ro->tx->live_transactions(),m_ro->cert->manifest_sha256().c_str());
+    (unsigned long long)s.duplicate_sectors,(unsigned long long)s.responses,
+    m_ep_l2_payload.bank_ro_fill_write(),m_ep_l2_payload.bank_ro_response_read(),m_ro->tx->live_transactions(),m_ro->cert->manifest_sha256().c_str());
 }}
 
 void l2_cache::ro_bind_commandlist(const char *path){if(m_ro){
