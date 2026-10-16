@@ -66,6 +66,16 @@ struct service_entry {
   uint64_t collect_done_cycle = UINT64_MAX;
   uint64_t collect_start_cycle = UINT64_MAX;
   unsigned sectors_left = 0;
+  bool tag_can_commit(uint64_t cycle) const {
+    return tag_grant_cycle != UINT64_MAX && cycle > tag_grant_cycle;
+  }
+  template <class Frontend>
+  void prefetch_next_tag(Frontend &frontend, uint64_t cycle, bool has_next,
+                         uint64_t next_address) {
+    tag_grant_cycle = UINT64_MAX;
+    if (has_next && frontend.try_serve_tag(cycle, next_address))
+      tag_grant_cycle = cycle;
+  }
   void observe_ready(uint64_t cycle, unsigned sectors) {
     assert(ready_cycle == UINT64_MAX && sectors);
     ready_cycle = cycle;

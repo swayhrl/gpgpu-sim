@@ -3030,7 +3030,7 @@ bool ldst_unit::dtc_l1_io_memory_cycle(
     }
     if (dtc_l1_finite_service_active() &&
         entry->service.tag_grant_cycle != UINT64_MAX) {
-      if (cycle <= entry->service.tag_grant_cycle) {
+      if (!entry->service.tag_can_commit(cycle)) {
         stall_reason = COAL_STALL;
         access_type = G_MEM_LD;
         return false;
@@ -3061,7 +3061,11 @@ bool ldst_unit::dtc_l1_io_memory_cycle(
           {uid, result.physical, reference.line_address});
     }
     ++entry->next_reference;
-    entry->service.tag_grant_cycle = UINT64_MAX;
+    if (dtc_l1_finite_service_active()) {
+      const bool has_next = entry->next_reference < entry->references.size();
+      entry->service.prefetch_next_tag(*m_dtc_l1_io_frontend, cycle, has_next,
+          has_next ? entry->references[entry->next_reference].line_address : 0);
+    }
   }
 
   if (entry->next_reference != entry->references.size()) {
@@ -3328,7 +3332,7 @@ bool ldst_unit::dtc_l1_oo_memory_cycle(
       return false;
     }
     if (dtc_l1_finite_service_active() &&
-        (!prior_grant || cycle <= entry->service.tag_grant_cycle)) {
+        (!prior_grant || !entry->service.tag_can_commit(cycle))) {
       if (!prior_grant) entry->service.tag_grant_cycle = cycle;
       stall_reason = COAL_STALL;
       access_type = G_MEM_LD;
@@ -3368,7 +3372,11 @@ bool ldst_unit::dtc_l1_oo_memory_cycle(
       }
     }
     ++entry->next_reference;
-    entry->service.tag_grant_cycle = UINT64_MAX;
+    if (dtc_l1_finite_service_active()) {
+      const bool has_next = entry->next_reference < entry->references.size();
+      entry->service.prefetch_next_tag(*m_dtc_l1_oo_frontend, cycle, has_next,
+          has_next ? entry->references[entry->next_reference].line_address : 0);
+    }
   }
   if (entry->next_reference != entry->references.size()) {
     stall_reason = COAL_STALL;

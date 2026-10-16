@@ -1,7 +1,37 @@
 #include <cassert>
 #include "dtc-l1-common.h"
 
+template <class Frontend>
+void pipelined_lookup_check() {
+  dtc_l1::config cfg;
+  cfg.finite_service = true;
+  cfg.logical_sets = 32;
+  cfg.logical_ways = 1;
+  cfg.physical_lines = 4;
+  Frontend frontend(cfg);
+  frontend.advance_service(1);
+  assert(frontend.admit(777));
+  dtc_l1::service_entry pipe;
+  assert(frontend.try_serve_tag(1, 0));
+  pipe.tag_grant_cycle = 1;
+  assert(!pipe.tag_can_commit(1));
+  // Three same-bank references commit at cycles2,3,4: latency1, II1.
+  // Committing the old lookup overlaps granting the next; it is not six cycles.
+  for (unsigned ref = 0; ref < 3; ++ref) {
+    const uint64_t cycle = ref + 2;
+    frontend.advance_service(cycle);
+    assert(pipe.tag_can_commit(cycle));
+    assert(frontend.access(cycle,777,ref*512).kind == dtc_l1::io_access_kind::NEW_MISS);
+    pipe.prefetch_next_tag(frontend,cycle,ref!=2,(ref+1)*512);
+    assert(!pipe.tag_can_commit(cycle));
+  }
+  assert(frontend.tag_requests() == 3);
+  assert(pipe.tag_grant_cycle == UINT64_MAX);
+}
+
 int main() {
+  pipelined_lookup_check<dtc_l1::io_frontend>();
+  pipelined_lookup_check<dtc_l1::oo_frontend>();
   // Same production predicate guards IO and OO sector-return ownership.
   uint8_t returned = 0;
   for (unsigned sector : {2U, 0U, 3U, 1U}) {
