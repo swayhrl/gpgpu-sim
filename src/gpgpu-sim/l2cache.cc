@@ -2522,13 +2522,13 @@ void memory_sub_partition::visualizer_print(gzFile visualizer_file) {
 // Globally fresh mem_fetch UIDs and single frontend pop establish non-reuse;
 // retain only live audit tokens, not an unbounded history of all requests.
 void memory_sub_partition::ft_record_admission(const mem_fetch *mf) {
-  if (!m_L2cache || !m_L2cache->ft_enabled()) return;
+  if (m_config->m_L2_config.disabled() || !m_L2cache->ft_enabled()) return;
   if (mf->get_access_type() == L1_WRBK_ACC) { ++m_ft_absorbed_count; return; }
   assert(m_ft_live_requesters.insert(mf->get_request_uid()).second);
   ++m_ft_unique_requesters;
 }
 void memory_sub_partition::ft_record_response(const mem_fetch *mf) {
-  if (!m_L2cache || !m_L2cache->ft_enabled()) return;
+  if (m_config->m_L2_config.disabled() || !m_L2cache->ft_enabled()) return;
   assert(m_ft_live_requesters.erase(mf->get_request_uid()) == 1);
   ++m_ft_response_count;
 }
