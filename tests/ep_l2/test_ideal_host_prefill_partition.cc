@@ -28,7 +28,7 @@ static std::vector<ep_l2_ideal::Byte> read(Fixture &f,uint64_t address) {
 int main(int argc,char **argv) {
   assert(argc==3);Fixture f(argv[1],argv[2]);
   const uint64_t a=0x100004000ULL, conflict=a+0x1000;
-  f.sp->ep_l2_ideal_seed(a,std::vector<uint8_t>(128,17));
+  f.sp->ep_l2_ideal_seed(a+64,std::vector<uint8_t>(32,17));
   assert(warm(f,a,0));assert(warm(f,a+32,1));
   unknown(read(f,a));unknown(read(f,a+32));
   auto w=f.make(a,true);ep_l2_ideal::ReferenceMemory::Data data{};data.fill(91);
@@ -46,6 +46,8 @@ int main(int argc,char **argv) {
       f.gpu->gpu_sim_cycle,0,0,0,nullptr,0);
   f.push(native);f.until_reply();assert(f.sp->top()==native);
   assert(f.sp->pop()==native);delete native;f.drain();
+  assert(f.sp->ft_cache_for_test()->ft_copy_lines()==1);
+  assert(f.sp->ft_cache_for_test()->ft_lower_accepts()==1);
   // Later clean/quiescent prefill is allowed, even after a completed producer.
   assert(warm(f,a+32,1));assert(read(f,a)==produced);
   assert(warm(f,a,0));unknown(read(f,a));unknown(read(f,a+32));
