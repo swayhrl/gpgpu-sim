@@ -226,7 +226,7 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
       auto packet=c.m_memfetch_creator->alloc(ev.m_block_addr,c.m_wrbk_type,m->get_access_warp_mask(),
         ev.m_byte_mask,ev.m_sector_mask,ev.m_modified_size,true,physical_cycle(),-1,-1,-1,NULL,m->get_streamID());
       packet->set_chip(m->get_tlx_addr().chip);packet->set_partition(m->get_sub_partition_id());
-      c.send_write_request(packet,WRITE_BACK_REQUEST_SENT,time,events);
+      c.send_write_request(packet,WRITE_BACK_REQUEST_SENT,physical_cycle(),events);
     }
     c.m_stats.inc_stats(m->get_access_type(),probe,m->get_streamID());
     c.m_stats.inc_stats_pw(m->get_access_type(),probe,m->get_streamID());
