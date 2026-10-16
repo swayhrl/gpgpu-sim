@@ -335,6 +335,8 @@ class memory_sub_partition {
   void dram_L2_queue_push(class mem_fetch *mf);
   // Directed-test hook. May only arm after a real response enters ReturnQ.
   void l2_char_hold_returnq(unsigned cycles);
+  unsigned ft_wb_staged_for_test() const { return m_L2cache->ft_wb_staged(); }
+  bool ft_drained_for_test() const { return m_L2cache->ft_drained(); }
 
   void visualizer_print(gzFile visualizer_file);
   void print_cache_stat(unsigned &accesses, unsigned &misses) const;
@@ -432,6 +434,11 @@ class memory_sub_partition {
   }
 
  private:
+  void ft_record_admission(const mem_fetch *mf);
+  void ft_record_response(const mem_fetch *mf);
+  std::set<unsigned> m_ft_live_requesters;
+  unsigned long long m_ft_unique_requesters = 0, m_ft_response_count = 0, m_ft_absorbed_count = 0;
+
   // data
   bool ep_l2_ideal_serve_read(mem_fetch *mf, unsigned long long cycle);
   void ep_l2_ideal_commit_producer(mem_fetch *mf);

@@ -2297,6 +2297,8 @@ class ep_l2_payload_store {
     return m_slots.size() - (k_physical_slots + m_wbuf);
   }
   unsigned wb_used() const { return used(WB); }
+  unsigned pending_sector_count() const { unsigned n=0;
+    for (const slot &s : m_slots) n += s.pending_sector_mask.count(); return n; }
   unsigned free_slots() const { return physical_slots() - used(RESIDENT) - used(BYPASS) - used(WB); }
   const slot &inspect(const payload_handle &h) const { assert(handle_live(h)); return m_slots[h.payload_id]; }
   slot &inspect_mutable(const payload_handle &h) { assert(handle_live(h)); return m_slots[h.payload_id]; }
@@ -2513,7 +2515,9 @@ class ep_l2_payload_store {
     return op.r == r && op.id == id && op.write == write;
   }
   unsigned pending_operations() const {
-    unsigned n = 0; for (unsigned b = 0; b < 4; ++b) n += m_pending[b].size(); return n;
+    unsigned n = 0; for (unsigned b = 0; b < 4; ++b) {
+      n += m_pending[b].size(); if (m_ft_mode) n += m_granted[b].size();
+    } return n;
   }
   bool ownership_consistent() const {
     std::set<new_addr_type> owners;
@@ -2720,7 +2724,10 @@ class l2_cache : public data_cache {
   unsigned long long ft_copy_lines() const { return m_ft_stats.copy_lines; }
   unsigned long long ft_staging_reads() const { return m_ft_stats.staging_reads; }
   unsigned long long ft_lower_accepts() const { return m_ft_stats.lower_accept; }
+  unsigned ft_pending_lower_reads() const { return m_ep_l2_payload.pending_sector_count(); }
   bool ft_reservation_active() const { return m_ft_pending.request != NULL; }
+  bool ft_drained() const { return !ft_enabled() || (!m_ft_pending.request &&
+      m_ft_wb.empty() && m_ft_read_refs.empty() && !m_ep_l2_payload.wb_used()); }
   bool lower_ready(mem_fetch *mf, unsigned long long cycle) override;
   void lower_accepted(mem_fetch *mf, unsigned long long cycle) override;
   void descriptor_admitted(mem_fetch *mf, unsigned cache_index) override;
@@ -2804,14 +2811,14 @@ class l2_cache : public data_cache {
   void ft_rollback();
   struct ft_replacement {
     mem_fetch *request;
-    unsigned tag_index, phase;
+    unsigned tag_index, phase, landing_id;
     new_addr_type victim_address;
     ep_l2_payload_store::payload_handle victim, staging, landing;
     ep_l2_payload_store::slot saved;
     std::array<unsigned long long,4> copy_versions;
     unsigned long long born;
     bool dirty, wad, landing_reserved, bound;
-    ft_replacement() : request(NULL), tag_index(0), phase(0), victim_address(0),
+    ft_replacement() : request(NULL), tag_index(0), phase(0), landing_id((unsigned)-1), victim_address(0),
         born(0), dirty(false), wad(false), landing_reserved(false), bound(false) { copy_versions.fill(0); }
   };
   struct ft_wb_record {
@@ -2821,11 +2828,11 @@ class l2_cache : public data_cache {
     ft_wb_record() : born(0) { expected.fill(0); }
   };
   struct ft_counters {
-    unsigned long long accepted, lower_accept, wbuf_full, pool_full, pin_block,
+    unsigned long long accepted, wb_created, lower_accept, wbuf_full, pool_full, pin_block,
         bank_block, issue_block, copy_lines, staging_reads, staged_max,
         staging_lifetime, borrow_bypass, borrow_resident, rollback, data_checks,
         observed_cycles, staging_occupancy_sum, descriptor_responses;
-    ft_counters() : accepted(0), lower_accept(0), wbuf_full(0), pool_full(0),
+    ft_counters() : accepted(0), wb_created(0), lower_accept(0), wbuf_full(0), pool_full(0),
         pin_block(0), bank_block(0), issue_block(0), copy_lines(0), staging_reads(0),
         staged_max(0), staging_lifetime(0), borrow_bypass(0), borrow_resident(0),
         rollback(0), data_checks(0), observed_cycles(0), staging_occupancy_sum(0), descriptor_responses(0) {}

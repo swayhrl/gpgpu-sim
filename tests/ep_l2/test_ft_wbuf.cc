@@ -47,6 +47,8 @@ static void response_pins_and_sectors(const char *base,const char *overlay) {
   mem_fetch *merged=f.make(0x1000,false,GLOBAL_ACC_R);assert(f.access(merged));
   mem_fetch *b=f.make(0x1020,false,GLOBAL_ACC_R);assert(f.access(b));
   auto h=f.resident();auto &pool=f.cache->ep_l2_payload_for_test();
+  mem_fetch *ordered_write=f.make(0x1000,true);
+  assert(!f.access(ordered_write,4));delete ordered_write;
   assert(pool.inspect(h).pins==3 && pool.inspect(h).pending_sector_mask.count()==2);
   for(unsigned n=0;n<16 && f.port.packets.size()<2;++n) f.cycle();
   assert(f.port.packets.size()==2);
@@ -141,6 +143,8 @@ static void read_version_reference(const char *base,const char *overlay) {
 
 int main(int argc,char **argv) {
   setvbuf(stdout,NULL,_IOLBF,0);
+  if(argc==5) { fixture invalid(argv[1],argv[2],std::stoul(argv[3]),std::stoul(argv[4]));
+    fputs("INVALID CONFIG WAS ACCEPTED\n",stderr);return 1; }
   assert(argc==3);
   for(unsigned mode=1;mode<=2;++mode) for(unsigned c: {8u,16u}) capacity_and_versions(argv[1],argv[2],mode,c);
   wad_full(argv[1],argv[2]);response_pins_and_sectors(argv[1],argv[2]);

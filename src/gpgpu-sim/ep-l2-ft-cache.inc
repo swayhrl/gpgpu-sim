@@ -131,10 +131,10 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
       staging = m_ep_l2_payload.preview_free(ep_l2_payload_store::WB);
       if (!staging.valid()) { ++m_ft_stats.wbuf_full; return RESERVATION_FAIL; }
     }
-    if (m_config.m_ep_l2_ft_mode == 2 && dirty) {
+    if (m_config.m_ep_l2_ft_mode == 2 && (dirty || !live)) {
       landing = m_ep_l2_payload.preview_free(ep_l2_payload_store::RESIDENT, index % 4);
       if (!landing.valid()) { ++m_ft_stats.pool_full; return RESERVATION_FAIL; }
-      staging = victim;
+      if (dirty) staging = victim;
     }
     // The only producer is the serialized frontend head. While this token is
     // live no other frontend request can steal its prechecked issue slots;
@@ -142,6 +142,8 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     ft_replacement &p = m_ft_pending;
     p.request = mf; p.tag_index = index; p.dirty = dirty; p.victim = live ? victim : ep_l2::PayloadHandle();
     p.born = time;
+    p.landing_id = landing.valid() ? landing.payload_id :
+        (m_config.m_ep_l2_ft_mode == 2 && live ? victim.payload_id : index);
     if (live) p.saved = m_ep_l2_payload.inspect(victim);
     if (dirty) {
       p.victim_address = m_tag_array->get_block(index)->m_block_addr;
@@ -173,6 +175,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
         if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
           ++m_ft_stats.bank_block; return RESERVATION_FAIL;
         }
+        p.born = time; // actual source readout starts data-staging lifetime
         p.copy_versions = m_ep_l2_payload.inspect(p.victim).versions;
         p.phase = 1;
         return RESERVATION_FAIL;
@@ -188,21 +191,25 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
         ++m_ft_stats.copy_lines; p.phase = 2;
       }
     }
+    // Locally absorbed writes consume an actual payload RAM write. Request
+    // the stable prospective ID before changing victim/tag ownership, so a
+    // same-bank denial cannot expose a partially installed new generation.
+    if (mf->get_is_write()) {
+      m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(
+          ep_l2_payload_store::RESIDENT, p.landing_id, true, time,
+          (unsigned long long)-1, ep_l2_payload_store::RESIDENT_WRITE);
+      if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
+        ++m_ft_stats.bank_block; return RESERVATION_FAIL;
+      }
+    }
     if (p.dirty && m_config.m_ep_l2_ft_mode == 2) {
+      p.born = time; // in-place WB role starts at actual producer commit
       m_ep_l2_payload.transfer(p.victim, ep_l2_payload_store::WB, ep_l2_payload_store::WB_STAGED);
       if (p.victim.payload_id < 1024) ++m_ft_stats.borrow_resident;
       else if (p.victim.payload_id < 1152) ++m_ft_stats.borrow_bypass;
     }
     if (!p.landing_reserved) {
-      unsigned id = index;
-      if (m_config.m_ep_l2_ft_mode == 2) {
-        if (p.victim.valid()) id = p.victim.payload_id;
-        else {
-          const ep_l2::PayloadHandle available = m_ep_l2_payload.preview_free(ep_l2_payload_store::RESIDENT, index % 4);
-          if (!available.valid()) { ft_rollback(); ++m_ft_stats.pool_full; return RESERVATION_FAIL; }
-          id = available.payload_id;
-        }
-      }
+      const unsigned id = p.landing_id;
       if (m_ep_l2_payload.handle_live(p.victim)) m_ep_l2_payload.release(p.victim);
       p.landing = m_ep_l2_payload.reserve(id, ep_l2_payload_store::RESIDENT,
           owner, ep_l2_payload_store::RESIDENT_FILL_PENDING);
@@ -212,7 +219,10 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   } else {
     const ep_l2::PayloadHandle h = tag_payload_handle(index);
     assert(m_ep_l2_payload.handle_owner_matches(h, owner));
-    if (probe == HIT) {
+    if ((mf->get_is_write() || mf->isatomic()) && m_ep_l2_payload.inspect(h).pins) {
+      ++m_ft_stats.pin_block; return RESERVATION_FAIL;
+    }
+    if (probe == HIT || mf->get_is_write()) {
       m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(h,
           mf->get_is_write() || mf->isatomic(), time, (unsigned long long)-1,
           mf->get_is_write() || mf->isatomic() ? ep_l2_payload_store::RESIDENT_WRITE : ep_l2_payload_store::RESIDENT_HIT_READ);
@@ -230,10 +240,11 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   }
   if (replacement && m_ft_pending.dirty) assert(m_ft_pending.bound);
   ep_l2_payload_store::slot &slot = m_ep_l2_payload.inspect_mutable(handle);
-  if (mf->get_is_write() || mf->isatomic()) {
+  if (mf->get_is_write() || (mf->isatomic() && probe == HIT)) {
     for (unsigned s = 0; s < 4; ++s)
       if (mf->get_access_sector_mask().test(s)) slot.versions[s] = (unsigned long long)mf->get_request_uid() + 1;
-    slot.ready_sector_mask |= mf->get_access_sector_mask();
+    if (mf->get_access_byte_mask().count() == m_config.get_atom_sz() || probe == HIT)
+      slot.ready_sector_mask |= mf->get_access_sector_mask();
   }
   if (m_tag_array->block_is_modified(index)) slot.status = ep_l2_payload_store::RESIDENT_DIRTY;
   else if (slot.pending_sector_mask.none()) slot.status = ep_l2_payload_store::RESIDENT_VALID;
@@ -256,7 +267,7 @@ void l2_cache::send_write_request(mem_fetch *mf, cache_event event, unsigned tim
     assert(m_ft_wb.size() < m_config.m_ep_l2_wad_entries);
     assert(m_ft_wb.insert(std::make_pair(mf, r)).second);
     mf->set_ep_l2_payload_identity(p.staging.payload_id, p.staging.generation);
-    p.bound = true;
+    p.bound = true; ++m_ft_stats.wb_created;
     m_ft_stats.staged_max = std::max(m_ft_stats.staged_max, (unsigned long long)m_ft_wb.size());
   }
   data_cache::send_write_request(mf, event, time, events);
@@ -293,14 +304,15 @@ void l2_cache::lower_accepted(mem_fetch *mf, unsigned long long cycle) {
 void l2_cache::ft_print(FILE *fp, unsigned slice) const {
   if (!ft_enabled()) return;
   fprintf(fp, "EPL2FTV1|SUMMARY|slice=%u|mode=%u|wbuf=%u|physical_slots=%u|"
-      "accepted=%llu|wb_lower_accept=%llu|wbuf_full=%llu|pool_full=%llu|pin_block=%llu|"
+      "accepted=%llu|wb_created=%llu|wb_completed=%llu|wb_lower_accept=%llu|wbuf_full=%llu|pool_full=%llu|pin_block=%llu|"
       "bank_block=%llu|issue_block=%llu|copy_lines=%llu|copy_bytes=%llu|staging_reads=%llu|"
       "staged_max=%llu|staging_lifetime=%llu|borrow_resident=%llu|borrow_bypass=%llu|"
       "rollback=%llu|version_checks=%llu|wb_live=%u|wb_slots=%u|reserved=%u|read_refs=%u|"
       "role_free=%u|role_resident=%u|role_bypass=%u|ownership_consistent=%u|"
       "observed_cycles=%llu|wb_occupancy_sum=%llu|descriptor_responses=%llu\n",
       slice, m_config.m_ep_l2_ft_mode, m_config.m_ep_l2_wbuf_entries,
-      m_ep_l2_payload.physical_slots(), m_ft_stats.accepted, m_ft_stats.lower_accept,
+      m_ep_l2_payload.physical_slots(), m_ft_stats.accepted, m_ft_stats.wb_created,
+      m_ep_l2_wad_lifetime_count, m_ft_stats.lower_accept,
       m_ft_stats.wbuf_full, m_ft_stats.pool_full, m_ft_stats.pin_block,
       m_ft_stats.bank_block, m_ft_stats.issue_block, m_ft_stats.copy_lines,
       m_ft_stats.copy_lines * 128, m_ft_stats.staging_reads, m_ft_stats.staged_max,

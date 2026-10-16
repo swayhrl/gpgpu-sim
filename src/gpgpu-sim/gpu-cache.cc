@@ -2600,12 +2600,14 @@ void l2_cache::ep_l2_wad_complete(new_addr_type block_addr,
 }
 
 void l2_cache::fill(mem_fetch *mf, unsigned time) {
+  unsigned ft_cache_index = (unsigned)-1;
   if (m_ep_l2_payload.enabled()) {
     assert(mf->has_ep_l2_payload_identity());
     const unsigned id = mf->get_ep_l2_payload_id();
     assert(id < m_ep_l2_payload.physical_slots());
     extra_mf_fields_lookup::iterator e = m_extra_mf_fields.find(mf);
     assert(e != m_extra_mf_fields.end());
+    if (ft_enabled()) ft_cache_index = e->second.m_cache_index;
     const ep_l2_payload_store::payload_handle handle(
         id, mf->get_ep_l2_payload_generation());
     assert(tag_payload_handle(e->second.m_cache_index).payload_id == id &&
@@ -2624,6 +2626,8 @@ void l2_cache::fill(mem_fetch *mf, unsigned time) {
         mf->get_access_sector_mask(), mf->is_write());
   }
   baseline_cache::fill(mf, time);
+  if (ft_enabled() && m_tag_array->block_is_modified(ft_cache_index))
+    m_ep_l2_payload.mark_resident_dirty(tag_payload_handle(ft_cache_index).payload_id);
 }
 
 void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
