@@ -248,6 +248,15 @@ void memory_config::reg_options(class OptionParser *opp) {
 
   option_parser_register(opp, "-l2_ideal", OPT_BOOL, &l2_ideal,
                          "Use a ideal L2 cache that always hit", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_ideal_meta", OPT_BOOL,
+                         &m_L2_config.m_ep_l2_ideal_meta,
+                         "Lane4 diagnostic: non-binding dynamic Line-MSHR/descriptor/per-address capacity; ordering retained", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_ideal_read_hit", OPT_BOOL,
+                         &m_L2_config.m_ep_l2_ideal_read_hit,
+                         "Lane4 optimistic demand-read reference service; preserves ROP hit delay, bank, ordering, NoC/response queue", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_ideal_wb", OPT_BOOL,
+                         &m_L2_config.m_ep_l2_ideal_wb,
+                         "Lane4 diagnostic extra WB data backing only; preserves finite WAD, copy/read banks, lower queues and DRAM", "0");
   option_parser_register(
       opp, "-gpgpu_cache:dl2", OPT_CSTR, &m_L2_config.m_config_string,
       "unified banked L2 data cache config "

@@ -415,6 +415,13 @@ bool memory_sub_partition::ft_try_force_l2_tag_update(
   if (!m_L2cache->ft_enabled() || !l2_char_no_resource_leak()) return false;
   if (!m_L2cache->ft_try_force_tag_access(addr, m_memcpy_cycle_offset + time, mask))
     return false;
+  // Only an accepted, drained, clean host prefill may replace reference
+  // symbols. A refusal leaves both the reference and offset unchanged.
+  if (m_config->m_L2_config.m_ep_l2_ideal_read_hit) {
+    ep_l2_ideal::ReferenceMemory::Mask bytes{};
+    for (unsigned b = 0; b < 128; ++b) bytes[b] = mask.test(b / 32);
+    m_ideal_reference.host_prefill(addr & ~uint64_t(127), bytes);
+  }
   ++m_memcpy_cycle_offset;
   return true;
 }
@@ -1091,6 +1098,78 @@ void memory_sub_partition::l2_char_sample(unsigned long long cycle) {
   m_l2_char_collector->sample_cycle(cycle, s);
 }
 
+namespace {
+ep_l2_ideal::ReferenceMemory::Mask ideal_mask(const mem_fetch *mf) {
+  ep_l2_ideal::ReferenceMemory::Mask mask{};
+  const mem_access_byte_mask_t bytes = mf->get_access_byte_mask();
+  const mem_access_sector_mask_t sectors = mf->get_access_sector_mask();
+  bool any = false;
+  for (unsigned b = 0; b < 128; ++b) {
+    mask[b] = sectors.test(b / 32) && (bytes.none() || bytes.test(b));
+    any |= mask[b];
+  }
+  assert(any && "reference service requires a valid byte/sector mask");
+  return mask;
+}
+}
+
+void memory_sub_partition::ep_l2_ideal_commit_producer(mem_fetch *mf) {
+  if (!m_config->m_L2_config.m_ep_l2_ideal_read_hit) return;
+  const auto data = m_ideal_known_writes.find(mf);
+  m_ideal_reference.write(mf->get_addr() & ~uint64_t(127), ideal_mask(mf),
+      data == m_ideal_known_writes.end() ? nullptr : &data->second);
+  if (data != m_ideal_known_writes.end()) m_ideal_known_writes.erase(data);
+}
+
+bool memory_sub_partition::ep_l2_ideal_serve_read(
+    mem_fetch *mf, unsigned long long cycle) {
+  if (!m_config->m_L2_config.m_ep_l2_ideal_read_hit || mf->get_is_write() ||
+      mf->isatomic() || mf->get_access_type() == L2_WR_ALLOC_R ||
+      mf->get_access_type() == L1_WR_ALLOC_R)
+    return false;
+  // Preserve producer completion, including an atomic waiting in the actual
+  // response FIFO. Arrival identity avoids a WAR deadlock with younger writes
+  // that have not yet reached the frontend head.
+  bool dependency = m_L2cache->ep_l2_ideal_read_dependency(mf->get_addr());
+  const uint64_t line = mf->get_addr() & ~uint64_t(127);
+  const auto arrival = m_ideal_arrivals.find(mf);
+  assert(arrival != m_ideal_arrivals.end());
+  for (auto other : m_request_tracker) {
+    if (other == mf || (!other->get_is_write() && !other->isatomic()) ||
+        (other->get_addr() & ~uint64_t(127)) != line) continue;
+    const auto older = m_ideal_arrivals.find(other);
+    if (older != m_ideal_arrivals.end() && older->second < arrival->second)
+      dependency = true;
+  }
+  if (dependency) { ++m_ideal_dependency_wait; return true; }
+  if (m_L2_icnt_queue->full()) { ++m_ideal_response_wait; return true; }
+  if (m_L2cache->ep_l2_ideal_read_bank(mf, cycle) != ep_l2_payload_store::GRANTED) {
+    ++m_ideal_bank_wait; return true;
+  }
+  // The frontend head has already traversed the same ROP hit-delay path as a
+  // normal L2 hit. This is the real L2->ICNT response queue, never a synchronous
+  // callback/drop. Cold reads snapshot the explicit reference, not cache RAM.
+  auto snapshot = m_ideal_reference.read(line, ideal_mask(mf));
+  for (const auto &b : snapshot) {
+    if (b.value_known) ++m_ideal_known_bytes;
+    else ++m_ideal_symbolic_bytes;
+  }
+  assert(m_ideal_responses.emplace(mf, std::move(snapshot)).second);
+  m_L2cache->ep_l2_ideal_touch_resident(mf, cycle + m_memcpy_cycle_offset);
+  mf->set_reply();
+  mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE, cycle);
+  // Same frontend acceptance and real response audit as ordinary hits.
+  ft_record_admission(mf);
+  ft_record_response(mf);
+  m_L2_icnt_queue->push(mf);
+  m_icnt_L2_queue->pop();
+  ep_l2_m0a_record_response_enqueue();
+  m_l2_block_state.erase(mf);
+  if (m_l2_char_collector) m_l2_char_collector->clear_frontend_request(mf);
+  ++m_ideal_reads;
+  return true;
+}
+
 void memory_sub_partition::cache_cycle(unsigned cycle) {
   // L2 fill responses
   if (!m_config->m_L2_config.disabled()) {
@@ -1125,6 +1204,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
           m_L2_icnt_queue->push(original_wr_mf);
         }
         m_request_tracker.erase(mf);
+        m_ideal_arrivals.erase(mf);
         delete mf;
       }
       m_L2cache->commit_next_access();
@@ -1196,6 +1276,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         ((m_config->m_L2_texure_only && mf->istexture()) ||
          (!m_config->m_L2_texure_only))) {
       // L2 is enabled and access is for L2
+      if (!ep_l2_ideal_serve_read(
+              mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle)) {
       l2_access_plan plan;
       m_L2cache->preview_access(mf->get_addr(), mf, plan);
       if (plan.exact)
@@ -1466,6 +1548,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         }
         bool write_sent = was_write_sent(events);
         bool read_sent = was_read_sent(events);
+        if (status != RESERVATION_FAIL && mf->get_is_write() && !mf->isatomic())
+          ep_l2_ideal_commit_producer(mf);
         MEM_SUBPART_DPRINTF("Probing L2 cache Address=%llx, status=%u\n",
                             mf->get_addr(), status);
 
@@ -1475,6 +1559,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
             assert(!read_sent);
             if (mf->get_access_type() == L1_WRBK_ACC) {
               m_request_tracker.erase(mf);
+        m_ideal_arrivals.erase(mf);
               delete mf;
             } else {
               mf->set_reply();
@@ -1497,6 +1582,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
               !was_writeallocate_sent(events)) {
             if (mf->get_access_type() == L1_WRBK_ACC) {
               m_request_tracker.erase(mf);
+        m_ideal_arrivals.erase(mf);
               delete mf;
             } else if (m_config->m_L2_config.get_write_policy() == WRITE_BACK) {
               mf->set_reply();
@@ -1514,6 +1600,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
           assert(!read_sent);
           // L2 cache lock-up: will try again next cycle.
         }
+      }
       }
     } else {
       // L2 is disabled or non-texture access to texture-only L2
@@ -2103,6 +2190,27 @@ void memory_sub_partition::end_ep_l2_b0_kernel(FILE *fp,
 
 void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
                                                     unsigned long long uid) const {
+  if ((m_config->m_L2_config.m_ep_l2_ideal_wb ||
+       m_config->m_L2_config.m_ep_l2_ideal_meta ||
+       m_config->m_L2_config.m_ep_l2_ideal_read_hit) && uid == (unsigned long long)-1) {
+    fprintf(fp, "EPL2IDEALV1|scope=application|slice=%u|ideal_meta=%u|ideal_read_hit=%u|ideal_wb=%u|"
+                "wb_data_full=%llu|diagnostic_wb_extra_slots=%u|"
+                "reference=BYTE_VERSION_SYMBOLS_WITH_OPTIONAL_KNOWN_VALUES|"
+                "reads_served=%llu|dependency_wait_attempts=%llu|bank_wait_attempts=%llu|"
+                "response_wait_attempts=%llu|known_bytes=%llu|symbolic_bytes=%llu|"
+                "line_mshr_full=%llu|descriptor_full=%llu|per_address_full=%llu|"
+                "reference_responses_live=%zu|reference_arrivals_live=%zu\n",
+            m_id, m_config->m_L2_config.m_ep_l2_ideal_meta,
+            m_config->m_L2_config.m_ep_l2_ideal_read_hit,
+            m_config->m_L2_config.m_ep_l2_ideal_wb,
+            m_L2cache->ideal_wb_data_full(), m_L2cache->ideal_wb_extra_slots(), m_ideal_reads,
+            m_ideal_dependency_wait, m_ideal_bank_wait, m_ideal_response_wait,
+            m_ideal_known_bytes, m_ideal_symbolic_bytes,
+            m_ep_l2_b0_accum.line_mshr_full_block,
+            m_ep_l2_b0_accum.descriptor_pool_full_block,
+            m_ep_l2_b0_accum.per_address_cap_block,
+            m_ideal_responses.size(), m_ideal_arrivals.size());
+  }
   if (m_config->m_L2_config.ep_l2_m0a_stats_enabled()) {
     ep_l2_m0a_accum m0 = m_ep_l2_m0a_accum;
     unsigned long long start_cycle = 0;
@@ -2289,7 +2397,9 @@ bool memory_sub_partition::l2_char_no_resource_leak() const {
   return m_request_tracker.empty() && m_icnt_L2_queue->empty() &&
          m_L2_dram_queue->empty() && m_dram_L2_queue->empty() &&
          m_L2_icnt_queue->empty() && m_rop.empty() &&
-         m_l2_block_state.empty() && m_L2cache->l2_char_no_pending_resources() &&
+         m_l2_block_state.empty() && m_ideal_responses.empty() &&
+         m_ideal_known_writes.empty() && m_ideal_arrivals.empty() &&
+         m_L2cache->l2_char_no_pending_resources() &&
          m_L2cache->ep_l2_resident_pending() == 0 &&
          m_L2cache->ep_l2_payload_pending_operations() == 0 &&
          m_L2cache->ep_l2_tag_payload_consistent() && m_L2cache->ft_drained() &&
@@ -2451,6 +2561,8 @@ void memory_sub_partition::push(mem_fetch *m_req, unsigned long long cycle) {
     for (unsigned i = 0; i < reqs.size(); ++i) {
       mem_fetch *req = reqs[i];
       m_request_tracker.insert(req);
+      if (m_config->m_L2_config.m_ep_l2_ideal_read_hit)
+        assert(m_ideal_arrivals.emplace(req, m_ideal_next_arrival++).second);
       if (req->istexture()) {
         m_icnt_L2_queue->push(req);
         req->set_status(IN_PARTITION_ICNT_TO_L2_QUEUE,
@@ -2470,7 +2582,15 @@ void memory_sub_partition::push(mem_fetch *m_req, unsigned long long cycle) {
 mem_fetch *memory_sub_partition::pop() {
   mem_fetch *mf = m_L2_icnt_queue->pop();
   m_request_tracker.erase(mf);
-  if (mf && mf->isatomic()) mf->do_atomic();
+  m_ideal_arrivals.erase(mf);
+  if (mf && mf->isatomic()) {
+    mf->do_atomic();
+    ep_l2_ideal_commit_producer(mf);
+  }
+  if (mf) {
+    m_ideal_responses.erase(mf);
+    m_ideal_arrivals.erase(mf);
+  }
   if (mf && (mf->get_access_type() == L2_WRBK_ACC ||
              mf->get_access_type() == L1_WRBK_ACC)) {
     delete mf;
@@ -2485,6 +2605,7 @@ mem_fetch *memory_sub_partition::top() {
              mf->get_access_type() == L1_WRBK_ACC)) {
     m_L2_icnt_queue->pop();
     m_request_tracker.erase(mf);
+  m_ideal_arrivals.erase(mf);
     delete mf;
     mf = NULL;
   }
@@ -2498,6 +2619,7 @@ void memory_sub_partition::set_done(mem_fetch *mf) {
         mf->get_addr(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
   }
   m_request_tracker.erase(mf);
+  m_ideal_arrivals.erase(mf);
 }
 
 void memory_sub_partition::accumulate_L2cache_stats(

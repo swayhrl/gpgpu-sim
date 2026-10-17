@@ -34,6 +34,7 @@
 #include "l2_admission_rules.h"
 #include <algorithm>
 #include <assert.h>
+#include <climits>
 #include "gpu-sim.h"
 #include "hashing.h"
 
@@ -681,6 +682,9 @@ bool mshr_table::full(new_addr_type block_addr) const {
 
 mshr_table::ep_l2_block_reason mshr_table::full_reason(
     new_addr_type block_addr) const {
+  // This removes only allocation-capacity refusal. Existing sector merging,
+  // RAW/WAR/atomic handling and response retirement remain the ordinary path.
+  if (m_ideal_meta) return EP_L2_BLOCK_NONE;
   table::const_iterator i = m_data.find(block_addr);
   if (i != m_data.end()) {
     const unsigned per_line_limit =
@@ -696,6 +700,17 @@ mshr_table::ep_l2_block_reason mshr_table::full_reason(
   return EP_L2_BLOCK_NONE;
 }
 
+void mshr_table::ensure_descriptor_available() {
+  if (!m_free_descriptor_ids.empty()) return;
+  assert(m_ideal_meta && m_descriptor_pool_size);
+  // Allocate on demand; never rely on a guessed huge constant. IDs are kept in
+  // unsigned containers throughout the producer/consumer chain.
+  assert(m_descriptor_pool.size() < static_cast<size_t>(UINT_MAX));
+  const unsigned id = static_cast<unsigned>(m_descriptor_pool.size());
+  m_descriptor_pool.push_back(ep_l2_descriptor());
+  m_free_descriptor_ids.push_back(id);
+}
+
 bool mshr_table::needs_lower_read(
     new_addr_type block_addr, const mem_access_sector_mask_t &sectors) const {
   if (!m_descriptor_pool_size) return !probe(block_addr);
@@ -709,6 +724,7 @@ void mshr_table::add(new_addr_type block_addr, mem_fetch *mf) {
   mshr_entry &entry = m_data[block_addr];
   entry.m_list.push_back(mf);
   if (m_descriptor_pool_size) {
+    ensure_descriptor_available();
     assert(!m_free_descriptor_ids.empty());
     unsigned id = m_free_descriptor_ids.back();
     m_free_descriptor_ids.pop_back();
@@ -720,8 +736,8 @@ void mshr_table::add(new_addr_type block_addr, mem_fetch *mf) {
     entry.m_pending_sectors |= descriptor.m_sectors;
     entry.m_issued_sectors |= descriptor.m_sectors;
   }
-  assert(m_data.size() <= m_num_entries);
-  assert(entry.m_list.size() <=
+  assert(m_ideal_meta || m_data.size() <= m_num_entries);
+  assert(m_ideal_meta || entry.m_list.size() <=
          (m_descriptor_pool_size ? m_descriptor_per_line_cap : m_max_merged));
   // indicate that this MSHR entry contains an atomic operation
   if (mf->isatomic()) {
@@ -735,6 +751,7 @@ void mshr_table::add_for_test(new_addr_type block_addr, mem_fetch *mf,
   assert(full_reason(block_addr) == EP_L2_BLOCK_NONE);
   mshr_entry &entry = m_data[block_addr];
   entry.m_list.push_back(mf);
+  ensure_descriptor_available();
   unsigned id = m_free_descriptor_ids.back();
   m_free_descriptor_ids.pop_back();
   ep_l2_descriptor &descriptor = m_descriptor_pool[id];
