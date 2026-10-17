@@ -41,7 +41,15 @@ int main(int argc,char **argv) {
     s.advance(3);auto v=s.consume(rr,3);s.finish(n);
     assert(v[0].value_known && v[0].value==22);
     assert(!v[1].value_known && !v[2].value_known);
+    assert(v[1].version==0 && v[2].version==0);
     assert(v[3].value_known && v[3].value==22);
+    auto later=s.begin(6,1,true,11);auto ww=s.issue(later,0,0x1000,mask(1,1),3,&first);
+    s.advance(4);s.consume(ww,4);s.finish(later);
+    auto after=s.begin(7,1,false,11);auto ar=s.issue(after,0,0x1000,mask(0,4),4);
+    s.advance(5);auto av=s.consume(ar,5);s.finish(after);
+    assert(av[1].value_known && av[1].value==11 && av[1].version>v[0].version);
+    assert(av[0]==v[0] && av[2]==v[2] && av[3]==v[3]);
+    assert(s.store_reference_commits==3 && s.drained());
     s.print(stdout);
   }
   {
