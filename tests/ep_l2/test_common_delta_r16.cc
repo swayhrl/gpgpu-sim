@@ -110,7 +110,11 @@ struct delta_fixture {
         mf->get_ft_wb_data()[0],mf->get_ft_wb_data()[1],mf->get_ft_wb_data()[2],mf->get_ft_wb_data()[3]);
       require(mf->get_access_sector_mask().to_ulong()==expected_mask,"WB sector mask contaminated");
       require(mf->get_access_byte_mask()==bytes,"WB byte mask contaminated");
-      require(mf->has_ft_wb_data()&&mf->get_ft_wb_data()==versions,"WB stale symbolic atomic version");
+      require(mf->has_ft_wb_data(),"WB lacks independent symbolic backing");
+      // Only the packet's dirty sectors carry a WB obligation. Unrequested
+      // sectors may have no resident backing and are not full-line data.
+      for(unsigned s=0;s<4;++s)if(expected_mask&(1u<<s))
+        require(mf->get_ft_wb_data()[s]==versions[s],"WB stale symbolic atomic version");
       require(cache->ep_l2_wad_contains(0),"WAD survives lower accept");
       cache->ep_l2_wad_complete(0,now);delete mf;seen=true;
     }
