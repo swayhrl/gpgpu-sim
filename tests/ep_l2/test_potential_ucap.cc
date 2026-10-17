@@ -1,6 +1,6 @@
 #include "potential_fixture.h"
 int main(int argc,char **argv) {
-  assert(argc==8 && std::stoul(argv[3])==2 && std::stoul(argv[5])==0 && std::stoul(argv[6])==16);
+  assert(argc==8 && std::stoul(argv[3])==2 && std::stoul(argv[5])==0 && (std::stoul(argv[6])==16 || std::stoul(argv[6])==0));
   setvbuf(stdout,NULL,_IOLBF,0);fixture f(argv);f.block_lower=true;
   const new_addr_type stride=64*128;
   // No synthetic array occupancy: native dirty writes, real WB packets and
@@ -12,6 +12,18 @@ int main(int argc,char **argv) {
   assert(f.sp->ep_l2_l2dram_occupancy()==2 && f.cache->ft_wb_staged()==16);
   assert(f.cache->ep_l2_wad_occupancy()==18 && f.cache->ep_l2_wad_capacity()==128);
   auto r=f.make(34*stride,true);unsigned uid=r->get_request_uid();f.memory[34*stride]=f.expected.at(uid);f.send(r);
+  if(!std::stoul(argv[6])) {
+    f.until_frontend_empty();
+    assert(f.cache->ft_wb_staged()==17 && f.cache->ep_l2_payload_for_test().wb_used()==17 && f.cache->ep_l2_wad_occupancy()==19);
+    assert(!f.cache->ft_wb_quota_live() && !f.cache->ft_wb_quota_reserved());
+    f.block_lower=false;f.drain_lower();
+    for(unsigned n=0;n<1000 && (f.cache->ft_wb_staged() || !f.cache->miss_queue_empty() || !f.sp->L2_dram_queue_empty());++n)f.step();
+    assert(f.lower_wb==19 && f.cache->ep_l2_wad_occupancy()==19 && f.replies.count(uid));
+    for(auto w:f.wb){f.sp->set_done(w);delete w;}f.wb.clear();
+    for(unsigned n=0;n<1000 && f.part->busy();++n)f.step();
+    assert(f.cache->ft_drained() && !f.part->busy() && f.sp->l2_char_no_resource_leak() && !f.cache->ep_l2_wad_occupancy());
+    f.cache->ft_print(stdout,0);puts("U_WB16 default quota-OFF actual staging17 (>16), same1168/in-place/versions/WAD/exact-once/drain PASS");return 0;
+  }
   for(unsigned n=0;n<8;++n)f.step();
   assert(!f.replies.count(uid) && !f.cache->ft_reservation_active() && f.cache->ft_wb_staged()==16);
   assert(f.cache->ft_wb_quota_live()==16 && !f.cache->ft_wb_quota_reserved() && f.cache->ft_wb_quota_refusals()>0);

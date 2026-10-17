@@ -30,12 +30,13 @@ static void layout() {
   puts("S64 layout boundaries/bank counts/full-release/illegal combinations/default B8 B16 PASS");
 }
 int main(int argc,char **argv) {
-  assert(argc==8 && std::stoul(argv[3])==1 && std::stoul(argv[5])==1);
+  assert(argc==8 && std::stoul(argv[3])==1);
   setvbuf(stdout,NULL,_IOLBF,0);layout();fixture f(argv);f.block_lower=true;
   const new_addr_type stride=64*128;
+  const unsigned cap=std::stoul(argv[5])?64:16, limit=18+cap;
   // No synthetic array occupancy: native dirty writes, real WB packets and
   // a full two-entry lower FIFO accumulate 64 local staging responsibilities.
-  for(unsigned i=0;i<82;++i) {
+  for(unsigned i=0;i<limit;++i) {
     // Make way0 (bank0) the first LRU victim to cover a true same-bank
     // source-read/staging-write pair; the normal descending sequence also
     // supplies cross-bank pairs. Touches use actual frontend hit writes.
@@ -46,26 +47,26 @@ int main(int argc,char **argv) {
     auto r=f.make(i*stride,true);f.memory[i*stride]=f.expected.at(r->get_request_uid());
     f.send(r);f.until_frontend_empty();
   }
-  assert(f.sp->ep_l2_l2dram_occupancy()==2 && f.cache->ft_wb_staged()==64);
-  assert(f.cache->ep_l2_wad_occupancy()==66 && f.cache->ep_l2_wad_capacity()==128);
-  auto r=f.make(82*stride,true);unsigned uid=r->get_request_uid();f.memory[82*stride]=f.expected.at(uid);f.send(r);
+  assert(f.sp->ep_l2_l2dram_occupancy()==2 && f.cache->ft_wb_staged()==cap);
+  assert(f.cache->ep_l2_wad_occupancy()==cap+2 && f.cache->ep_l2_wad_capacity()==128);
+  auto r=f.make(limit*stride,true);unsigned uid=r->get_request_uid();f.memory[limit*stride]=f.expected.at(uid);f.send(r);
   for(unsigned n=0;n<8;++n)f.step();
-  assert(!f.replies.count(uid) && !f.cache->ft_reservation_active() && f.cache->ft_wb_staged()==64);
+  assert(!f.replies.count(uid) && !f.cache->ft_reservation_active() && f.cache->ft_wb_staged()==cap);
   const auto &p=f.cache->ep_l2_payload_for_test();
-  assert(p.wb_used()==64 && p.ownership_consistent());
+  assert(p.wb_used()==cap && p.ownership_consistent());
   for(unsigned n=0;n<8;++n)f.step();
-  assert(f.cache->ft_wb_staged()==64 && f.cache->ep_l2_wad_occupancy()==66 && !f.cache->ft_reservation_active());
-  puts("S64 production local WB peak=64 (>16), 65th refusal/no partial commit/lower full PASS");
+  assert(f.cache->ft_wb_staged()==cap && f.cache->ep_l2_wad_occupancy()==cap+2 && !f.cache->ft_reservation_active());
+  puts("S64 production local WB actual configured local WB full/refusal/no partial commit/lower full PASS");
   f.block_lower=false;f.drain_lower();
   for(unsigned n=0;n<2000 && (!f.replies.count(uid) || f.cache->ft_wb_staged() || !f.cache->miss_queue_empty() || !f.sp->L2_dram_queue_empty());++n)f.step();
-  assert(f.replies.count(uid) && f.lower_wb==67 && !f.cache->ft_wb_staged());
-  assert(f.cache->ep_l2_wad_occupancy()==67);
+  assert(f.replies.count(uid) && f.lower_wb==cap+3 && !f.cache->ft_wb_staged());
+  assert(f.cache->ep_l2_wad_occupancy()==cap+3);
   for(auto w:f.wb){f.sp->set_done(w);delete w;++f.completed_wb;}f.wb.clear();
   for(unsigned n=0;n<1000 && f.part->busy();++n)f.step();
-  assert(f.completed_wb==67 && f.replies.size()==98 && f.replies.size()==f.expected.size());
+  assert(f.completed_wb==cap+3 && f.replies.size()==cap+34 && f.replies.size()==f.expected.size());
   assert(f.sp->l2_char_no_resource_leak() && f.cache->ft_drained() && !f.part->busy());
   assert(!f.cache->ep_l2_payload_pending_operations() && !f.cache->ep_l2_wad_occupancy());
-  assert(f.cache->ep_l2_payload_bank_wb_readout()>=134 && f.bank_max==1);
+  assert(f.cache->ep_l2_payload_bank_wb_readout()>=2*(cap+3) && f.bank_max==1);
   printf("S64 real copy source/staging banks: same=%u cross=%u\n",f.same_bank_copy,f.cross_bank_copy);
   assert(f.same_bank_copy && f.cross_bank_copy);
   f.cache->ft_print(stdout,0);
