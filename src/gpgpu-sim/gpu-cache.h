@@ -854,6 +854,7 @@ class cache_config {
   }
   bool ep_l2_b0_stats_enabled() const { return m_ep_l2_b0_stats; }
   bool ep_l2_m0a_stats_enabled() const { return m_ep_l2_m0a_stats; }
+  unsigned ep_l2_ft_mode() const { return m_ep_l2_ft_mode; }
   enum mshr_config_t get_mshr_type() const { return m_mshr_type; }
   void set_assoc(unsigned n) {
     // set new assoc. L1 cache dynamically resized in Volta
