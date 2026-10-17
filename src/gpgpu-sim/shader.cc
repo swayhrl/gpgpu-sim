@@ -1079,6 +1079,8 @@ void shader_core_ctx::issue_warp(register_set &pipe_reg_set,
 
   } else if (next_inst->op == MEMORY_BARRIER_OP) {
     m_warp[warp_id]->set_membar();
+    if (m_config->ep_l2_mem_all_data)
+      m_gpu->all_data_reference().barrier_issue(m_sid,warp_id);
   } else if (next_inst->m_is_ldgdepbar) {  // Add for LDGDEPBAR
     m_warp[warp_id]->m_ldgdepbar_id++;
     // If there are no added LDGSTS, insert an empty vector
@@ -4062,6 +4064,8 @@ bool shader_core_ctx::warp_waiting_at_barrier(unsigned warp_id) const {
 
 bool shader_core_ctx::warp_waiting_at_mem_barrier(unsigned warp_id) {
   if (!m_warp[warp_id]->get_membar()) return false;
+  if (m_config->ep_l2_mem_all_data && m_gpu->all_data_reference().barrier_pending(m_sid,warp_id))
+    return true;
   if (!m_scoreboard->pendingWrites(warp_id)) {
     m_warp[warp_id]->clear_membar();
     if (m_gpu->get_config().flush_l1()) {
