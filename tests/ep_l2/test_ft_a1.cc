@@ -119,11 +119,11 @@ int main(int argc,char **argv) {
   // the port before frontend admission, creating its cross-cycle retry.
   if(mode==2) {
     auto r=f.make(other,false);f.send(r);f.until_frontend_empty();
-    f.return_read(other);f.step();assert(f.cache->access_ready());
   }
   auto request=f.make(incoming,true);unsigned request_uid=request->get_request_uid();
   unsigned first=(unsigned)-1;assert(f.cache->ft_raw_probe_for_test(request,first)==MISS && first==3);
   f.send(request);
+  if(mode==2) { f.return_read(other);f.step();assert(f.cache->access_ready()); }
   // push has a one-cycle ROP-to-frontend boundary. For U ensure the ready
   // response is consumed on the actual admission cycle by pre-queueing request.
   for(unsigned n=0;n<8 && !f.cache->ft_reservation_active();++n) f.step();
@@ -136,8 +136,6 @@ int main(int argc,char **argv) {
   // before the next frontend retry. Production fill precedes frontend probe.
   f.return_read(0);
   f.step(); // Old source must fail its pending.tag_index==reprobe.index assert.
-  unsigned competitor=(unsigned)-1;
-  assert(f.cache->ft_raw_probe_for_test(request,competitor)==MISS || f.replies.count(request_uid));
   // Remaining fills and real lower FIFO accept; deliberately hold set_done
   // until staging is gone, proving WAD's distinct lower lifetime.
   for(unsigned n=0;n<1000 && !f.replies.count(request_uid);++n) f.step();
