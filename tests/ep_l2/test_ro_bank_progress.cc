@@ -141,8 +141,23 @@ static int controls(unsigned entries){
   try{f.rt.commit(4);}catch(const std::logic_error&){duplicate=true;}assert(duplicate);
   bool stale=false;f.cycle(5);
   try{f.port.accept_return(f.tx,identity(h.payload_id,h.generation+1),1,5,std::array<unsigned long long,4>{{}});}catch(const std::logic_error&){stale=true;}assert(stale);
-  assert(f.shared.descriptor_count_used()==0);f.cache.native_ready=false;f.store.release(wb);f.finish(1);
-  printf("CONTROL_PASS|C=%u|waiting_vs_granted=1|native_arrival=1|reread_after_backpressure=1|stale_generation=1|exact_once=1|max_grants=%u\n",entries,f.max_grants);return 0;
+  assert(f.shared.descriptor_count_used()==0);f.cache.native_ready=false;
+  // Reuse the actual physical slot while the same synthetic epoch remains
+  // open. Neither a previous payload generation nor a stale Tag generation
+  // may consume the new owner's fill/grant/descriptor obligation.
+  f.store.release(h);auto fresh=f.admit(0x1000,1);
+  assert(fresh.payload_id==h.payload_id&&fresh.generation!=h.generation);
+  f.cycle(6);stale=false;
+  try{f.fill(h,1);}catch(const std::logic_error&){stale=true;}assert(stale);
+  auto &binding=f.tag.live.at(fresh.payload_id);++binding.gen;stale=false;
+  try{f.fill(fresh,1);}catch(const std::logic_error&){stale=true;}assert(stale);--binding.gen;
+  assert(f.shared.descriptor_count_used()==1&&f.store.inspect(fresh).pins==1);
+  assert(f.fill(fresh,1));f.check();
+  f.cycle(7);auto before=f.store.bank_grants();stale=false;
+  try{f.rt.prepare(8);}catch(const std::logic_error&){stale=true;}assert(stale&&f.store.bank_grants()==before);
+  assert(f.prepare());f.commit();f.check();
+  f.store.release(wb);f.finish(2);
+  printf("CONTROL_PASS|C=%u|waiting_vs_granted=1|native_arrival=1|reread_after_backpressure=1|stale_generation=1|reused_payload_and_Tag=1|exact_once=1|max_grants=%u\n",entries,f.max_grants);return 0;
 }
 int main(int argc,char **argv){assert(argc==3);unsigned entries=std::stoul(argv[2]);std::string which=argv[1];
   if(which=="a2")return a2(entries);if(which=="a3")return a3(entries);if(which=="controls")return controls(entries);return 90;}
