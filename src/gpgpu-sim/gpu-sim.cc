@@ -429,6 +429,10 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          "alloc>:<wr_alloc>:<set_index_fn>,<mshr>:<N>:<merge>,<"
                          "mq>:<fifo_entry>,<data_port_width> | none}",
                          "none");
+  option_parser_register(
+      opp, "-gpgpu_ep_l2_expected_l1_assoc", OPT_UINT32,
+      &m_ep_l2_initial_l1_assoc,
+      "EP-L2 fixed L1D expected ways: 128 baseline, explicit 64 for L1_32", "128");
   option_parser_register(opp, "-gpgpu_l1_cache_write_ratio", OPT_UINT32,
                          &m_L1D_config.m_wr_percent, "L1D write ratio", "0");
   option_parser_register(opp, "-gpgpu_l1_banks", OPT_UINT32,
