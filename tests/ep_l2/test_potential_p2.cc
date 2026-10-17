@@ -99,12 +99,12 @@ struct p2_fixture {
 static void arbiter(unsigned mode,unsigned ports) {
   using P=ep_l2_payload_store;
   for(unsigned bad:{0u,3u}) {
-    bool refused=false;try{P invalid(2,mode,16,false,bad);}catch(const std::invalid_argument&){refused=true;}assert(refused);
+    bool refused=false;try{P invalid(2,mode,16,false,false,bad);}catch(const std::invalid_argument&){refused=true;}assert(refused);
   }
-  bool refused=false;try{P invalid(2,mode,8,false,2);}catch(const std::invalid_argument&){refused=true;}assert(refused);
-  refused=false;try{P invalid(2,1,16,true,2);}catch(const std::invalid_argument&){refused=true;}assert(refused);
+  bool refused=false;try{P invalid(2,mode,8,false,false,2);}catch(const std::invalid_argument&){refused=true;}assert(refused);
+  refused=false;try{P invalid(2,1,16,false,true,2);}catch(const std::invalid_argument&){refused=true;}assert(refused);
   for(unsigned pattern=0;pattern<3;++pattern) {
-    P p(2,mode,16,false,ports);
+    P p(2,mode,16,false,false,ports);
     std::vector<P::payload_handle> h;
     for(unsigned id:{0u,4u,8u,1u,5u,9u})h.push_back(p.reserve(id,P::RESIDENT,128*(id+1),P::RESIDENT_VALID));
     bool w0=pattern!=0,w1=pattern==1;
