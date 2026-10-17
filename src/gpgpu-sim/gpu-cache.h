@@ -585,6 +585,7 @@ class cache_config {
     m_ep_l2_wbuf_entries = 0;
     m_ep_l2_static_s64 = false;
     m_ep_l2_wb_local_cap = 0;
+    m_ep_l2_bank_ops = 1;
     m_ep_l2_payload_policy = 0;
     m_ep_l2_feature_unified_payload = false;
     m_ep_l2_feature_ro_pending_state = false;
@@ -946,6 +947,7 @@ class cache_config {
   unsigned m_ep_l2_wbuf_entries;
   bool m_ep_l2_static_s64;
   unsigned m_ep_l2_wb_local_cap;
+  unsigned m_ep_l2_bank_ops;
   // M1 is infrastructure: functional mechanism bits default OFF.
   // Policy 0 is the only currently supported static policy.
   unsigned m_ep_l2_payload_policy;
@@ -2153,8 +2155,8 @@ class ep_l2_payload_store {
     bool occupied() const { return status != FREE; }
   };
   ep_l2_payload_store(unsigned mode = 0, unsigned ft_mode = 0, unsigned wbuf = 0,
-                      bool static_s64 = false)
-      : m_mode(mode), m_ft_mode(ft_mode), m_wbuf(wbuf), m_static_s64(static_s64), m_cycle((unsigned long long)-1),
+                      bool static_s64 = false, unsigned bank_ops = 1)
+      : m_mode(mode), m_ft_mode(ft_mode), m_wbuf(wbuf), m_static_s64(static_s64), m_bank_ops(bank_ops), m_cycle((unsigned long long)-1),
         m_resident_reads(0), m_resident_writes(0), m_bypass_reads(0),
         m_bypass_writes(0), m_bank_logical_ops(0), m_bank_attempts(0),
         m_bank_grants(0), m_bank_retry_attempts(0),
@@ -2165,8 +2167,11 @@ class ep_l2_payload_store {
         m_next_sequence(0) {
     if (static_s64 && (mode != 2 || ft_mode != 1 || wbuf != 16))
       throw std::invalid_argument("S64 requires static banked FT1, legacy WBUF16 anchor");
+    if (bank_ops != 1 && (bank_ops != 2 || mode != 2 || !ft_mode || wbuf != 16 || static_s64))
+      throw std::invalid_argument("P2 requires banked B16/U16, no S64 combination");
     m_slots.resize(static_s64 ? 1168 : k_physical_slots + wbuf);
     for (unsigned bank = 0; bank < 4; ++bank) {
+      m_bank_services[bank] = 0; m_bank_peak[bank] = 0;
       m_bank_logical_ops_by_bank[bank] = 0;
       m_bank_grants_by_bank[bank] = 0;
       m_bank_true_conflict_ops_by_bank[bank] = 0;
@@ -2179,6 +2184,8 @@ class ep_l2_payload_store {
   unsigned resident_used() const { return used(RESIDENT); }
   unsigned bypass_used() const { return used(BYPASS); }
   unsigned resident_free() const { return k_resident_slots - resident_used(); }
+  unsigned bank_service_limit() const { return m_bank_ops; }
+  unsigned bank_peak(unsigned b) const { assert(b<4); return m_bank_peak[b]; }
   unsigned bypass_capacity() const { return m_static_s64 ? 80 : k_bypass_slots; }
   unsigned wb_begin() const { return k_resident_slots + bypass_capacity(); }
   unsigned static_wb_capacity() const { return m_static_s64 ? 64 : m_wbuf; }
@@ -2400,21 +2407,23 @@ class ep_l2_payload_store {
     if (m_cycle != cycle) {
       m_cycle = cycle;
       m_resident_reads = m_resident_writes = m_bypass_reads = m_bypass_writes = 0;
-      m_bank_granted.reset();
+      std::fill(m_bank_services, m_bank_services+4, 0);
       if (banked()) {
         for (unsigned b = 0; b < 4; ++b) {
           // A production retry need not return in the single cycle after it
           // was selected.  Retain an unconsumed oldest grant until its owner
-          // actually retries; clearing it here loses the request.  Two
+          // actually retries; with P2 retain up to two identities, then fill
+          // unused selections from the oldest pending list. Clearing loses
+          // the request. Two
           // interleaved same-bank retries would otherwise select-and-discard
           // each other forever, eventually deadlocking the memory system.
-          if (!m_granted[b].empty()) continue;
-          if (m_pending[b].empty()) continue;
-          unsigned best = 0;
-          for (unsigned i = 1; i < m_pending[b].size(); ++i)
-            if (m_pending[b][i].sequence < m_pending[b][best].sequence) best = i;
-          m_granted[b].push_back(m_pending[b][best]);
-          m_pending[b].erase(m_pending[b].begin() + best);
+          while (m_granted[b].size() < m_bank_ops && !m_pending[b].empty()) {
+            unsigned best = 0;
+            for (unsigned i = 1; i < m_pending[b].size(); ++i)
+              if (m_pending[b][i].sequence < m_pending[b][best].sequence) best = i;
+            m_granted[b].push_back(m_pending[b][best]);
+            m_pending[b].erase(m_pending[b].begin() + best);
+          }
         }
       }
     }
@@ -2430,13 +2439,13 @@ class ep_l2_payload_store {
     assert(global_id < m_slots.size());
     const unsigned bank = global_id % 4;
     ++m_bank_attempts;
-    if (!m_granted[bank].empty()) {
-      const pending_op op = m_granted[bank].front();
+    for (unsigned selected=0; selected<m_granted[bank].size(); ++selected) {
+      const pending_op op = m_granted[bank][selected];
       if (op.r == r && op.id == id && op.write == write) {
         // Its first call was accounted as the logical operation.  This call
         // is the retry that finally consumes an oldest-ready grant.
         ++m_bank_retry_attempts;
-        m_granted[bank].clear(); m_bank_granted.set(bank); ++m_bank_grants;
+        m_granted[bank].erase(m_granted[bank].begin()+selected); consume_bank(bank); ++m_bank_grants;
         ++m_bank_grants_by_bank[bank];
         if (op.true_conflict) {
           const unsigned long long waited = cycle - op.first_conflict_cycle;
@@ -2454,15 +2463,15 @@ class ep_l2_payload_store {
           m_pending[bank][i].write == write) pending_index = i;
     if (pending_index >= 0) ++m_bank_retry_attempts;
 
-    // No selected older op, no queued older op, and no operation consumed on
-    // this bank this cycle: the first ready op uses an idle bank immediately.
+    // No selected/queued older op: a ready operation may consume one of the
+    // finite remaining services of this bank in this physical cycle.
     // There is no reason to stage it until N+1 merely to wait for hypothetical
     // later arrivals in the same cycle.
     if (m_granted[bank].empty() && m_pending[bank].empty() &&
-        !m_bank_granted.test(bank)) {
+        m_bank_services[bank] < m_bank_ops) {
       assert(pending_index < 0);
       record_logical_operation(bank, op_class);
-      m_bank_granted.set(bank); ++m_bank_grants; ++m_bank_grants_by_bank[bank];
+      consume_bank(bank); ++m_bank_grants; ++m_bank_grants_by_bank[bank];
       return GRANTED;
     }
 
@@ -2504,6 +2513,7 @@ class ep_l2_payload_store {
   // order at the grant site.
   void enqueue(role r, unsigned id, bool write, unsigned long long sequence) {
     assert(banked());
+    assert(r != BYPASS || id < bypass_capacity());
     const unsigned global_id = r == BYPASS ? k_resident_slots + id : id;
     assert(global_id < m_slots.size());
     m_pending[global_id % 4].push_back(pending_op(r, id, write,
@@ -2512,16 +2522,17 @@ class ep_l2_payload_store {
   bool grant_oldest(role r, unsigned id, bool write, unsigned long long cycle,
                     unsigned long long *granted_sequence = NULL) {
     if (!enabled() || !banked()) return request(r, id, write, cycle) == GRANTED;
-    if (m_cycle != cycle) { m_cycle = cycle; m_bank_granted.reset(); }
+    if (m_ft_mode && m_cycle != (unsigned long long)-1) assert(cycle >= m_cycle);
+    if (m_cycle != cycle) { m_cycle = cycle; std::fill(m_bank_services,m_bank_services+4,0); }
     const unsigned global_id = r == BYPASS ? k_resident_slots + id : id;
     const unsigned bank = global_id % 4;
-    if (m_bank_granted.test(bank) || m_pending[bank].empty()) return false;
+    if (m_bank_services[bank] >= m_bank_ops || m_pending[bank].empty()) return false;
     std::vector<pending_op> &q = m_pending[bank];
     unsigned best = 0;
     for (unsigned i = 1; i < q.size(); ++i)
       if (q[i].sequence < q[best].sequence) best = i;
     pending_op op = q[best]; q.erase(q.begin() + best);
-    m_bank_granted.set(bank); ++m_bank_grants; ++m_bank_grants_by_bank[bank];
+    consume_bank(bank); ++m_bank_grants; ++m_bank_grants_by_bank[bank];
     if (granted_sequence) *granted_sequence = op.sequence;
     return op.r == r && op.id == id && op.write == write;
   }
@@ -2551,6 +2562,10 @@ class ep_l2_payload_store {
     return true;
   }
  private:
+  void consume_bank(unsigned bank) {
+    assert(m_bank_services[bank] < m_bank_ops);
+    ++m_bank_services[bank]; m_bank_peak[bank] = std::max(m_bank_peak[bank],m_bank_services[bank]);
+  }
   bool static_role_matches(unsigned id, role r) const {
     return id < physical_slots() &&
       (r == RESIDENT ? id < k_resident_slots :
@@ -2602,7 +2617,8 @@ class ep_l2_payload_store {
     role r; unsigned id; bool write; unsigned long long sequence;
     bool true_conflict; unsigned long long first_conflict_cycle;
   };
-  unsigned m_mode, m_ft_mode, m_wbuf; bool m_static_s64; unsigned long long m_cycle;
+  unsigned m_mode, m_ft_mode, m_wbuf; bool m_static_s64;
+  unsigned m_bank_ops; unsigned long long m_cycle;
   unsigned m_resident_reads, m_resident_writes, m_bypass_reads, m_bypass_writes;
   unsigned long long m_bank_logical_ops, m_bank_attempts, m_bank_grants,
       m_bank_retry_attempts, m_bank_true_conflict_ops,
@@ -2614,7 +2630,7 @@ class ep_l2_payload_store {
       m_bank_fill_write, m_bank_wb_readout, m_bank_bypass_fill,
       m_bank_bypass_read;
   unsigned long long m_next_sequence;
-  std::bitset<4> m_bank_granted; std::vector<slot> m_slots;
+  unsigned m_bank_services[4], m_bank_peak[4]; std::vector<slot> m_slots;
   std::vector<pending_op> m_pending[4], m_granted[4];
 };
 
@@ -2633,7 +2649,7 @@ class l2_cache : public data_cache {
         m_ep_l2_wad_lifetime_sum(0), m_ep_l2_wad_lifetime_count(0),
         m_ep_l2_wad_lifetime_max(0),
         m_ep_l2_payload(config.m_ep_l2_payload_mode, config.m_ep_l2_ft_mode,
-                         config.m_ep_l2_wbuf_entries, config.m_ep_l2_static_s64),
+                         config.m_ep_l2_wbuf_entries, config.m_ep_l2_static_s64, config.m_ep_l2_bank_ops),
         m_ep_l2_last_payload_request_result(ep_l2_payload_store::GRANTED),
         m_ep_l2_tag_payload(ep_l2_payload_store::k_resident_slots) {
     validate_ep_l2_mode_config();
@@ -2872,6 +2888,11 @@ class l2_cache : public data_cache {
   std::map<mem_fetch *,ep_l2_payload_store::payload_handle> m_ft_read_refs;
   std::array<unsigned long long,4> m_ft_last_wb_versions;
   void validate_ep_l2_mode_config() const {
+    if (m_config.m_ep_l2_bank_ops != 1 &&
+        (m_config.m_ep_l2_bank_ops != 2 || !ft_enabled() || m_config.m_ep_l2_wbuf_entries != 16 ||
+         m_config.m_ep_l2_static_s64 || m_config.m_ep_l2_wb_local_cap)) {
+      fprintf(stderr,"EP-L2 P2 requires B16/U_WB16; combined S64/quota profiles not contracted\n"); abort();
+    }
     if (m_config.m_ep_l2_wb_local_cap &&
         (m_config.m_ep_l2_wb_local_cap != 16 || m_config.m_ep_l2_ft_mode != 2 ||
          m_config.m_ep_l2_wbuf_entries != 16)) {

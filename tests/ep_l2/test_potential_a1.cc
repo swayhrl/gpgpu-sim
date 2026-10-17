@@ -6,9 +6,9 @@ struct credit_fault : cache_config {
   static unsigned &capacity(cache_config &c) { return c.*(&credit_fault::m_miss_queue_size); }
 };
 int main(int argc,char **argv) {
-  assert(argc==7 || argc==8);
-  const bool rollback=argc==8 && std::string(argv[7])=="rollback";
-  const unsigned extra=argc==8 && !rollback?15:0;setvbuf(stdout,NULL,_IOLBF,0);fixture f(argv);
+  assert(argc==8 || argc==9);
+  const bool rollback=argc==9 && std::string(argv[8])=="rollback";
+  const unsigned extra=argc==9 && !rollback?15:0;setvbuf(stdout,NULL,_IOLBF,0);fixture f(argv);
   unsigned mode=std::stoul(argv[3]),c=std::stoul(argv[4]);
   const new_addr_type stride=64*128, victim=13*stride, incoming=16*stride, other=128;
   // Invalid-way selection is descending: read0->way15, dirty13->way2;

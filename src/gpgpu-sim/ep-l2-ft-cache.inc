@@ -425,16 +425,19 @@ void l2_cache::lower_accepted(mem_fetch *mf, unsigned long long cycle) {
 void l2_cache::ft_print(FILE *fp, unsigned slice) const {
   if (!ft_enabled()) return;
   ft_assert_quota();
+  fprintf(fp,"EPL2STRUCTV1|BANK_PEAK|slice=%u|ops_per_physical_cycle=%u|bank0=%u|bank1=%u|bank2=%u|bank3=%u\n",slice,
+      m_ep_l2_payload.bank_service_limit(),m_ep_l2_payload.bank_peak(0),m_ep_l2_payload.bank_peak(1),
+      m_ep_l2_payload.bank_peak(2),m_ep_l2_payload.bank_peak(3));
   fprintf(fp, "EPL2STRUCTV1|WB_QUOTA|slice=%u|cap=%u|reserved=%u|live=%u|reserved_peak=%u|live_peak=%u|total_peak=%u|refusal_attempts=%llu|pending_retry_calls=%llu|rollback_releases=%llu|lower_accept_releases=%llu\n",
       slice, m_config.m_ep_l2_wb_local_cap, m_ft_quota.reserved, m_ft_quota.live,
       m_ft_quota.reserved_peak, m_ft_quota.live_peak, m_ft_quota.total_peak,
       m_ft_quota.refusals, m_ft_quota.retries, m_ft_quota.rollbacks, m_ft_quota.lower_accept);
   fprintf(fp, "EPL2STRUCTV1|CONFIG|slice=%u|static_s64=%u|physical_slots=%u|"
       "resident_nominal=1024|bypass_capacity=%u|wb_begin=%u|static_wb_capacity=%u|"
-      "legacy_wbuf=%u|bank_count=4|bank_ops_per_physical_cycle=1|copy_latch_bytes=128\n",
+      "legacy_wbuf=%u|bank_count=4|bank_ops_per_physical_cycle=%u|copy_latch_bytes=128\n",
       slice, m_config.m_ep_l2_static_s64 ? 1 : 0, m_ep_l2_payload.physical_slots(),
       m_ep_l2_payload.bypass_capacity(), m_ep_l2_payload.wb_begin(),
-      m_ep_l2_payload.static_wb_capacity(), m_config.m_ep_l2_wbuf_entries);
+      m_ep_l2_payload.static_wb_capacity(), m_config.m_ep_l2_wbuf_entries, m_ep_l2_payload.bank_service_limit());
   fprintf(fp, "EPL2FTV1|SUMMARY|slice=%u|mode=%u|wbuf=%u|physical_slots=%u|"
       "accepted=%llu|wb_created=%llu|wb_completed=%llu|wb_lower_accept=%llu|wbuf_full=%llu|pool_full=%llu|pin_block=%llu|"
       "bank_block=%llu|issue_block=%llu|copy_lines=%llu|copy_bytes=%llu|staging_reads=%llu|"
