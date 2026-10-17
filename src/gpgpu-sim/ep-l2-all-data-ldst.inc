@@ -63,7 +63,9 @@ void ldst_unit::all_data_issue(register_set &source) {
   }
   group.native_requests=original->accessq_count();
   assert(space==shared_space || fragments.size()==group.native_requests);
-  group.reference_id=service.begin(original->get_uid(),fragments.size(),original->is_store(),space);
+  group.reference_id=service.begin(original->get_uid(),fragments.size(),original->is_store(),data?space:unsigned(undefined_space));
+  service.annotate(group.reference_id,m_core->reference_kernel_id(original->warp_id()),
+      original->pc,original->get_streamID(),m_sid,original->warp_id(),original->dynamic_warp_id());
   for (const auto &f:fragments)
     group.requests.push_back(service.issue(group.reference_id,domain,f.line,f.mask,now,nullptr,f.original));
   const unsigned wid=original->warp_id();
@@ -107,6 +109,7 @@ void ldst_unit::all_data_cycle() {
       for (unsigned n=0;n<g.native_requests;++n) m_core->reference_store_ack(wid);
     m_core->dec_inst_in_pipeline(wid);m_core->warp_inst_complete(g.inst);
     m_last_inst_gpu_sim_cycle=m_gpu->gpu_sim_cycle;m_last_inst_gpu_tot_sim_cycle=m_gpu->gpu_tot_sim_cycle;
+    if (g.inst.op==MEMORY_BARRIER_OP) service.barrier_complete(m_sid,wid);
     service.finish(g.reference_id);it=m_all_data.erase(it);
   }
 }

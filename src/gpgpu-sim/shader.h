@@ -2145,6 +2145,9 @@ class shader_core_ctx : public core_t {
   void decrement_atomic_count(unsigned wid, unsigned n);
   void inc_store_req(unsigned warp_id) { m_warp[warp_id]->inc_store_req(); }
   unsigned reference_cta_id(unsigned warp_id) const { return m_warp[warp_id]->get_cta_id(); }
+  unsigned reference_kernel_id(unsigned warp_id) const {
+    auto kernel=m_warp[warp_id]->get_kernel_info();return kernel?kernel->get_uid():0;
+  }
   void reference_store_ack(unsigned warp_id) {
     assert(m_config->ep_l2_mem_all_data);
     m_warp[warp_id]->dec_store_req();

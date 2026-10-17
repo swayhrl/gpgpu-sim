@@ -9,16 +9,22 @@ struct ep_l2_all_data_probe {
     c.m_warp[0]->reset();c.m_warp[0]->init(0,0,0,active,0,0);
     c.get_gpu()->all_data_reference().new_shared_epoch(c.get_sid(),0);
   }
-  static void issue(shader_core_ctx &c,memory_space_t space,bool store,unsigned reg,uint64_t address) {
+  static void issue(shader_core_ctx &c,memory_space_t space,bool store,unsigned reg,uint64_t address,bool barrier=false,bool unsupported=false) {
     auto *inst=new warp_inst_t(c.get_config());
     inst->op=store?STORE_OP:LOAD_OP;inst->memory_op=store?memory_store:memory_load;
     inst->space=space;inst->data_size=4;inst->cache_op=CACHE_ALL;
+    inst->m_is_ldgsts=unsupported;
+    if (barrier) {inst->op=MEMORY_BARRIER_OP;inst->memory_op=no_memory_op;}
     for (unsigned r=0;r<MAX_OUTPUT_VALUES;++r)inst->out[r]=0;
     for (unsigned r=0;r<MAX_REG_OPERANDS;++r)inst->arch_reg.dst[r]=-1;
-    if (!store) {inst->out[0]=reg;inst->arch_reg.dst[0]=reg;}
+    if (!store && !barrier) {inst->out[0]=reg;inst->arch_reg.dst[0]=reg;}
     active_mask_t active;active.set(0);
     inst->issue(active,0,c.get_gpu()->gpu_sim_cycle,0,0,0);inst->set_addr(0,address);inst->generate_mem_accesses();
     c.m_warp[0]->inc_inst_in_pipeline();if (!store)c.m_scoreboard->reserveRegisters(inst);
+    if (barrier) {
+      c.m_warp[0]->set_membar();c.get_gpu()->all_data_reference().barrier_issue(c.get_sid(),0);
+      assert(c.warp_waiting_at_mem_barrier(0)); // Native scoreboard is empty here.
+    }
     register_set source(1,"all_data_probe");source.move_in(inst);delete inst;
     assert(c.m_ldst_unit->can_issue(**source.get_ready()));c.m_ldst_unit->issue(source);
     assert(!source.has_ready());
@@ -33,8 +39,9 @@ struct ep_l2_all_data_probe {
 };
 
 int main(int argc,char **argv) {
-  assert(argc==3);Fixture f(argv[1],argv[2]);auto *c=ep_l2_all_data_probe::core(*f.gpu);
+  assert(argc==3 || argc==4);Fixture f(argv[1],argv[2]);auto *c=ep_l2_all_data_probe::core(*f.gpu);
   ep_l2_all_data_probe::prepare(*c);auto &s=f.gpu->all_data_reference();
+  if (argc==4) {ep_l2_all_data_probe::issue(*c,global_space,false,1,0x1000,false,true);assert(false);}
   ep_l2_all_data_probe::issue(*c,global_space,false,1,0x100004000ULL);
   assert(ep_l2_all_data_probe::pending(*c) && s.requests_ready==0);
   ep_l2_all_data_probe::cycle(*c,0);assert(ep_l2_all_data_probe::pending(*c));
@@ -66,5 +73,13 @@ int main(int argc,char **argv) {
   assert(s.drained() && ep_l2_all_data_probe::in_pipeline(*c)==0);
   assert(s.instruction_count==s.instructions_consumed && s.requests_ready==s.requests_consumed);
   assert(s.store_instructions==s.store_reference_commits);
+  assert(s.sm_register_wait_attempts>0 && s.consume_delay_cycles>0);
+  ep_l2_all_data_probe::issue(*c,global_space,true,0,0x4000);
+  ep_l2_all_data_probe::issue(*c,undefined_space,false,0,0,true);
+  assert(c->warp_waiting_at_mem_barrier(0));
+  ep_l2_all_data_probe::cycle(*c,f.gpu->gpu_sim_cycle+1);
+  assert(!c->warp_waiting_at_mem_barrier(0) && s.drained() && s.barrier_instructions==1);
+  assert(s.issued_instruction_digest==s.consumed_instruction_digest);
+  assert(s.ready_snapshot_digest==s.consumed_snapshot_digest && s.snapshot_bytes_ready==s.snapshot_bytes_consumed);
   s.print(stdout);std::puts("ALL_DATA_NATIVE_LDST_SPACES_PENDING_REGISTER_STORE_COMPLETION PASS");
 }

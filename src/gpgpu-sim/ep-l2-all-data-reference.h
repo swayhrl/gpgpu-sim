@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <map>
+#include <set>
 #include <vector>
 #include <cassert>
 #include "ep-l2-ideal-reference.h"
@@ -21,6 +22,8 @@ class Service {
     uint64_t original,expected,issued=0,consumed=0,committed=0;
     bool store;
     unsigned space;
+    uint64_t kernel=0,pc=0,stream=0;
+    unsigned sm=0,warp=0,dynamic_warp=0;
   };
   struct Request {
     uint64_t id,instruction,domain,line,issued,eligible=0,ready=0,original_access=0;
@@ -28,14 +31,28 @@ class Service {
     Mask mask;
     Data data{};
     Snapshot snapshot;
+    uint64_t snapshot_digest=0;
   };
   uint64_t begin(uint64_t original,unsigned expected,bool store,unsigned space) {
     const auto id=++instruction_sequence_;
     instructions_.emplace(id,Instruction{original,expected,0,0,0,store,space});
+    issued_instruction_digest^=instruction_digest(instructions_.at(id));
     ++instruction_count; ++space_instructions[space];
     if (store) ++store_instructions;
+    else if (space==0) ++barrier_instructions;
+    else ++load_instructions;
     return id;
   }
+  void annotate(uint64_t id,uint64_t kernel,uint64_t pc,uint64_t stream,
+                unsigned sm,unsigned warp,unsigned dynamic_warp) {
+    auto &i=instructions_.at(id);issued_instruction_digest^=instruction_digest(i);
+    i.kernel=kernel;i.pc=pc;i.stream=stream;
+    i.sm=sm;i.warp=warp;i.dynamic_warp=dynamic_warp;
+    issued_instruction_digest^=instruction_digest(i);
+  }
+  void barrier_issue(unsigned sm,unsigned warp) {assert(barriers_.insert({sm,warp}).second);}
+  bool barrier_pending(unsigned sm,unsigned warp) const {return barriers_.count({sm,warp});}
+  void barrier_complete(unsigned sm,unsigned warp) {assert(barriers_.erase({sm,warp})==1);}
   uint64_t issue(uint64_t instruction,uint64_t domain,uint64_t address,
                  const Mask &mask,uint64_t now,const Data *known=nullptr,uint64_t original_access=0) {
     advance(now);
@@ -62,6 +79,11 @@ class Service {
         assert(r.ready==now && "reference service missed a physical tick");
         r.ready_valid=true;++requests_ready;
         assert(r.ready==r.eligible+1);
+        if (!r.store) {
+          ready_snapshot_digest^=r.snapshot_digest^r.id;
+          snapshot_bytes_ready+=r.snapshot.size();
+          for (const auto &b:r.snapshot) {if (b.value_known)++known_bytes;else ++symbolic_bytes;}
+        }
         if (r.store) {
           memory_[r.domain].write(r.line,r.mask,r.known?&r.data:nullptr);
           ++store_fragment_commits;
@@ -79,6 +101,11 @@ class Service {
     auto it=requests_.find(id);assert(it!=requests_.end());auto &r=it->second;
     assert(r.ready_valid && now>=r.ready);
     Snapshot value=r.snapshot; // Value snapshot, never a mutable memory alias.
+    if (!r.store) {
+      assert(digest(value)==r.snapshot_digest);
+      consumed_snapshot_digest^=r.snapshot_digest^r.id;
+      snapshot_bytes_consumed+=value.size();
+    }
     consume_delay_cycles+=now-r.ready;++requests_consumed;
     auto &inst=instructions_.at(r.instruction);++inst.consumed;
     assert(inst.consumed<=inst.expected);
@@ -89,6 +116,7 @@ class Service {
     assert(i.issued==i.expected && i.consumed==i.expected);
     assert(!i.store || i.committed==i.expected);
     if (i.store && i.expected==0) ++store_reference_commits;
+    consumed_instruction_digest^=instruction_digest(i);
     ++instructions_consumed;instructions_.erase(id);
   }
   uint64_t new_shared_epoch(unsigned sm,unsigned cta) {
@@ -107,7 +135,7 @@ class Service {
   void seed(uint64_t domain,uint64_t address,const std::vector<uint8_t> &data) {
     assert(drained());memory_[domain].seed(address,data);
   }
-  bool drained() const {return requests_.empty() && instructions_.empty();}
+  bool drained() const {return requests_.empty() && instructions_.empty() && barriers_.empty();}
   void print(FILE *fp) const {
     fprintf(fp,"EPL2MEMREFV1|scope=cumulative|mode=I_MEM_ALL_DATA|instruction_path=NATIVE|"
       "data_hierarchy=NOT_APPLICABLE|instructions=%llu|instructions_consumed=%llu|"
@@ -121,12 +149,23 @@ class Service {
       (unsigned long long)store_fragments,(unsigned long long)store_fragment_commits,
       (unsigned long long)dependency_cycles,(unsigned long long)consume_delay_cycles,
       (unsigned long long)sm_register_wait_attempts,requests_.size(),instructions_.size(),drained());
+    fprintf(fp,"EPL2MEMREFV1|SNAPSHOTS|scope=cumulative|loads=%llu|barriers=%llu|bytes_ready=%llu|bytes_consumed=%llu|"
+      "known_bytes=%llu|symbolic_bytes=%llu|ready_digest=%llu|consumed_digest=%llu|data_scope=BYTE_ADDRESS_PRODUCER_VERSION_SYMBOLS\n",
+      (unsigned long long)load_instructions,(unsigned long long)barrier_instructions,
+      (unsigned long long)snapshot_bytes_ready,(unsigned long long)snapshot_bytes_consumed,
+      (unsigned long long)known_bytes,(unsigned long long)symbolic_bytes,
+      (unsigned long long)ready_snapshot_digest,(unsigned long long)consumed_snapshot_digest);
+    fprintf(fp,"EPL2MEMREFV1|IDENTITY|scope=cumulative|issued_instruction_digest=%llu|consumed_instruction_digest=%llu|pending_barriers=%zu\n",
+      (unsigned long long)issued_instruction_digest,(unsigned long long)consumed_instruction_digest,barriers_.size());
     for (const auto &s:space_instructions)
       fprintf(fp,"EPL2MEMREFV1|SPACE|space=%u|instructions=%llu\n",s.first,(unsigned long long)s.second);
   }
   uint64_t instruction_count=0,instructions_consumed=0,store_instructions=0,store_reference_commits=0;
   uint64_t requests_issued=0,requests_ready=0,requests_consumed=0,store_fragments=0,store_fragment_commits=0;
   uint64_t dependency_cycles=0,consume_delay_cycles=0,sm_register_wait_attempts=0;
+  uint64_t load_instructions=0,barrier_instructions=0,snapshot_bytes_ready=0,snapshot_bytes_consumed=0;
+  uint64_t known_bytes=0,symbolic_bytes=0,ready_snapshot_digest=0,consumed_snapshot_digest=0;
+  uint64_t issued_instruction_digest=0,consumed_instruction_digest=0;
   std::map<unsigned,uint64_t> space_instructions;
  private:
   bool older_producer(const Request &r) const {
@@ -141,13 +180,27 @@ class Service {
     if (older_producer(r)) return;
     r.eligible_valid=true;r.eligible=now;r.ready=now+1;
     dependency_cycles+=now-r.issued;
-    if (!r.store) r.snapshot=memory_[r.domain].read(r.line,r.mask);
+    if (!r.store) {r.snapshot=memory_[r.domain].read(r.line,r.mask);r.snapshot_digest=digest(r.snapshot);}
+  }
+  static uint64_t digest(const Snapshot &snapshot) {
+    uint64_t d=1469598103934665603ULL;
+    for (const auto &b:snapshot)
+      for (uint64_t x:{b.address,b.version,uint64_t(b.value_known),uint64_t(b.value_known?b.value:0)})
+        {d^=x;d*=1099511628211ULL;}
+    return d;
+  }
+  static uint64_t instruction_digest(const Instruction &i) {
+    uint64_t d=1469598103934665603ULL;
+    for (uint64_t v:{i.original,i.expected,i.kernel,i.pc,i.stream,uint64_t(i.sm),uint64_t(i.warp),
+                    uint64_t(i.dynamic_warp),uint64_t(i.store),uint64_t(i.space)}) {d^=v;d*=1099511628211ULL;}
+    return d;
   }
   bool clock_valid_=false;uint64_t clock_=0,instruction_sequence_=0,request_sequence_=0,domain_sequence_=0;
   std::map<uint64_t,Instruction> instructions_;
   std::map<uint64_t,Request> requests_;
   std::map<uint64_t,ep_l2_ideal::ReferenceMemory> memory_;
   std::map<std::pair<unsigned,unsigned>,uint64_t> shared_;
+  std::set<std::pair<unsigned,unsigned>> barriers_;
 };
 }
 #endif
