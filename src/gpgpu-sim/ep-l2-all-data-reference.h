@@ -34,6 +34,8 @@ class Service {
     uint64_t snapshot_digest=0;
   };
   uint64_t begin(uint64_t original,unsigned expected,bool store,unsigned space) {
+    assert(record_identity(original,seen_instructions_) && "duplicate original instruction issue");
+    ++unique_original_instructions;
     const auto id=++instruction_sequence_;
     instructions_.emplace(id,Instruction{original,expected,0,0,0,store,space});
     issued_instruction_digest^=instruction_digest(instructions_.at(id));
@@ -70,6 +72,10 @@ class Service {
     Request req{};req.id=++request_sequence_;req.instruction=instruction;
     req.domain=domain;req.line=address;req.issued=now;req.store=inst.store;req.mask=mask;
     req.original_access=original_access;
+    if (original_access) {
+      assert(record_identity(original_access,seen_accesses_) && "duplicate original native access issue");
+      ++unique_native_accesses;
+    }
     if (known) {assert(req.store);req.known=true;req.data=*known;}
     auto pos=requests_.emplace(req.id,req).first;
     ++inst.issued;++requests_issued;
@@ -172,6 +178,8 @@ class Service {
     fprintf(fp,"EPL2MEMREFV1|IDENTITY|scope=cumulative|issued_instruction_digest=%llu|consumed_instruction_digest=%llu|pending_barriers=%zu|native_stores_issued=%llu|native_stores_committed=%llu|pending_native_stores=%zu\n",
       (unsigned long long)issued_instruction_digest,(unsigned long long)consumed_instruction_digest,barriers_.size(),
       (unsigned long long)native_stores_issued,(unsigned long long)native_stores_committed,native_stores_.size());
+    fprintf(fp,"EPL2MEMREFV1|UNIQUENESS|original_instructions=%llu|native_accesses=%llu|instruction_uid_blocks=%zu|access_uid_blocks=%zu|duplicate_policy=FAIL_CLOSED\n",
+      (unsigned long long)unique_original_instructions,(unsigned long long)unique_native_accesses,seen_instructions_.size(),seen_accesses_.size());
     for (const auto &s:space_instructions)
       fprintf(fp,"EPL2MEMREFV1|SPACE|space=%u|instructions=%llu\n",s.first,(unsigned long long)s.second);
   }
@@ -182,6 +190,7 @@ class Service {
   uint64_t known_bytes=0,symbolic_bytes=0,ready_snapshot_digest=0,consumed_snapshot_digest=0;
   uint64_t issued_instruction_digest=0,consumed_instruction_digest=0;
   uint64_t native_stores_issued=0,native_stores_committed=0;
+  uint64_t unique_original_instructions=0,unique_native_accesses=0;
   std::map<unsigned,uint64_t> space_instructions;
  private:
   bool older_producer(const Request &r) const {
@@ -211,6 +220,12 @@ class Service {
                     uint64_t(i.dynamic_warp),uint64_t(i.store),uint64_t(i.space)}) {d^=v;d*=1099511628211ULL;}
     return d;
   }
+  using IdBlocks=std::map<uint64_t,std::array<uint64_t,64>>;
+  static bool record_identity(uint64_t uid,IdBlocks &seen) {
+    auto &block=seen[uid/4096];auto &word=block[(uid%4096)/64];const uint64_t bit=uint64_t(1)<<(uid%64);
+    if (word&bit) return false;
+    word|=bit;return true;
+  }
   bool clock_valid_=false;uint64_t clock_=0,instruction_sequence_=0,request_sequence_=0,domain_sequence_=0;
   std::map<uint64_t,Instruction> instructions_;
   std::map<uint64_t,Request> requests_;
@@ -218,6 +233,7 @@ class Service {
   std::map<std::pair<unsigned,unsigned>,uint64_t> shared_;
   std::set<std::pair<unsigned,unsigned>> barriers_;
   std::map<uint64_t,std::pair<unsigned,unsigned>> native_stores_;
+  IdBlocks seen_instructions_,seen_accesses_;
 };
 }
 #endif
