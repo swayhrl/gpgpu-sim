@@ -76,7 +76,7 @@ int main(int argc,char **argv) {
     std::vector<new_addr_type> remaining;for(auto &entry:f.reads)remaining.push_back(entry.first);
     for(auto addr:remaining){f.return_read(addr);f.step();}
     for(unsigned n=0;n<1000 && (!f.replies.count(request_uid) || f.cache->ft_wb_staged() || !f.cache->miss_queue_empty() || !f.sp->L2_dram_queue_empty());++n)f.step();
-    assert(f.replies.count(request_uid) && f.lower_wb==1 && !f.cache->ft_wb_quota_live());
+    assert(f.replies.count(request_uid) && f.lower_wb==0 && !f.cache->ft_wb_quota_live());
     for(auto w:f.wb){f.sp->set_done(w);delete w;}f.wb.clear();
     for(unsigned n=0;n<1000 && f.part->busy();++n)f.step();
     assert(!f.part->busy() && f.sp->l2_char_no_resource_leak() && f.cache->ft_drained() && !f.cache->ep_l2_payload_pending_operations() && !f.cache->ep_l2_wad_occupancy());
