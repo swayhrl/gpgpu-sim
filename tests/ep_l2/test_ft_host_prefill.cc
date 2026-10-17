@@ -79,7 +79,8 @@ struct host_fixture {
   void step() {
     unsigned long long before[4];
     for(unsigned b=0;b<4;++b) before[b] = sp->ft_bank_grants_for_test(b);
-    part->cache_cycle(gpu->gpu_sim_cycle);
+    // Match the production caller, including the later quiescent GPU epoch.
+    part->cache_cycle(gpu->gpu_sim_cycle + gpu->gpu_tot_sim_cycle);
     if (!sp->L2_dram_queue_empty()) {
       auto mf = sp->L2_dram_queue_top();
       if (mf->get_access_type() == L2_WRBK_ACC && verify_wb) {
