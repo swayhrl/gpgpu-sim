@@ -1,4 +1,6 @@
 // Production l2_cache access/issue/fill/response tests against symbolic data versions.
+#include <sys/wait.h>
+#include <unistd.h>
 #include <cassert>
 #include <cstdio>
 #include <deque>
@@ -129,8 +131,21 @@ static void arbiter(unsigned mode,unsigned ports) {
     assert(p.request(h[3],false,103)==P::GRANTED);
     assert(p.request(h[0],false,104)==P::GRANTED);
     assert(!p.pending_operations());
+    assert(p.request(h[0],false,105)==P::GRANTED);
+    assert(p.request(h[1],false,105)==(ports==2?P::GRANTED:P::BANK_TRUE_CONTENTION));
+    assert(p.request(h[2],false,105)==P::BANK_TRUE_CONTENTION);
+    auto before_cancel=p.bank_grants(0);
+    assert(p.request(h[3],false,106)==P::GRANTED); // selects older bank0 work
+    p.cancel_request(h[1],false);p.cancel_request(h[2],false);
+    assert(!p.pending_operations() && p.bank_grants(0)==before_cancel);
+    assert(p.request(h[2],false,106)==P::GRANTED); // new identity after cancel
     p.release(h[2]);assert(!p.handle_live(h[2]));
     auto fresh=p.reserve(8,P::RESIDENT,8888,P::RESIDENT_VALID);assert(fresh.generation!=h[2].generation);
+    for(unsigned bad=0;bad<2;++bad) {
+      pid_t child=fork();assert(child>=0);
+      if(!child){if(bad==0)p.request(h[2],false,107);else p.request(fresh,false,1);_exit(0);}
+      int status;assert(waitpid(child,&status,0)==child && WIFSIGNALED(status) && WTERMSIG(status)==SIGABRT);
+    }
     printf("P%u arbiter mode%u pattern%u true grants=%llu logical=%llu retries=%llu wait=%llu peaks=%u/%u PASS\n",ports,mode,pattern,p.bank_grants(),p.bank_logical_ops(),p.bank_retry_attempts(),p.bank_wait_cycles(),p.bank_peak(0),p.bank_peak(1));
   }
 }
