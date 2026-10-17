@@ -171,6 +171,12 @@ static void native_during_ro_owner(const char *base,const char *overlay,const ch
     assert(f.cache->ep_l2_descriptor_count_used()==2);
     assert(f.cache->miss_queue_occupancy()==queued);
     f.issue();assert(f.port.packets.size()==1);
+    // Exercise F1 after real lower acceptance too: this issued sector must
+    // not acquire a native descriptor that RO completion cannot wake up.
+    assert(f.admit(native)==RESERVATION_FAIL);
+    assert(f.cache->ep_l2_descriptor_count_used()==2);
+    assert(f.cache->ep_l2_payload_for_test().inspect(h).pins==1);
+    assert(f.cache->miss_queue_empty() && f.port.packets.size()==1);
     auto packet=f.port.packets.front();f.port.packets.pop_front();
     while(!f.fill(packet)){}
     f.consume(2);assert(!f.cache->ep_l2_descriptor_count_used());
