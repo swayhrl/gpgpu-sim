@@ -118,23 +118,26 @@ struct delta_fixture {
   }
 };
 
-static void mixed(const char *base,const char *overlay,bool ordinary_first,bool retire_atomic_early,unsigned mode,bool check_versions){
+static void mixed(const char *base,const char *overlay,bool ordinary_first,bool retire_atomic_early,unsigned mode,bool check_versions,bool prior_dirty=false){
   delta_fixture f(base,overlay,mode);callbacks=0;
+  mem_access_byte_mask_t prior_bytes;unsigned long long prior_version=400;
+  if(prior_dirty){auto w=f.make(96,false,true);require(f.access(w),"prior dirty sector write");
+    prior_bytes=w->get_access_byte_mask();prior_version=(unsigned long long)w->get_request_uid()+1;delete w;}
   auto atomic=f.make(0,true),read=f.make(32);
   require(f.access(atomic)&&f.access(read),"same-line atomic/read production admission");
-  auto packets=f.lower(2);std::array<unsigned long long,4> memory{{100,200,300,400}};
+  auto packets=f.lower(2);std::array<unsigned long long,4> memory{{100,200,300,prior_version}};
   const unsigned first=ordinary_first?1:0,second=1-first;
   f.fill(packets.at(first),memory);
   auto dirty=f.cache->block()->get_dirty_sector_mask().to_ulong();
   printf("FILL1|order=%s|dirty=%lu|callbacks=%u\n",ordinary_first?"read-first":"atomic-first",dirty,callbacks);
-  require(dirty==(ordinary_first?0u:1u),"ordinary sector incorrectly marked atomic dirty");
+  require(dirty==((prior_dirty?8u:0u)|(ordinary_first?0u:1u)),"ordinary sector incorrectly marked atomic dirty");
   require(callbacks==0,"fill must not execute atomic ALU callback");
   if(retire_atomic_early){f.respond(1);require(callbacks==1,"atomic callback at consumer exactly once");}
   f.fill(packets.at(second),memory);
   dirty=f.cache->block()->get_dirty_sector_mask().to_ulong();
   printf("FILL2|dirty=%lu|dirty_bytes=%zu\n",dirty,f.cache->block()->get_dirty_byte_mask().count());
-  require(dirty==1,"late ordinary fill contaminated dirty sectors");
-  require(f.cache->block()->get_dirty_byte_mask()==atomic->get_access_byte_mask(),"dirty bytes must come from atomic requester");
+  require(dirty==(prior_dirty?9u:1u),"late ordinary fill contaminated dirty sectors");
+  require(f.cache->block()->get_dirty_byte_mask()==(atomic->get_access_byte_mask()|prior_bytes),"dirty bytes must come from atomic requester");
   f.respond(retire_atomic_early?1:2);require(callbacks==1,"one callback for one atomic response");
   if(mode){
     const auto h=f.cache->ep_l2_tag_payload_handle_for_test(0);
@@ -142,11 +145,23 @@ static void mixed(const char *base,const char *overlay,bool ordinary_first,bool 
     printf("VERSION|atomic_uid=%u|got=%llu|expected=%llu|ordinary=%llu\n",atomic->get_request_uid(),got[0],(unsigned long long)atomic->get_request_uid()+1,got[1]);
     if(check_versions)require(got[0]==(unsigned long long)atomic->get_request_uid()+1 && got[1]==200,"atomic miss missing symbolic completion version");
     auto expected=memory;expected[0]=(unsigned long long)atomic->get_request_uid()+1;
-    f.wb(1,atomic->get_access_byte_mask(),check_versions?expected:got);
+    f.wb(prior_dirty?9:1,atomic->get_access_byte_mask()|prior_bytes,check_versions?expected:got);
   }
   require(!f.cache->mshr_entries_used()&&!f.cache->access_ready(),"all descriptors retired");
   delete atomic;delete read;
   puts("PASS B1 real MSHR/Tag mixed sector fill/response/WB");
+}
+static void version_only(const char *base,const char *overlay){
+  delta_fixture f(base,overlay,2);callbacks=0;auto a=f.make(0,true);
+  require(f.access(a),"single atomic miss admission");auto packets=f.lower(1);
+  std::array<unsigned long long,4> memory{{100,0,0,0}};f.fill(packets.at(0),memory);f.respond(1);
+  const auto h=f.cache->ep_l2_tag_payload_handle_for_test(0);
+  const auto got=f.cache->ep_l2_payload_for_test().inspect(h).versions;
+  printf("VERSION_ONLY|got=%llu|expected=%llu|callbacks=%u\n",got[0],(unsigned long long)a->get_request_uid()+1,callbacks);
+  require(got[0]==(unsigned long long)a->get_request_uid()+1,"atomic miss missing symbolic completion version");
+  require(callbacks==1,"atomic callback belongs to response consumer");
+  memory[0]=(unsigned long long)a->get_request_uid()+1;f.wb(1,a->get_access_byte_mask(),memory);
+  delete a;puts("PASS B1 atomic miss completion version and later WB");
 }
 static void multi(const char *base,const char *overlay){
   // FT deliberately serializes atomics on a pinned native line; descriptor
@@ -171,5 +186,7 @@ int main(int argc,char **argv){
   else if(test=="b1-atomic-first")mixed(argv[1],argv[2],false,true,2,true);
   else if(test=="b1-multi")multi(argv[1],argv[2]);
   else if(test=="b1-b16")mixed(argv[1],argv[2],true,false,1,true);
+  else if(test=="b1-dirty")mixed(argv[1],argv[2],true,false,2,true,true);
+  else if(test=="b1-version-only")version_only(argv[1],argv[2]);
   else return 78;
 }
