@@ -1949,7 +1949,7 @@ void memory_sub_partition::ep_l2_m0a_print(
           "m0_useful_frontend_admit=%llu|m0_useful_response_enqueue=%llu|"
           "resident_legacy_occupied_scope=PAYLOAD_ROLE|"
           "resident_legacy_free_scope=SATURATED_NOMINAL_ROLE_HEADROOM|"
-          "resident_legacy_over_nominal=%u\n",
+          "resident_legacy_over_nominal=%s\n",
           scope, interval, m_id, uid, start_cycle, completion_cycle, n,
           stats.resident_occupied_sum, stats.resident_free_sum,
           n ? stats.resident_occupied_sum / n : 0,
@@ -1959,8 +1959,9 @@ void memory_sub_partition::ep_l2_m0a_print(
           stats.wad_hazard, stats.line_mshr, stats.descriptor, stats.per_address,
           stats.missq, stats.payload_service, stats.payload_capacity, stats.lowerq,
           stats.responseq, stats.useful_frontend_admit,
-          stats.useful_response_enqueue, stats.resident_occupied_max > 1024 ? 1 : 0);
-  if (m_L2cache->ft_enabled()) {
+          stats.useful_response_enqueue, !strcmp(scope, "window") ? "UNAVAILABLE" :
+              (stats.resident_occupied_max > 1024 ? "1" : "0"));
+  if (!m_config->m_L2_config.disabled() && m_L2cache->ft_enabled()) {
     const auto s = m_L2cache->resident_observer_snapshot();
     // Instantaneous at print time, never the preceding window's average.
     fprintf(fp, "EPL2RESIDENTOBSV1|scope=instant_at_m0_print|slice=%u|"

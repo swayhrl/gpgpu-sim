@@ -260,9 +260,50 @@ static void bypass_full(const char *base,const char *overlay,bool disabled){
     if(!f.sp->L2_dram_queue_empty())f.return_one();f.step();
     while(auto mf=f.sp->pop()){require(responses.insert(mf->get_request_uid()).second,"bypass response exactly once");delete mf;}
   }
-  require(responses.size()==3&&f.sp->l2_char_no_resource_leak(),"bypass resumes and drains after credit");
-  f.sp->print_ep_l2_b0_snapshot(stdout,(unsigned long long)-1);
+  require(responses.size()==3&&!f.sp->busy(),"bypass resumes and requester tracker drains after credit");
+  // Disabled L2 has no cache instance; the cache-specific debug helper is
+  // inapplicable. Its actual queues/tracker still must close above/below.
+  require(!f.sp->ep_l2_l2dram_occupancy()&&!f.sp->ep_l2_draml2_occupancy()&&
+      !f.sp->ep_l2_l2icnt_occupancy()&&!f.sp->ep_l2_icntl2_occupancy(),"bypass queue closure");
+  if(!disabled){require(f.sp->l2_char_no_resource_leak(),"enabled FT bypass closure");
+    f.sp->print_ep_l2_b0_snapshot(stdout,(unsigned long long)-1);}
   puts(disabled?"PASS C2 actual disabled-L2 full bypass FIFO backpressure":"PASS C2 actual texture-only global bypass FIFO backpressure and audit");
+}
+static void resident_m0_output(const char *base,const char *overlay){
+  partition_fixture f(base,overlay,false,false);auto cache=f.sp->ft_cache_for_test();
+  mem_access_sector_mask_t sector;sector.set(0);
+  for(unsigned line=0;line<1024;++line)cache->force_tag_access(new_addr_type(line)*128,line+1,sector);
+  auto write=[&](new_addr_type address){
+    active_mask_t active;active.set(0);mem_access_byte_mask_t bytes;
+    for(unsigned b=0;b<32;++b)bytes.set(b);
+    return f.alloc->alloc(address,GLOBAL_ACC_W,active,bytes,sector,32,true,f.now,0,0,0,nullptr,0);};
+  for(unsigned way=0;way<16;++way){auto w=write(new_addr_type(way)*64*128);std::list<cache_event> events;
+    require(cache->access(w->get_addr(),w,f.now,events)==HIT,"M0 dirty set preparation");delete w;f.step();}
+  auto w=write(1024*128);l2_access_plan plan;cache->preview_access(w->get_addr(),w,plan);
+  require(plan.probe_status==MISS&&plan.victim_dirty,"M0 dirty replacement");
+  auto h=cache->ep_l2_tag_payload_handle_for_test(plan.cache_index);
+  require(cache->ep_l2_payload_for_test().request(h,false,f.now)==ep_l2_payload_store::GRANTED,"M0 same-bank denial");
+  std::list<cache_event> events;
+  require(cache->access(w->get_addr(),w,f.now,events)==RESERVATION_FAIL,"M0 pending landing");
+  f.step();f.step(); // Actual production sampler observes the real 1025 state.
+  FILE *stream=tmpfile();require(stream!=nullptr,"M0 capture");
+  f.sp->print_ep_l2_b0_snapshot(stream,(unsigned long long)-1);fflush(stream);rewind(stream);
+  std::string text;char buf[4096];while(fgets(buf,sizeof(buf),stream))text+=buf;fclose(stream);fputs(text.c_str(),stdout);
+  auto field=[&](const char *name){auto p=text.find(name);require(p!=std::string::npos,"M0 field exists");
+    return std::stoull(text.substr(p+std::string(name).size()));};
+  require(field("m0_resident_payload_occupied_max=")==1025,"M0 retains role occupancy semantics");
+  require(field("m0_resident_payload_free_sum=")==0,"actual M0 accumulator unsigned underflow");
+  require(text.find("tag_visible=1024|pending_landing=1|resident_role_occupied=1025|")!=std::string::npos,"new instantaneous Tag/landing/role split");
+  require(text.find("physical_capacity=1168|physical_occupied=1025|physical_free=143")!=std::string::npos,"new physical pool split");
+  bool accepted=false;
+  for(unsigned n=0;n<20&&!accepted;++n){events.clear();accepted=cache->access(w->get_addr(),w,f.now,events)!=RESERVATION_FAIL;f.step();}
+  require(accepted,"M0 direct request resumes");delete w;
+  for(unsigned n=0;n<1000&&(f.sp->busy()||!cache->ft_drained());++n){f.step();
+    while(!f.sp->L2_dram_queue_empty()){auto mf=f.sp->L2_dram_queue_top();
+      require(mf->get_access_type()==L2_WRBK_ACC&&mf->has_ft_wb_data(),"M0 actual WB backing");
+      f.sp->L2_dram_queue_pop();f.sp->set_done(mf);delete mf;}}
+  require(f.sp->l2_char_no_resource_leak(),"M0 transient/WB closure");
+  puts("PASS C1 real subpartition M0 accumulator and explicit Tag landing physical output");
 }
 static void hit_with_lower_full(const char *base,const char *overlay){
   partition_fixture f(base,overlay,false,false);mem_access_sector_mask_t sector;sector.set(0);
@@ -290,6 +331,7 @@ int main(int argc,char **argv){
   else if(test=="b1-dirty")mixed(argv[1],argv[2],true,false,2,true,true);
   else if(test=="b1-version-only")version_only(argv[1],argv[2]);
   else if(test=="c1-transient")resident_transient(argv[1],argv[2]);
+  else if(test=="c1-m0-output")resident_m0_output(argv[1],argv[2]);
   else if(test=="c2-disabled")bypass_full(argv[1],argv[2],true);
   else if(test=="c2-texture")bypass_full(argv[1],argv[2],false);
   else if(test=="c2-hit")hit_with_lower_full(argv[1],argv[2]);
