@@ -21,6 +21,7 @@ void ldst_unit::all_data_issue(register_set &source) {
   assert(!original->is_store() || (space!=const_space && space!=param_space_kernel && space!=tex_space));
   const uint64_t now=m_gpu->gpu_sim_cycle+m_gpu->gpu_tot_sim_cycle;
   auto &service=m_gpu->all_data_reference();service.advance(now);
+  if (original->is_store()) assert(service.native_store_declared(original->get_uid()));
   all_data_instruction group(*original);group.issued=now;group.inst.op_pipe=MEM__OP;
   struct fragment {uint64_t line,original;ep_l2_all_data::Service::Mask mask;};
   std::vector<fragment> fragments;

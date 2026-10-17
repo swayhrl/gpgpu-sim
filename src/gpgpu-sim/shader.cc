@@ -1053,6 +1053,8 @@ void shader_core_ctx::issue_warp(register_set &pipe_reg_set,
       m_warp[warp_id]->get_streamID());  // dynamic instruction information
   m_stats->shader_cycle_distro[2 + (*pipe_reg)->active_count()]++;
   func_exec_inst(**pipe_reg);
+  if (m_config->ep_l2_mem_all_data && (*pipe_reg)->is_store())
+    m_gpu->all_data_reference().native_store_issue((*pipe_reg)->get_uid(),m_sid,warp_id);
 
   // Add LDGSTS instructions into a buffer
   unsigned int ldgdepbar_id = m_warp[warp_id]->m_ldgdepbar_id;
@@ -1335,7 +1337,9 @@ void scheduler_unit::cycle() {
           warp(warp_id).ibuffer_flush();
         } else {
           valid_inst = true;
-          if (!m_scoreboard->checkCollision(warp_id, pI)) {
+          if (!m_scoreboard->checkCollision(warp_id, pI) &&
+              !(m_shader->m_config->ep_l2_mem_all_data && pI->op==BARRIER_OP &&
+                m_shader->get_gpu()->all_data_reference().warp_stores_pending(m_shader->get_sid(),warp_id))) {
             SCHED_DPRINTF(
                 "Warp (warp_id %u, dynamic_warp_id %u) passes scoreboard\n",
                 (*iter)->get_warp_id(), (*iter)->get_dynamic_warp_id());

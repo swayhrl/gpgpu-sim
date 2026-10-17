@@ -20,6 +20,7 @@ struct ep_l2_all_data_probe {
     if (!store && !barrier) {inst->out[0]=reg;inst->arch_reg.dst[0]=reg;}
     active_mask_t active;active.set(0);
     inst->issue(active,0,c.get_gpu()->gpu_sim_cycle,0,0,0);inst->set_addr(0,address);inst->generate_mem_accesses();
+    if (store) c.get_gpu()->all_data_reference().native_store_issue(inst->get_uid(),c.get_sid(),0);
     c.m_warp[0]->inc_inst_in_pipeline();if (!store)c.m_scoreboard->reserveRegisters(inst);
     if (barrier) {
       c.m_warp[0]->set_membar();c.get_gpu()->all_data_reference().barrier_issue(c.get_sid(),0);
@@ -49,8 +50,10 @@ int main(int argc,char **argv) {
   assert(s.drained() && f.gpu->gpu_sim_insn==1);
   ep_l2_all_data_probe::issue(*c,global_space,true,0,0x100004000ULL);
   assert(!ep_l2_all_data_probe::stores_done(*c));
+  assert(s.warp_stores_pending(c->get_sid(),0));
   ep_l2_all_data_probe::cycle(*c,2);
   assert(ep_l2_all_data_probe::stores_done(*c) && s.store_reference_commits==1);
+  assert(!s.warp_stores_pending(c->get_sid(),0));
   for (auto space:{local_space,shared_space,const_space,tex_space,param_space_kernel,param_space_local}) {
     const uint64_t address=0xc4; //64B-block offset within a128B reference line.
     const uint64_t domain=space==shared_space?s.shared_domain(c->get_sid(),0):0;

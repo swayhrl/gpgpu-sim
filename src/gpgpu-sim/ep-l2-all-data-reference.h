@@ -53,6 +53,14 @@ class Service {
   void barrier_issue(unsigned sm,unsigned warp) {assert(barriers_.insert({sm,warp}).second);}
   bool barrier_pending(unsigned sm,unsigned warp) const {return barriers_.count({sm,warp});}
   void barrier_complete(unsigned sm,unsigned warp) {assert(barriers_.erase({sm,warp})==1);}
+  void native_store_issue(uint64_t original,unsigned sm,unsigned warp) {
+    assert(native_stores_.emplace(original,std::make_pair(sm,warp)).second);++native_stores_issued;
+  }
+  bool native_store_declared(uint64_t original) const {return native_stores_.count(original);}
+  bool warp_stores_pending(unsigned sm,unsigned warp) const {
+    for (const auto &s:native_stores_) if (s.second==std::make_pair(sm,warp)) return true;
+    return false;
+  }
   uint64_t issue(uint64_t instruction,uint64_t domain,uint64_t address,
                  const Mask &mask,uint64_t now,const Data *known=nullptr,uint64_t original_access=0) {
     advance(now);
@@ -89,7 +97,10 @@ class Service {
           ++store_fragment_commits;
           auto &i=instructions_.at(r.instruction);++i.committed;
           assert(i.committed<=i.expected);
-          if (i.committed==i.expected) ++store_reference_commits;
+          if (i.committed==i.expected) {
+            ++store_reference_commits;
+            if (native_stores_.erase(i.original)) ++native_stores_committed;
+          }
         }
       }
       if (!r.eligible_valid) make_eligible(r,now);
@@ -115,7 +126,10 @@ class Service {
     auto &i=instructions_.at(id);
     assert(i.issued==i.expected && i.consumed==i.expected);
     assert(!i.store || i.committed==i.expected);
-    if (i.store && i.expected==0) ++store_reference_commits;
+    if (i.store && i.expected==0) {
+      ++store_reference_commits;
+      if (native_stores_.erase(i.original)) ++native_stores_committed;
+    }
     consumed_instruction_digest^=instruction_digest(i);
     ++instructions_consumed;instructions_.erase(id);
   }
@@ -135,7 +149,7 @@ class Service {
   void seed(uint64_t domain,uint64_t address,const std::vector<uint8_t> &data) {
     assert(drained());memory_[domain].seed(address,data);
   }
-  bool drained() const {return requests_.empty() && instructions_.empty() && barriers_.empty();}
+  bool drained() const {return requests_.empty() && instructions_.empty() && barriers_.empty() && native_stores_.empty();}
   void print(FILE *fp) const {
     fprintf(fp,"EPL2MEMREFV1|scope=cumulative|mode=I_MEM_ALL_DATA|instruction_path=NATIVE|"
       "data_hierarchy=NOT_APPLICABLE|instructions=%llu|instructions_consumed=%llu|"
@@ -155,8 +169,9 @@ class Service {
       (unsigned long long)snapshot_bytes_ready,(unsigned long long)snapshot_bytes_consumed,
       (unsigned long long)known_bytes,(unsigned long long)symbolic_bytes,
       (unsigned long long)ready_snapshot_digest,(unsigned long long)consumed_snapshot_digest);
-    fprintf(fp,"EPL2MEMREFV1|IDENTITY|scope=cumulative|issued_instruction_digest=%llu|consumed_instruction_digest=%llu|pending_barriers=%zu\n",
-      (unsigned long long)issued_instruction_digest,(unsigned long long)consumed_instruction_digest,barriers_.size());
+    fprintf(fp,"EPL2MEMREFV1|IDENTITY|scope=cumulative|issued_instruction_digest=%llu|consumed_instruction_digest=%llu|pending_barriers=%zu|native_stores_issued=%llu|native_stores_committed=%llu|pending_native_stores=%zu\n",
+      (unsigned long long)issued_instruction_digest,(unsigned long long)consumed_instruction_digest,barriers_.size(),
+      (unsigned long long)native_stores_issued,(unsigned long long)native_stores_committed,native_stores_.size());
     for (const auto &s:space_instructions)
       fprintf(fp,"EPL2MEMREFV1|SPACE|space=%u|instructions=%llu\n",s.first,(unsigned long long)s.second);
   }
@@ -166,6 +181,7 @@ class Service {
   uint64_t load_instructions=0,barrier_instructions=0,snapshot_bytes_ready=0,snapshot_bytes_consumed=0;
   uint64_t known_bytes=0,symbolic_bytes=0,ready_snapshot_digest=0,consumed_snapshot_digest=0;
   uint64_t issued_instruction_digest=0,consumed_instruction_digest=0;
+  uint64_t native_stores_issued=0,native_stores_committed=0;
   std::map<unsigned,uint64_t> space_instructions;
  private:
   bool older_producer(const Request &r) const {
@@ -201,6 +217,7 @@ class Service {
   std::map<uint64_t,ep_l2_ideal::ReferenceMemory> memory_;
   std::map<std::pair<unsigned,unsigned>,uint64_t> shared_;
   std::set<std::pair<unsigned,unsigned>> barriers_;
+  std::map<uint64_t,std::pair<unsigned,unsigned>> native_stores_;
 };
 }
 #endif
