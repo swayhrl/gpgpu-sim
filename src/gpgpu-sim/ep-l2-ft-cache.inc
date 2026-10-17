@@ -111,7 +111,7 @@ mem_fetch *l2_cache::peek_next_access() const {
 }
 
 bool l2_cache::ft_response_ready(unsigned long long cycle) {
-  if(m_ro && m_ro->has_response() && (m_ro->prefer_ro || !baseline_cache::access_ready()))return m_ro->prepare(cycle);
+  if(m_ro && m_ro->has_response() && (m_ro->reply.transaction.valid() || m_ro->prefer_ro || !baseline_cache::access_ready()))return m_ro->prepare(cycle);
   if (!ft_enabled()) return true;
   mem_fetch *mf = baseline_cache::peek_next_access();
   std::map<mem_fetch *,ep_l2::PayloadHandle>::const_iterator it = m_ft_read_refs.find(mf);

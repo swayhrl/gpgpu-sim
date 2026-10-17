@@ -21,7 +21,7 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
   uint64_t accepted_global_reads, accepted_candidates, accepted_ro;
   ep_l2_ro_runtime(l2_cache &cache) : c(cache), port(c.m_ep_l2_payload,*this),
     generations(c.m_config.get_num_lines(),1),open(false),ever_open(false),selected(false),command_bound(false),prefer_ro(true),
-    response_cycle(0),cursor(0),accepted_global_reads(0),accepted_candidates(0),accepted_ro(0) {
+    reply(),response_cycle(0),cursor(0),accepted_global_reads(0),accepted_candidates(0),accepted_ro(0) {
     const auto &cfg=c.m_config;
     if(cfg.get_line_sz()!=128 || cfg.get_atom_sz()!=32 || cfg.m_alloc_policy!=ON_MISS ||
        cfg.m_mshr_entries!=128 || cfg.m_ep_l2_descriptor_per_line_cap!=32)
@@ -247,19 +247,27 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     c.m_stats.inc_stats_pw(m->get_access_type(),probe,m->get_streamID());
     return MISS;
   }
-  bool has_response() const {handle h;return tx->ready_response(h,cursor);}
+  bool has_response() const {handle h;return reply.transaction.valid() || tx->ready_response(h,cursor);}
   bool prepare(uint64_t cycle) {
     if(cycle!=physical_cycle())throw std::logic_error("RO response bank cycle must be physical GPU time");
     if(selected && response_cycle==cycle)return true;
     if(selected){tx->commit_response(reply.transaction,false,response_cycle);selected=false;}
-    handle h;if(!tx->ready_response(h,cursor))return false;
-    if(!tx->prepare_response(h,cycle,reply))return false;
+    // The existing reply identity also holds a denied candidate, but selected
+    // means a real Bank grant in response_cycle. No data is read or exposed
+    // while only waiting. Keep that identity until enqueue, including across
+    // ICNT backpressure and a same-bank lower-index transaction becoming ready.
+    if(!reply.transaction.valid()) {
+      handle h;if(!tx->ready_response(h,cursor))return false;
+      reply.transaction=h;
+    }
+    if(!tx->prepare_response(reply.transaction,cycle,reply))return false;
     selected=true;response_cycle=cycle;
-    reply.request->set_ft_wb_data(c.m_ep_l2_payload.inspect(h).versions);return true;
+    reply.request->set_ft_wb_data(c.m_ep_l2_payload.inspect(reply.transaction).versions);return true;
   }
   void commit(uint64_t cycle) {
     if(!selected)throw std::logic_error("RO response commit without grant");
-    tx->commit_response(reply.transaction,true,cycle);cursor=(reply.transaction.payload_id+1)%c.m_ep_l2_payload.physical_slots();selected=false;prefer_ro=false;
+    tx->commit_response(reply.transaction,true,cycle);cursor=(reply.transaction.payload_id+1)%c.m_ep_l2_payload.physical_slots();
+    reply.transaction=handle();selected=false;prefer_ro=false;
   }
 };
 void l2_cache::ro_init() {
