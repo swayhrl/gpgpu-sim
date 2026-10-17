@@ -196,3 +196,10 @@ target_include_directories(ep_l2_ft_a1 PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
 target_link_libraries(ep_l2_ft_a1 PRIVATE -Wl,--start-group
     entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
     ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
+
+# Lane2 minimal public atomic-sector regression, without TVD integration.
+add_executable(ep_l2_common_delta_r16 EXCLUDE_FROM_ALL tests/ep_l2/test_common_delta_r16.cc)
+target_include_directories(ep_l2_common_delta_r16 PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+target_link_libraries(ep_l2_common_delta_r16 PRIVATE -Wl,--start-group
+    entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
+    ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
