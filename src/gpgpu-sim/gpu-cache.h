@@ -584,6 +584,7 @@ class cache_config {
     m_ep_l2_ft_mode = 0;
     m_ep_l2_wbuf_entries = 0;
     m_ep_l2_static_s64 = false;
+    m_ep_l2_wb_local_cap = 0;
     m_ep_l2_payload_policy = 0;
     m_ep_l2_feature_unified_payload = false;
     m_ep_l2_feature_ro_pending_state = false;
@@ -944,6 +945,7 @@ class cache_config {
   unsigned m_ep_l2_ft_mode;
   unsigned m_ep_l2_wbuf_entries;
   bool m_ep_l2_static_s64;
+  unsigned m_ep_l2_wb_local_cap;
   // M1 is infrastructure: functional mechanism bits default OFF.
   // Policy 0 is the only currently supported static policy.
   unsigned m_ep_l2_payload_policy;
@@ -2739,6 +2741,19 @@ class l2_cache : public data_cache {
   bool ft_try_force_tag_access(new_addr_type addr, unsigned time,
                                mem_access_sector_mask_t mask);
   unsigned long long ft_physical_cycle() const;
+  unsigned ft_wb_quota_reserved() const { return m_ft_quota.reserved; }
+  unsigned ft_wb_quota_live() const { return m_ft_quota.live; }
+  unsigned long long ft_wb_quota_rollbacks() const { return m_ft_quota.rollbacks; }
+  unsigned long long ft_wb_quota_refusals() const { return m_ft_quota.refusals; }
+  unsigned long long ft_wb_quota_retries() const { return m_ft_quota.retries; }
+  void ft_assert_quota() const {
+    if (!m_config.m_ep_l2_wb_local_cap) {
+      assert(!m_ft_quota.reserved && !m_ft_quota.live); return;
+    }
+    assert(m_ft_quota.reserved + m_ft_quota.live <= 16);
+    assert(m_ft_quota.reserved == (m_ft_pending.quota_reserved ? 1u : 0u));
+    assert(m_ft_quota.live == m_ft_wb.size());
+  }
   unsigned ft_wb_staged() const { return m_ft_wb.size(); }
   unsigned ft_pending_lower_reads() const { return m_ep_l2_payload.pending_sector_count(); }
   bool ft_reservation_active() const { return m_ft_pending.request != NULL; }
@@ -2762,7 +2777,8 @@ class l2_cache : public data_cache {
   }
 
   bool ft_drained() const { return !ft_enabled() || (!m_ft_pending.request &&
-      m_ft_wb.empty() && m_ft_read_refs.empty() && !m_ep_l2_payload.wb_used()); }
+      m_ft_wb.empty() && m_ft_read_refs.empty() && !m_ep_l2_payload.wb_used() &&
+      !m_ft_quota.reserved && !m_ft_quota.live); }
   bool lower_ready(mem_fetch *mf, unsigned long long cycle) override;
   void lower_accepted(mem_fetch *mf, unsigned long long cycle) override;
   void descriptor_admitted(mem_fetch *mf, unsigned cache_index) override;
@@ -2826,9 +2842,9 @@ class l2_cache : public data_cache {
     ep_l2_payload_store::slot saved;
     std::array<unsigned long long,4> copy_versions;
     unsigned long long born;
-    bool dirty, wad, landing_reserved, bound;
+    bool dirty, wad, landing_reserved, bound, quota_reserved;
     ft_replacement() : request(NULL), tag_index(0), phase(0), landing_id((unsigned)-1), victim_address(0),
-        born(0), dirty(false), wad(false), landing_reserved(false), bound(false) { copy_versions.fill(0); }
+        born(0), dirty(false), wad(false), landing_reserved(false), bound(false), quota_reserved(false) { copy_versions.fill(0); }
   };
   struct ft_wb_record {
     ep_l2_payload_store::payload_handle handle;
@@ -2846,12 +2862,21 @@ class l2_cache : public data_cache {
         staged_max(0), staging_lifetime(0), borrow_bypass(0), borrow_resident(0),
         rollback(0), data_checks(0), observed_cycles(0), staging_occupancy_sum(0), descriptor_responses(0) {}
   };
+  struct ft_quota {
+    unsigned reserved = 0, live = 0, reserved_peak = 0, live_peak = 0, total_peak = 0;
+    unsigned long long refusals = 0, retries = 0, rollbacks = 0, lower_accept = 0;
+  } m_ft_quota;
   ft_replacement m_ft_pending;
   ft_counters m_ft_stats;
   std::map<mem_fetch *,ft_wb_record> m_ft_wb;
   std::map<mem_fetch *,ep_l2_payload_store::payload_handle> m_ft_read_refs;
   std::array<unsigned long long,4> m_ft_last_wb_versions;
   void validate_ep_l2_mode_config() const {
+    if (m_config.m_ep_l2_wb_local_cap &&
+        (m_config.m_ep_l2_wb_local_cap != 16 || m_config.m_ep_l2_ft_mode != 2 ||
+         m_config.m_ep_l2_wbuf_entries != 16)) {
+      fprintf(stderr, "EP-L2 local WB cap16 requires unified FT2/WBUF16\n"); abort();
+    }
     if (m_config.m_ep_l2_static_s64 &&
         (m_config.m_ep_l2_ft_mode != 1 || m_config.m_ep_l2_wbuf_entries != 16)) {
       fprintf(stderr, "EP-L2 S64 requires static FT1/WBUF16, fixed1168 layout\n"); abort();
