@@ -9,6 +9,7 @@
 #include "../../src/gpgpu-sim/gpu-sim.h"
 #include "../../src/gpgpu-sim/icnt_wrapper.h"
 #include "../../src/gpgpu-sim/l2cache.h"
+#include "../../src/gpgpu-sim/mem_latency_stat.h"
 #include "../../src/option_parser.h"
 
 static void require(bool ok,const char *reason) {
@@ -184,6 +185,102 @@ static void multi(const char *base,const char *overlay){
   require(!f.cache->mshr_entries_used(),"multiatomic descriptor drain");
   delete a;delete b;delete r;puts("PASS B1 real native multiatomic late ordinary sector");
 }
+static void resident_transient(const char *base,const char *overlay){
+  delta_fixture f(base,overlay,2,64,16);
+  mem_access_sector_mask_t sector;sector.set(0);
+  for(unsigned line=0;line<1024;++line)f.cache->force_tag_access(new_addr_type(line)*128,line+1,sector);
+  for(unsigned way=0;way<16;++way){auto w=f.make(new_addr_type(way)*64*128,false,true);
+    require(f.access(w),"dirty set preparation");delete w;}
+  auto w=f.make(1024*128,false,true);l2_access_plan plan;f.cache->preview_access(w->get_addr(),w,plan);
+  require(plan.probe_status==MISS&&plan.victim_dirty,"real dirty victim selected");
+  auto &pool=f.cache->ep_l2_payload_for_test();
+  auto victim=f.cache->ep_l2_tag_payload_handle_for_test(plan.cache_index);
+  require(pool.request(victim,false,f.now)==ep_l2_payload_store::GRANTED,"real competing bank grant");
+  std::list<cache_event> events;require(f.cache->access(w->get_addr(),w,f.now,events)==RESERVATION_FAIL,"bank denial retains landing");
+  const auto role=pool.resident_used(),free=pool.resident_free();unsigned tags=0;
+  for(unsigned i=0;i<1024;++i)if(!f.cache->block(i)->is_invalid_line())++tags;
+  printf("C1_REACHABLE|resident_role=%u|tag_visible=%u|pending_landing=%u|physical_slots=%u|physical_free=%u|legacy_nominal_free=%u\n",
+    role,tags,role-tags,pool.physical_slots(),pool.free_slots(),free);
+  require(role==1025&&tags==1024&&f.cache->ft_reservation_active(),"actual old resident plus new landing reachability");
+  require(pool.physical_slots()==1168&&pool.free_slots()==143,"physical pool conservation");
+  require(free==0,"unsigned nominal resident headroom underflow");
+  f.tick();require(f.access(w),"pending write resumes after bank credit");delete w;
+  require(pool.resident_used()==1024,"resident role returns after WB transfer");
+  std::map<new_addr_type,std::array<unsigned long long,4>> unused;
+  f.port.blocked=false;
+  for(unsigned n=0;n<1000&&!f.cache->ft_drained();++n){f.tick();
+    while(!f.port.packets.empty()){auto mf=f.port.packets.front();f.port.packets.pop_front();
+      require(mf->get_access_type()==L2_WRBK_ACC&&mf->has_ft_wb_data(),"actual transient WB");
+      f.cache->ep_l2_wad_complete(mf->get_addr(),f.now);delete mf;}}
+  require(f.cache->ft_drained()&&pool.ownership_consistent(),"transient role and WB drain");
+  puts("PASS C1 actual unified pending landing exceeds nominal role capacity without unsigned wrap");
+}
+
+struct partition_fixture {
+  gpgpu_context ctx;gpgpu_sim_config cfg;exec_gpgpu_sim *gpu;memory_stats_t *stats;
+  memory_partition_unit *part;memory_sub_partition *sp;partition_mf_allocator *alloc;
+  unsigned now=1;
+  partition_fixture(const char *base,const char *overlay,bool disabled,bool texture_only):cfg(&ctx){
+    auto p=option_parser_create();ctx.ptx_reg_options(p);ctx.func_sim->ptx_opcocde_latency_options(p);
+    icnt_reg_options(p);cfg.reg_options(p);option_parser_cfgfile(p,base);option_parser_cfgfile(p,overlay);
+    const char *args[]={"common-partition","-gpgpu_ep_l2_ft_mode",disabled?"0":"2",
+      "-gpgpu_ep_l2_wbuf_entries",disabled?"0":"16","-gpgpu_ep_l2_payload_mode",disabled?"0":"2",
+      "-gpgpu_dram_partition_queues","64:2:64:16","-gpgpu_cache:dl2_texture_only",texture_only?"1":"0",
+      "-gpgpu_cache:dl2",disabled?"none":"S:64:128:16,L:B:m:L:L,A:128:1,256:0,32",
+      "-gpgpu_ep_l2_m0a_stats","1"};
+    option_parser_cmdline(p,15,args);cfg.init();option_parser_destroy(p);
+    gpu=new exec_gpgpu_sim(cfg,&ctx);gpu->gpu_sim_cycle=now;auto memory=gpu->getMemoryConfig();
+    stats=new memory_stats_t(cfg.num_shader(),gpu->getShaderCoreConfig(),memory,gpu);
+    part=new memory_partition_unit(0,memory,stats,gpu);sp=part->get_sub_partition(0);
+    alloc=new partition_mf_allocator(memory);
+  }
+  ~partition_fixture(){delete alloc;delete part;delete stats;delete gpu;}
+  mem_fetch *make(new_addr_type a){
+    active_mask_t active;active.set(0);mem_access_byte_mask_t bytes;
+    mem_access_sector_mask_t sectors;sectors.set((a>>5)&3);
+    for(unsigned b=(a&127);b<(a&127)+32;++b)bytes.set(b);
+    return alloc->alloc(a,GLOBAL_ACC_R,active,bytes,sectors,32,false,now,0,0,0,nullptr,0);
+  }
+  void step(){part->cache_cycle(now);gpu->gpu_sim_cycle=++now;}
+  void return_one(){
+    require(!sp->L2_dram_queue_empty(),"one actual lower queue packet");
+    auto mf=sp->L2_dram_queue_top();sp->L2_dram_queue_pop();
+    mf->set_ft_wb_data({{0,0,0,0}});mf->set_reply();sp->dram_L2_queue_push(mf);
+  }
+};
+static void bypass_full(const char *base,const char *overlay,bool disabled){
+  partition_fixture f(base,overlay,disabled,!disabled);std::set<unsigned> responses;
+  auto a=f.make(0),b=f.make(128),c=f.make(256);
+  for(auto mf:{a,b,c}){f.sp->push(mf,f.now);f.step();f.step();}
+  // The third request reaches the actual bypass branch with a full lower FIFO.
+  for(unsigned n=0;n<4;++n)f.step();
+  require(f.sp->ep_l2_l2dram_occupancy()==2&&f.sp->ep_l2_icntl2_occupancy()==1,"full bypass retains frontend head");
+  require(c->get_status()==IN_PARTITION_ICNT_TO_L2_QUEUE,"denied bypass does not change request status");
+  for(unsigned n=0;n<1000&&responses.size()<3;++n){
+    if(!f.sp->L2_dram_queue_empty())f.return_one();f.step();
+    while(auto mf=f.sp->pop()){require(responses.insert(mf->get_request_uid()).second,"bypass response exactly once");delete mf;}
+  }
+  require(responses.size()==3&&f.sp->l2_char_no_resource_leak(),"bypass resumes and drains after credit");
+  f.sp->print_ep_l2_b0_snapshot(stdout,(unsigned long long)-1);
+  puts(disabled?"PASS C2 actual disabled-L2 full bypass FIFO backpressure":"PASS C2 actual texture-only global bypass FIFO backpressure and audit");
+}
+static void hit_with_lower_full(const char *base,const char *overlay){
+  partition_fixture f(base,overlay,false,false);mem_access_sector_mask_t sector;sector.set(0);
+  f.sp->force_l2_tag_update(0,f.now,sector);
+  for(unsigned line:{1u,2u}){f.sp->push(f.make(line*128),f.now);
+    for(unsigned n=0;n<8;++n)f.step();}
+  require(f.sp->ep_l2_l2dram_occupancy()==2,"normal-path lower FIFO full");
+  auto hit=f.make(0);const auto uid=hit->get_request_uid();f.sp->push(hit,f.now);bool seen=false;
+  for(unsigned n=0;n<16&&!seen;++n){f.step();if(auto mf=f.sp->pop()){
+    require(mf->get_request_uid()==uid,"normal hit progresses ahead of blocked misses");delete mf;seen=true;}}
+  require(seen&&f.sp->ep_l2_l2dram_occupancy()==2,"normal cache hit has no global lower-full gate");
+  unsigned replies=0;
+  for(unsigned n=0;n<1000&&replies<2;++n){if(!f.sp->L2_dram_queue_empty())f.return_one();f.step();
+    while(auto mf=f.sp->pop()){++replies;delete mf;}}
+  require(replies==2&&f.sp->l2_char_no_resource_leak(),"normal misses eventually fill/drain");
+  f.sp->print_ep_l2_b0_snapshot(stdout,(unsigned long long)-1);
+  puts("PASS C2 normal cache hit progresses while lower FIFO remains full");
+}
 int main(int argc,char **argv){
   setvbuf(stdout,nullptr,_IOLBF,0);assert(argc==4);std::string test=argv[3];
   if(test=="b1-read-first")mixed(argv[1],argv[2],true,false,2,true);
@@ -192,5 +289,9 @@ int main(int argc,char **argv){
   else if(test=="b1-b16")mixed(argv[1],argv[2],true,false,1,true);
   else if(test=="b1-dirty")mixed(argv[1],argv[2],true,false,2,true,true);
   else if(test=="b1-version-only")version_only(argv[1],argv[2]);
+  else if(test=="c1-transient")resident_transient(argv[1],argv[2]);
+  else if(test=="c2-disabled")bypass_full(argv[1],argv[2],true);
+  else if(test=="c2-texture")bypass_full(argv[1],argv[2],false);
+  else if(test=="c2-hit")hit_with_lower_full(argv[1],argv[2]);
   else return 78;
 }
