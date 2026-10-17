@@ -59,6 +59,8 @@ int main(int argc,char **argv) {
   assert(f.sp->l2_char_no_resource_leak() && f.cache->ft_drained() && !f.part->busy());
   assert(!f.cache->ep_l2_payload_pending_operations() && !f.cache->ep_l2_wad_occupancy());
   assert(f.cache->ep_l2_payload_bank_wb_readout()>=134 && f.bank_max==1);
+  assert(f.same_bank_copy && f.cross_bank_copy);
+  printf("S64 real copy source/staging banks: same=%u cross=%u\n",f.same_bank_copy,f.cross_bank_copy);
   f.cache->ft_print(stdout,0);
   puts("S64 production versions/exact-once/release-resume/copy stages/WAD128/drain PASS");
 }
