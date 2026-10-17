@@ -160,6 +160,12 @@ struct io_access_result {
   physical_identity physical;
 };
 
+struct lookup_invalidation_result {
+  uint64_t changed = 0;
+  uint64_t retained = 0;
+  uint64_t reclaimed = 0;
+};
+
 // Deterministic whole-line IO-DTC model used by M2 directed tests and by the
 // later LD/ST integration.  It deliberately owns no conventional MSHR state.
 class io_frontend {
@@ -564,6 +570,42 @@ class oo_frontend {
     return find_tag(line) == nullptr;
   }
 
+  // Lane X K1: atomic, zero additional simulated-cycle directory sweep at
+  // the existing LD/ST source REQUEST. Does not advance service or touch any
+  // consumer/return identity. Only a fully finished, Ref-free line can free.
+  lookup_invalidation_result invalidate_lookup(uint64_t cycle) {
+    lookup_invalidation_result result;
+    assert_shadow_refs();
+    for (tag_entry &tag : m_tags) {
+      if (!tag.valid) continue;
+      physical_line &physical = m_phys[tag.physical.id];
+      assert(fill_identity_matches(tag.physical) && physical.tag_valid);
+      tag.valid = false;
+      physical.tag_valid = false;
+      ++result.changed;
+      if (m_cfg.finite_service) {
+        const bool inserted =
+            m_service_map_loss.emplace(tag.physical.id, cycle).second;
+        assert(inserted && "one map-loss timestamp per allocated generation");
+      }
+      if (physical.ref_count) {
+        ++result.retained;
+      } else {
+        // In the read lifecycle every pending lower/service/collection owner
+        // keeps a live consumer Ref. Ref=0 may only be a finished retained hit.
+        assert(physical.ready && physical.waiters.empty());
+        for (const auto &pending : m_service_returns)
+          assert(pending.physical.id != tag.physical.id ||
+                 pending.physical.generation != tag.physical.generation);
+        release(tag.physical, cycle);
+        ++result.reclaimed;
+      }
+    }
+    assert(result.changed == result.retained + result.reclaimed);
+    assert_shadow_refs();
+    return result;
+  }
+
   io_access_result access(uint64_t cycle, uint64_t uid, uint64_t address) {
     begin_cycle(cycle);
     entry *owner = find_entry(uid);
@@ -938,14 +980,17 @@ class oo_frontend {
     }
     return -1;
   }
-  void release(physical_identity identity) {
+  void release(physical_identity identity, uint64_t release_cycle = UINT64_MAX) {
     physical_line &physical = m_phys[identity.id];
     assert(physical.allocated && physical.generation == identity.generation &&
            !physical.tag_valid && !physical.ref_count);
     if (m_cfg.finite_service) {
       const auto lost = m_service_map_loss.find(identity.id);
       assert(lost != m_service_map_loss.end());
-      m_service_map_loss_sum += m_service_cycle - lost->second;
+      const uint64_t now = release_cycle == UINT64_MAX
+                               ? m_service_cycle : release_cycle;
+      assert(now >= lost->second);
+      m_service_map_loss_sum += now - lost->second;
       ++m_service_map_loss_count;
       m_service_map_loss.erase(lost);
     }

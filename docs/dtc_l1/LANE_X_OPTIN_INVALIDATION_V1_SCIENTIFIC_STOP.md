@@ -1,8 +1,21 @@
-# Lane X opt-in invalidation V1: scientific STOP
+# Lane X opt-in invalidation V1: historical scientific STOP
 
 Date: 2026-10-17 (Asia/Shanghai).
 
-Status: `SCIENTIFIC_STOP_SOURCE_EVENT_CONTRACT_MISMATCH`.
+Historical status: `SCIENTIFIC_STOP_SOURCE_EVENT_CONTRACT_MISMATCH`.
+
+**Superseded on 2026-10-18 by the user's explicit eager source-request ruling.**
+The implementation now binds OO K1 to the existing LD/ST request, preserving
+all three callers and ordinary deferred commit. Lane V authority is Framework
+`26abd496417d9392245052e54fbd9ba27c6ffd96`, K1_SEMANTIC_CONTRACT.md and
+SOURCE_EVENT_MAP.md. The text below records the earlier documentation-only
+commit `f8b34dd7a738caddf4f23dd417e34c0b63c206d9`; its no-implementation statements
+apply only to that historical commit. Current implementation/build/CPU evidence
+is in the Framework Lane X review pack. IO remains IO_K1_UNIMPLEMENTED_STOP;
+modern remains outside K1. Lane Y independent validation is pending, and no K1
+correctness or architectural value correctness PASS is declared.
+
+## Original STOP record (historical only)
 
 Frozen executable source: `6fba0136f8465b59fe5858a950fa39efb265f654`.
 This commit changes documentation only. No invalidation option or K1 behavior

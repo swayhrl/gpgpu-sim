@@ -58,6 +58,7 @@
 #include "addrdec.h"
 #include "delayqueue.h"
 #include "dtc-l1-common.h"
+#include "dtc-l1-invalidation.h"
 #include "dram.h"
 #include "gpu-cache.h"
 #include "mem_fetch.h"
@@ -1781,7 +1782,8 @@ class ldst_unit : public pipelined_simd_unit {
 
   void fill(mem_fetch *mf);
   void flush();
-  void invalidate();
+  void invalidate(dtc_l1::invalidation_source source =
+                      dtc_l1::invalidation_source::UNSPECIFIED);
   void writeback();
 
   // accessors
@@ -2120,6 +2122,7 @@ class ldst_unit : public pipelined_simd_unit {
   bool dtc_l1_service_collect(dtc_l1::service_entry &service,
                             const std::vector<dtc_l1::line_reference> &references);
   void dtc_l1_service_retired(const dtc_l1::service_entry &service);
+  void dtc_l1_sample_service_occupancy(uint64_t cycle);
   void print_dtc_l1_stats(FILE *fp) const;
   gpgpu_sim *m_gpu;
 
@@ -2133,6 +2136,7 @@ class ldst_unit : public pipelined_simd_unit {
   tex_cache *m_L1T;        // texture cache
   read_only_cache *m_L1C;  // constant cache
   l1_cache *m_L1D;         // data cache
+  dtc_l1::source_invalidation_observer m_dtc_invalidation;
   std::unordered_map<
       unsigned /*warp_id*/,
       std::unordered_map<unsigned /*regnum*/, unsigned /*count*/>>
@@ -2148,6 +2152,7 @@ class ldst_unit : public pipelined_simd_unit {
   dtc_l1::service_quota m_dtc_service_retire;
   dtc_l1::service_quota m_dtc_service_collect{4};
   uint64_t m_dtc_service_sample_cycle = UINT64_MAX;
+  uint64_t m_dtc_service_occupancy_sample_cycle = UINT64_MAX;
   uint64_t m_dtc_service_samples = 0;
   uint64_t m_dtc_service_pib_integral = 0;
   uint64_t m_dtc_service_physical_integral = 0;
@@ -2496,6 +2501,7 @@ class shader_core_config : public core_config {
   // reuse the conventional L1 bank/MSHR controls so LEGACY remains untouched.
   unsigned dtc_l1_mode;
   bool dtc_l1_finite_service;
+  bool dtc_l1_invalidate_on_source_event;
   unsigned dtc_l1_pib_entries;
   unsigned dtc_l1_mshr_entries;
   unsigned dtc_l1_debug_event_limit;
@@ -2977,7 +2983,8 @@ class shader_core_ctx : public core_t {
   void issue_block2core(class kernel_info_t &kernel);
 
   void cache_flush();
-  void cache_invalidate();
+  void cache_invalidate(dtc_l1::invalidation_source source =
+                            dtc_l1::invalidation_source::UNSPECIFIED);
   void accept_fetch_response(mem_fetch *mf);
   void accept_ldst_unit_response(class mem_fetch *mf);
   void broadcast_barrier_reduction(unsigned cta_id, unsigned bar_id,
@@ -3556,7 +3563,8 @@ class simt_core_cluster {
   void reinit();
   unsigned issue_block2core();
   void cache_flush();
-  void cache_invalidate();
+  void cache_invalidate(dtc_l1::invalidation_source source =
+                            dtc_l1::invalidation_source::UNSPECIFIED);
   bool icnt_injection_buffer_full(unsigned size, bool write);
   void icnt_inject_request_packet(class mem_fetch *mf);
   void update_icnt_stats(class mem_fetch *mf);

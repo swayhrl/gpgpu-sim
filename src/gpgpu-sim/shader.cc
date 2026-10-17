@@ -2106,8 +2106,8 @@ void ldst_unit::get_dtc_l1_stats(
   if (dtc_l1_finite_service_active()) {
     dtc_l1::paper_frontend_stats service;
     const uint64_t now = m_core->get_gpu()->global_cycle();
-    const uint64_t tail = now - (m_dtc_service_sample_cycle == UINT64_MAX
-                                    ? 0 : m_dtc_service_sample_cycle);
+    const uint64_t tail = now - (m_dtc_service_occupancy_sample_cycle == UINT64_MAX
+                                    ? 0 : m_dtc_service_occupancy_sample_cycle);
     const uint64_t pib = dtc_l1_paper_io_active()
                              ? m_dtc_l1_io_pib.size() : m_dtc_l1_oo_pib.size();
     const uint64_t physical = dtc_l1_paper_io_active()
@@ -3663,6 +3663,8 @@ void ldst_unit::dtc_l1_io_identity_event(const char *event,
 }
 
 void ldst_unit::print_dtc_l1_stats(FILE *fp) const {
+  if (m_config->dtc_l1_invalidate_on_source_event)
+    m_dtc_invalidation.print(fp);
   if (dtc_l1_finite_service_active()) {
     fprintf(fp, "DTC_SERVICE_V1 sm=%u samples=%llu pib_integral=%llu "
                 "physical_integral=%llu collected_sectors=%llu "
@@ -4009,8 +4011,17 @@ void ldst_unit::flush() {
   m_L1D->flush();
 }
 
-void ldst_unit::invalidate() {
-  // Flush L1D cache
+void ldst_unit::invalidate(dtc_l1::invalidation_source source) {
+  if (m_config->dtc_l1_invalidate_on_source_event) {
+    assert(m_dtc_l1_oo_frontend && m_L1D);
+    auto &ordinary =
+        *static_cast<dtc_l1::invalidation_observed_cache<l1_cache> *>(m_L1D);
+    const uint64_t cycle = m_core->get_gpu()->global_cycle();
+    if (dtc_l1_finite_service_active()) dtc_l1_sample_service_occupancy(cycle);
+    m_dtc_invalidation.request(cycle, source, *m_dtc_l1_oo_frontend, ordinary);
+    return;
+  }
+  // Original K0 ordinary request, including its existing deferred commit.
   m_L1D->invalidate();
 }
 
@@ -4300,12 +4311,26 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
   assert(config->smem_latency > 1);
   init(icnt, mf_allocator, core, operand_collector, scoreboard, config,
        mem_config, stats, sid, tpc);
+  dtc_l1::check_source_invalidation_mode(
+      m_config->dtc_l1_invalidate_on_source_event, m_config->dtc_l1_mode);
+  if (m_config->dtc_l1_invalidate_on_source_event &&
+      m_config->m_L1D_config.disabled()) {
+    fprintf(stderr, "OO_K1_REQUIRES_ORDINARY_L1D_STOP\n");
+    abort();
+  }
   if (!m_config->m_L1D_config.disabled()) {
     char L1D_name[STRSIZE];
     snprintf(L1D_name, STRSIZE, "L1D_%03d", m_sid);
-    m_L1D = new l1_cache(L1D_name, m_config->m_L1D_config, m_sid,
+    if (m_config->dtc_l1_invalidate_on_source_event) {
+      m_L1D = new dtc_l1::invalidation_observed_cache<l1_cache>(
+          L1D_name, m_config->m_L1D_config, m_sid,
+          get_shader_normal_cache_id(), m_icnt, m_mf_allocator,
+          IN_L1D_MISS_QUEUE, core->get_gpu(), L1_GPU_CACHE);
+    } else {
+      m_L1D = new l1_cache(L1D_name, m_config->m_L1D_config, m_sid,
                          get_shader_normal_cache_id(), m_icnt, m_mf_allocator,
                          IN_L1D_MISS_QUEUE, core->get_gpu(), L1_GPU_CACHE);
+    }
 
     l1_latency_queue.resize(m_config->m_L1D_config.l1_banks);
     assert(m_config->m_L1D_config.l1_latency > 0);
@@ -4358,6 +4383,8 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
     m_dtc_l1_sector_frontend =
         std::make_unique<dtc_l1::sector_oo_frontend>(dtc_config);
   }
+  if (m_config->dtc_l1_invalidate_on_source_event)
+    m_dtc_invalidation.configure(m_sid, m_config->dtc_l1_debug_event_limit);
   m_dtc_l1_debug_events_left = m_config->dtc_l1_debug_event_limit;
   m_dtc_l1_io_identity_events_left = m_config->dtc_l1_debug_event_limit;
   m_name = "MEM ";
@@ -4372,6 +4399,10 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
     : pipelined_simd_unit(NULL, config, 3, core, 0),
       m_L1D(new_l1d_cache),
       m_next_wb(config) {
+  if (config->dtc_l1_invalidate_on_source_event) {
+    fprintf(stderr, "OO_K1_EXTERNAL_CACHE_CONSTRUCTOR_UNSUPPORTED_STOP\n");
+    abort();
+  }
   init(icnt, mf_allocator, core, operand_collector, scoreboard, config,
        mem_config, stats, sid, tpc);
 }
@@ -4942,23 +4973,35 @@ inst->space.get_type() != shared_space) { unsigned warp_id = inst->warp_id();
    pipelined_simd_unit::issue(reg_set);
 }
 */
+// Observation only: source invalidation can free Ref0 retained lines between
+// service edges. Integrate up to that event BEFORE changing occupancy without
+// advancing metadata/return service or replenishing any absolute-cycle quota.
+void ldst_unit::dtc_l1_sample_service_occupancy(uint64_t cycle) {
+  const uint64_t delta = cycle -
+      (m_dtc_service_occupancy_sample_cycle == UINT64_MAX
+           ? 0 : m_dtc_service_occupancy_sample_cycle);
+  m_dtc_service_occupancy_sample_cycle = cycle;
+  m_dtc_service_samples += delta;
+  if (dtc_l1_paper_io_active()) {
+    m_dtc_service_pib_integral += delta * m_dtc_l1_io_pib.size();
+    m_dtc_service_physical_integral +=
+        delta * m_dtc_l1_io_frontend->allocated_lines();
+  } else {
+    m_dtc_service_pib_integral += delta * m_dtc_l1_oo_pib.size();
+    m_dtc_service_physical_integral +=
+        delta * m_dtc_l1_oo_frontend->allocated_lines();
+  }
+}
+
 void ldst_unit::cycle() {
   if (dtc_l1_finite_service_active()) {
     const uint64_t cycle = m_core->get_gpu()->global_cycle();
     if (m_dtc_service_sample_cycle != cycle) {
-      // Integrate [last edge,current edge), including clock-gated intervals.
-      // State cannot mutate without an LD/ST event; issue occurs after cycle().
-      const uint64_t delta = cycle - (m_dtc_service_sample_cycle == UINT64_MAX
-                                          ? 0 : m_dtc_service_sample_cycle);
       m_dtc_service_sample_cycle = cycle;
-      m_dtc_service_samples += delta;
+      dtc_l1_sample_service_occupancy(cycle);
       if (dtc_l1_paper_io_active()) {
-        m_dtc_service_pib_integral += delta * m_dtc_l1_io_pib.size();
-        m_dtc_service_physical_integral += delta * m_dtc_l1_io_frontend->allocated_lines();
         m_dtc_l1_io_frontend->advance_service(cycle);
       } else {
-        m_dtc_service_pib_integral += delta * m_dtc_l1_oo_pib.size();
-        m_dtc_service_physical_integral += delta * m_dtc_l1_oo_frontend->allocated_lines();
         m_dtc_l1_oo_frontend->advance_service(cycle);
       }
       auto observe_ready = [cycle](auto &entry) {
@@ -5124,7 +5167,13 @@ void ldst_unit::cycle() {
   m_L1T->cycle();
   m_L1C->cycle();
   if (m_L1D) {
-    m_L1D->cycle();
+    if (m_config->dtc_l1_invalidate_on_source_event) {
+      auto &ordinary =
+          *static_cast<dtc_l1::invalidation_observed_cache<l1_cache> *>(m_L1D);
+      m_dtc_invalidation.cycle(m_core->get_gpu()->global_cycle(), ordinary);
+    } else {
+      m_L1D->cycle();
+    }
     if (m_config->m_L1D_config.l1_latency > 0) L1_latency_queue_cycle();
   }
   dtc_l1_io_issue_lower_requests();
@@ -6550,7 +6599,9 @@ void shader_core_ctx::cycle() {
 
 void shader_core_ctx::cache_flush() { m_ldst_unit->flush(); }
 
-void shader_core_ctx::cache_invalidate() { m_ldst_unit->invalidate(); }
+void shader_core_ctx::cache_invalidate(dtc_l1::invalidation_source source) {
+  m_ldst_unit->invalidate(source);
+}
 
 // modifiers
 std::list<opndcoll_rfu_t::op_t> opndcoll_rfu_t::arbiter_t::allocate_reads() {
@@ -6882,7 +6933,7 @@ bool shader_core_ctx::warp_waiting_at_mem_barrier(unsigned warp_id) {
       // Based on Nvidia Doc, at MEM barrier, we have to
       //(1) wait for all pending writes till they are acked
       //(2) invalidate L1 cache to ensure coherence and avoid reading stall data
-      cache_invalidate();
+      cache_invalidate(dtc_l1::invalidation_source::MEMBAR);
       // TO DO: you need to stall the SM for 5k cycles.
     }
     return false;
@@ -7550,9 +7601,9 @@ void simt_core_cluster::cache_flush() {
     m_core[i]->cache_flush();
 }
 
-void simt_core_cluster::cache_invalidate() {
+void simt_core_cluster::cache_invalidate(dtc_l1::invalidation_source source) {
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
-    m_core[i]->cache_invalidate();
+    m_core[i]->cache_invalidate(source);
 }
 
 bool simt_core_cluster::icnt_injection_buffer_full(unsigned size, bool write) {

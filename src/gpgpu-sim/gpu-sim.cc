@@ -405,6 +405,8 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_dtc_l1_pib_entries", OPT_UINT32,
                          &dtc_l1_pib_entries,
                          "DTC-L1 pending-instruction entries", "8");
+  dtc_l1::register_source_invalidation_option(
+      opp, &dtc_l1_invalidate_on_source_event);
   option_parser_register(opp, "-gpgpu_dtc_l1_finite_service", OPT_BOOL,
                          &dtc_l1_finite_service,
                          "Opt-in preregistered whole-line DTC finite service V1", "0");
@@ -1750,7 +1752,8 @@ void gpgpu_sim::change_cache_config(FuncCache cache_config) {
   if (cache_config != m_shader_config->m_L1D_config.get_cache_status()) {
     printf("FLUSH L1 Cache at configuration change between kernels\n");
     for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++) {
-      m_cluster[i]->cache_invalidate();
+      m_cluster[i]->cache_invalidate(
+          dtc_l1::invalidation_source::CACHE_CONFIG_CHANGE);
     }
   }
 
@@ -2521,7 +2524,8 @@ void gpgpu_sim::cycle() {
     if (m_config.gpgpu_flush_l1_cache) {
       for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++) {
         if (m_cluster[i]->get_not_completed() == 0)
-          m_cluster[i]->cache_invalidate();
+          m_cluster[i]->cache_invalidate(
+              dtc_l1::invalidation_source::IDLE_CLUSTER);
         else
           all_threads_complete = 0;
       }

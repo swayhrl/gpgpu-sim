@@ -96,6 +96,26 @@ if(GPGPUSIM_BUILD_DTC_L1_TESTS)
     target_include_directories(dtc_l1_finite_service_test PRIVATE
                                ${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim)
     add_test(NAME dtc_l1_finite_service_test COMMAND dtc_l1_finite_service_test)
+    add_executable(dtc_l1_source_invalidation_test
+                   tests/dtc_l1_source_invalidation_test.cc)
+    target_include_directories(dtc_l1_source_invalidation_test PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim)
+    add_test(NAME dtc_l1_source_invalidation_test
+             COMMAND dtc_l1_source_invalidation_test)
+    add_executable(dtc_l1_source_invalidation_integration_test
+                   tests/dtc_l1_source_invalidation_integration_test.cc)
+    target_link_libraries(dtc_l1_source_invalidation_integration_test PRIVATE cudart)
+    target_include_directories(dtc_l1_source_invalidation_integration_test PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim
+                               ${CUDAToolkit_INCLUDE_DIRS})
+    add_test(NAME dtc_l1_source_invalidation_integration_test
+             COMMAND dtc_l1_source_invalidation_integration_test)
+    set_tests_properties(dtc_l1_source_invalidation_integration_test PROPERTIES
+        ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cudart>")
+    add_executable(dtc_l1_k0_equivalence_test tests/dtc_l1_k0_equivalence_test.cc)
+    target_include_directories(dtc_l1_k0_equivalence_test PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim)
+    add_test(NAME dtc_l1_k0_equivalence_test COMMAND dtc_l1_k0_equivalence_test)
 endif()
 
 # Set linker option for libcudart.so
