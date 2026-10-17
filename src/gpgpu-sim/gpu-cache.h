@@ -1032,6 +1032,7 @@ class tag_array {
     m_ft_request = request; m_ft_index = index;
   }
   unsigned long long ft_identity_redirects() const { return m_ft_identity_redirects; }
+  unsigned ft_last_raw_candidate() const { return m_ft_last_raw_candidate; }
 
   void fill(new_addr_type addr, unsigned time, mem_fetch *mf, bool is_write);
   void fill(unsigned idx, unsigned time, mem_fetch *mf);
@@ -1095,6 +1096,7 @@ class tag_array {
   mem_fetch *const *m_ft_request;
   const unsigned *m_ft_index;
   mutable unsigned long long m_ft_identity_redirects;
+  mutable unsigned m_ft_last_raw_candidate;
 
 
   unsigned m_access;
@@ -2724,6 +2726,10 @@ class l2_cache : public data_cache {
   // Read-only production transaction observations for cross-cycle regressions.
   unsigned ft_pending_index_for_test() const { assert(m_ft_pending.request); return m_ft_pending.tag_index; }
   unsigned long long ft_identity_redirects_for_test() const { return m_tag_array->ft_identity_redirects(); }
+  unsigned ft_last_redirect_from_for_test() const { return m_tag_array->ft_last_raw_candidate(); }
+  new_addr_type ft_native_tag_owner_for_test(unsigned index) const {
+    return m_tag_array->get_block(index)->m_block_addr;
+  }
   unsigned ft_pending_phase_for_test() const { assert(m_ft_pending.request); return m_ft_pending.phase; }
   cache_request_status ft_raw_probe_for_test(mem_fetch *mf, unsigned &index) const {
     return m_tag_array->probe(m_config.block_addr(mf->get_addr()), index,

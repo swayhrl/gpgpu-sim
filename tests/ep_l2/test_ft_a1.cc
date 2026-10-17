@@ -148,7 +148,7 @@ int main(int argc,char **argv) {
   // before the next frontend retry. Production fill precedes frontend probe.
   f.return_read(0);
   f.step(); // Old source must fail its pending.tag_index==reprobe.index assert.
-  assert(f.cache->ft_identity_redirects_for_test()>0);
+  assert(f.cache->ft_identity_redirects_for_test()>0 && f.cache->ft_last_redirect_from_for_test()==15);
   printf("A1 competing fill exercised: raw candidate changed to way15, transaction committed way2; redirects=%llu\n",
       f.cache->ft_identity_redirects_for_test());
   // Remaining fills and real lower FIFO accept; deliberately hold set_done
@@ -157,6 +157,7 @@ int main(int argc,char **argv) {
   assert(f.replies.count(request_uid));
   auto landed=f.cache->ep_l2_tag_payload_handle_for_test(2);
   const auto &new_line=f.cache->ep_l2_payload_for_test().inspect(landed);
+  assert(f.cache->ft_native_tag_owner_for_test(2)==incoming && f.cache->ft_native_tag_owner_for_test(15)==0);
   assert(new_line.owner==incoming && new_line.versions[0]==(unsigned long long)request_uid+1);
   auto competed=f.cache->ep_l2_tag_payload_handle_for_test(15);
   assert(f.cache->ep_l2_payload_for_test().inspect(competed).owner==0);

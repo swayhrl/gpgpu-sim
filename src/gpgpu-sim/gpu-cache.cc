@@ -219,7 +219,7 @@ tag_array::tag_array(cache_config &config, int core_id, int type_id)
 }
 
 void tag_array::init(int core_id, int type_id) {
-  m_ft_request = NULL; m_ft_index = NULL; m_ft_identity_redirects = 0;
+  m_ft_request = NULL; m_ft_index = NULL; m_ft_identity_redirects = 0; m_ft_last_raw_candidate = (unsigned)-1;
   m_access = 0;
   m_miss = 0;
   m_pending_hit = 0;
@@ -443,7 +443,7 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
     assert(held < m_config.get_num_lines() &&
            held / m_config.m_assoc == set_index &&
            !m_lines[held]->is_reserved_line());
-    if (idx != held) ++m_ft_identity_redirects;
+    if (idx != held) { ++m_ft_identity_redirects; m_ft_last_raw_candidate = idx; }
     idx = held;
   }
   return MISS;
