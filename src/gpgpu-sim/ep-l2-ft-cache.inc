@@ -4,6 +4,28 @@ unsigned long long l2_cache::ft_physical_cycle() const {
   return m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
 }
 
+l2_cache::resident_observation l2_cache::resident_observer_snapshot() const {
+  resident_observation s{};
+  s.role_occupied = m_ep_l2_payload.resident_used();
+  s.physical_capacity = m_ep_l2_payload.physical_slots();
+  s.physical_free = m_ep_l2_payload.free_slots();
+  s.physical_occupied = s.physical_capacity - s.physical_free;
+  for (unsigned i = 0; i < m_config.get_num_lines(); ++i) {
+    const auto h = tag_payload_handle(i);
+    if (!m_tag_array->get_block(i)->is_invalid_line() &&
+        m_ep_l2_payload.handle_live(h) &&
+        m_ep_l2_payload.inspect(h).allocation_role == ep_l2_payload_store::RESIDENT)
+      ++s.tag_visible;
+  }
+  if (m_ft_pending.landing_reserved &&
+      m_ep_l2_payload.handle_live(m_ft_pending.landing) &&
+      tag_payload_handle(m_ft_pending.tag_index) != m_ft_pending.landing)
+    s.pending_landing = 1;
+  assert(s.role_occupied >= s.tag_visible + s.pending_landing);
+  s.other_unbound = s.role_occupied - s.tag_visible - s.pending_landing;
+  return s;
+}
+
 void l2_cache::force_tag_access(new_addr_type addr, unsigned time,
                                 mem_access_sector_mask_t mask) {
   if (!ft_enabled()) { baseline_cache::force_tag_access(addr, time, mask); return; }

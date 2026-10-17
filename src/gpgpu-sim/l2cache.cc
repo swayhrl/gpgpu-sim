@@ -1515,10 +1515,14 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
           // L2 cache lock-up: will try again next cycle.
         }
       }
-    } else {
+    } else if (!m_L2_dram_queue->full()) {
+      // Only the actual bypass branch needs this lower FIFO credit. Hits,
+      // merges and locally absorbed writes keep their existing admission.
       // L2 is disabled or non-texture access to texture-only L2
       mf->set_status(IN_PARTITION_L2_TO_DRAM_QUEUE,
                      m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+      // Its real return invokes ft_record_response even when it bypassed L2.
+      ft_record_admission(mf);
       m_L2_dram_queue->push(mf);
       m_l2_block_state.erase(mf);
       if (m_l2_char_collector) m_l2_char_collector->clear_frontend_request(mf);
@@ -1872,9 +1876,10 @@ void memory_sub_partition::ep_l2_m0a_accum::sample_resident(
     unsigned occupied, unsigned capacity) {
   ++resident_samples;
   resident_occupied_sum += occupied;
-  resident_free_sum += capacity - occupied;
+  const unsigned free = ep_l2_payload_store::nominal_resident_headroom(occupied, capacity);
+  resident_free_sum += free;
   if (occupied > resident_occupied_max) resident_occupied_max = occupied;
-  if (capacity - occupied < resident_free_min) resident_free_min = capacity - occupied;
+  if (free < resident_free_min) resident_free_min = free;
 }
 
 void memory_sub_partition::ep_l2_m0a_record_frontend(
@@ -1941,7 +1946,10 @@ void memory_sub_partition::ep_l2_m0a_print(
           "m0_frontend_head_blocked_cycles_payload_capacity=%llu|"
           "m0_frontend_head_blocked_cycles_lowerq=%llu|"
           "m0_frontend_head_blocked_cycles_responseq=%llu|"
-          "m0_useful_frontend_admit=%llu|m0_useful_response_enqueue=%llu\n",
+          "m0_useful_frontend_admit=%llu|m0_useful_response_enqueue=%llu|"
+          "resident_legacy_occupied_scope=PAYLOAD_ROLE|"
+          "resident_legacy_free_scope=SATURATED_NOMINAL_ROLE_HEADROOM|"
+          "resident_legacy_over_nominal=%u\n",
           scope, interval, m_id, uid, start_cycle, completion_cycle, n,
           stats.resident_occupied_sum, stats.resident_free_sum,
           n ? stats.resident_occupied_sum / n : 0,
@@ -1951,7 +1959,18 @@ void memory_sub_partition::ep_l2_m0a_print(
           stats.wad_hazard, stats.line_mshr, stats.descriptor, stats.per_address,
           stats.missq, stats.payload_service, stats.payload_capacity, stats.lowerq,
           stats.responseq, stats.useful_frontend_admit,
-          stats.useful_response_enqueue);
+          stats.useful_response_enqueue, stats.resident_occupied_max > 1024 ? 1 : 0);
+  if (m_L2cache->ft_enabled()) {
+    const auto s = m_L2cache->resident_observer_snapshot();
+    // Instantaneous at print time, never the preceding window's average.
+    fprintf(fp, "EPL2RESIDENTOBSV1|scope=instant_at_m0_print|slice=%u|"
+        "tag_capacity=%u|tag_visible=%u|pending_landing=%u|"
+        "resident_role_occupied=%u|resident_other_unbound=%u|"
+        "physical_capacity=%u|physical_occupied=%u|physical_free=%u\n",
+        m_id, m_config->m_L2_config.get_num_lines(), s.tag_visible, s.pending_landing,
+        s.role_occupied, s.other_unbound, s.physical_capacity,
+        s.physical_occupied, s.physical_free);
+  }
 }
 
 void memory_sub_partition::ep_l2_m0a_sample(unsigned long long cycle) {

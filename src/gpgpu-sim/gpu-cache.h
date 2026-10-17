@@ -2156,7 +2156,13 @@ class ep_l2_payload_store {
   bool banked() const { return m_mode == 2; }
   unsigned resident_used() const { return used(RESIDENT); }
   unsigned bypass_used() const { return used(BYPASS); }
-  unsigned resident_free() const { return k_resident_slots - resident_used(); }
+  // Legacy nominal RESIDENT-role headroom, not free Tags or unified slots.
+  static unsigned nominal_resident_headroom(unsigned occupied, unsigned capacity) {
+    return occupied < capacity ? capacity - occupied : 0;
+  }
+  unsigned resident_free() const {
+    return nominal_resident_headroom(resident_used(), k_resident_slots);
+  }
   unsigned bypass_free() const { return k_bypass_slots - bypass_used(); }
   const slot &resident(unsigned id) const { assert(id < m_slots.size()); return m_slots[id]; }
   const slot &bypass(unsigned id) const { assert(id < k_bypass_slots); return m_slots[k_resident_slots + id]; }
@@ -2706,6 +2712,11 @@ class l2_cache : public data_cache {
                                mem_access_sector_mask_t mask);
   unsigned long long ft_physical_cycle() const;
   unsigned ft_wb_staged() const { return m_ft_wb.size(); }
+  struct resident_observation {
+    unsigned tag_visible, pending_landing, role_occupied, other_unbound;
+    unsigned physical_capacity, physical_occupied, physical_free;
+  };
+  resident_observation resident_observer_snapshot() const;
   unsigned ft_pending_lower_reads() const { return m_ep_l2_payload.pending_sector_count(); }
   bool ft_reservation_active() const { return m_ft_pending.request != NULL; }
   bool ft_drained() const { return !ft_enabled() || (!m_ft_pending.request &&
