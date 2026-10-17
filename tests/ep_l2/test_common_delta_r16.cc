@@ -168,6 +168,18 @@ static void version_only(const char *base,const char *overlay){
   memory[0]=(unsigned long long)a->get_request_uid()+1;f.wb(1,a->get_access_byte_mask(),memory);
   delete a;puts("PASS B1 atomic miss completion version and later WB");
 }
+static void contaminated_wb(const char *base,const char *overlay){
+  delta_fixture f(base,overlay,2);callbacks=0;auto a=f.make(0,true),r=f.make(32);
+  require(f.access(a)&&f.access(r),"WB counterexample admission");auto packets=f.lower(2);
+  std::array<unsigned long long,4> memory{{100,200,0,0}};
+  f.fill(packets.at(1),memory);f.fill(packets.at(0),memory);f.respond(2);
+  require(callbacks==1,"WB counterexample atomic consumer");
+  // Deliberately do not abort on the intermediate dirty-mask defect: observe
+  // its real downstream eviction packet, then reject the incorrect WB.
+  memory[0]=(unsigned long long)a->get_request_uid()+1;
+  f.wb(1,a->get_access_byte_mask(),memory);delete a;delete r;
+  puts("PASS B1 real downstream WB mask bytes and atomic completion label");
+}
 static void multi(const char *base,const char *overlay){
   // FT deliberately serializes atomics on a pinned native line; descriptor
   // mode without FT allows multiple atomic waiters and must also be correct.
@@ -330,6 +342,7 @@ int main(int argc,char **argv){
   else if(test=="b1-b16")mixed(argv[1],argv[2],true,false,1,true);
   else if(test=="b1-dirty")mixed(argv[1],argv[2],true,false,2,true,true);
   else if(test=="b1-version-only")version_only(argv[1],argv[2]);
+  else if(test=="b1-wb-evidence")contaminated_wb(argv[1],argv[2]);
   else if(test=="c1-transient")resident_transient(argv[1],argv[2]);
   else if(test=="c1-m0-output")resident_m0_output(argv[1],argv[2]);
   else if(test=="c2-disabled")bypass_full(argv[1],argv[2],true);
