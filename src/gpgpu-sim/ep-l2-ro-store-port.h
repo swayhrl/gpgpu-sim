@@ -33,7 +33,18 @@ class store_port : public payload_port {
     else if(s.allocation_role!=ep_l2_payload_store::RO)return false;
     m_store.pin(h);return true;
   }
-  void unpin(identity h) { m_store.unpin(h); }
+  void unpin(identity h) {
+    const auto &s=m_store.inspect(h);
+    if(s.allocation_role!=ep_l2_payload_store::RO || s.pins!=1 ||
+       s.pending_sector_mask.any())
+      throw std::logic_error("RO retirement requires sole pin and no pending sector");
+    const bool attached=s.status==ep_l2_payload_store::RO_FILL_ATTACHED;
+    if(!attached && s.status!=ep_l2_payload_store::RO_FILL_DETACHED)
+      throw std::logic_error("RO retirement has invalid landing state");
+    m_store.unpin(h);
+    if(attached)m_store.transfer(h,ep_l2_payload_store::RESIDENT,
+                                ep_l2_payload_store::RESIDENT_VALID);
+  }
   void lower_accepted(identity h,unsigned mask) {
     auto &s=m_store.inspect_mutable(h);
     if ((s.pending_sector_mask.to_ulong()|s.ready_sector_mask.to_ulong())&mask)
@@ -75,8 +86,8 @@ class store_port : public payload_port {
     return m_tags.matches(t,h,line);
   }
   void tag_ready(tag_binding t,identity h,new_addr_type line,unsigned mask,bool complete) {
-    if(complete)m_store.transfer(h,ep_l2_payload_store::RESIDENT,
-                                ep_l2_payload_store::RESIDENT_VALID);
+    // Tag sectors may become VALID before the last requester enqueues. Keep
+    // the pinned landing's role (and Bank retry tuple) RO until retirement.
     m_tags.ready(t,h,line,mask,complete);
   }
   void tag_detach(tag_binding t,identity h) {

@@ -67,7 +67,7 @@ int main(){
   assert(port.accept_return(t,b,1,3,returned));
   assert(tags.updates==updates+1&&tags.tags[0].h==b);
   assert(store.inspect(a).allocation_role==ep_l2_payload_store::RO);
-  assert(store.inspect(b).allocation_role==ep_l2_payload_store::RESIDENT);accounting(store);
+  assert(store.inspect(b).allocation_role==ep_l2_payload_store::RO && store.inspect(b).pins==1);accounting(store);
   response r;assert(t.prepare_response(a,4,r));t.commit_response(a,false,4);
   assert(store.handle_live(a)&&store.inspect(a).pins==1);
   assert(t.prepare_response(a,5,r));t.commit_response(a,true,5);
