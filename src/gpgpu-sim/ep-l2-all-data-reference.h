@@ -1,6 +1,7 @@
 #ifndef EP_L2_ALL_DATA_REFERENCE_H
 #define EP_L2_ALL_DATA_REFERENCE_H
 #include <cstdio>
+#include <cstdlib>
 #include <cstdint>
 #include <map>
 #include <set>

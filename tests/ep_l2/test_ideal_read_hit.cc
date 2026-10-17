@@ -13,9 +13,11 @@ int main(int argc, char **argv) {
     Fixture f(argv[1], argv[2]);
     f.sp->ep_l2_ideal_seed(0x1000, std::vector<uint8_t>(128, 17));
     auto r = f.make(0x1020); f.push(r);
-    for (unsigned i = 0; i < 5; ++i) { f.cycle(); assert(f.sp->ep_l2_ideal_reads_served()==0); }
+    const auto rop=f.gpu->getMemoryConfig()->rop_latency;
+    std::printf("I_READ_HIT_ACTUAL_ROP_GPU_CYCLES=%u\n",rop);
+    for (unsigned i = 0; i < rop; ++i) { f.cycle(); assert(f.sp->ep_l2_ideal_reads_served()==0); }
     auto value = f.read_response(r); check_known(value,0x1020,17);
-    assert(f.gpu->gpu_sim_cycle >= 6); // same nonzero ROP delay as normal hit
+    assert(f.gpu->gpu_sim_cycle >= rop+1); // same configured ROP delay as normal hit
     assert(f.sp->ep_l2_lower_read_issue_count() == 0);
     // Cold data is a declared symbol, not a fabricated numeric zero.
     r = f.make(0x2000); f.push(r); value = f.read_response(r);
