@@ -127,6 +127,14 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     return !c.m_config.m_ro_line_mshr_bypass &&
       c.m_mshrs.lookup_ro_line(c.m_config.block_addr(m->get_addr()),h);
   }
+  bool native_owner_conflict(mem_fetch *m) const {
+    if(candidate(m))return false;
+    // A native waiter cannot borrow an RO completion's Tag/Line-MSHR: RO
+    // returns do not queue native descriptor responses, and its pending
+    // landing is not a RESIDENT lower-read owner. Retry after RO retirement.
+    // Use only the existing Tag/native line index, never an address CAM.
+    handle h;return target(m,h);
+  }
   bool new_request(mem_fetch *m) const {
     if(!candidate(m))return false;
     handle h;if(target(m,h))return true;
@@ -161,6 +169,10 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     unsigned i=~0U;if(detachable(addr,i))tx->detach(c.tag_payload_handle(i));
   }
   bool preview(mem_fetch *m,l2_access_plan &p) const {
+    if(native_owner_conflict(m)) {
+      p.exact=true;p.is_read=!m->get_is_write();p.is_write=m->get_is_write();
+      p.probe_status=RESERVATION_FAIL;return true;
+    }
     if(!new_request(m))return false;
     p.exact=true;p.is_read=true;
     handle h;bool existing=target(m,h);

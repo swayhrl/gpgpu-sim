@@ -149,6 +149,59 @@ static void native_pin_guard(const char *base,const char *overlay,const char *bi
   assert(f.cache->ep_l2_payload_for_test().inspect(h).allocation_role==ep_l2_payload_store::RESIDENT);
   f.consume(2);f.finish();puts("RO refuses takeover of foreign native-response pins PASS");
 }
+// A non-oracle/native request must never attach to an RO completion owner.
+// In detach-only mode ro_line_ready() deliberately does not queue native
+// descriptors; in bypass mode a native fill cannot share the RO landing.
+static void native_during_ro_owner(const char *base,const char *overlay,const char *binding){
+  for(unsigned bypass=0;bypass<2;++bypass){
+    rig f(base,overlay,binding,1,bypass);
+    assert(f.admit(f.make(0))!=RESERVATION_FAIL);auto h=f.tag();
+    auto native=f.make(0,TEXTURE_ACC_R),missing=f.make(32,TEXTURE_ACC_R);
+    const auto queued=f.cache->miss_queue_occupancy();
+    for(auto request:{native,missing}){
+      l2_access_plan plan;f.cache->preview_access(request->get_addr(),request,plan);
+      assert(plan.exact && plan.probe_status==RESERVATION_FAIL);
+      assert(f.admit(request)==RESERVATION_FAIL);
+      assert(f.cache->ep_l2_descriptor_count_used()==1 && f.tag()==h);
+      assert(f.cache->miss_queue_occupancy()==queued);
+    }
+    // An eligible original read still merges while its first lower packet
+    // is queued, without issuing a duplicate before real lower acceptance.
+    assert(f.admit(f.make(0))!=RESERVATION_FAIL);
+    assert(f.cache->ep_l2_descriptor_count_used()==2);
+    assert(f.cache->miss_queue_occupancy()==queued);
+    f.issue();assert(f.port.packets.size()==1);
+    auto packet=f.port.packets.front();f.port.packets.pop_front();
+    while(!f.fill(packet)){}
+    f.consume(2);assert(!f.cache->ep_l2_descriptor_count_used());
+    assert(f.admit(native)==HIT);delete native;
+    assert(f.admit(missing)!=RESERVATION_FAIL);f.issue();
+    assert(f.port.packets.size()==1);packet=f.port.packets.front();f.port.packets.pop_front();
+    assert(!packet->ro_lower_packet());while(!f.fill(packet)){}
+    f.consume(3);f.finish();
+  }
+  // A detached completion still owns the native line index with bypass OFF.
+  // Retrying another kind of read must not allocate a second landing or pin.
+  rig f(base,overlay,binding,1,0);
+  assert(f.admit(f.make(0))!=RESERVATION_FAIL);auto detached=f.tag();
+  assert(f.admit(f.make(128))!=RESERVATION_FAIL);auto current=f.tag();
+  assert(current!=detached);
+  auto native=f.make(0,TEXTURE_ACC_R);l2_access_plan plan;
+  f.cache->preview_access(0,native,plan);
+  assert(plan.exact && plan.probe_status==RESERVATION_FAIL);
+  assert(f.admit(native)==RESERVATION_FAIL && f.tag()==current);
+  assert(f.cache->ep_l2_descriptor_count_used()==2);
+  f.issue();assert(f.port.packets.size()==2);
+  while(!f.port.packets.empty()){
+    auto packet=f.port.packets.back();f.port.packets.pop_back();while(!f.fill(packet)){}
+  }
+  f.consume(2);assert(!f.cache->ep_l2_payload_for_test().handle_live(detached));
+  assert(f.admit(native)!=RESERVATION_FAIL);f.issue();assert(f.port.packets.size()==1);
+  auto packet=f.port.packets.front();f.port.packets.pop_front();
+  assert(!packet->ro_lower_packet());while(!f.fill(packet)){}
+  f.consume(3);f.finish();
+  puts("RO native owner exclusion, queued merge deduplication and retry drain PASS");
+}
 static void epoch_binding(const char *base,const char *overlay,const char *binding){
   rig f(base,overlay,binding,1,1,1,false);
   bool rejected=false;try{f.cache->ro_begin_epoch();}catch(const std::logic_error&){rejected=true;}assert(rejected);
@@ -187,5 +240,6 @@ int main(int argc,char **argv){
   sectors(argv[1],argv[2],argv[3]);capacity(argv[1],argv[2],argv[3]);classifier(argv[1],argv[2],argv[3]);
   dirty_victim(argv[1],argv[2],argv[3]);native_pin_guard(argv[1],argv[2],argv[3]);epoch_binding(argv[1],argv[2],argv[3]);
   warmup_scope(argv[1],argv[2],argv[3]);
+  native_during_ro_owner(argv[1],argv[2],argv[3]);
   puts("RO production runtime directed PASS");
 }

@@ -171,6 +171,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   m_ep_l2_last_payload_request_result = ep_l2_payload_store::GRANTED;
   const new_addr_type owner = m_config.block_addr(addr);
   if(m_ro) {
+    if(m_ro->native_owner_conflict(mf))return RESERVATION_FAIL;
     cache_request_status merged;
     if(m_ro->merge_existing(mf,time,events,merged)){
       if(merged!=RESERVATION_FAIL){++m_ft_stats.accepted;
