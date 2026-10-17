@@ -276,6 +276,9 @@ void memory_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_ep_l2_wbuf_entries", OPT_UINT32,
                          &m_L2_config.m_ep_l2_wbuf_entries,
                          "Additional WB payload budget: 0 off, 8 sensitivity, 16 primary", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_static_s64", OPT_BOOL,
+                         &m_L2_config.m_ep_l2_static_s64,
+                         "Opt-in S64 static1024/80/64 fixed1168 payload layout; FT1/WBUF16 only", "0");
   option_parser_register(opp, "-gpgpu_ep_l2_payload_policy", OPT_UINT32,
                          &m_L2_config.m_ep_l2_payload_policy,
                          "EP-L2 payload policy: 0=static (only M1-supported policy)", "0");

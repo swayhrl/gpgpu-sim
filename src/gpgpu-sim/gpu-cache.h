@@ -41,6 +41,7 @@
 #include "ep-l2-ft-interface.h"
 
 #include <iostream>
+#include <stdexcept>
 #include <array>
 #include <limits>
 #include <vector>
@@ -582,6 +583,7 @@ class cache_config {
     m_ep_l2_payload_mode = 0;
     m_ep_l2_ft_mode = 0;
     m_ep_l2_wbuf_entries = 0;
+    m_ep_l2_static_s64 = false;
     m_ep_l2_payload_policy = 0;
     m_ep_l2_feature_unified_payload = false;
     m_ep_l2_feature_ro_pending_state = false;
@@ -941,6 +943,7 @@ class cache_config {
   unsigned m_ep_l2_payload_mode;
   unsigned m_ep_l2_ft_mode;
   unsigned m_ep_l2_wbuf_entries;
+  bool m_ep_l2_static_s64;
   // M1 is infrastructure: functional mechanism bits default OFF.
   // Policy 0 is the only currently supported static policy.
   unsigned m_ep_l2_payload_policy;
@@ -2147,8 +2150,9 @@ class ep_l2_payload_store {
     }
     bool occupied() const { return status != FREE; }
   };
-  ep_l2_payload_store(unsigned mode = 0, unsigned ft_mode = 0, unsigned wbuf = 0)
-      : m_mode(mode), m_ft_mode(ft_mode), m_wbuf(wbuf), m_cycle((unsigned long long)-1),
+  ep_l2_payload_store(unsigned mode = 0, unsigned ft_mode = 0, unsigned wbuf = 0,
+                      bool static_s64 = false)
+      : m_mode(mode), m_ft_mode(ft_mode), m_wbuf(wbuf), m_static_s64(static_s64), m_cycle((unsigned long long)-1),
         m_resident_reads(0), m_resident_writes(0), m_bypass_reads(0),
         m_bypass_writes(0), m_bank_logical_ops(0), m_bank_attempts(0),
         m_bank_grants(0), m_bank_retry_attempts(0),
@@ -2157,7 +2161,9 @@ class ep_l2_payload_store {
         m_bank_resident_write(0), m_bank_fill_write(0),
         m_bank_wb_readout(0), m_bank_bypass_fill(0), m_bank_bypass_read(0),
         m_next_sequence(0) {
-    m_slots.resize(k_physical_slots + wbuf);
+    if (static_s64 && (mode != 2 || ft_mode != 1 || wbuf != 16))
+      throw std::invalid_argument("S64 requires static banked FT1, legacy WBUF16 anchor");
+    m_slots.resize(static_s64 ? 1168 : k_physical_slots + wbuf);
     for (unsigned bank = 0; bank < 4; ++bank) {
       m_bank_logical_ops_by_bank[bank] = 0;
       m_bank_grants_by_bank[bank] = 0;
@@ -2171,15 +2177,19 @@ class ep_l2_payload_store {
   unsigned resident_used() const { return used(RESIDENT); }
   unsigned bypass_used() const { return used(BYPASS); }
   unsigned resident_free() const { return k_resident_slots - resident_used(); }
-  unsigned bypass_free() const { return k_bypass_slots - bypass_used(); }
+  unsigned bypass_capacity() const { return m_static_s64 ? 80 : k_bypass_slots; }
+  unsigned wb_begin() const { return k_resident_slots + bypass_capacity(); }
+  unsigned static_wb_capacity() const { return m_static_s64 ? 64 : m_wbuf; }
+  bool static_s64() const { return m_static_s64; }
+  unsigned bypass_free() const { return bypass_capacity() - bypass_used(); }
   const slot &resident(unsigned id) const { assert(id < m_slots.size()); return m_slots[id]; }
-  const slot &bypass(unsigned id) const { assert(id < k_bypass_slots); return m_slots[k_resident_slots + id]; }
+  const slot &bypass(unsigned id) const { assert(id < bypass_capacity()); return m_slots[k_resident_slots + id]; }
   payload_handle resident_handle(unsigned id) const {
     assert(id < m_slots.size() && m_slots[id].occupied());
     return payload_handle(id, m_slots[id].generation);
   }
   payload_handle bypass_handle(unsigned id) const {
-    assert(id < k_bypass_slots && m_slots[k_resident_slots + id].occupied());
+    assert(id < bypass_capacity() && m_slots[k_resident_slots + id].occupied());
     return payload_handle(k_resident_slots + id,
                           m_slots[k_resident_slots + id].generation);
   }
@@ -2281,10 +2291,10 @@ class ep_l2_payload_store {
     complete_resident_no_fill(id, owner, m_slots[id].generation, false);
   }
   void reserve_bypass(unsigned id, new_addr_type owner, mem_fetch *mf) {
-    assert(id < k_bypass_slots); assign(m_slots[k_resident_slots + id], k_resident_slots + id, owner, mf, BYPASS_FILL_PENDING);
+    assert(id < bypass_capacity()); assign(m_slots[k_resident_slots + id], k_resident_slots + id, owner, mf, BYPASS_FILL_PENDING);
   }
   void complete_bypass(unsigned id, new_addr_type owner, unsigned generation) {
-    assert(id < k_bypass_slots && m_slots[k_resident_slots + id].status == BYPASS_FILL_PENDING &&
+    assert(id < bypass_capacity() && m_slots[k_resident_slots + id].status == BYPASS_FILL_PENDING &&
            m_slots[k_resident_slots + id].owner == owner && m_slots[k_resident_slots + id].generation == generation);
     m_slots[k_resident_slots + id].status = BYPASS_READY;
   }
@@ -2293,7 +2303,7 @@ class ep_l2_payload_store {
     complete_bypass(id, owner, m_slots[k_resident_slots + id].generation);
   }
   void release_bypass(unsigned id) {
-    assert(id < k_bypass_slots);
+    assert(id < bypass_capacity());
     slot &s = m_slots[k_resident_slots + id];
     assert(s.pending_sector_mask.none());
     s.status = FREE; s.owner = 0; s.pending_sector_mask.reset(); ++s.generation;
@@ -2309,15 +2319,16 @@ class ep_l2_payload_store {
   payload_handle preview_free(role r, unsigned bank = (unsigned)-1) const {
     for (unsigned id = 0; id < m_slots.size(); ++id) {
       if (m_slots[id].occupied() || (bank != (unsigned)-1 && id % 4 != bank)) continue;
-      if (m_ft_mode == 1 && ((r == WB && id < k_physical_slots) ||
+      if (m_ft_mode == 1 && ((r == WB && id < wb_begin()) ||
           (r == RESIDENT && id >= k_resident_slots) ||
-          (r == BYPASS && (id < k_resident_slots || id >= k_physical_slots)))) continue;
+          (r == BYPASS && (id < k_resident_slots || id >= wb_begin())))) continue;
       return payload_handle(id, m_slots[id].generation + 1);
     }
     return payload_handle();
   }
   payload_handle reserve(unsigned id, role r, new_addr_type owner, state st) {
     assert(m_ft_mode && id < m_slots.size() && !m_slots[id].occupied());
+    assert(m_ft_mode != 1 || static_role_matches(id, r));
     slot &s = m_slots[id];
     assert(s.generation != std::numeric_limits<unsigned>::max());
     ++s.generation; s.allocation_role = r; s.status = st; s.owner = owner;
@@ -2330,6 +2341,7 @@ class ep_l2_payload_store {
     s.status = FREE; s.owner = 0; s.ready_sector_mask.reset(); ++s.generation;
   }
   void transfer(const payload_handle &h, role r, state st) {
+    assert(m_ft_mode != 1 || static_role_matches(h.payload_id, r));
     slot &s = inspect_mutable(h); assert(s.pending_sector_mask.none());
     s.allocation_role = r; s.status = st;
   }
@@ -2412,6 +2424,7 @@ class ep_l2_payload_store {
       ++used_port; return GRANTED;
     }
     const unsigned global_id = r == BYPASS ? k_resident_slots + id : id;
+    assert(r != BYPASS || id < bypass_capacity());
     assert(global_id < m_slots.size());
     const unsigned bank = global_id % 4;
     ++m_bank_attempts;
@@ -2520,6 +2533,7 @@ class ep_l2_payload_store {
     for (unsigned i = 0; i < m_slots.size(); ++i) {
       const slot &s = m_slots[i];
       if (!s.occupied()) continue;
+      if (m_ft_mode == 1 && !static_role_matches(i, s.allocation_role)) return false;
       if (s.allocation_role == RESIDENT) {
         if ((!m_ft_mode && i >= k_resident_slots) ||
             (s.status != RESIDENT_FILL_PENDING && s.status != RESIDENT_VALID &&
@@ -2535,6 +2549,11 @@ class ep_l2_payload_store {
     return true;
   }
  private:
+  bool static_role_matches(unsigned id, role r) const {
+    return id < physical_slots() &&
+      (r == RESIDENT ? id < k_resident_slots :
+       r == BYPASS ? id >= k_resident_slots && id < wb_begin() : id >= wb_begin());
+  }
   unsigned used(role wanted_role) const {
     unsigned n = 0;
     for (std::vector<slot>::const_iterator i = m_slots.begin(); i != m_slots.end(); ++i)
@@ -2581,7 +2600,7 @@ class ep_l2_payload_store {
     role r; unsigned id; bool write; unsigned long long sequence;
     bool true_conflict; unsigned long long first_conflict_cycle;
   };
-  unsigned m_mode, m_ft_mode, m_wbuf; unsigned long long m_cycle;
+  unsigned m_mode, m_ft_mode, m_wbuf; bool m_static_s64; unsigned long long m_cycle;
   unsigned m_resident_reads, m_resident_writes, m_bypass_reads, m_bypass_writes;
   unsigned long long m_bank_logical_ops, m_bank_attempts, m_bank_grants,
       m_bank_retry_attempts, m_bank_true_conflict_ops,
@@ -2612,7 +2631,7 @@ class l2_cache : public data_cache {
         m_ep_l2_wad_lifetime_sum(0), m_ep_l2_wad_lifetime_count(0),
         m_ep_l2_wad_lifetime_max(0),
         m_ep_l2_payload(config.m_ep_l2_payload_mode, config.m_ep_l2_ft_mode,
-                         config.m_ep_l2_wbuf_entries),
+                         config.m_ep_l2_wbuf_entries, config.m_ep_l2_static_s64),
         m_ep_l2_last_payload_request_result(ep_l2_payload_store::GRANTED),
         m_ep_l2_tag_payload(ep_l2_payload_store::k_resident_slots) {
     validate_ep_l2_mode_config();
@@ -2833,6 +2852,10 @@ class l2_cache : public data_cache {
   std::map<mem_fetch *,ep_l2_payload_store::payload_handle> m_ft_read_refs;
   std::array<unsigned long long,4> m_ft_last_wb_versions;
   void validate_ep_l2_mode_config() const {
+    if (m_config.m_ep_l2_static_s64 &&
+        (m_config.m_ep_l2_ft_mode != 1 || m_config.m_ep_l2_wbuf_entries != 16)) {
+      fprintf(stderr, "EP-L2 S64 requires static FT1/WBUF16, fixed1168 layout\n"); abort();
+    }
     if (m_config.m_ep_l2_ft_mode > 2 ||
         (!m_config.m_ep_l2_ft_mode && m_config.m_ep_l2_wbuf_entries) ||
         (m_config.m_ep_l2_ft_mode &&

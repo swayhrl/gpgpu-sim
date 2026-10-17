@@ -396,6 +396,12 @@ void l2_cache::lower_accepted(mem_fetch *mf, unsigned long long cycle) {
 
 void l2_cache::ft_print(FILE *fp, unsigned slice) const {
   if (!ft_enabled()) return;
+  fprintf(fp, "EPL2STRUCTV1|CONFIG|slice=%u|static_s64=%u|physical_slots=%u|"
+      "resident_nominal=1024|bypass_capacity=%u|wb_begin=%u|static_wb_capacity=%u|"
+      "legacy_wbuf=%u|bank_count=4|bank_ops_per_physical_cycle=1|copy_latch_bytes=128\n",
+      slice, m_config.m_ep_l2_static_s64 ? 1 : 0, m_ep_l2_payload.physical_slots(),
+      m_ep_l2_payload.bypass_capacity(), m_ep_l2_payload.wb_begin(),
+      m_ep_l2_payload.static_wb_capacity(), m_config.m_ep_l2_wbuf_entries);
   fprintf(fp, "EPL2FTV1|SUMMARY|slice=%u|mode=%u|wbuf=%u|physical_slots=%u|"
       "accepted=%llu|wb_created=%llu|wb_completed=%llu|wb_lower_accept=%llu|wbuf_full=%llu|pool_full=%llu|pin_block=%llu|"
       "bank_block=%llu|issue_block=%llu|copy_lines=%llu|copy_bytes=%llu|staging_reads=%llu|"
