@@ -1,15 +1,19 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
-#include "../../src/gpgpu-sim/gpu-cache.h"
+#include "ft_test_fixture.h"
+static fixture *request_fixture=nullptr;
+static std::vector<mem_fetch *> requests;
 
 static mem_fetch *token(unsigned i) {
-  return reinterpret_cast<mem_fetch *>(static_cast<uintptr_t>(i + 1));
+  while (requests.size()<=i) requests.push_back(request_fixture->make(0x1000+requests.size()*32,false,GLOBAL_ACC_R));
+  return requests[i];
 }
 static mem_access_sector_mask_t sector(unsigned i) {
   mem_access_sector_mask_t s; s.set(i); return s;
 }
-int main() {
+int main(int argc,char **argv) {
+  assert(argc==3);fixture native(argv[1],argv[2],1,16);request_fixture=&native;
   // The ordinary OFF allocator still refuses at the independent limits.
   mshr_table off(2, 1, 4, 2, false);
   off.add_for_test(0x1000, token(0), sector(0));
@@ -55,5 +59,6 @@ int main() {
     ideal.commit_next_access();
     assert(ideal.descriptor_count_used() == 0);
   }
+  for (auto request:requests) delete request;requests.clear();
   std::puts("Lane4 I_META allocator/sector/response/doubling tests: PASS");
 }
