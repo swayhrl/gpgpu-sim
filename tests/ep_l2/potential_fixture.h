@@ -29,7 +29,8 @@ struct fixture {
   std::set<unsigned> replies;
   std::vector<mem_fetch *> wb;
   bool block_lower = false;
-  unsigned lower_wb = 0, completed_wb = 0;
+  unsigned lower_wb = 0, completed_wb = 0, same_bank_copy = 0, cross_bank_copy = 0;
+  std::map<new_addr_type,unsigned> source_banks;
   unsigned long long bank_max = 0;
   fixture(char **argv):cfg(&ctx) {
     option_parser_t p=option_parser_create();
@@ -78,6 +79,13 @@ struct fixture {
       }
       delete r;
     }
+    for(unsigned t=0;t<1024;++t) {
+      auto h=cache->ep_l2_tag_payload_handle_for_test(t);
+      if(h.valid() && cache->ep_l2_payload_for_test().handle_live(h)) {
+        auto &slot=cache->ep_l2_payload_for_test().inspect(h);
+        source_banks[slot.owner]=h.payload_id%4;
+      }
+    }
     if(!block_lower) drain_lower();
     ++gpu->gpu_sim_cycle;
   }
@@ -87,6 +95,9 @@ struct fixture {
       if(r->get_access_type()==L2_WRBK_ACC) {
         assert(r->has_ft_wb_data() && r->get_ft_wb_data()==memory.at(r->get_addr()));
         assert(cache->ep_l2_wad_contains(r->get_addr()));
+        assert(source_banks.count(r->get_addr()));
+        if(source_banks.at(r->get_addr())==r->get_ep_l2_payload_id()%4) ++same_bank_copy;
+        else ++cross_bank_copy;
         ++lower_wb;wb.push_back(r);
       } else assert(reads.insert({r->get_addr(),r}).second);
     }
