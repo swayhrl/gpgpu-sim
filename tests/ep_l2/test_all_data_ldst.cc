@@ -10,11 +10,12 @@ struct ep_l2_all_data_probe {
     c.m_warp[0]->reset();c.m_warp[0]->init(0,0,0,active,0,0);
     c.get_gpu()->all_data_reference().new_shared_epoch(c.get_sid(),0);
   }
-  static void issue(shader_core_ctx &c,memory_space_t space,bool store,unsigned reg,uint64_t address,bool barrier=false,bool unsupported=false) {
+  static void issue(shader_core_ctx &c,memory_space_t space,bool store,unsigned reg,uint64_t address,bool barrier=false,unsigned unsupported=0) {
     auto *inst=new warp_inst_t(c.get_config());
     inst->op=store?STORE_OP:LOAD_OP;inst->memory_op=store?memory_store:memory_load;
     inst->space=space;inst->data_size=4;inst->cache_op=CACHE_ALL;
-    inst->m_is_ldgsts=unsupported;
+    inst->m_is_ldgsts=unsupported==1;
+    if (unsupported==2) inst->add_callback(0,nullptr,nullptr,nullptr,true);
     if (barrier) {inst->op=MEMORY_BARRIER_OP;inst->memory_op=no_memory_op;}
     for (unsigned r=0;r<MAX_OUTPUT_VALUES;++r)inst->out[r]=0;
     for (unsigned r=0;r<MAX_REG_OPERANDS;++r)inst->arch_reg.dst[r]=-1;
@@ -45,6 +46,7 @@ int main(int argc,char **argv) {
   if (argc==4 && std::strcmp(argv[3],"--offset4096")==0) f.gpu->gpu_tot_sim_cycle=4096;
   ep_l2_all_data_probe::prepare(*c);auto &s=f.gpu->all_data_reference();
   if (argc==4 && std::strcmp(argv[3],"--unsupported")==0) {ep_l2_all_data_probe::issue(*c,global_space,false,1,0x1000,false,true);assert(false);}
+  if (argc==4 && std::strcmp(argv[3],"--atomic")==0) {ep_l2_all_data_probe::issue(*c,global_space,false,1,0x1000,false,2);assert(false);}
   ep_l2_all_data_probe::issue(*c,global_space,false,1,0x100004000ULL);
   assert(ep_l2_all_data_probe::pending(*c) && s.requests_ready==0);
   assert(s.inspect(1).eligible==f.gpu->gpu_tot_sim_cycle && s.inspect(1).ready==f.gpu->gpu_tot_sim_cycle+1);

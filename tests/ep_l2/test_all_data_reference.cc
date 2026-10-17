@@ -1,17 +1,24 @@
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 #include "../../src/gpgpu-sim/ep-l2-all-data-reference.h"
 using Service=ep_l2_all_data::Service;
 static Service::Mask mask(unsigned from,unsigned count) {
   Service::Mask m{};for (unsigned b=from;b<from+count;++b)m[b]=true;return m;
 }
 int main(int argc,char **argv) {
+  if (argc==2 && std::strcmp(argv[1],"--duplicate-access")==0) {
+    Service s;auto a=s.begin(1,1,false,11),b=s.begin(2,1,false,11);
+    s.issue(a,0,0,mask(0,4),0,nullptr,123);s.issue(b,0,128,mask(0,4),0,nullptr,123);assert(false);
+  }
   if (argc==2) {Service s;s.begin(1,0,false,11);s.begin(1,0,false,11);assert(false);}
   (void)argv;
   {
     Service s;Service::Data first{},second{};first.fill(11);second.fill(22);
     auto w=s.begin(1,1,true,11);auto write=s.issue(w,0,0x1000,mask(0,4),0,&first);
+    s.annotate(w,1,0x100,4,0,0,7);
     auto r=s.begin(2,1,false,11);auto read=s.issue(r,0,0x1000,mask(0,8),0);
+    s.annotate(r,1,0x200,4,1,3,9); // Same producer address, another SM/warp.
     auto free=s.begin(3,1,false,11);auto independent=s.issue(free,0,0x1000,mask(32,4),0);
     auto younger=s.begin(4,1,true,11);auto overwrite=s.issue(younger,0,0x1000,mask(0,4),0,&second);
     assert(!s.inspect(read).eligible_valid && s.inspect(independent).ready==1);
