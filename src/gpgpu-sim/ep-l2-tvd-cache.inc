@@ -161,11 +161,14 @@ void l2_cache::tvd_print(FILE *fp, unsigned slice) {
   fprintf(fp, "EPL2TVDV2|SUMMARY|slice=%u|clean_installs=%llu|dirty_installs=%llu|"
       "read_responses=%llu|dirty_forward_responses=%llu|served_sectors=%llu|served_sector_bytes=%llu|"
       "promotions=%llu|live=%u|mandatory=%u|role_tvd=%u|retention_slot_cycles=%llu|"
+      "clean_retention_slot_cycles=%llu|total_retention_slot_cycles=%llu|"
       "lookup_wait_cycles=%llu|wb_wait_cycles=%llu|bank_wait_cycles=%llu|icnt_wait_cycles=%llu\n", slice,
       (unsigned long long)s.clean_installs, (unsigned long long)s.dirty_installs,
       (unsigned long long)s.read_responses, (unsigned long long)s.dirty_forward_responses,
       (unsigned long long)s.served_sectors, (unsigned long long)s.served_sector_bytes,
       (unsigned long long)s.promotions, m_tvd->occupied(), m_tvd->mandatory(),
       m_ep_l2_payload.tvd_used(), (unsigned long long)s.tvd_extra_retention_slot_cycles,
+      (unsigned long long)s.clean_retention_slot_cycles,
+      (unsigned long long)(s.clean_retention_slot_cycles + s.tvd_extra_retention_slot_cycles),
       m_tvd_lookup_wait, m_tvd_wb_wait, m_tvd_bank_wait, m_tvd_resp_wait);
 }

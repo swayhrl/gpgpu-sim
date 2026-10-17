@@ -17,7 +17,7 @@ struct scenario {
   std::map<unsigned, unsigned long long> responses;
   unsigned long long audited_cycles = 0;
   unsigned max_physical_bank_grants = 0;
-  explicit scenario(const char *base, const char *overlay, bool dirty=false, bool tvd=true, bool hold=false, unsigned sets=1, unsigned ft_mode=2, unsigned ways=1, unsigned wbuf=16)
+  explicit scenario(const char *base, const char *overlay, bool dirty=false, bool tvd=true, bool hold=false, unsigned sets=1, unsigned ft_mode=2, unsigned ways=1, unsigned wbuf=16, bool texture_only=false)
       : cfg(&context) {
     option_parser_t p=option_parser_create(); context.ptx_reg_options(p);
     context.func_sim->ptx_opcocde_latency_options(p); icnt_reg_options(p); cfg.reg_options(p);
@@ -28,6 +28,10 @@ struct scenario {
       "-gpgpu_dram_partition_queues","64:128:64:1", "-gpgpu_ep_l2_tvd_clean",tvd?"1":"0",
       "-gpgpu_ep_l2_tvd_dirty",dirty?"1":"0"};
     option_parser_cmdline(p,11,args);
+    if(texture_only) {
+      const char *routing[]={"tvd-test","-gpgpu_cache:dl2_texture_only","1"};
+      option_parser_cmdline(p,3,routing);
+    }
     std::string geometry="S:"+std::to_string(sets)+":128:"+std::to_string(ways)+",L:B:m:L:L,A:128:1,256:0,32";
     const char *geo[]={"tvd-test","-gpgpu_cache:dl2",geometry.c_str()}; option_parser_cmdline(p,3,geo);
     if (hold) {
@@ -65,11 +69,21 @@ struct scenario {
   }
   ~scenario() { delete alloc; delete part; delete stats; delete gpu; }
   l2_cache *cache() { return sp->tvd_cache_for_test(); }
-  mem_fetch *make(new_addr_type address, bool write=false) {
+  mem_fetch *make(new_addr_type address, bool write=false, bool texture=false) {
     active_mask_t active; active.set(0); mem_access_byte_mask_t bytes;
     const unsigned sector=(address>>5)&3;
     for(unsigned i=sector*32;i<sector*32+32;++i) bytes.set(i);
     mem_access_sector_mask_t sectors; sectors.set(sector);
+    assert(!texture || !write);
+    if(texture) {
+      // istexture() reads the instruction's space, not the access-type enum.
+      warp_inst_t instruction(gpu->getShaderCoreConfig());instruction.initiation_interval=1;
+      instruction.space=memory_space_t(tex_space);
+      instruction.issue(active,0,gpu->gpu_sim_cycle,0,0,0);
+      mem_access_t access(TEXTURE_ACC_R,address,32,false,active,bytes,sectors,&context);
+      auto mf=new mem_fetch(access,&instruction,0,8,0,0,0,gpu->getMemoryConfig(),gpu->gpu_sim_cycle);
+      assert(mf->istexture());return mf;
+    }
     return alloc->alloc(address,write?GLOBAL_ACC_W:GLOBAL_ACC_R,active,bytes,sectors,32,write,
         gpu->gpu_sim_cycle,0,0,0,NULL,0);
   }
@@ -138,6 +152,90 @@ struct scenario {
         audited_cycles,max_physical_bank_grants);
   }
 };
+
+// New r14 gates. They are deliberately separate from all frozen selectors.
+// Source preparation only until this exact revision is compiled and executed.
+static void texture_bypass_does_not_consume_tvd(const char *base,const char *overlay) {
+  scenario f(base,overlay,false,true,false,1,2,1,16,true);
+  auto texture_push=[&](new_addr_type address) {
+    auto mf=f.make(address,false,true);const auto uid=mf->get_request_uid();
+    f.sp->push(mf,f.gpu->gpu_sim_cycle);return uid;
+  };
+  auto a=texture_push(0);f.await(a);
+  auto b=texture_push(128);f.await(b);f.drain();
+  auto dir=f.cache()->tvd_for_test();const auto t=dir->find(0);
+  assert(dir->live(t));const auto h=dir->at(t.index).payload;
+  const auto lower=f.sp->ep_l2_lower_read_issue_count();
+  const auto served=dir->stats().read_responses;
+  const auto uid=f.push(0);bool returned=false;
+  // A bypass return has no cache payload identity/version contract. Inspect
+  // its real queue response here; do not weaken collect()'s cache-read guard
+  // or claim a numerical data comparison for dataless lower memory.
+  for(unsigned n=0;n<10000 && !returned;++n) {
+    f.step(false);
+    if(auto mf=f.sp->pop()) {
+      assert(mf->get_request_uid()==uid && !returned);
+      assert(!mf->has_ep_l2_payload_identity());
+      delete mf;returned=true;
+    }
+  }
+  assert(returned && f.sp->ep_l2_lower_read_issue_count()==lower+1);
+  assert(dir->stats().read_responses==served && dir->live(t) && dir->at(t.index).payload==h);
+  auto again=texture_push(0);f.await(again);
+  assert(f.responses.at(again)==0 && dir->stats().read_responses==served+1);
+  f.drain();f.sp->flushL2();assert(!dir->occupied());
+  puts("PASS r14_texture_only_global_bypass_exact_once_then_texture_TVD_service");
+}
+
+static void clean_retention_physical_cost(const char *base,const char *overlay) {
+  scenario f(base,overlay);f.warm(0,4096);
+  auto b=f.push(128);f.await(b);f.drain();
+  auto dir=f.cache()->tvd_for_test();assert(dir->occupied()==1 && dir->live(dir->find(0)));
+  dir->advance(f.gpu->gpu_sim_cycle+f.gpu->gpu_tot_sim_cycle);
+  const auto clean=dir->stats().clean_retention_slot_cycles;
+  const auto dirty=dir->stats().tvd_extra_retention_slot_cycles;
+  const auto grants=f.cache()->ep_l2_payload_for_test().bank_grants();
+  for(unsigned n=0;n<7;++n)f.step();
+  dir->advance(f.gpu->gpu_sim_cycle+f.gpu->gpu_tot_sim_cycle);
+  assert(dir->stats().clean_retention_slot_cycles==clean+7);
+  assert(dir->stats().tvd_extra_retention_slot_cycles==dirty);
+  assert(f.cache()->ep_l2_payload_for_test().bank_grants()==grants);
+  // Exact host alias retirement contributes no fabricated offset cycles.
+  const auto before=dir->stats().clean_retention_slot_cycles;
+  assert(f.try_warm(0));assert(!dir->live(dir->find(0)));
+  assert(dir->stats().clean_retention_slot_cycles==before);
+  f.drain();f.sp->flushL2();assert(!dir->occupied());
+  puts("PASS r14_clean_retention_physical_slot_cycles_no_memcpy_offset_cost");
+}
+
+static void full_shared_directory_dirty_promotion(const char *base,const char *overlay) {
+  scenario f(base,overlay,true);
+  // Unlike the existing all-mandatory WAD-full gate, start with all 128
+  // shared address entries holding clean victims, then promote one while
+  // replacing a dirty resident. No transient 129th address/second owner.
+  for(unsigned line=0;line<128;++line) {
+    auto uid=f.push(new_addr_type(line)*128);f.await(uid);
+  }
+  auto dirty=f.push(new_addr_type(128)*128,true);f.await(dirty);
+  auto dir=f.cache()->tvd_for_test();assert(dir->occupied()==128 && !dir->mandatory());
+  auto source=dir->find(0);assert(dir->live(source));
+  const auto promoted=dir->at(source.index).payload;
+  const auto victim=f.cache()->ep_l2_tag_payload_handle_for_test(0);
+  const auto pools=f.cache()->ep_l2_payload_for_test().physical_slots();
+  auto write=f.push(0,true);f.await(write);
+  const auto wb=dir->find(new_addr_type(128)*128);
+  assert(dir->occupied()==128 && dir->mandatory()==1 && dir->live(wb));
+  assert(wb.index==source.index && wb.incarnation!=source.incarnation && !dir->live(source));
+  assert(dir->at(wb.index).payload==victim && !dir->live(dir->find(0)));
+  assert(f.cache()->ep_l2_tag_payload_handle_for_test(0)==promoted);
+  assert(f.cache()->ep_l2_payload_for_test().physical_slots()==pools && pools==1168);
+  assert(f.cache()->ep_l2_payload_for_test().ownership_consistent());
+  auto read=f.push(0);f.await(read);assert(f.responses.at(read)==(unsigned long long)write+1);
+  f.drain();assert(dir->occupied()==128 && !dir->mandatory());
+  assert(dir->at(wb.index).status==l2_cache::tvd_directory::WB_COMPLETE);
+  f.sp->flushL2();assert(!dir->occupied());
+  puts("PASS r14_shared128_clean_to_mandatory_dirty_promotion_same_slot_same_payload");
+}
 
 static void clean_actual_frontend(const char *base,const char *overlay) {
   scenario f(base,overlay);
@@ -440,6 +538,11 @@ int main(int argc,char **argv) {
   assert(argc==3 || argc==4);
   if (argc==4) {
     std::string negative=argv[3];
+    if (negative=="--r14-integration-gates") {
+      texture_bypass_does_not_consume_tvd(argv[1],argv[2]);
+      clean_retention_physical_cost(argv[1],argv[2]);
+      full_shared_directory_dirty_promotion(argv[1],argv[2]);return 0;
+    }
     if (negative=="--candidate62-gates") {
       candidate62_try_prefill_tvd(argv[1],argv[2]);return 0;
     }

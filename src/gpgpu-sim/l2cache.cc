@@ -1191,7 +1191,11 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
   if (!m_config->m_L2_config.disabled() && m_L2cache->tvd_enabled() && !m_icnt_L2_queue->empty()) {
     mem_fetch *mf = m_icnt_L2_queue->top();
     const auto now = m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
-    const auto result = m_L2cache->tvd_frontend(mf, now, !m_L2_icnt_queue->full());
+    // Use the same cache eligibility as the ordinary frontend. A detached
+    // texture victim must not turn a bypassing global read into a cache hit.
+    const bool cache_eligible = !m_config->m_L2_texure_only || mf->istexture();
+    const auto result = cache_eligible ?
+        m_L2cache->tvd_frontend(mf, now, !m_L2_icnt_queue->full()) : l2_cache::TVD_NORMAL;
     tvd_frontend_handled = result != l2_cache::TVD_NORMAL;
     if (result == l2_cache::TVD_RESPONSE) {
       mf->set_reply(); mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE, now);
@@ -1537,6 +1541,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       // L2 is disabled or non-texture access to texture-only L2
       mf->set_status(IN_PARTITION_L2_TO_DRAM_QUEUE,
                      m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+      // Bypassed requests still complete through ft_record_response().
+      ft_record_admission(mf);
       m_L2_dram_queue->push(mf);
       m_l2_block_state.erase(mf);
       if (m_l2_char_collector) m_l2_char_collector->clear_frontend_request(mf);

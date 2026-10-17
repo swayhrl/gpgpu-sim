@@ -98,12 +98,16 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     // DEPRECATED compatibility aliases: these are SERVED bytes, NOT DRAM savings.
     std::uint64_t avoided_lower_sectors, avoided_lower_bytes;
     std::uint64_t cancelled_reads, lower_accepts, wb_completions;
+    // Keep the original post-lower-accept DIRTY metric separate from clean
+    // occupancy. Both are physical slot cycles, never memcpy Tag timestamps.
     std::uint64_t wb_staging_slot_cycles, tvd_extra_retention_slot_cycles;
+    std::uint64_t clean_retention_slot_cycles;
     counters() : clean_installs(0), dirty_installs(0), reclaimed(0),
         skipped_clean(0), read_responses(0), dirty_forward_responses(0),
         promotions(0), served_sectors(0), served_sector_bytes(0), avoided_lower_sectors(0), avoided_lower_bytes(0),
         cancelled_reads(0), lower_accepts(0), wb_completions(0),
-        wb_staging_slot_cycles(0), tvd_extra_retention_slot_cycles(0) {}
+        wb_staging_slot_cycles(0), tvd_extra_retention_slot_cycles(0),
+        clean_retention_slot_cycles(0) {}
   };
 
   explicit ep_l2_tvd_directory(unsigned capacity = 128, bool clean = false,
@@ -334,6 +338,7 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
       const entry &e = m_entries[i];
       if (!e.payload.valid()) continue;
       if (e.status == WB_STAGED) m_stats.wb_staging_slot_cycles += delta;
+      if (e.status == CLEAN) m_stats.clean_retention_slot_cycles += delta;
       if (e.status == WB_INFLIGHT || e.status == WB_COMPLETE)
         m_stats.tvd_extra_retention_slot_cycles += delta;
     }
