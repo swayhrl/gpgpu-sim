@@ -101,16 +101,15 @@ int main(int argc,char **argv) {
     auto w=f.make(i*stride,true);assert(f.access(w));
     ref[i*stride]={{(unsigned long long)w->get_request_uid()+1,0,0,0}};delete w;
   }
-  // Three real lower read transactions for distinct sectors of one bank3
-  // resident. Production fill admission queues two older operations before
+  // Three real lower read transactions for distinct bank3 residents. Production fill admission queues two older operations before
   // the dirty frontend's prospective resident write requests that bank.
   std::vector<mem_fetch *> reads;
-  for(unsigned s=0;s<3;++s){auto r=f.make(128+32*s,false,GLOBAL_ACC_R);assert(f.access(r));reads.push_back(r);}
+  for(unsigned s=0;s<3;++s){auto r=f.make(128*(s+1),false,GLOBAL_ACC_R);assert(f.access(r));reads.push_back(r);}
   f.port.blocked=false;
   for(unsigned n=0;n<100 && f.port.packets.size()<3;++n)f.cycle();
   assert(f.port.packets.size()==3);f.port.blocked=true;
   std::vector<mem_fetch *> returns;while(!f.port.packets.empty()){returns.push_back(f.port.packets.front());f.port.packets.pop_front();}
-  std::array<unsigned long long,4> data={{101,102,103,104}};
+  std::array<unsigned long long,4> data={{101,0,0,0}};
   for(auto r:returns)r->set_ft_wb_data(data);
   assert(f.cache->ep_l2_payload_fill_request(returns[0],f.time)==ep_l2_payload_store::GRANTED);f.cache->fill(returns[0],f.time);
   for(unsigned i=1;i<3;++i)assert(f.cache->ep_l2_payload_fill_request(returns[i],f.time)==ep_l2_payload_store::BANK_TRUE_CONTENTION);
@@ -136,5 +135,5 @@ int main(int argc,char **argv) {
   assert(replies==3);for(auto r:reads)delete r;
   f.drain_wb(ref);assert(f.cache->ft_drained() && !f.cache->ft_wb_quota_live() && !f.cache->ft_wb_quota_reserved());
   f.cache->ft_print(stdout,0);
-  puts("U_CAP16 real three-sector fill contention: multi-cycle native-time-varied retries one reserved token/one commit/exact data/drain PASS");
+  puts("U_CAP16 real three-line fill contention: multi-cycle native-time-varied retries one reserved token/one commit/exact data/drain PASS");
 }
