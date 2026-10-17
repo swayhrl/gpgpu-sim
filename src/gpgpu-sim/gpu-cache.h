@@ -1025,6 +1025,14 @@ class tag_array {
                                    unsigned &idx, bool &wb,
                                    evicted_block_info &evicted, mem_fetch *mf);
 
+  // Alias the existing serialized FT transaction, not a second reservation.
+  // All preview/native probes see its victim; fills use their own request.
+  void bind_ft_replacement(mem_fetch *const *request, const unsigned *index) {
+    assert(!m_ft_request && request && index);
+    m_ft_request = request; m_ft_index = index;
+  }
+  unsigned long long ft_identity_redirects() const { return m_ft_identity_redirects; }
+
   void fill(new_addr_type addr, unsigned time, mem_fetch *mf, bool is_write);
   void fill(unsigned idx, unsigned time, mem_fetch *mf);
   void fill(new_addr_type addr, unsigned time, mem_access_sector_mask_t mask,
@@ -1084,6 +1092,10 @@ class tag_array {
   cache_config &m_config;
 
   cache_block_t **m_lines; /* nbanks x nset x assoc lines in total */
+  mem_fetch *const *m_ft_request;
+  const unsigned *m_ft_index;
+  mutable unsigned long long m_ft_identity_redirects;
+
 
   unsigned m_access;
   unsigned m_miss;
@@ -2597,6 +2609,7 @@ class l2_cache : public data_cache {
         m_ep_l2_tag_payload(ep_l2_payload_store::k_resident_slots) {
     validate_ep_l2_mode_config();
     m_ft_last_wb_versions.fill(0);
+    if (ft_enabled()) m_tag_array->bind_ft_replacement(&m_ft_pending.request, &m_ft_pending.tag_index);
   }
 
   virtual ~l2_cache() {}
@@ -2704,6 +2717,7 @@ class l2_cache : public data_cache {
   bool ft_reservation_active() const { return m_ft_pending.request != NULL; }
   // Read-only production transaction observations for cross-cycle regressions.
   unsigned ft_pending_index_for_test() const { assert(m_ft_pending.request); return m_ft_pending.tag_index; }
+  unsigned long long ft_identity_redirects_for_test() const { return m_tag_array->ft_identity_redirects(); }
   unsigned ft_pending_phase_for_test() const { assert(m_ft_pending.request); return m_ft_pending.phase; }
   cache_request_status ft_raw_probe_for_test(mem_fetch *mf, unsigned &index) const {
     return m_tag_array->probe(m_config.block_addr(mf->get_addr()), index,

@@ -219,6 +219,7 @@ tag_array::tag_array(cache_config &config, int core_id, int type_id)
 }
 
 void tag_array::init(int core_id, int type_id) {
+  m_ft_request = NULL; m_ft_index = NULL; m_ft_identity_redirects = 0;
   m_access = 0;
   m_miss = 0;
   m_pending_hit = 0;
@@ -433,6 +434,18 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
     abort();  // if an unreserved block exists, it is either invalid or
               // replaceable
 
+  // A multi-cycle FT copy/bank retry already owns a particular victim.
+  // Completing another way's fill may change the LRU candidate above, but
+  // cannot change this transaction's Tag or its WAD/payload generation.
+  // This same probe is used by preview, data_cache::access and native access.
+  if (mf && m_ft_request && *m_ft_request == mf) {
+    const unsigned held = *m_ft_index;
+    assert(held < m_config.get_num_lines() &&
+           held / m_config.m_assoc == set_index &&
+           !m_lines[held]->is_reserved_line());
+    if (idx != held) ++m_ft_identity_redirects;
+    idx = held;
+  }
   return MISS;
 }
 
