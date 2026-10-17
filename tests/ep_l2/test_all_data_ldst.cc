@@ -1,4 +1,5 @@
 #include "ideal_test_fixture.h"
+#include <cstring>
 #include "../../src/gpgpu-sim/scoreboard.h"
 
 // Friend fixture exposes existing production objects, not alternate callbacks.
@@ -19,7 +20,7 @@ struct ep_l2_all_data_probe {
     for (unsigned r=0;r<MAX_REG_OPERANDS;++r)inst->arch_reg.dst[r]=-1;
     if (!store && !barrier) {inst->out[0]=reg;inst->arch_reg.dst[0]=reg;}
     active_mask_t active;active.set(0);
-    inst->issue(active,0,c.get_gpu()->gpu_sim_cycle,0,0,0);inst->set_addr(0,address);inst->generate_mem_accesses();
+    inst->issue(active,0,c.get_gpu()->gpu_sim_cycle+c.get_gpu()->gpu_tot_sim_cycle,0,0,0);inst->set_addr(0,address);inst->generate_mem_accesses();
     if (store) c.get_gpu()->all_data_reference().native_store_issue(inst->get_uid(),c.get_sid(),0);
     c.m_warp[0]->inc_inst_in_pipeline();if (!store)c.m_scoreboard->reserveRegisters(inst);
     if (barrier) {
@@ -41,10 +42,12 @@ struct ep_l2_all_data_probe {
 
 int main(int argc,char **argv) {
   assert(argc==3 || argc==4);Fixture f(argv[1],argv[2]);auto *c=ep_l2_all_data_probe::core(*f.gpu);
+  if (argc==4 && std::strcmp(argv[3],"--offset4096")==0) f.gpu->gpu_tot_sim_cycle=4096;
   ep_l2_all_data_probe::prepare(*c);auto &s=f.gpu->all_data_reference();
-  if (argc==4) {ep_l2_all_data_probe::issue(*c,global_space,false,1,0x1000,false,true);assert(false);}
+  if (argc==4 && std::strcmp(argv[3],"--unsupported")==0) {ep_l2_all_data_probe::issue(*c,global_space,false,1,0x1000,false,true);assert(false);}
   ep_l2_all_data_probe::issue(*c,global_space,false,1,0x100004000ULL);
   assert(ep_l2_all_data_probe::pending(*c) && s.requests_ready==0);
+  assert(s.inspect(1).eligible==f.gpu->gpu_tot_sim_cycle && s.inspect(1).ready==f.gpu->gpu_tot_sim_cycle+1);
   ep_l2_all_data_probe::cycle(*c,0);assert(ep_l2_all_data_probe::pending(*c));
   ep_l2_all_data_probe::cycle(*c,1);assert(!ep_l2_all_data_probe::pending(*c));
   assert(s.drained() && f.gpu->gpu_sim_insn==1);
