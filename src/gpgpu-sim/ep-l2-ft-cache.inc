@@ -111,8 +111,19 @@ bool l2_cache::ft_response_ready(unsigned long long cycle) {
   mem_fetch *mf = baseline_cache::peek_next_access();
   std::map<mem_fetch *,ep_l2::PayloadHandle>::const_iterator it = m_ft_read_refs.find(mf);
   assert(it != m_ft_read_refs.end());
-  return m_ep_l2_payload.request(it->second, false, cycle,
+  const bool granted = m_ep_l2_payload.request(it->second, false, cycle,
       (unsigned long long)-1, ep_l2_payload_store::RESIDENT_HIT_READ) == ep_l2_payload_store::GRANTED;
+  if (granted && mf->isatomic()) {
+    // Symbolic write-completion label only, matching the existing atomic-HIT
+    // convention. Do not execute the PTX atomic callback here: it belongs to
+    // the response consumer (memory_sub_partition::pop / shader). Pins retain
+    // this exact generation until the response is enqueued and committed.
+    auto &slot = m_ep_l2_payload.inspect_mutable(it->second);
+    for (unsigned s = 0; s < 4; ++s)
+      if (mf->get_access_sector_mask().test(s))
+        slot.versions[s] = (unsigned long long)mf->get_request_uid() + 1;
+  }
+  return granted;
 }
 
 void l2_cache::cycle() {
