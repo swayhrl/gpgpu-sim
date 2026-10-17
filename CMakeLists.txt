@@ -190,3 +190,9 @@ foreach(repair_test ft_memcpy_clock ft_host_prefill)
       entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
       ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
 endforeach()
+
+add_executable(ep_l2_ft_a1 EXCLUDE_FROM_ALL tests/ep_l2/test_ft_a1.cc)
+target_include_directories(ep_l2_ft_a1 PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+target_link_libraries(ep_l2_ft_a1 PRIVATE -Wl,--start-group
+    entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
+    ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)

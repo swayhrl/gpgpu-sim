@@ -2702,6 +2702,20 @@ class l2_cache : public data_cache {
   unsigned ft_wb_staged() const { return m_ft_wb.size(); }
   unsigned ft_pending_lower_reads() const { return m_ep_l2_payload.pending_sector_count(); }
   bool ft_reservation_active() const { return m_ft_pending.request != NULL; }
+  // Read-only production transaction observations for cross-cycle regressions.
+  unsigned ft_pending_index_for_test() const { assert(m_ft_pending.request); return m_ft_pending.tag_index; }
+  unsigned ft_pending_phase_for_test() const { assert(m_ft_pending.request); return m_ft_pending.phase; }
+  cache_request_status ft_raw_probe_for_test(mem_fetch *mf, unsigned &index) const {
+    return m_tag_array->probe(m_config.block_addr(mf->get_addr()), index,
+        mf->get_access_sector_mask(), mf->is_write(), true);
+  }
+  unsigned ft_reserved_ways_for_test(new_addr_type addr) const {
+    unsigned n = 0, first = m_config.set_index(addr) * m_config.get_assoc();
+    for (unsigned i = first; i < first + m_config.get_assoc(); ++i)
+      n += m_tag_array->get_block(i)->is_reserved_line();
+    return n;
+  }
+
   bool ft_drained() const { return !ft_enabled() || (!m_ft_pending.request &&
       m_ft_wb.empty() && m_ft_read_refs.empty() && !m_ep_l2_payload.wb_used()); }
   bool lower_ready(mem_fetch *mf, unsigned long long cycle) override;
