@@ -858,6 +858,11 @@ class cache_config {
   bool ep_l2_b0_stats_enabled() const { return m_ep_l2_b0_stats; }
   bool ep_l2_m0a_stats_enabled() const { return m_ep_l2_m0a_stats; }
   unsigned ep_l2_ft_mode() const { return m_ep_l2_ft_mode; }
+  // Lane1's structural runtime extends this query with S64/cap/P2 guards.
+  bool ep_l2_all_data_config_compatible() const {
+    return m_ep_l2_ft_mode==1 && m_ep_l2_wbuf_entries==16 &&
+        m_ep_l2_payload_mode==2 && !m_ep_l2_ideal_wb && !m_ep_l2_ideal_meta && !m_ep_l2_ideal_read_hit;
+  }
   enum mshr_config_t get_mshr_type() const { return m_mshr_type; }
   void set_assoc(unsigned n) {
     // set new assoc. L1 cache dynamically resized in Volta

@@ -1079,8 +1079,7 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
   if (m_shader_config->ep_l2_mem_all_data) {
     const auto &l2=m_memory_config->m_L2_config;
     assert(!m_shader_config->gpgpu_perfect_mem && !m_memory_config->SST_mode);
-    assert(l2.m_ep_l2_ft_mode==1 && !l2.m_ep_l2_ideal_wb && !l2.m_ep_l2_ideal_meta &&
-           !l2.m_ep_l2_ideal_read_hit && "ALL_DATA is a separate reference scope");
+    assert(l2.ep_l2_all_data_config_compatible() && "ALL_DATA is a separate B16 OFF reference scope");
   }
 
   ctx->ptx_parser->set_ptx_warp_size(m_shader_config);
