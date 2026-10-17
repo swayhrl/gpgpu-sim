@@ -1169,6 +1169,12 @@ class mshr_table {
   /// Accept a new cache fill response: mark entry ready for processing
   void mark_ready(new_addr_type block_addr, bool &has_atomic,
                   const mem_access_sector_mask_t &sectors);
+  // D512 uses one line key for independent sector returns. Only live atomic
+  // requesters intersecting THIS fill may contribute dirty sectors/bytes.
+  void atomic_fill_masks(new_addr_type block_addr,
+                        const mem_access_sector_mask_t &returned,
+                        mem_access_sector_mask_t &sectors,
+                        mem_access_byte_mask_t &bytes) const;
   void mark_ready(new_addr_type block_addr, bool &has_atomic) {
     mem_access_sector_mask_t all_sectors;
     all_sectors.set();

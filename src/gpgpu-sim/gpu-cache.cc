@@ -834,6 +834,22 @@ void mshr_table::descriptor_chain_snapshot(
   }
 }
 
+void mshr_table::atomic_fill_masks(new_addr_type block_addr,
+    const mem_access_sector_mask_t &returned, mem_access_sector_mask_t &sectors,
+    mem_access_byte_mask_t &bytes) const {
+  sectors.reset(); bytes.reset();
+  const auto entry = m_data.find(block_addr);
+  assert(entry != m_data.end());
+  for (const auto mf : entry->second.m_list) {
+    if (!mf->isatomic()) continue;
+    const auto overlap = mf->get_access_sector_mask() & returned;
+    sectors |= overlap;
+    for (unsigned b = 0; b < MAX_MEMORY_ACCESS_SIZE; ++b)
+      if (overlap.test(b / SECTOR_SIZE) && mf->get_access_byte_mask().test(b))
+        bytes.set(b);
+  }
+}
+
 /// Accept a new cache fill response: mark entry ready for processing
 void mshr_table::mark_ready(new_addr_type block_addr, bool &has_atomic,
                             const mem_access_sector_mask_t &sectors) {
@@ -846,6 +862,11 @@ void mshr_table::mark_ready(new_addr_type block_addr, bool &has_atomic,
     assert(m_current_response.size() <= m_data.size());
     return;
   }
+
+  mem_access_sector_mask_t atomic_sectors;
+  mem_access_byte_mask_t atomic_bytes;
+  atomic_fill_masks(block_addr, sectors, atomic_sectors, atomic_bytes);
+  has_atomic = atomic_sectors.any();
 
   mshr_entry &entry = a->second;
   entry.m_ready_sectors |= sectors;
@@ -1617,10 +1638,18 @@ void baseline_cache::fill(mem_fetch *mf, unsigned time) {
     if (!block->is_modified_line()) {
       m_tag_array->inc_dirty();
     }
-    block->set_status(MODIFIED,
-                      mf->get_access_sector_mask());  // mark line as dirty for
-                                                      // atomic operation
-    block->set_byte_mask(mf);
+    if (m_mshrs.descriptor_pool_capacity()) {
+      mem_access_sector_mask_t atomic_sectors;
+      mem_access_byte_mask_t atomic_bytes;
+      m_mshrs.atomic_fill_masks(e->second.m_block_addr,
+          mf->get_access_sector_mask(), atomic_sectors, atomic_bytes);
+      block->set_status(MODIFIED, atomic_sectors);
+      block->set_byte_mask(atomic_bytes);
+    } else {
+      // Preserve the historical non-sector-descriptor behavior.
+      block->set_status(MODIFIED, mf->get_access_sector_mask());
+      block->set_byte_mask(mf);
+    }
   }
   m_tag_array->l2_char_tracking_refresh_line(e->second.m_cache_index);
   m_extra_mf_fields.erase(mf);
