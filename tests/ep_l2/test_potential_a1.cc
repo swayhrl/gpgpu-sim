@@ -56,7 +56,7 @@ int main(int argc,char **argv) {
   assert(f.cache->ft_reservation_active() && f.cache->ft_pending_index_for_test()==2);
   assert(mode==2 || f.cache->ft_pending_phase_for_test()==1);
   assert(f.cache->ep_l2_wad_contains(victim));
-  if (std::stoul(argv[6])) assert(f.cache->ft_wb_quota_reserved()==1 && !f.cache->ft_wb_quota_live());
+  if (std::stoul(argv[6])) assert(f.cache->ft_wb_quota_reserved()==1 && f.cache->ft_wb_quota_live()==extra);
   printf("A1 armed mode=%u C=%u native16way=1 reserved=15 pending=2 phase=%u victim_id=%u generation=%u\n",
       mode,c,f.cache->ft_pending_phase_for_test(),held.payload_id,held.generation);
   if(rollback) {
