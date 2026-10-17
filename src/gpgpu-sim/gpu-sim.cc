@@ -288,6 +288,9 @@ void memory_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_ep_l2_wb_local_cap", OPT_UINT32,
                          &m_L2_config.m_ep_l2_wb_local_cap,
                          "Local reserved+live WB responsibility cap (0=uncapped; 16=U_CAP16)", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_bank_ops", OPT_UINT32,
+                         &m_L2_config.m_ep_l2_bank_ops,
+                         "Real operations per bank per physical GPU cycle (1=P1, 2=P2)", "1");
   option_parser_register(opp, "-gpgpu_ep_l2_static_s64", OPT_BOOL,
                          &m_L2_config.m_ep_l2_static_s64,
                          "Opt-in S64 static1024/80/64 fixed1168 payload layout; FT1/WBUF16 only", "0");

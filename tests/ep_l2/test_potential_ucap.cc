@@ -1,6 +1,6 @@
 #include "potential_fixture.h"
 int main(int argc,char **argv) {
-  assert(argc==7 && std::stoul(argv[3])==2 && std::stoul(argv[5])==0 && std::stoul(argv[6])==16);
+  assert(argc==8 && std::stoul(argv[3])==2 && std::stoul(argv[5])==0 && std::stoul(argv[6])==16);
   setvbuf(stdout,NULL,_IOLBF,0);fixture f(argv);f.block_lower=true;
   const new_addr_type stride=64*128;
   // No synthetic array occupancy: native dirty writes, real WB packets and

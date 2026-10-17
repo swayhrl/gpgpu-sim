@@ -30,7 +30,7 @@ static void layout() {
   puts("S64 layout boundaries/bank counts/full-release/illegal combinations/default B8 B16 PASS");
 }
 int main(int argc,char **argv) {
-  assert(argc==7 && std::stoul(argv[3])==1 && std::stoul(argv[5])==1);
+  assert(argc==8 && std::stoul(argv[3])==1 && std::stoul(argv[5])==1);
   setvbuf(stdout,NULL,_IOLBF,0);layout();fixture f(argv);f.block_lower=true;
   const new_addr_type stride=64*128;
   // No synthetic array occupancy: native dirty writes, real WB packets and
