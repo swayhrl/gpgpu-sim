@@ -5,7 +5,9 @@ using Service=ep_l2_all_data::Service;
 static Service::Mask mask(unsigned from,unsigned count) {
   Service::Mask m{};for (unsigned b=from;b<from+count;++b)m[b]=true;return m;
 }
-int main() {
+int main(int argc,char **argv) {
+  if (argc==2) {Service s;s.begin(1,0,false,11);s.begin(1,0,false,11);assert(false);}
+  (void)argv;
   {
     Service s;Service::Data first{},second{};first.fill(11);second.fill(22);
     auto w=s.begin(1,1,true,11);auto write=s.issue(w,0,0x1000,mask(0,4),0,&first);
