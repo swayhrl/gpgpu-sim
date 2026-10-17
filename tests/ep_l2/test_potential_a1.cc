@@ -44,7 +44,7 @@ int main(int argc,char **argv) {
       auto w=f.make(512+i*stride,true);f.memory[512+i*stride]=f.expected.at(w->get_request_uid());
       f.send(w);f.until_frontend_empty();
     }
-    assert(f.cache->ft_wb_quota_live()==1+extra5 && !f.cache->ft_wb_quota_reserved());
+    assert(f.cache->ft_wb_quota_live()==15 && !f.cache->ft_wb_quota_reserved());
   }
   auto request=f.make(incoming,true);unsigned request_uid=request->get_request_uid();
   unsigned first=(unsigned)-1;assert(f.cache->ft_raw_probe_for_test(request,first)==MISS && first==2);
