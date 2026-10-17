@@ -21,7 +21,7 @@ static void layout() {
   for(unsigned id=0;id<1168;++id)p.release(P::payload_handle(id,1));
   assert(p.free_slots()==1168 && !p.wb_used());
   for(unsigned c:{8u,16u}) {P old(2,1,c);assert(old.physical_slots()==1152+c && old.bypass_capacity()==128 && old.wb_begin()==1152);}
-  bool rejected=false;try{P invalid(2,2,16,true);}catch(const std::invalid_argument&){rejected=true;}assert(rejected);
+  bool rejected=false;try{P invalid(2,2,16,false,true);}catch(const std::invalid_argument&){rejected=true;}assert(rejected);
   for(unsigned which=0;which<3;++which) {
     pid_t pid=fork();assert(pid>=0);
     if(!pid){if(which==0)p.reserve(1168,P::WB,1,P::WB_RESERVED);if(which==1)p.reserve_bypass(80,1,nullptr);if(which==2)p.reserve(1103,P::WB,1,P::WB_RESERVED);_exit(0);}
