@@ -34,7 +34,9 @@ class Service {
     uint64_t snapshot_digest=0;
   };
   uint64_t begin(uint64_t original,unsigned expected,bool store,unsigned space) {
-    assert(record_identity(original,seen_instructions_) && "duplicate original instruction issue");
+    if (!record_identity(original,seen_instructions_)) {
+      fprintf(stderr,"EPL2MEMREF_DUPLICATE_ORIGINAL_INSTRUCTION|uid=%llu\n",(unsigned long long)original);abort();
+    }
     ++unique_original_instructions;
     const auto id=++instruction_sequence_;
     instructions_.emplace(id,Instruction{original,expected,0,0,0,store,space});
@@ -52,11 +54,12 @@ class Service {
     i.sm=sm;i.warp=warp;i.dynamic_warp=dynamic_warp;
     issued_instruction_digest^=instruction_digest(i);
   }
-  void barrier_issue(unsigned sm,unsigned warp) {assert(barriers_.insert({sm,warp}).second);}
+  void barrier_issue(unsigned sm,unsigned warp) {if (!barriers_.insert({sm,warp}).second) abort();}
   bool barrier_pending(unsigned sm,unsigned warp) const {return barriers_.count({sm,warp});}
-  void barrier_complete(unsigned sm,unsigned warp) {assert(barriers_.erase({sm,warp})==1);}
+  void barrier_complete(unsigned sm,unsigned warp) {if (barriers_.erase({sm,warp})!=1) abort();}
   void native_store_issue(uint64_t original,unsigned sm,unsigned warp) {
-    assert(native_stores_.emplace(original,std::make_pair(sm,warp)).second);++native_stores_issued;
+    if (!native_stores_.emplace(original,std::make_pair(sm,warp)).second) abort();
+    ++native_stores_issued;
   }
   bool native_store_declared(uint64_t original) const {return native_stores_.count(original);}
   bool warp_stores_pending(unsigned sm,unsigned warp) const {
@@ -73,7 +76,9 @@ class Service {
     req.domain=domain;req.line=address;req.issued=now;req.store=inst.store;req.mask=mask;
     req.original_access=original_access;
     if (original_access) {
-      assert(record_identity(original_access,seen_accesses_) && "duplicate original native access issue");
+      if (!record_identity(original_access,seen_accesses_)) {
+        fprintf(stderr,"EPL2MEMREF_DUPLICATE_NATIVE_ACCESS|uid=%llu\n",(unsigned long long)original_access);abort();
+      }
       ++unique_native_accesses;
     }
     if (known) {assert(req.store);req.known=true;req.data=*known;}
