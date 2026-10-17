@@ -76,7 +76,7 @@ void ldst_unit::all_data_issue(register_set &source) {
   if (original->is_store() && space!=shared_space)
     for (unsigned n=0;n<group.native_requests;++n) m_core->inc_store_req(wid);
   m_core->mem_instruction_stats(*original);m_core->incmem_stat(m_config->warp_size,1);
-  assert(m_all_data.emplace(group.reference_id,std::move(group)).second);
+  if (!m_all_data.emplace(group.reference_id,std::move(group)).second) abort();
   original->clear(); // Consumes exactly the original SM memory-issue slot.
 }
 
