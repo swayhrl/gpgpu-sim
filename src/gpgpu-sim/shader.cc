@@ -533,6 +533,8 @@ void shader_core_ctx::reinit(unsigned start_thread, unsigned end_thread,
 void shader_core_ctx::init_warps(unsigned cta_id, unsigned start_thread,
                                  unsigned end_thread, unsigned ctaid,
                                  int cta_size, kernel_info_t &kernel) {
+  if (m_config->ep_l2_mem_all_data)
+    m_gpu->all_data_reference().new_shared_epoch(m_sid,cta_id);
   address_type start_pc = next_pc(start_thread);
   unsigned kernel_id = kernel.get_uid();
   if (m_config->model == POST_DOMINATOR) {
@@ -2675,7 +2677,10 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
        mem_config, stats, sid, tpc);
 }
 
+#include "ep-l2-all-data-ldst.inc"
+
 void ldst_unit::issue(register_set &reg_set) {
+  if (m_config->ep_l2_mem_all_data) { all_data_issue(reg_set); return; }
   warp_inst_t *inst = *(reg_set.get_ready());
 
   // record how many pending register writes/memory accesses there are for this
@@ -2845,6 +2850,7 @@ inst->space.get_type() != shared_space) { unsigned warp_id = inst->warp_id();
 }
 */
 void ldst_unit::cycle() {
+  if (m_config->ep_l2_mem_all_data) { all_data_cycle(); return; }
   writeback();
 
   for (unsigned stage = 0; (stage + 1) < m_pipeline_depth; stage++)

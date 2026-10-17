@@ -481,6 +481,9 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          "-Xptxas -dlcm=cg, default=no skip)",
                          "0");
 
+  option_parser_register(opp, "-gpgpu_ep_l2_i_mem_all_data", OPT_BOOL,
+                         &ep_l2_mem_all_data,
+                         "End-to-end non-atomic data reference, ready=eligible+1 physical cycle", "0");
   option_parser_register(opp, "-gpgpu_perfect_mem", OPT_BOOL,
                          &gpgpu_perfect_mem,
                          "enable perfect memory mode (no cache miss)", "0");
@@ -1082,6 +1085,13 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
   gpgpu_ctx = ctx;
   m_shader_config = &m_config.m_shader_config;
   m_memory_config = &m_config.m_memory_config;
+  if (m_shader_config->ep_l2_mem_all_data) {
+    const auto &l2=m_memory_config->m_L2_config;
+    assert(!m_shader_config->gpgpu_perfect_mem && !m_memory_config->SST_mode);
+    assert(l2.m_ep_l2_ft_mode==1 && !l2.m_ep_l2_ideal_wb && !l2.m_ep_l2_ideal_meta &&
+           !l2.m_ep_l2_ideal_read_hit && "ALL_DATA is a separate reference scope");
+  }
+
   ctx->ptx_parser->set_ptx_warp_size(m_shader_config);
   ptx_file_line_stats_create_exposed_latency_tracker(m_config.num_shader());
 
@@ -1262,6 +1272,7 @@ bool gpgpu_sim::active() {
       (gpu_completed_cta >= m_config.gpu_max_completed_cta_opt))
     return false;
   if (m_config.gpu_deadlock_detect && gpu_deadlock) return false;
+  if (m_shader_config->ep_l2_mem_all_data && !m_all_data_reference.drained()) return true;
   for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++)
     if (m_cluster[i]->get_not_completed() > 0) return true;
   ;
@@ -1374,6 +1385,7 @@ PowerscalingCoefficients *gpgpu_sim::get_scaling_coeffs() {
 }
 
 void gpgpu_sim::print_stats(unsigned long long streamID) {
+  if (m_shader_config->ep_l2_mem_all_data) m_all_data_reference.print(stdout);
   gpgpu_ctx->stats->ptx_file_line_stats_write_file();
   gpu_print_stat(streamID);
 
@@ -2087,6 +2099,8 @@ void gpgpu_sim::cycle() {
   int clock_mask = next_clock_domain();
 
   if (clock_mask & CORE) {
+    if (m_shader_config->ep_l2_mem_all_data)
+      m_all_data_reference.advance(gpu_sim_cycle + gpu_tot_sim_cycle);
     // shader core loading (pop from ICNT into core) follows CORE clock
     for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++)
       m_cluster[i]->icnt_cycle();
@@ -2340,6 +2354,12 @@ void shader_core_ctx::dump_warp_state(FILE *fout) const {
 }
 
 void gpgpu_sim::perf_memcpy_to_gpu(size_t dst_start_addr, size_t count) {
+  if (m_shader_config->ep_l2_mem_all_data) {
+    assert(m_all_data_reference.host_prefill(dst_start_addr,count) &&
+           "ALL_DATA host prefill requires complete reference drain");
+    return;
+  }
+
   if (m_memory_config->m_perf_sim_memcpy) {
     if (m_memory_config->m_L2_config.ep_l2_ft_mode()) {
       // FT host prefill must name the same complete address as its resident
