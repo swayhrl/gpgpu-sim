@@ -52,6 +52,19 @@ class ReferenceMemory {
       known_.erase(line + b);
     }
   }
+  // Quiescent host writes in the end-to-end reference. Only already stored
+  // symbols need reset; a cold initial image is already explicitly unknown0.
+  void host_prefill_range(uint64_t address,uint64_t count) {
+    if (!count) return;
+    assert(address<=std::numeric_limits<uint64_t>::max()-(count-1));
+    const uint64_t last=address+count-1;
+    for (auto it=versions_.lower_bound(address & ~uint64_t(127));
+         it!=versions_.end() && it->first<=last;++it)
+      for (unsigned b=0;b<128;++b)
+        if (it->first+b>=address && it->first+b<=last) it->second[b]=0;
+    auto it=known_.lower_bound(address);
+    while (it!=known_.end() && it->first<=last) it=known_.erase(it);
+  }
   std::vector<Byte> read(uint64_t line, const Mask &mask) const {
     assert((line & 127) == 0);
     std::vector<Byte> out;

@@ -52,6 +52,7 @@
 #include "delayqueue.h"
 #include "dram.h"
 #include "gpu-cache.h"
+#include "ep-l2-all-data-reference.h"
 #include "mem_fetch.h"
 #include "scoreboard.h"
 #include "stack.h"
@@ -1344,6 +1345,7 @@ class shader_core_mem_fetch_allocator;
 class cache_t;
 
 class ldst_unit : public pipelined_simd_unit {
+  friend struct ep_l2_all_data_probe;
  public:
   ldst_unit(mem_fetch_interface *icnt,
             shader_core_mem_fetch_allocator *mf_allocator,
@@ -1390,7 +1392,7 @@ class ldst_unit : public pipelined_simd_unit {
       default:
         return false;
     }
-    return m_dispatch_reg->empty();
+    return m_config_all_data() || m_dispatch_reg->empty();
   }
 
   virtual void active_lanes_in_pipeline();
@@ -1424,6 +1426,18 @@ class ldst_unit : public pipelined_simd_unit {
             unsigned sid, unsigned tpc);
 
  protected:
+  bool m_config_all_data() const;
+  void all_data_issue(register_set &source);
+  void all_data_cycle();
+  struct all_data_instruction {
+    warp_inst_t inst;
+    std::vector<uint64_t> requests;
+    uint64_t reference_id,issued;
+    unsigned native_requests;
+    all_data_instruction(const warp_inst_t &i):inst(i),reference_id(0),issued(0),native_requests(0) {}
+  };
+  std::map<uint64_t,all_data_instruction> m_all_data;
+
   bool shared_cycle(warp_inst_t &inst, mem_stage_stall_type &rc_fail,
                     mem_stage_access_type &fail_type);
   bool constant_cycle(warp_inst_t &inst, mem_stage_stall_type &rc_fail,
@@ -1627,6 +1641,7 @@ class shader_core_config : public core_config {
   // data
   char *gpgpu_shader_core_pipeline_opt;
   bool gpgpu_perfect_mem;
+  bool ep_l2_mem_all_data;
   bool gpgpu_clock_gated_reg_file;
   bool gpgpu_clock_gated_lanes;
   enum divergence_support_t model;
@@ -2068,6 +2083,7 @@ class shader_core_mem_fetch_allocator : public mem_fetch_allocator {
 };
 
 class shader_core_ctx : public core_t {
+  friend struct ep_l2_all_data_probe;
  public:
   // creator:
   shader_core_ctx(class gpgpu_sim *gpu, class simt_core_cluster *cluster,
@@ -2128,6 +2144,11 @@ class shader_core_ctx : public core_t {
   void mem_instruction_stats(const warp_inst_t &inst);
   void decrement_atomic_count(unsigned wid, unsigned n);
   void inc_store_req(unsigned warp_id) { m_warp[warp_id]->inc_store_req(); }
+  unsigned reference_cta_id(unsigned warp_id) const { return m_warp[warp_id]->get_cta_id(); }
+  void reference_store_ack(unsigned warp_id) {
+    assert(m_config->ep_l2_mem_all_data);
+    m_warp[warp_id]->dec_store_req();
+  }
   void dec_inst_in_pipeline(unsigned warp_id) {
     m_warp[warp_id]->dec_inst_in_pipeline();
   }  // also used in writeback()
@@ -2622,6 +2643,7 @@ class exec_shader_core_ctx : public shader_core_ctx {
 };
 
 class simt_core_cluster {
+  friend struct ep_l2_all_data_probe;
  public:
   simt_core_cluster(class gpgpu_sim *gpu, unsigned cluster_id,
                     const shader_core_config *config,

@@ -206,7 +206,8 @@ target_link_libraries(ep_l2_common_delta_r16 PRIVATE -Wl,--start-group
 
 # Lane4 potential campaign: separately requested, never default build targets.
 foreach(ideal_test ideal_wb ideal_meta ideal_meta_integrated ideal_read_hit
-                   ideal_host_prefill_reference ideal_host_prefill_partition)
+                   ideal_host_prefill_reference ideal_host_prefill_partition
+                   all_data_reference all_data_ldst)
   add_executable(ep_l2_${ideal_test} EXCLUDE_FROM_ALL tests/ep_l2/test_${ideal_test}.cc)
   target_include_directories(ep_l2_${ideal_test} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
   target_link_libraries(ep_l2_${ideal_test} PRIVATE -Wl,--start-group

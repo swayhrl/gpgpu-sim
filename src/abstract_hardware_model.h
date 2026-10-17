@@ -833,6 +833,7 @@ class mem_access_t {
   }
 
   new_addr_type get_addr() const { return m_addr; }
+  unsigned reference_access_uid() const { return m_uid; }
   void set_addr(new_addr_type addr) { m_addr = addr; }
   unsigned get_size() const { return m_req_size; }
   const active_mask_t &get_warp_mask() const { return m_warp_mask; }

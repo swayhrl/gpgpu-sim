@@ -587,6 +587,7 @@ class watchpoint_event {
 };
 
 class gpgpu_sim : public gpgpu_t {
+  friend struct ep_l2_all_data_probe;
  public:
   gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx);
 
@@ -612,6 +613,7 @@ class gpgpu_sim : public gpgpu_t {
             (gpu_completed_cta >= m_config.gpu_max_completed_cta_opt));
   }
   void print_stats(unsigned long long streamID);
+  ep_l2_all_data::Service &all_data_reference() { return m_all_data_reference; }
   void update_stats();
   void deadlock_check();
   void inc_completed_cta() { gpu_completed_cta++; }
@@ -710,6 +712,7 @@ class gpgpu_sim : public gpgpu_t {
   class memory_partition_unit **m_memory_partition_unit;
   class memory_sub_partition **m_memory_sub_partition;
 
+  ep_l2_all_data::Service m_all_data_reference;
   std::vector<kernel_info_t *> m_running_kernels;
   std::map<unsigned long long, ep_l1d_snapshot> m_ep_l1d_kernel_start;
   std::map<unsigned long long, bool> m_ep_l1d_kernel_overlap;
