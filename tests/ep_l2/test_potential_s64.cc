@@ -36,6 +36,13 @@ int main(int argc,char **argv) {
   // No synthetic array occupancy: native dirty writes, real WB packets and
   // a full two-entry lower FIFO accumulate 64 local staging responsibilities.
   for(unsigned i=0;i<82;++i) {
+    // Make way0 (bank0) the first LRU victim to cover a true same-bank
+    // source-read/staging-write pair; the normal descending sequence also
+    // supplies cross-bank pairs. Touches use actual frontend hit writes.
+    if(i==16) for(unsigned j=0;j<15;++j) {
+      auto hit=f.make(j*stride,true);f.memory[j*stride]=f.expected.at(hit->get_request_uid());
+      f.send(hit);f.until_frontend_empty();
+    }
     auto r=f.make(i*stride,true);f.memory[i*stride]=f.expected.at(r->get_request_uid());
     f.send(r);f.until_frontend_empty();
   }
@@ -55,12 +62,12 @@ int main(int argc,char **argv) {
   assert(f.cache->ep_l2_wad_occupancy()==67);
   for(auto w:f.wb){f.sp->set_done(w);delete w;++f.completed_wb;}f.wb.clear();
   for(unsigned n=0;n<1000 && f.part->busy();++n)f.step();
-  assert(f.completed_wb==67 && f.replies.size()==83 && f.replies.size()==f.expected.size());
+  assert(f.completed_wb==67 && f.replies.size()==98 && f.replies.size()==f.expected.size());
   assert(f.sp->l2_char_no_resource_leak() && f.cache->ft_drained() && !f.part->busy());
   assert(!f.cache->ep_l2_payload_pending_operations() && !f.cache->ep_l2_wad_occupancy());
   assert(f.cache->ep_l2_payload_bank_wb_readout()>=134 && f.bank_max==1);
-  assert(f.same_bank_copy && f.cross_bank_copy);
   printf("S64 real copy source/staging banks: same=%u cross=%u\n",f.same_bank_copy,f.cross_bank_copy);
+  assert(f.same_bank_copy && f.cross_bank_copy);
   f.cache->ft_print(stdout,0);
   puts("S64 production versions/exact-once/release-resume/copy stages/WAD128/drain PASS");
 }
