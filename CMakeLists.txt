@@ -215,7 +215,7 @@ foreach(ideal_test ideal_wb ideal_meta ideal_meta_integrated ideal_read_hit
 endforeach()
 
 # Opt-in source-bound structural diagnostics, not application experiments.
-foreach(potential_test potential_s64 potential_a1)
+foreach(potential_test potential_s64 potential_a1 potential_ucap)
   add_executable(ep_l2_${potential_test} EXCLUDE_FROM_ALL tests/ep_l2/test_${potential_test}.cc)
   target_include_directories(ep_l2_${potential_test} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
   target_link_libraries(ep_l2_${potential_test} PRIVATE -Wl,--start-group

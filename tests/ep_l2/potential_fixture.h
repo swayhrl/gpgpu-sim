@@ -39,8 +39,9 @@ struct fixture {
     const char *args[]={"a1","-gpgpu_ep_l2_ft_mode",argv[3],"-gpgpu_ep_l2_wbuf_entries",argv[4],
       "-gpgpu_cache:dl2","S:64:128:16,L:B:m:L:L,A:128:1,256:0,32",
       "-gpgpu_dram_partition_queues","512:2:64:64",
-      "-gpgpu_ep_l2_static_s64",argv[5]};
-    option_parser_cmdline(p,11,args);cfg.init();option_parser_destroy(p);
+      "-gpgpu_ep_l2_static_s64",argv[5],
+      "-gpgpu_ep_l2_wb_local_cap",argv[6]};
+    option_parser_cmdline(p,13,args);cfg.init();option_parser_destroy(p);
     gpu=new exec_gpgpu_sim(cfg,&ctx);gpu->gpu_sim_cycle=1;
     auto mc=gpu->getMemoryConfig();
     assert(mc->m_L2_config.get_num_lines()==1024 && mc->m_L2_config.get_assoc()==16);
@@ -68,6 +69,7 @@ struct fixture {
   void step() {
     unsigned long long before[4];for(unsigned b=0;b<4;++b)before[b]=cache->ep_l2_payload_bank_grants(b);
     part->cache_cycle(gpu->gpu_sim_cycle);
+    cache->ft_assert_quota();
     for(unsigned b=0;b<4;++b) {
       auto n=cache->ep_l2_payload_bank_grants(b)-before[b];assert(n<=1);bank_max=std::max(bank_max,n);
     }

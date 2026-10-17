@@ -151,6 +151,10 @@ void l2_cache::commit_next_access() {
 void l2_cache::ft_rollback() {
   ft_replacement &p = m_ft_pending;
   assert(p.request && !p.bound);
+  if (p.quota_reserved) {
+    assert(m_ft_quota.reserved == 1); --m_ft_quota.reserved;
+    p.quota_reserved = false; ++m_ft_quota.rollbacks;
+  }
   if (p.wad) {
     assert(m_ep_l2_wad_entries_live.erase(p.victim_address) == 1);
     assert(m_ep_l2_wad_birth_cycle.erase(p.victim_address) == 1);
@@ -165,12 +169,15 @@ void l2_cache::ft_rollback() {
   set_tag_payload_handle(p.tag_index, p.victim);
   ++m_ft_stats.rollback;
   p = ft_replacement();
+  ft_assert_quota();
 }
 
 enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     unsigned time, std::list<cache_event> &events) {
   // memcpy offset orders native Tag timestamps; it is not elapsed hardware
   // time and must never reset the payload bank arbiter or WB/WAD lifetimes.
+  ft_assert_quota();
+  if (m_ft_pending.request == mf && m_ft_pending.quota_reserved) ++m_ft_quota.retries;
   const unsigned long long physical_cycle = ft_physical_cycle();
   m_ep_l2_last_payload_request_result = ep_l2_payload_store::GRANTED;
   const new_addr_type owner = m_config.block_addr(addr);
@@ -229,6 +236,12 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
       if (!landing.valid()) { ++m_ft_stats.pool_full; return RESERVATION_FAIL; }
       if (dirty) staging = victim;
     }
+    // All issue/WAD/staging/landing prechecks passed. Reserve quota before
+    // exposing any cross-cycle transaction; retries keep this one token.
+    if (dirty && m_config.m_ep_l2_wb_local_cap &&
+        m_ft_quota.reserved + m_ft_quota.live >= m_config.m_ep_l2_wb_local_cap) {
+      ++m_ft_quota.refusals; return RESERVATION_FAIL;
+    }
     // The only producer is the serialized frontend head. While this token is
     // live no other frontend request can steal its prechecked issue slots;
     // fills and lower drains cannot add entries to m_miss_queue.
@@ -239,6 +252,11 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
         (m_config.m_ep_l2_ft_mode == 2 && live ? victim.payload_id : index);
     if (live) p.saved = m_ep_l2_payload.inspect(victim);
     if (dirty) {
+      if (m_config.m_ep_l2_wb_local_cap) {
+        assert(!m_ft_quota.reserved); ++m_ft_quota.reserved; p.quota_reserved = true;
+        m_ft_quota.reserved_peak = std::max(m_ft_quota.reserved_peak, m_ft_quota.reserved);
+        m_ft_quota.total_peak = std::max(m_ft_quota.total_peak, m_ft_quota.reserved + m_ft_quota.live);
+      }
       p.victim_address = m_tag_array->get_block(index)->m_block_addr;
       assert(m_ep_l2_wad_entries_live.insert(p.victim_address).second);
       assert(m_ep_l2_wad_birth_cycle.insert(std::make_pair(p.victim_address, physical_cycle)).second);
@@ -360,7 +378,13 @@ void l2_cache::send_write_request(mem_fetch *mf, cache_event event, unsigned tim
     assert(m_ft_wb.size() < m_config.m_ep_l2_wad_entries);
     assert(m_ft_wb.insert(std::make_pair(mf, r)).second);
     mf->set_ep_l2_payload_identity(p.staging.payload_id, p.staging.generation);
+    if (m_config.m_ep_l2_wb_local_cap) {
+      assert(p.quota_reserved && m_ft_quota.reserved == 1);
+      --m_ft_quota.reserved; ++m_ft_quota.live; p.quota_reserved = false;
+      m_ft_quota.live_peak = std::max(m_ft_quota.live_peak, m_ft_quota.live);
+    }
     p.bound = true; ++m_ft_stats.wb_created;
+    ft_assert_quota();
     m_ft_stats.staged_max = std::max(m_ft_stats.staged_max, (unsigned long long)m_ft_wb.size());
   }
   data_cache::send_write_request(mf, event, time, events);
@@ -391,11 +415,20 @@ void l2_cache::lower_accepted(mem_fetch *mf, unsigned long long cycle) {
   m_ep_l2_payload.release(it->second.handle);
   m_ft_stats.staging_lifetime += cycle >= it->second.born ? cycle - it->second.born : 0;
   ++m_ft_stats.lower_accept;
+  if (m_config.m_ep_l2_wb_local_cap) {
+    assert(m_ft_quota.live); --m_ft_quota.live; ++m_ft_quota.lower_accept;
+  }
   m_ft_wb.erase(it);
+  ft_assert_quota();
 }
 
 void l2_cache::ft_print(FILE *fp, unsigned slice) const {
   if (!ft_enabled()) return;
+  ft_assert_quota();
+  fprintf(fp, "EPL2STRUCTV1|WB_QUOTA|slice=%u|cap=%u|reserved=%u|live=%u|reserved_peak=%u|live_peak=%u|total_peak=%u|refusal_attempts=%llu|pending_retry_calls=%llu|rollback_releases=%llu|lower_accept_releases=%llu\n",
+      slice, m_config.m_ep_l2_wb_local_cap, m_ft_quota.reserved, m_ft_quota.live,
+      m_ft_quota.reserved_peak, m_ft_quota.live_peak, m_ft_quota.total_peak,
+      m_ft_quota.refusals, m_ft_quota.retries, m_ft_quota.rollbacks, m_ft_quota.lower_accept);
   fprintf(fp, "EPL2STRUCTV1|CONFIG|slice=%u|static_s64=%u|physical_slots=%u|"
       "resident_nominal=1024|bypass_capacity=%u|wb_begin=%u|static_wb_capacity=%u|"
       "legacy_wbuf=%u|bank_count=4|bank_ops_per_physical_cycle=1|copy_latch_bytes=128\n",
