@@ -477,6 +477,7 @@ class memory_sub_partition {
   fifo_pipeline<mem_fetch> *m_dram_L2_queue;
   fifo_pipeline<mem_fetch> *m_L2_icnt_queue;  // L2 cache hit response queue
   unsigned m_l2_char_returnq_hold_remaining;
+  bool m_ep_l2_rg1_fill_suppressed;
 
   class mem_fetch *L2dramout;
   unsigned long long int wb_addr;

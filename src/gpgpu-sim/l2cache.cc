@@ -987,6 +987,7 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
   m_L2_icnt_queue = new fifo_pipeline<mem_fetch>("L2-to-icnt", 0, L2_icnt);
   m_l2_char_returnq_hold_remaining =
       config->gpgpu_l2_char_returnq_hold_cycles;
+  m_ep_l2_rg1_fill_suppressed=false;
   if(config->m_L2_config.m_ep_l2_rg1 && !config->m_L2_config.disabled())
     m_L2cache->ft_bind_ready_source([this](unsigned client,unsigned uid) {
       using P=ep_l2_payload_store;
@@ -997,6 +998,7 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
             m_L2cache->baseline_cache::peek_next_access()->get_request_uid()==uid;
       if(client==P::FILL)
         return !m_dram_L2_queue->empty() && !m_l2_char_returnq_hold_remaining &&
+            !m_ep_l2_rg1_fill_suppressed &&
             m_dram_L2_queue->top()->get_request_uid()==uid &&
             m_L2cache->waiting_for_fill(m_dram_L2_queue->top());
       if(client==P::LOWER_WB)return m_L2cache->ft_lower_uid_ready(uid);
@@ -1199,6 +1201,7 @@ bool memory_sub_partition::ep_l2_ideal_serve_read(
 }
 
 void memory_sub_partition::cache_cycle(unsigned cycle) {
+  m_ep_l2_rg1_fill_suppressed=false;
   if(!m_config->m_L2_config.disabled())
     m_L2cache->ft_observe_service_cycle(m_gpu->gpu_sim_cycle+m_gpu->gpu_tot_sim_cycle);
   // L2 fill responses
@@ -1245,6 +1248,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
   if (!m_dram_L2_queue->empty() && m_l2_char_returnq_hold_remaining) {
     // Directed closeout hook only: preserve an actual returned response in
     // the ReturnQ. Default zero leaves the production path untouched.
+    m_ep_l2_rg1_fill_suppressed=true;
     --m_l2_char_returnq_hold_remaining;
   } else if (!m_dram_L2_queue->empty()) {
     mem_fetch *mf = m_dram_L2_queue->top();
