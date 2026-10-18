@@ -1996,6 +1996,7 @@ class ldst_unit : public pipelined_simd_unit {
                          unsigned &dl1_misses);
   void display_l1d_deadlock_state(FILE *fp) const;
   void get_dtc_l1_stats(dtc_l1::paper_frontend_stats &stats) const;
+  void print_dtc_l1_invalidation_summary(FILE *fp) const;
   void print_dtc_l1_io_deadlock(FILE *fp) const;
   void get_l1d_cache_stats(cache_stats &cs) const;
   void get_cache_stats(unsigned &read_accesses, unsigned &write_accesses,
@@ -3062,6 +3063,7 @@ class shader_core_ctx : public core_t {
   void print_cache_stats(FILE *fp, unsigned &dl1_accesses,
                          unsigned &dl1_misses);
   void get_dtc_l1_stats(dtc_l1::paper_frontend_stats &stats) const;
+  void print_dtc_l1_invalidation_summary(FILE *fp) const;
   void print_dtc_l1_io_deadlock(FILE *fp) const;
   void get_l1d_cache_stats(cache_stats &cs) const;
 
@@ -3590,6 +3592,7 @@ class simt_core_cluster {
   void print_cache_stats(FILE *fp, unsigned &dl1_accesses,
                          unsigned &dl1_misses) const;
   void get_dtc_l1_stats(dtc_l1::paper_frontend_stats &stats) const;
+  void print_dtc_l1_invalidation_summary(FILE *fp) const;
   void print_dtc_l1_io_deadlock(FILE *fp) const;
   void get_l1d_cache_stats(cache_stats &cs) const;
 

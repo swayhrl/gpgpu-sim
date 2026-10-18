@@ -3662,6 +3662,12 @@ void ldst_unit::dtc_l1_io_identity_event(const char *event,
           original == &mf ? 1U : 0U);
 }
 
+// Normal-statistics delegation only; reuse the original cumulative observer.
+void ldst_unit::print_dtc_l1_invalidation_summary(FILE *fp) const {
+  if (m_config->dtc_l1_invalidate_on_source_event)
+    m_dtc_invalidation.print(fp);
+}
+
 void ldst_unit::print_dtc_l1_stats(FILE *fp) const {
   if (m_config->dtc_l1_invalidate_on_source_event)
     m_dtc_invalidation.print(fp);
@@ -5745,6 +5751,21 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
     return;
   }
 
+  if (m_shader_config->dtc_l1_invalidate_on_source_event) {
+    // One cumulative snapshot at this existing normal statistics boundary.
+    // UINT64_MAX in the unchanged per-SM rows means UNDEFINED_NO_EVENT.
+    fprintf(fout, "DTC_INVALIDATE_V1_SNAPSHOT_BEGIN version=1 sms=%u "
+                  "cycle=%llu no_event_cycle_sentinel=%llu\n",
+            m_shader_config->num_shader(),
+            (unsigned long long)global_cycle(),
+            (unsigned long long)UINT64_MAX);
+    for (unsigned i = 0; i < m_shader_config->n_simt_clusters; ++i)
+      m_cluster[i]->print_dtc_l1_invalidation_summary(fout);
+    fprintf(fout, "DTC_INVALIDATE_V1_SNAPSHOT_END version=1 sms=%u "
+                  "cycle=%llu\n", m_shader_config->num_shader(),
+            (unsigned long long)global_cycle());
+  }
+
   dtc_l1::paper_frontend_stats total;
   cache_stats l1d_stats;
   for (unsigned i = 0; i < m_shader_config->n_simt_clusters; ++i) {
@@ -7007,6 +7028,10 @@ void shader_core_ctx::print_cache_stats(FILE *fp, unsigned &dl1_accesses,
   m_ldst_unit->print_cache_stats(fp, dl1_accesses, dl1_misses);
 }
 
+void shader_core_ctx::print_dtc_l1_invalidation_summary(FILE *fp) const {
+  m_ldst_unit->print_dtc_l1_invalidation_summary(fp);
+}
+
 void shader_core_ctx::get_dtc_l1_stats(
     dtc_l1::paper_frontend_stats &stats) const {
   m_ldst_unit->get_dtc_l1_stats(stats);
@@ -7847,6 +7872,11 @@ void simt_core_cluster::print_cache_stats(FILE *fp, unsigned &dl1_accesses,
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i) {
     m_core[i]->print_cache_stats(fp, dl1_accesses, dl1_misses);
   }
+}
+
+void simt_core_cluster::print_dtc_l1_invalidation_summary(FILE *fp) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i)
+    m_core[i]->print_dtc_l1_invalidation_summary(fp);
 }
 
 void simt_core_cluster::get_dtc_l1_stats(
