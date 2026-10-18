@@ -337,9 +337,21 @@ struct fixture {
     assert(gpu->dtc_l1_lower_outstanding() == 0);
   }
   void normal() {
+    std::array<unsigned char, sizeof(dtc_l1::source_invalidation_observer)> observer{};
+    std::memcpy(observer.data(), &unit->m_dtc_invalidation, observer.size());
+#ifndef DTC_COLLECT_WB_PROBE_BASELINE
+    std::array<unsigned char, sizeof(dtc_l1::collect_wb_pipeline)> pipeline{};
+    std::memcpy(pipeline.data(), &unit->m_dtc_collect_wb, pipeline.size());
+#endif
+    const auto clock = now();
     std::printf("AC_NORMAL_BEGIN id=%u\n", snapshots);
     gpu->gpu_print_stat(0);
     std::printf("AC_NORMAL_END id=%u\n", snapshots++);
+    assert(now() == clock);
+    assert(!std::memcmp(observer.data(), &unit->m_dtc_invalidation, observer.size()));
+#ifndef DTC_COLLECT_WB_PROBE_BASELINE
+    assert(!std::memcmp(pipeline.data(), &unit->m_dtc_collect_wb, pipeline.size()));
+#endif
   }
 };
 
@@ -418,9 +430,24 @@ int main(int argc, const char **argv) {
     const unsigned count = scenario == "single" || scenario == "partial" ? 1 :
                            scenario == "denied" ? 3 : 2;
     for (unsigned i = 0; i < count; ++i) f.prime(sectors / 4, i * 4096);
-    for (unsigned i = 0; i < count; ++i)
-      f.enqueue(sectors / 4, i * 4096, i % 2,
+    for (unsigned i = 0; i < count; ++i) {
+      f.enqueue(sectors / 4, i * 4096, scenario == "same_warp" ? 0 : i % 2,
                 scenario == "partial" ? 1 : -1, scenario == "partial");
+      if (scenario == "same_warp" && i == 0) {
+        auto fence = f.sidecar(ldst_unit::dtc_l1_m4_operation::PROXY_FENCE, 0);
+        f.unit->dtc_l1_m4_observe_complete(fence);
+      }
+    }
+    if (scenario == "arbitration") {
+      f.edge(); f.edge();
+      // Controlled copy holds the ordinary phase-1 WB register. A real RFU
+      // bank reservation denies it; no completion occurs for this test copy.
+      f.unit->m_next_wb = f.unit->m_dtc_l1_oo_pib.front().inst;
+      const auto closed = f.unit->m_dtc_l1_oo_completion_dependencies_closed;
+      f.edge(true, true, 3);
+      assert(f.unit->m_dtc_l1_oo_completion_dependencies_closed == closed);
+      f.unit->m_next_wb.clear();
+    }
     if (scenario == "partial") {
       assert(sectors >= 8);
       f.edge();

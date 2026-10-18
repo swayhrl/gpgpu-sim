@@ -3539,6 +3539,17 @@ bool ldst_unit::dtc_l1_oo_pipeline_eligible(unsigned uid) const {
 
 bool ldst_unit::dtc_l1_oo_pipeline_wb_candidate(uint64_t *uid) const {
   const uint64_t cycle = m_core->get_gpu()->global_cycle();
+  uint64_t first_uid = 0;
+  if (dtc_l1_oo_select_ready(&first_uid)) {
+    for (const auto &entry : m_dtc_l1_oo_pib)
+      if (entry.inst.get_uid() == first_uid &&
+          entry.operation != dtc_l1_m4_operation::CACHEABLE_LOAD) {
+        // Keep the original selector's sidecar priority. No data bank and no
+        // second architectural completion, even when a result is waiting.
+        *uid = first_uid;
+        return true;
+      }
+  }
   if (m_dtc_collect_wb.result_valid) {
     const unsigned owner = static_cast<unsigned>(m_dtc_collect_wb.result_uid);
     assert(dtc_l1_oo_pipeline_eligible(owner));
@@ -3546,13 +3557,6 @@ bool ldst_unit::dtc_l1_oo_pipeline_wb_candidate(uint64_t *uid) const {
     *uid = owner;
     return true;
   }
-  // Sidecars never acquire a data bank or re-execute their architectural path.
-  for (const auto &entry : m_dtc_l1_oo_pib)
-    if (entry.operation != dtc_l1_m4_operation::CACHEABLE_LOAD &&
-        dtc_l1_oo_pipeline_eligible(entry.inst.get_uid())) {
-      *uid = entry.inst.get_uid();
-      return true;
-    }
   return false;
 }
 
