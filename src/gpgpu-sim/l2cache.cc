@@ -1003,16 +1003,15 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
       if(client==P::FRONTEND || client==P::COPY_READ || client==P::COPY_WRITE) {
         if(m_icnt_L2_queue->empty() || m_icnt_L2_queue->top()->get_request_uid()!=uid ||
            !m_L2cache->ft_service_phase_current(client,uid))return false;
-        l2_access_plan p;m_L2cache->preview_access(m_icnt_L2_queue->top()->get_addr(),m_icnt_L2_queue->top(),p);
-        if(!p.exact)return true; // unknown is conservatively ready
-        l2_admission_inputs a;
-        a.line_available=p.probe_status!=RESERVATION_FAIL;
-        a.needs_new_mshr=p.needs_new_mshr;a.new_mshr_available=p.mshr_entry_available;
-        a.needs_mshr_merge=p.needs_mshr_merge;a.mshr_merge_available=p.mshr_merge_available;
-        a.missq_available=m_L2cache->miss_queue_has_slots(p.new_missq_entries);
-        a.needs_data_port=p.needs_data_port;a.data_port_available=m_L2cache->data_port_free();
-        a.needs_response_slot=p.needs_immediate_response_slot;a.response_slot_available=!m_L2_icnt_queue->full();
-        return l2_admission_allowed(a);
+        // A pending bank op has already passed native non-bank prechecks.
+        // FRONTEND denotes a hit read or a locally absorbed write here;
+        // H0 WB/lazy-allocation needs one immediate response except L1 WB.
+        // Copy phases of a read miss do not need that response slot yet.
+        // Do not probe Tags again just to generate readiness wires.
+        auto mf=m_icnt_L2_queue->top();
+        bool immediate=(client==P::FRONTEND || mf->get_is_write()) &&
+            mf->get_access_type()!=L1_WRBK_ACC;
+        return !immediate || !m_L2_icnt_queue->full();
       }
       return true;
     });

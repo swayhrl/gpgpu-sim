@@ -3006,6 +3006,8 @@ class l2_cache : public data_cache {
     if ((m_config.m_ep_l2_mq2 && m_config.m_ep_l2_rg1) ||
         ((m_config.m_ep_l2_mq2 || m_config.m_ep_l2_rg1) &&
         (!ft_enabled() || m_config.m_ep_l2_wbuf_entries != 16 ||
+         m_config.m_write_policy!=WRITE_BACK || m_config.m_write_alloc_policy!=LAZY_FETCH_ON_READ ||
+         m_config.m_cache_type!=SECTOR ||
          m_config.m_ep_l2_bank_ops != 1 || m_config.m_ep_l2_wb_local_cap ||
          m_config.m_ep_l2_ideal_wb || m_config.m_ep_l2_ideal_meta ||
          m_config.m_ep_l2_ideal_read_hit))) {
