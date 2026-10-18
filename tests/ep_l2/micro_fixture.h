@@ -51,11 +51,11 @@ struct micro_fixture {
     cache = new l2_cache("FT_TEST",cc,0,0,&port,allocator,IN_PARTITION_L2_MISS_QUEUE,gpu,L2_GPU_CACHE);
   }
   ~micro_fixture() { delete cache; delete allocator; delete gpu; }
-  mem_fetch *make(new_addr_type a, bool wr, mem_access_type type=GLOBAL_ACC_W, bool ordinary=false) {
+  mem_fetch *make(new_addr_type a, bool wr, mem_access_type type=GLOBAL_ACC_W, bool ordinary=false, unsigned validbytes=32) {
     active_mask_t active; active.set(0);
     mem_access_byte_mask_t bytes;
     unsigned sector=(a >> 5)&3;
-    for(unsigned b=sector*32;b<sector*32+32;++b) bytes.set(b);
+    for(unsigned b=sector*32;b<sector*32+validbytes;++b) bytes.set(b);
     mem_access_sector_mask_t mask;mask.set(sector);
 #ifdef EPL2_MICROOPT_CANDIDATE
     if(ordinary) {

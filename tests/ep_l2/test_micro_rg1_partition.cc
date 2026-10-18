@@ -1,7 +1,11 @@
 // RG1 opportunity in actual partition FIFOs and production cycle ordering.
 #include "micro_partition_fixture.h"
 int main(int argc,char **argv) {
-  assert(argc==8 || argc==9);bool enabled=argc==9 && std::stoul(argv[8]);setvbuf(stdout,NULL,_IOLBF,0);fixture f(argv);
+  assert(argc>=8 && argc<=10);bool enabled=argc>=9 && std::stoul(argv[8]);setvbuf(stdout,NULL,_IOLBF,0);fixture f(argv);
+  f.gpu->gpu_tot_sim_cycle=argc==10?std::stoul(argv[9]):0;
+  mem_access_sector_mask_t host_mask;host_mask.set(0);
+  assert(f.cache->ft_try_force_tag_access(512,1000000,host_mask));
+  assert(f.cache->ep_l2_payload_bank_grants()==0);
   const new_addr_type stride=64*128;
   auto seed=f.make(0,true);f.send(seed);f.until_frontend_empty();
   std::vector<mem_fetch *> reads;

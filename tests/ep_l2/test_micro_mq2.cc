@@ -25,14 +25,17 @@ int main(int argc,char **argv) {
   auto same=f.make(wb_owner,false,GLOBAL_ACC_R,true);std::list<cache_event> ev;
   assert(f.cache->access(same->get_addr(),same,f.time,ev)==RESERVATION_FAIL);
   assert(f.cache->miss_queue_occupancy()==1 && f.wad()==1);delete same;
-  auto read=f.make(256,false,GLOBAL_ACC_R,variant!="unknown");assert(f.access(read));
+  auto read=f.make(256+32,false,GLOBAL_ACC_R,variant!="unknown",16);assert(f.access(read));
   assert(f.cache->miss_queue_occupancy()==2);
+  const auto read_uid=read->get_request_uid();const auto read_bytes=read->get_access_byte_mask();
+  const auto read_sectors=read->get_access_sector_mask();
+  assert(read_bytes.count()==16 && read_sectors.count()==1 && read_sectors.test(1));
   const auto &store=f.cache->ep_l2_payload_for_test();unsigned wb_bank=99;
   for(unsigned i=0;i<store.physical_slots();++i)
     if(store.resident(i).status==ep_l2_payload_store::WB_STAGED)wb_bank=i%4;
   assert(wb_bank<4);mem_fetch *fill=nullptr;
   for(auto r:fills)if(r->get_ep_l2_payload_id()%4==wb_bank)fill=r;
-  assert(fill);std::array<unsigned long long,4> data={{101,0,0,0}};fill->set_ft_wb_data(data);
+  assert(fill);std::array<unsigned long long,4> data={{101,202,303,404}};fill->set_ft_wb_data(data);
   assert(f.cache->ep_l2_payload_fill_request(fill,f.time)==ep_l2_payload_store::GRANTED);
   f.cache->fill(fill,1000000);
   f.port.blocked=variant=="lower-full";
@@ -50,6 +53,7 @@ int main(int argc,char **argv) {
   assert(!f.staged() && f.cache->ep_l2_wad_contains(wb->get_addr()));
   f.cache->ep_l2_wad_complete(wb->get_addr(),f.time);delete wb;
   if(!bypass){f.cycle();assert(f.port.packets.size()==1 && f.port.packets.front()==read);f.port.packets.pop_front();}
+  assert(read->get_request_uid()==read_uid && read->get_access_byte_mask()==read_bytes && read->get_access_sector_mask()==read_sectors);
   read->set_ft_wb_data(data);
   for(unsigned n=0;f.cache->ep_l2_payload_fill_request(read,f.time)!=ep_l2_payload_store::GRANTED;++n){assert(n<100);f.cycle();}
   f.cache->fill(read,2000000);
@@ -59,7 +63,8 @@ int main(int argc,char **argv) {
   std::set<unsigned> seen;
   for(unsigned n=0;seen.size()!=5;++n){assert(n<100);f.cycle();
     if(f.cache->access_ready() && f.cache->ft_response_ready(f.time)){
-      auto r=f.cache->peek_next_access();assert(r->get_ft_wb_data()==data && seen.insert(r->get_request_uid()).second);f.cache->commit_next_access();}}
+      auto r=f.cache->peek_next_access();assert(seen.insert(r->get_request_uid()).second);
+      for(unsigned s=0;s<4;++s)assert(r->get_ft_wb_data()[s]==(r->get_access_sector_mask().test(s)?data[s]:0));f.cache->commit_next_access();}}
   for(auto r:fills)delete r;delete read;
   assert(f.cache->ft_drained() && !f.wad() && f.cache->miss_queue_empty());
   assert(!f.cache->ep_l2_payload_pending_operations());

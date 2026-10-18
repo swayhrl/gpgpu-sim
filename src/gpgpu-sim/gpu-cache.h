@@ -3009,7 +3009,7 @@ class l2_cache : public data_cache {
          m_config.m_ep_l2_bank_ops != 1 || m_config.m_ep_l2_wb_local_cap ||
          m_config.m_ep_l2_ideal_wb || m_config.m_ep_l2_ideal_meta ||
          m_config.m_ep_l2_ideal_read_hit))) {
-      fprintf(stderr,"EP-L2 service candidate supports MQ2 finite P1 B16/S64/U only\n");
+      fprintf(stderr,"EP-L2 service candidate supports single-factor MQ2 or RG1, finite P1 B16/S64/U only\n");
       abort();
     }
     if ((m_config.m_ep_l2_ideal_wb && m_config.m_ep_l2_ft_mode != 1) ||
