@@ -1997,6 +1997,7 @@ class ldst_unit : public pipelined_simd_unit {
   void display_l1d_deadlock_state(FILE *fp) const;
   void get_dtc_l1_stats(dtc_l1::paper_frontend_stats &stats) const;
   void print_dtc_l1_invalidation_summary(FILE *fp) const;
+  void print_dtc_l1_progressive_wakeup_summary(FILE *fp) const;
   void print_dtc_l1_io_deadlock(FILE *fp) const;
   void get_l1d_cache_stats(cache_stats &cs) const;
   void get_cache_stats(unsigned &read_accesses, unsigned &write_accesses,
@@ -2162,6 +2163,8 @@ class ldst_unit : public pipelined_simd_unit {
   uint64_t m_dtc_service_collection_cycles = 0;
   uint64_t m_dtc_service_wb_wait = 0;
   uint64_t m_dtc_service_retired = 0;
+  uint64_t m_dtc_progressive_collectable_entries = 0;
+  uint64_t m_dtc_progressive_returns_to_retire_sum = 0;
   uint64_t m_dtc_service_collected_sectors = 0;
   warp_inst_t m_next_wb;
   unsigned m_writeback_arb;  // round-robin arbiter for writeback contention
@@ -2502,6 +2505,8 @@ class shader_core_config : public core_config {
   // reuse the conventional L1 bank/MSHR controls so LEGACY remains untouched.
   unsigned dtc_l1_mode;
   bool dtc_l1_finite_service;
+  bool dtc_l1_tag_hash_bankrow;
+  bool dtc_l1_progressive_wakeup;
   bool dtc_l1_invalidate_on_source_event;
   unsigned dtc_l1_pib_entries;
   unsigned dtc_l1_mshr_entries;
@@ -3064,6 +3069,7 @@ class shader_core_ctx : public core_t {
                          unsigned &dl1_misses);
   void get_dtc_l1_stats(dtc_l1::paper_frontend_stats &stats) const;
   void print_dtc_l1_invalidation_summary(FILE *fp) const;
+  void print_dtc_l1_progressive_wakeup_summary(FILE *fp) const;
   void print_dtc_l1_io_deadlock(FILE *fp) const;
   void get_l1d_cache_stats(cache_stats &cs) const;
 
@@ -3593,6 +3599,7 @@ class simt_core_cluster {
                          unsigned &dl1_misses) const;
   void get_dtc_l1_stats(dtc_l1::paper_frontend_stats &stats) const;
   void print_dtc_l1_invalidation_summary(FILE *fp) const;
+  void print_dtc_l1_progressive_wakeup_summary(FILE *fp) const;
   void print_dtc_l1_io_deadlock(FILE *fp) const;
   void get_l1d_cache_stats(cache_stats &cs) const;
 

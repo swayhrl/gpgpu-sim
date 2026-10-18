@@ -2968,6 +2968,7 @@ bool ldst_unit::dtc_l1_service_collect(
     for (const auto &reference : references)
       sectors += __builtin_popcount(reference.sector_mask);
     service.observe_ready(cycle, sectors);
+    if (m_config->dtc_l1_progressive_wakeup) ++m_dtc_progressive_collectable_entries;
   }
   const unsigned before = service.sectors_left;
   const bool collected = service.collect(cycle, m_dtc_service_collect);
@@ -2985,6 +2986,11 @@ void ldst_unit::dtc_l1_service_retired(const dtc_l1::service_entry &service) {
   m_dtc_service_ready_to_collect_sum += service.collect_start_cycle - service.ready_cycle;
   m_dtc_service_collection_cycles += service.collect_done_cycle - service.collect_start_cycle + 1;
   m_dtc_service_wb_wait += cycle - service.collect_done_cycle - 1;
+  if (m_config->dtc_l1_progressive_wakeup) {
+    assert(service.admitted_returns_cycle != UINT64_MAX &&
+           service.admitted_returns_cycle <= service.ready_cycle);
+    m_dtc_progressive_returns_to_retire_sum += cycle - service.admitted_returns_cycle;
+  }
   ++m_dtc_service_retired;
 }
 
@@ -3663,6 +3669,16 @@ void ldst_unit::dtc_l1_io_identity_event(const char *event,
 }
 
 // Normal-statistics delegation only; reuse the original cumulative observer.
+void ldst_unit::print_dtc_l1_progressive_wakeup_summary(FILE *fp) const {
+  assert(m_config->dtc_l1_progressive_wakeup && m_dtc_l1_oo_frontend);
+  m_dtc_l1_oo_frontend->print_progressive_summary(fp, m_sid);
+  fprintf(fp, "DTC_PROGRESSIVE_WAKE_V1_LDST sm=%u admitted_notified_collectable=%llu "
+              "admitted_returns_to_retire_sum=%llu retired=%llu\n", m_sid,
+          (unsigned long long)m_dtc_progressive_collectable_entries,
+          (unsigned long long)m_dtc_progressive_returns_to_retire_sum,
+          (unsigned long long)m_dtc_service_retired);
+}
+
 void ldst_unit::print_dtc_l1_invalidation_summary(FILE *fp) const {
   if (m_config->dtc_l1_invalidate_on_source_event)
     m_dtc_invalidation.print(fp);
@@ -4274,6 +4290,11 @@ void ldst_unit::init(mem_fetch_interface *icnt,
                      Scoreboard *scoreboard, const shader_core_config *config,
                      const memory_config *mem_config, shader_core_stats *stats,
                      unsigned sid, unsigned tpc) {
+  dtc_l1::check_tag_hash_bankrow(
+      config->dtc_l1_tag_hash_bankrow,
+      config->dtc_l1_mode == static_cast<unsigned>(dtc_l1::mode::PAPER_OO),
+      config->dtc_l1_finite_service, config->dtc_l1_logical_sets,
+      config->dtc_l1_tag_banks);
   m_memory_config = mem_config;
   m_icnt = icnt;
   m_mf_allocator = mf_allocator;
@@ -4319,6 +4340,8 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
        mem_config, stats, sid, tpc);
   dtc_l1::check_source_invalidation_mode(
       m_config->dtc_l1_invalidate_on_source_event, m_config->dtc_l1_mode);
+  dtc_l1::check_progressive_wakeup_mode(m_config->dtc_l1_progressive_wakeup,
+      m_config->dtc_l1_mode, m_config->dtc_l1_finite_service);
   if (m_config->dtc_l1_invalidate_on_source_event &&
       m_config->m_L1D_config.disabled()) {
     fprintf(stderr, "OO_K1_REQUIRES_ORDINARY_L1D_STOP\n");
@@ -4381,6 +4404,8 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
     m_dtc_l1_io_frontend = std::make_unique<dtc_l1::io_frontend>(dtc_config);
   if (m_config->dtc_l1_mode == static_cast<unsigned>(dtc_l1::mode::PAPER_OO)) {
     dtc_config.selected_mode = dtc_l1::mode::PAPER_OO;
+    dtc_config.tag_hash_bankrow = m_config->dtc_l1_tag_hash_bankrow;
+    dtc_config.progressive_wakeup = m_config->dtc_l1_progressive_wakeup;
     m_dtc_l1_oo_frontend = std::make_unique<dtc_l1::oo_frontend>(dtc_config);
   }
   if (m_config->dtc_l1_mode ==
@@ -4405,8 +4430,16 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
     : pipelined_simd_unit(NULL, config, 3, core, 0),
       m_L1D(new_l1d_cache),
       m_next_wb(config) {
+  if (config->dtc_l1_progressive_wakeup) {
+    fprintf(stderr, "DTC_PROGRESSIVE_WAKE_EXTERNAL_CACHE_CONSTRUCTOR_STOP\n");
+    abort();
+  }
   if (config->dtc_l1_invalidate_on_source_event) {
     fprintf(stderr, "OO_K1_EXTERNAL_CACHE_CONSTRUCTOR_UNSUPPORTED_STOP\n");
+    abort();
+  }
+  if (config->dtc_l1_tag_hash_bankrow) {
+    fprintf(stderr, "TAG_HASH_BANKROW_EXTERNAL_CACHE_CONSTRUCTOR_STOP\n");
     abort();
   }
   init(icnt, mf_allocator, core, operand_collector, scoreboard, config,
@@ -5010,12 +5043,14 @@ void ldst_unit::cycle() {
       } else {
         m_dtc_l1_oo_frontend->advance_service(cycle);
       }
-      auto observe_ready = [cycle](auto &entry) {
+      auto observe_ready = [this, cycle](auto &entry) {
         if (entry.service.ready_cycle != UINT64_MAX) return;
         unsigned sectors = 0;
         for (const auto &reference : entry.references)
           sectors += __builtin_popcount(reference.sector_mask);
         entry.service.observe_ready(cycle, sectors);
+        if (m_config->dtc_l1_progressive_wakeup)
+          ++m_dtc_progressive_collectable_entries;
       };
       if (dtc_l1_paper_io_active()) {
         for (auto &entry : m_dtc_l1_io_pib)
@@ -5024,11 +5059,18 @@ void ldst_unit::cycle() {
               m_dtc_l1_io_frontend->entry_ready_for(entry.inst.get_uid()))
             observe_ready(entry);
       } else {
-        for (auto &entry : m_dtc_l1_oo_pib)
+        for (auto &entry : m_dtc_l1_oo_pib) {
+          if (m_config->dtc_l1_progressive_wakeup &&
+              entry.operation == dtc_l1_m4_operation::CACHEABLE_LOAD &&
+              entry.next_reference == entry.references.size() &&
+              entry.service.admitted_returns_cycle == UINT64_MAX &&
+              m_dtc_l1_oo_frontend->entry_returns_complete_for(entry.inst.get_uid()))
+            entry.service.admitted_returns_cycle = cycle;
           if (entry.operation == dtc_l1_m4_operation::CACHEABLE_LOAD &&
               entry.next_reference == entry.references.size() &&
               m_dtc_l1_oo_frontend->entry_ready_for(entry.inst.get_uid()))
             observe_ready(entry);
+        }
       }
     }
   }
@@ -5764,6 +5806,16 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
     fprintf(fout, "DTC_INVALIDATE_V1_SNAPSHOT_END version=1 sms=%u "
                   "cycle=%llu\n", m_shader_config->num_shader(),
             (unsigned long long)global_cycle());
+  }
+
+  if (m_shader_config->dtc_l1_progressive_wakeup) {
+    fprintf(fout, "DTC_PROGRESSIVE_WAKE_V1_SNAPSHOT_BEGIN version=1 sms=%u "
+                  "cycle=%llu no_event_cycle_sentinel=%llu\n",
+            m_shader_config->num_shader(), (unsigned long long)global_cycle(),
+            (unsigned long long)UINT64_MAX);
+    for (unsigned i = 0; i < m_shader_config->n_simt_clusters; ++i)
+      m_cluster[i]->print_dtc_l1_progressive_wakeup_summary(fout);
+    fprintf(fout, "DTC_PROGRESSIVE_WAKE_V1_SNAPSHOT_END version=1\n");
   }
 
   dtc_l1::paper_frontend_stats total;
@@ -7028,6 +7080,10 @@ void shader_core_ctx::print_cache_stats(FILE *fp, unsigned &dl1_accesses,
   m_ldst_unit->print_cache_stats(fp, dl1_accesses, dl1_misses);
 }
 
+void shader_core_ctx::print_dtc_l1_progressive_wakeup_summary(FILE *fp) const {
+  m_ldst_unit->print_dtc_l1_progressive_wakeup_summary(fp);
+}
+
 void shader_core_ctx::print_dtc_l1_invalidation_summary(FILE *fp) const {
   m_ldst_unit->print_dtc_l1_invalidation_summary(fp);
 }
@@ -7872,6 +7928,11 @@ void simt_core_cluster::print_cache_stats(FILE *fp, unsigned &dl1_accesses,
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i) {
     m_core[i]->print_cache_stats(fp, dl1_accesses, dl1_misses);
   }
+}
+
+void simt_core_cluster::print_dtc_l1_progressive_wakeup_summary(FILE *fp) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i)
+    m_core[i]->print_dtc_l1_progressive_wakeup_summary(fp);
 }
 
 void simt_core_cluster::print_dtc_l1_invalidation_summary(FILE *fp) const {

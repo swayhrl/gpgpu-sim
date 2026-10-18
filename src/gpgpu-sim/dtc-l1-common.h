@@ -11,11 +11,15 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <map>
 #include <deque>
 #include <list>
 #include <set>
 #include <vector>
+
+#include "dtc-l1-tag-index.h"
 
 namespace dtc_l1 {
 
@@ -26,6 +30,7 @@ enum class mode { LEGACY, PAPER_BASE, PAPER_IO, PAPER_OO, MODERN_OO_SECTOR };
 
 struct config {
   bool finite_service = false;
+  bool progressive_wakeup = false;
   mode selected_mode = mode::LEGACY;
   unsigned pib_entries = 8;
   unsigned tag_banks = 4;
@@ -39,7 +44,17 @@ struct config {
   unsigned io_pib_entries = 256;
   unsigned oo_pib_entries = 128;
   unsigned ref_count_bits = 13;
+  bool tag_hash_bankrow = false;
 };
+
+// AD is an opt-in timing optimization of the finite whole-line OO model only.
+inline void check_progressive_wakeup_mode(bool enabled, unsigned selected,
+                                          bool finite) {
+  if (enabled && (!finite || selected != static_cast<unsigned>(mode::PAPER_OO))) {
+    std::fprintf(stderr, "DTC_PROGRESSIVE_WAKE_UNSUPPORTED_MODE_STOP\n");
+    std::abort();
+  }
+}
 
 // Absolute core-cycle quota; checking availability never consumes a grant.
 // Commit only after the owning operation actually succeeds.
@@ -61,6 +76,9 @@ class service_quota {
 };
 
 struct service_entry {
+  // AD common boundary: first LDST observation with admission complete and
+  // all real whole-line returns accepted. Independent of notification gating.
+  uint64_t admitted_returns_cycle = UINT64_MAX;
   uint64_t tag_grant_cycle = UINT64_MAX;
   uint64_t ready_cycle = UINT64_MAX;
   uint64_t collect_done_cycle = UINT64_MAX;
@@ -171,6 +189,10 @@ struct lookup_invalidation_result {
 class io_frontend {
  public:
   explicit io_frontend(config cfg) : m_cfg(cfg), m_tags(cfg.logical_sets * cfg.logical_ways), m_phys(cfg.physical_lines) {
+    check_tag_hash_bankrow(cfg.tag_hash_bankrow, false, cfg.finite_service,
+                           cfg.logical_sets, cfg.tag_banks);
+    check_progressive_wakeup_mode(cfg.progressive_wakeup,
+        static_cast<unsigned>(mode::PAPER_IO), cfg.finite_service);
     assert(cfg.logical_sets && cfg.logical_ways && cfg.physical_lines);
     assert(cfg.allocation_width && cfg.io_pib_entries);
     assert(cfg.tag_banks && cfg.tag_requests_per_bank_per_cycle &&
@@ -501,6 +523,11 @@ class oo_frontend {
         m_tags(cfg.logical_sets * cfg.logical_ways),
         m_phys(cfg.physical_lines),
         m_slots(cfg.oo_pib_entries) {
+    check_tag_hash_bankrow(cfg.tag_hash_bankrow,
+                           cfg.selected_mode == mode::PAPER_OO,
+                           cfg.finite_service, cfg.logical_sets, cfg.tag_banks);
+    check_progressive_wakeup_mode(cfg.progressive_wakeup,
+        static_cast<unsigned>(cfg.selected_mode), cfg.finite_service);
     assert(cfg.logical_sets && cfg.logical_ways && cfg.physical_lines);
     assert(cfg.allocation_width && cfg.oo_pib_entries);
     assert(cfg.ref_count_bits && cfg.ref_count_bits < 32);
@@ -548,8 +575,7 @@ class oo_frontend {
                 m_tag_requests_this_cycle.end(), 0);
       m_total_tag_requests_this_cycle = 0;
     }
-    const unsigned set = static_cast<unsigned>(
-        (address / kLogicalLineBytes) % m_cfg.logical_sets);
+    const unsigned set = tag_set(address);
     const unsigned bank = set % m_cfg.tag_banks;
     if (m_total_tag_requests_this_cycle >= m_cfg.tag_requests_per_cycle ||
         m_tag_requests_this_cycle[bank] >=
@@ -565,6 +591,8 @@ class oo_frontend {
 
   // See io_frontend::will_new_miss().  Existing Valid/Pending tags need no
   // lower candidate and must remain serviceable while that queue is full.
+  // Historical find_tag touches LRU even for this precheck. Preserve that
+  // exact recency policy in BOTH hash modes; this is not a read-only peek.
   bool will_new_miss(uint64_t address) {
     const uint64_t line = address & ~(kLogicalLineBytes - 1);
     return find_tag(line) == nullptr;
@@ -651,6 +679,12 @@ class oo_frontend {
     physical_line &physical = m_phys[free_id];
     physical.allocated = true;
     physical.ready = false;
+    if (m_cfg.progressive_wakeup) {
+      physical.data_ready = false;
+      physical.return_cycle = UINT64_MAX;
+      physical.first_notify_cycle = physical.last_notify_cycle = UINT64_MAX;
+      physical.notified = physical.late_merges = 0;
+    }
     physical.tag_valid = true;
     physical.ref_count = 0;
     physical.waiters.clear();
@@ -682,6 +716,7 @@ class oo_frontend {
       for (const auto &pending : m_service_returns)
         assert(pending.physical.id != identity.id ||
                pending.physical.generation != identity.generation);
+      if (m_cfg.progressive_wakeup) physical.return_cycle = m_service_cycle;
       m_service_returns.push_back({identity, m_service_cycle + 1, 0});
       return;
     }
@@ -698,9 +733,9 @@ class oo_frontend {
     assert_shadow_refs();
   }
 
-  // The physical allocation remains Pending until its finite metadata work
-  // finishes. Late merges append to the same generation's waiter vector;
-  // entries with a zero count still cannot retire while physical.ready=false.
+  // ready retains its X2 meaning: broadcast finished. AD's data_ready is
+  // exposed only at this unchanged +1 metadata edge. Unnotified consumers
+  // still own a pending dependency even when the data itself is available.
   void advance_service(uint64_t cycle) {
     if (!m_cfg.finite_service || cycle == m_service_cycle) return;
     m_service_cycle = cycle;
@@ -710,19 +745,55 @@ class oo_frontend {
       auto &pending = m_service_returns.front();
       assert(fill_identity_matches(pending.physical));
       auto &physical = m_phys[pending.physical.id];
+      if (m_cfg.progressive_wakeup) physical.data_ready = true;
       while (budget && pending.next_waiter < physical.waiters.size()) {
         const auto &waiting = physical.waiters[pending.next_waiter++];
         entry *owner = find_entry_by_slot(waiting.slot, waiting.slot_generation);
         assert(owner && has_reference(*owner, pending.physical));
         assert(owner->pending_dependencies);
         --owner->pending_dependencies;
+        if (m_cfg.progressive_wakeup) {
+          if (!physical.notified) physical.first_notify_cycle = cycle;
+          physical.last_notify_cycle = cycle;
+          ++physical.notified;
+        }
         ++m_wakeups;
         --budget;
       }
-      if (pending.next_waiter != physical.waiters.size()) break;
+      if (pending.next_waiter != physical.waiters.size()) {
+        if (m_cfg.progressive_wakeup && pending.next_waiter) {
+          // Early retirement allows slot reuse and arbitrarily long merge
+          // streams. Discard only the consumed prefix; the live cursor still
+          // names the same physical generation and unnotified slot suffix.
+          physical.waiters.erase(physical.waiters.begin(),
+                                physical.waiters.begin() + pending.next_waiter);
+          pending.next_waiter = 0;
+        }
+        break;
+      }
+      if (m_cfg.progressive_wakeup) {
+        ++m_broadcasts_finished;
+        ++m_fanout_hist[std::min<uint64_t>(32, physical.notified)];
+        m_first_notify_sum += physical.first_notify_cycle;
+        m_last_notify_sum += physical.last_notify_cycle;
+        m_broadcast_span_sum += physical.last_notify_cycle - physical.first_notify_cycle;
+      }
       physical.ready = true;
       physical.waiters.clear();
       m_service_returns.pop_front();
+    }
+    if (m_cfg.progressive_wakeup) {
+      for (auto &owner : m_entries) {
+        if (owner.references.empty() || !entry_ready(owner)) continue;
+        bool old_gate_blocked = false;
+        for (const auto id : owner.references) old_gate_blocked |= !m_phys[id.id].ready;
+        m_own_dep0_linewide_blocked_observations += old_gate_blocked;
+        ++m_notified_ready_entry_cycles;
+        if (!owner.ready_observed) {
+          owner.ready_observed = true;
+          ++m_notified_ready_entries;
+        }
+      }
     }
     assert_shadow_refs();
   }
@@ -845,6 +916,45 @@ class oo_frontend {
     const entry *owner = find_entry_const(uid);
     return owner && entry_ready(*owner);
   }
+  bool entry_returns_complete_for(uint64_t uid) const {
+    assert(m_cfg.progressive_wakeup);
+    const entry *owner = find_entry_const(uid);
+    if (!owner || owner->references.empty()) return false;
+    for (const auto id : owner->references)
+      if (!fill_identity_matches(id) || m_phys[id.id].return_cycle == UINT64_MAX)
+        return false;
+    return true;
+  }
+  void print_progressive_summary(FILE *fp, unsigned sm) const {
+    assert(m_cfg.progressive_wakeup);
+    std::fprintf(fp, "DTC_PROGRESSIVE_WAKE_V1 sm=%u broadcasts=%llu "
+        "first_notify_cycle_sum=%llu last_notify_cycle_sum=%llu span_sum=%llu "
+        "own_dep0_linewide_blocked_entry_cycles=%llu "
+        "notified_frontend_ready_entries=%llu notified_frontend_ready_entry_cycles=%llu "
+        "late_merges=%llu\n", sm,
+        (unsigned long long)m_broadcasts_finished,
+        (unsigned long long)m_first_notify_sum, (unsigned long long)m_last_notify_sum,
+        (unsigned long long)m_broadcast_span_sum,
+        (unsigned long long)m_own_dep0_linewide_blocked_observations,
+        (unsigned long long)m_notified_ready_entries,
+        (unsigned long long)m_notified_ready_entry_cycles,
+        (unsigned long long)m_late_merges);
+    for (unsigned bin = 0; bin < m_fanout_hist.size(); ++bin)
+      std::fprintf(fp, "DTC_PROGRESSIVE_WAKE_V1_FANOUT sm=%u bin=%u count=%llu\n",
+          sm, bin, (unsigned long long)m_fanout_hist[bin]);
+    // Bounded by the configured physical pool, no unbounded event log.
+    for (unsigned id = 0; id < m_phys.size(); ++id) {
+      const auto &p = m_phys[id];
+      if (!p.allocated) continue;
+      std::fprintf(fp, "DTC_PROGRESSIVE_WAKE_V1_LINE sm=%u physical=%u generation=%llu "
+          "data_ready=%u broadcast_done=%u notified=%llu first_cycle=%llu "
+          "last_cycle=%llu late_merges=%llu refs=%llu\n", sm, id,
+          (unsigned long long)p.generation, p.data_ready, p.ready,
+          (unsigned long long)p.notified, (unsigned long long)p.first_notify_cycle,
+          (unsigned long long)p.last_notify_cycle, (unsigned long long)p.late_merges,
+          (unsigned long long)p.ref_count);
+    }
+  }
   uint64_t entry_slot_generation(uint64_t uid) const {
     const entry *owner = find_entry_const(uid);
     assert(owner);
@@ -858,6 +968,7 @@ class oo_frontend {
 
   void assert_shadow_refs() const {
     std::vector<uint64_t> shadow(m_phys.size(), 0);
+    std::map<uint64_t, unsigned> pending_shadow;
     for (const entry &owner : m_entries)
       for (const physical_identity identity : owner.references) {
         assert(identity.id < m_phys.size());
@@ -871,7 +982,25 @@ class oo_frontend {
       if (!physical.allocated) {
         assert(!physical.ready && !physical.tag_valid && !physical.ref_count);
       }
+      if (m_cfg.progressive_wakeup) {
+        assert(!physical.data_ready ||
+               (physical.allocated && physical.return_cycle != UINT64_MAX));
+        assert(!physical.ready || (physical.data_ready && physical.waiters.empty()));
+        assert(physical.waiters.size() <= m_cfg.oo_pib_entries);
+        for (const auto &waiting : physical.waiters) {
+          assert(waiting.slot < m_slots.size());
+          const auto &slot = m_slots[waiting.slot];
+          assert(slot.active && slot.generation == waiting.slot_generation);
+          const auto *owner = find_entry_const(slot.uid);
+          assert(owner && has_reference(*owner,
+              {static_cast<unsigned>(id), physical.generation}));
+          ++pending_shadow[owner->uid];
+        }
+      }
     }
+    if (m_cfg.progressive_wakeup)
+      for (const auto &owner : m_entries)
+        assert(pending_shadow[owner.uid] == owner.pending_dependencies);
     for (const tag_entry &tag : m_tags)
       if (tag.valid) {
         assert(fill_identity_matches(tag.physical));
@@ -883,7 +1012,11 @@ class oo_frontend {
   struct waiter { unsigned slot; uint64_t slot_generation; };
   struct physical_line {
     bool allocated = false;
-    bool ready = false;
+    bool ready = false; // all waiter notifications done (X2 meaning)
+    bool data_ready = false; // AD only: real full return + metadata edge
+    uint64_t return_cycle = UINT64_MAX;
+    uint64_t first_notify_cycle = UINT64_MAX, last_notify_cycle = UINT64_MAX;
+    uint64_t notified = 0, late_merges = 0;
     bool tag_valid = false;
     uint64_t generation = 0;
     uint64_t ref_count = 0;
@@ -902,6 +1035,7 @@ class oo_frontend {
     std::vector<physical_identity> references;
     unsigned pending_dependencies;
     unsigned external_dependencies = 0;
+    bool ready_observed = false;
   };
   struct slot_state { bool active = false; uint64_t uid = 0; uint64_t generation = 0; };
 
@@ -936,6 +1070,10 @@ class oo_frontend {
     ++physical.ref_count;
     owner.references.push_back(identity);
     if (!physical.ready) {
+      if (m_cfg.progressive_wakeup && physical.data_ready) {
+        ++physical.late_merges;
+        ++m_late_merges;
+      }
       physical.waiters.push_back({owner.slot, owner.slot_generation});
       ++owner.pending_dependencies;
     }
@@ -943,13 +1081,17 @@ class oo_frontend {
   bool entry_ready(const entry &owner) const {
     if (owner.pending_dependencies || owner.external_dependencies) return false;
     for (const physical_identity identity : owner.references)
-      if (!fill_identity_matches(identity) || !m_phys[identity.id].ready)
+      if (!fill_identity_matches(identity) ||
+          !(m_cfg.progressive_wakeup ? m_phys[identity.id].data_ready
+                                    : m_phys[identity.id].ready))
         return false;
     return true;
   }
+  unsigned tag_set(uint64_t address) const {
+    return logical_tag_set(address, m_cfg.logical_sets, m_cfg.tag_hash_bankrow);
+  }
   tag_entry *find_tag(uint64_t line) {
-    const unsigned set = static_cast<unsigned>(
-        (line / kLogicalLineBytes) % m_cfg.logical_sets);
+    const unsigned set = tag_set(line);
     for (unsigned way = 0; way < m_cfg.logical_ways; ++way) {
       tag_entry &tag = m_tags[set * m_cfg.logical_ways + way];
       if (tag.valid && tag.line == line) {
@@ -960,8 +1102,7 @@ class oo_frontend {
     return nullptr;
   }
   tag_entry *select_victim(uint64_t line) {
-    const unsigned set = static_cast<unsigned>(
-        (line / kLogicalLineBytes) % m_cfg.logical_sets);
+    const unsigned set = tag_set(line);
     tag_entry *victim = &m_tags[set * m_cfg.logical_ways];
     for (unsigned way = 0; way < m_cfg.logical_ways; ++way) {
       tag_entry &tag = m_tags[set * m_cfg.logical_ways + way];
@@ -994,11 +1135,25 @@ class oo_frontend {
       ++m_service_map_loss_count;
       m_service_map_loss.erase(lost);
     }
+    if (m_cfg.progressive_wakeup) {
+      assert(physical.ready && physical.data_ready && physical.waiters.empty());
+      for (const auto &pending : m_service_returns)
+        assert(pending.physical.id != identity.id ||
+               pending.physical.generation != identity.generation);
+      physical.data_ready = false;
+    }
     physical.allocated = false;
     physical.ready = false;
     physical.waiters.clear();
   }
 
+  uint64_t m_broadcasts_finished = 0, m_first_notify_sum = 0,
+           m_last_notify_sum = 0, m_broadcast_span_sum = 0,
+           m_own_dep0_linewide_blocked_observations = 0,
+           m_notified_ready_entries = 0, m_notified_ready_entry_cycles = 0,
+           m_late_merges = 0;
+  // Exact 0..31; final bin >=32. Counters are cumulative uint64_t.
+  std::array<uint64_t, 33> m_fanout_hist{};
   config m_cfg;
   struct service_return {
     physical_identity physical;
@@ -1048,6 +1203,10 @@ class sector_oo_frontend {
         m_tags(cfg.logical_sets * cfg.logical_ways),
         m_phys(cfg.physical_lines),
         m_slots(cfg.oo_pib_entries) {
+    check_tag_hash_bankrow(cfg.tag_hash_bankrow, false, cfg.finite_service,
+                           cfg.logical_sets, cfg.tag_banks);
+    check_progressive_wakeup_mode(cfg.progressive_wakeup,
+        static_cast<unsigned>(mode::MODERN_OO_SECTOR), cfg.finite_service);
     assert(cfg.logical_sets && cfg.logical_ways && cfg.physical_lines);
     assert(cfg.allocation_width && cfg.oo_pib_entries);
     assert(cfg.ref_count_bits && cfg.ref_count_bits < 32);
@@ -1818,6 +1977,10 @@ inline std::vector<line_reference> group_128b_references(
 class paper_frontend {
  public:
   explicit paper_frontend(config cfg) : m_cfg(cfg) {
+    check_tag_hash_bankrow(cfg.tag_hash_bankrow, false, cfg.finite_service,
+                           cfg.logical_sets, cfg.tag_banks);
+    check_progressive_wakeup_mode(cfg.progressive_wakeup,
+        static_cast<unsigned>(mode::PAPER_BASE), cfg.finite_service);
     assert(m_cfg.pib_entries > 0);
     assert(m_cfg.tag_banks > 0);
     assert(m_cfg.tag_requests_per_bank_per_cycle > 0);
