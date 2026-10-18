@@ -137,6 +137,8 @@ if(GPGPUSIM_BUILD_DTC_L1_TESTS)
     target_compile_options(dtc_l1_ac2_capacity_probe PRIVATE -fno-access-control)
     target_link_libraries(dtc_l1_ac2_capacity_probe PRIVATE cudart ${CMAKE_DL_LIBS})
     add_test(NAME dtc_l1_ac2_capacity_bound_test COMMAND dtc_l1_ac2_capacity_probe resource)
+    set_tests_properties(dtc_l1_ac2_capacity_bound_test PROPERTIES
+        ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cudart>")
     add_executable(dtc_l1_collect_wb_resource_test
                    tests/dtc_l1_collect_wb_resource_test.cc)
     target_include_directories(dtc_l1_collect_wb_resource_test PRIVATE
