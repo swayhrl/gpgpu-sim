@@ -116,7 +116,10 @@ int main(int argc,const char **argv) {
   f.unit->m_scoreboard->reserveRegisters(&inst); f.unit->issue(issue);
   f.loads=1; f.expected_sectors=actual;
   bool seen=false, invalidated=false; unsigned peak_refs=0;
-  for (unsigned step=0;step<3000;++step) {
+  // Bound includes admission/finite four-packet return service per line and
+  // all collection cycles. The640-line stress cannot finish within3000 edges.
+  const unsigned max_steps=8*refs.size()+(actual+3)/4+32;
+  for (unsigned step=0;step<max_steps;++step) {
     f.edge(false,true,3);
     peak_refs=std::max(peak_refs,unsigned(f.front().active_refs()));
     if (!f.unit->m_dtc_l1_oo_pib.empty()) seen=true;
@@ -131,7 +134,7 @@ int main(int argc,const char **argv) {
       }
     }
     if (seen && f.unit->m_dtc_l1_oo_pib.empty()) break;
-    assert(step<2999);
+    assert(step+1<max_steps);
   }
   assert(seen && peak_refs==refs.size()); f.drain(3); f.normal(); f.edge(); f.normal();
   printf("AC2_RESULT status=PASS_PARENT_CAPACITY_WITNESS_ONLY sectors=%u peak_refs=%u lower=%llu compact_implemented=0 value_correctness=UNPROVEN\n",
