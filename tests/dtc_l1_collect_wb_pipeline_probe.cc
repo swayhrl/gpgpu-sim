@@ -74,6 +74,10 @@ struct fixture {
     ctx.the_gpgpusim->g_simulation_starttime = std::time(nullptr);
     gpu = new exec_gpgpu_sim(cfg, &ctx);
     gpu->init();
+    // The unchanged base dram_t constructor leaves n_ref uninitialized. This
+    // CPU fixture never clocks DRAM, so supply its explicit zero-event input
+    // in BOTH builds. Do not repair the production DRAM model in this Lane.
+    for (auto *partition : gpu->m_memory_partition_unit) partition->m_dram->n_ref = 0;
     core = gpu->get_simt_core_clusters()[0]->get_shader_cores()[0];
     unit = core->m_ldst_unit;
     unit->m_icnt = &link;
