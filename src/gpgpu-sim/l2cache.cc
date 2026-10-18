@@ -987,6 +987,35 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
   m_L2_icnt_queue = new fifo_pipeline<mem_fetch>("L2-to-icnt", 0, L2_icnt);
   m_l2_char_returnq_hold_remaining =
       config->gpgpu_l2_char_returnq_hold_cycles;
+  if(config->m_L2_config.m_ep_l2_rg1 && !config->m_L2_config.disabled())
+    m_L2cache->ft_bind_ready_source([this](unsigned client,unsigned uid) {
+      using P=ep_l2_payload_store;
+      // Live queue heads and real FIFO credits, evaluated at arbitration.
+      // An actor later in C++ call order can already be ready here.
+      if(client==P::RESPONSE)
+        return m_L2cache->access_ready() && !m_L2_icnt_queue->full() &&
+            m_L2cache->baseline_cache::peek_next_access()->get_request_uid()==uid;
+      if(client==P::FILL)
+        return !m_dram_L2_queue->empty() && !m_l2_char_returnq_hold_remaining &&
+            m_dram_L2_queue->top()->get_request_uid()==uid &&
+            m_L2cache->waiting_for_fill(m_dram_L2_queue->top());
+      if(client==P::LOWER_WB)return m_L2cache->ft_lower_uid_ready(uid);
+      if(client==P::FRONTEND || client==P::COPY_READ || client==P::COPY_WRITE) {
+        if(m_icnt_L2_queue->empty() || m_icnt_L2_queue->top()->get_request_uid()!=uid ||
+           !m_L2cache->ft_service_phase_current(client,uid))return false;
+        l2_access_plan p;m_L2cache->preview_access(m_icnt_L2_queue->top()->get_addr(),m_icnt_L2_queue->top(),p);
+        if(!p.exact)return true; // unknown is conservatively ready
+        l2_admission_inputs a;
+        a.line_available=p.probe_status!=RESERVATION_FAIL;
+        a.needs_new_mshr=p.needs_new_mshr;a.new_mshr_available=p.mshr_entry_available;
+        a.needs_mshr_merge=p.needs_mshr_merge;a.mshr_merge_available=p.mshr_merge_available;
+        a.missq_available=m_L2cache->miss_queue_has_slots(p.new_missq_entries);
+        a.needs_data_port=p.needs_data_port;a.data_port_available=m_L2cache->data_port_free();
+        a.needs_response_slot=p.needs_immediate_response_slot;a.response_slot_available=!m_L2_icnt_queue->full();
+        return l2_admission_allowed(a);
+      }
+      return true;
+    });
   m_l2_char_collector = 0;
   for (unsigned i = 0; i < 4; ++i) m_l2_char_l2dram_class[i] = 0;
   m_ep_l2_lower_read_issue_count = 0;
@@ -1171,6 +1200,8 @@ bool memory_sub_partition::ep_l2_ideal_serve_read(
 }
 
 void memory_sub_partition::cache_cycle(unsigned cycle) {
+  if(!m_config->m_L2_config.disabled())
+    m_L2cache->ft_observe_service_cycle(m_gpu->gpu_sim_cycle+m_gpu->gpu_tot_sim_cycle);
   // L2 fill responses
   if (!m_config->m_L2_config.disabled()) {
     if (m_l2_char_collector)

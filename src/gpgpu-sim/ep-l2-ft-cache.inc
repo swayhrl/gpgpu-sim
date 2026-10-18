@@ -112,7 +112,7 @@ bool l2_cache::ft_response_ready(unsigned long long cycle) {
   std::map<mem_fetch *,ep_l2::PayloadHandle>::const_iterator it = m_ft_read_refs.find(mf);
   assert(it != m_ft_read_refs.end());
   const bool granted = m_ep_l2_payload.request(it->second, false, cycle,
-      (unsigned long long)-1, ep_l2_payload_store::RESIDENT_HIT_READ) == ep_l2_payload_store::GRANTED;
+      (unsigned long long)-1, ep_l2_payload_store::RESIDENT_HIT_READ,ep_l2_payload_store::RESPONSE,mf->get_request_uid()) == ep_l2_payload_store::GRANTED;
   if (granted && mf->isatomic()) {
     // Symbolic write-completion label only, matching the existing atomic-HIT
     // convention. Do not execute the PTX atomic callback here: it belongs to
@@ -151,6 +151,7 @@ void l2_cache::commit_next_access() {
 void l2_cache::ft_rollback() {
   ft_replacement &p = m_ft_pending;
   assert(p.request && !p.bound);
+  m_ep_l2_payload.cancel_transaction(p.request->get_request_uid());
   if (p.quota_reserved) {
     assert(m_ft_quota.reserved == 1); --m_ft_quota.reserved;
     p.quota_reserved = false; ++m_ft_quota.rollbacks;
@@ -282,7 +283,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
       // read and write cycles. Both compared organizations include this latch.
       if (p.phase == 0) {
         m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(p.victim,
-            false, physical_cycle, (unsigned long long)-1, ep_l2_payload_store::WB_READOUT);
+            false, physical_cycle, (unsigned long long)-1, ep_l2_payload_store::WB_READOUT,ep_l2_payload_store::COPY_READ,mf->get_request_uid());
         if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
           ++m_ft_stats.bank_block; return RESERVATION_FAIL;
         }
@@ -293,7 +294,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
       }
       if (p.phase == 1) {
         m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(p.staging,
-            true, physical_cycle, (unsigned long long)-1, ep_l2_payload_store::RESIDENT_WRITE);
+            true, physical_cycle, (unsigned long long)-1, ep_l2_payload_store::RESIDENT_WRITE,ep_l2_payload_store::COPY_WRITE,mf->get_request_uid());
         if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
           ++m_ft_stats.bank_block; return RESERVATION_FAIL;
         }
@@ -308,7 +309,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     if (mf->get_is_write()) {
       m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(
           ep_l2_payload_store::RESIDENT, p.landing_id, true, physical_cycle,
-          (unsigned long long)-1, ep_l2_payload_store::RESIDENT_WRITE);
+          (unsigned long long)-1, ep_l2_payload_store::RESIDENT_WRITE,ep_l2_payload_store::FRONTEND,mf->get_request_uid());
       if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
         ++m_ft_stats.bank_block; return RESERVATION_FAIL;
       }
@@ -336,7 +337,8 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     if (probe == HIT || mf->get_is_write()) {
       m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(h,
           mf->get_is_write() || mf->isatomic(), physical_cycle, (unsigned long long)-1,
-          mf->get_is_write() || mf->isatomic() ? ep_l2_payload_store::RESIDENT_WRITE : ep_l2_payload_store::RESIDENT_HIT_READ);
+          mf->get_is_write() || mf->isatomic() ? ep_l2_payload_store::RESIDENT_WRITE : ep_l2_payload_store::RESIDENT_HIT_READ,
+          ep_l2_payload_store::FRONTEND,mf->get_request_uid());
       if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
         ++m_ft_stats.bank_block; return RESERVATION_FAIL;
       }
@@ -417,7 +419,7 @@ bool l2_cache::lower_ready(mem_fetch *mf, unsigned long long cycle) {
   std::map<mem_fetch *,ft_wb_record>::iterator it = m_ft_wb.find(mf);
   assert(it != m_ft_wb.end());
   const ep_l2_payload_store::request_result result = m_ep_l2_payload.request(
-      it->second.handle, false, cycle, (unsigned long long)-1, ep_l2_payload_store::WB_READOUT);
+      it->second.handle, false, cycle, (unsigned long long)-1, ep_l2_payload_store::WB_READOUT,ep_l2_payload_store::LOWER_WB,mf->get_request_uid());
   if (result != ep_l2_payload_store::GRANTED) { ++m_ft_stats.bank_block;
     if(m_config.m_ep_l2_mq2)++m_ft_stats.mq2_wb_bank_waits;
     return false; }
@@ -449,6 +451,7 @@ void l2_cache::lower_accepted(mem_fetch *mf, unsigned long long cycle) {
 void l2_cache::ft_print(FILE *fp, unsigned slice) const {
   if (!ft_enabled()) return;
   ft_assert_quota();
+  m_ep_l2_payload.rg1_print(fp,slice);
   fprintf(fp,"EPL2SERVICEV1|MQ2|slice=%u|enabled=%u|wb_bank_waits=%llu|bypasses=%llu|window=2|lower_enqueues_per_cycle=1\n",slice,m_config.m_ep_l2_mq2,m_ft_stats.mq2_wb_bank_waits,m_ft_stats.mq2_bypasses);
   fprintf(fp,"EPL2STRUCTV1|BANK_PEAK|slice=%u|ops_per_physical_cycle=%u|bank0=%u|bank1=%u|bank2=%u|bank3=%u\n",slice,
       m_ep_l2_payload.bank_service_limit(),m_ep_l2_payload.bank_peak(0),m_ep_l2_payload.bank_peak(1),

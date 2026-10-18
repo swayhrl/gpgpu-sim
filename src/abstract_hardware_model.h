@@ -981,11 +981,11 @@ class inst_t {
   bool ep_l2_mq2_ordinary_read = false;
   static bool ep_l2_plain_ldg(const std::vector<std::string> &tokens) {
     if (tokens.empty() || tokens.front() != "LDG") return false;
-    for (unsigned i=1; i<tokens.size(); ++i)
-      if (tokens[i] != "E" && tokens[i] != "64" && tokens[i] != "128" &&
-          tokens[i] != "U8" && tokens[i] != "S8" &&
-          tokens[i] != "U16" && tokens[i] != "S16") return false;
-    return true;
+    unsigned i=1;
+    if(i<tokens.size() && tokens[i]=="E")++i;
+    if(i<tokens.size() && (tokens[i]=="32" || tokens[i]=="64" || tokens[i]=="128" ||
+        tokens[i]=="U8" || tokens[i]=="S8" || tokens[i]=="U16" || tokens[i]=="S16"))++i;
+    return i==tokens.size();
   }
   bool is_store() const {
     return (op == STORE_OP || op == TENSOR_CORE_STORE_OP ||

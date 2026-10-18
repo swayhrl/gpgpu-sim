@@ -1,7 +1,7 @@
 // RG1 opportunity in actual partition FIFOs and production cycle ordering.
 #include "micro_partition_fixture.h"
 int main(int argc,char **argv) {
-  assert(argc==8);setvbuf(stdout,NULL,_IOLBF,0);fixture f(argv);
+  assert(argc==8 || argc==9);bool enabled=argc==9 && std::stoul(argv[8]);setvbuf(stdout,NULL,_IOLBF,0);fixture f(argv);
   const new_addr_type stride=64*128;
   auto seed=f.make(0,true);f.send(seed);f.until_frontend_empty();
   std::vector<mem_fetch *> reads;
@@ -24,9 +24,13 @@ int main(int argc,char **argv) {
   f.return_read(other->get_addr());
   auto before=f.cache->ep_l2_payload_bank_grants(bank);
   f.step();
-  assert(f.sp->ep_l2_l2icnt_occupancy()==1 && f.sp->ep_l2_draml2_occupancy()==1);
-  assert(f.cache->ep_l2_payload_bank_grants(bank)==before);
-  printf("RG1 real partition response FIFO full, retained response bank%u, ReturnQ fill ready, services=0 PASS\n",bank);
+  assert(f.sp->ep_l2_l2icnt_occupancy()==1);
+  assert(f.sp->ep_l2_draml2_occupancy()==(enabled?0u:1u));
+  assert(f.cache->ep_l2_payload_bank_grants(bank)==before+(enabled?1u:0u));
+#ifdef EPL2_MICROOPT_CANDIDATE
+  if(enabled)assert(f.cache->ep_l2_payload_for_test().rg1_recovered(bank)>=1);
+#endif
+  printf("RG1 real partition response FIFO full, retained response bank%u, ReturnQ fill ready, services=%u enabled=%u PASS\n",bank,enabled?1u:0u,enabled);
   // Drain the real response FIFO and resume the retained oldest owner.
   auto ack=f.sp->pop();assert(ack==hit);assert(f.replies.insert(ack->get_request_uid()).second);delete ack;
   f.consume_responses=true;

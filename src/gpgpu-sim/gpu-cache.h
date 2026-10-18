@@ -45,6 +45,7 @@
 #include <array>
 #include <limits>
 #include <vector>
+#include <functional>
 #include "addrdec.h"
 
 #define MAX_DEFAULT_CACHE_SIZE_MULTIBLIER 4
@@ -2179,6 +2180,17 @@ class ep_l2_payload_store {
     }
     bool occupied() const { return status != FREE; }
   };
+  enum service_client { GENERIC=0, RESPONSE=1, FILL=2, LOWER_WB=3,
+                        FRONTEND=4, COPY_READ=5, COPY_WRITE=6, CLIENTS=7 };
+  void set_rg1_enabled(bool enabled) { assert(!enabled || (banked() && m_ft_mode && m_bank_ops==1)); m_rg1=enabled; }
+  void bind_ready_source(std::function<bool(unsigned,unsigned)> f) { m_ready_source=f; }
+  bool rg1_enabled() const { return m_rg1; }
+  void observe_ready_cycle(unsigned long long cycle) { if(m_rg1)rg_observe(cycle); }
+  unsigned long long rg1_recovered(unsigned b) const { assert(b<4);return m_rg_recovered[b]; }
+  void rg1_print(FILE *fp,unsigned slice) const {
+    for(unsigned b=0;b<4;++b)fprintf(fp,"EPL2SERVICEV1|RG1_BANK|slice=%u|bank=%u|enabled=%u|held_not_ready_cycles=%llu|another_ready_cycles=%llu|recovered_grants=%llu|physical_services=%llu\n",slice,b,m_rg1,m_rg_not_ready[b],m_rg_another_ready[b],m_rg_recovered[b],m_bank_grants_by_bank[b]);
+    for(unsigned c=0;c<CLIENTS;++c)fprintf(fp,"EPL2SERVICEV1|RG1_CLIENT|slice=%u|client=%u|max_attempt_to_first_ready=%llu|max_attempt_to_consume=%llu|max_first_ready_to_consume=%llu|consumed=%llu|cancellations=%llu\n",slice,c,m_rg_first_ready_lag[c],m_rg_max_wait[c],m_rg_ready_wait[c],m_rg_consumed[c],m_rg_cancel[c]);
+  }
   ep_l2_payload_store(unsigned mode = 0, unsigned ft_mode = 0, unsigned wbuf = 0,
                       bool ideal_wb = false, bool static_s64 = false,
                       unsigned bank_ops = 1)
@@ -2388,6 +2400,7 @@ class ep_l2_payload_store {
   void release(const payload_handle &h) {
     slot &s = inspect_mutable(h); assert(!s.pins && s.pending_sector_mask.none());
     assert(s.generation != std::numeric_limits<unsigned>::max());
+    if(m_rg1){cancel_request(h,false);cancel_request(h,true);}
     s.status = FREE; s.owner = 0; s.ready_sector_mask.reset(); ++s.generation;
   }
   void transfer(const payload_handle &h, role r, state st) {
@@ -2409,7 +2422,10 @@ class ep_l2_payload_store {
     for (unsigned which = 0; which < 2; ++which) {
       std::vector<pending_op> &q = which ? m_granted[b] : m_pending[b];
       for (unsigned i = 0; i < q.size();) {
-        if (q[i].r == r && q[i].id == id && q[i].write == write) q.erase(q.begin() + i);
+        if (q[i].r == r && q[i].id == id && q[i].write == write) {
+          if(m_rg1)++m_rg_cancel[q[i].client];
+          q.erase(q.begin() + i);
+        }
         else ++i;
       }
     }
@@ -2441,7 +2457,8 @@ class ep_l2_payload_store {
   // through its retry token in the per-bank pending list.
   request_result request(role r, unsigned id, bool write, unsigned long long cycle,
                          unsigned long long sequence = (unsigned long long)-1,
-                         operation_class op_class = RESIDENT_HIT_READ) {
+                         operation_class op_class = RESIDENT_HIT_READ,
+                         unsigned client = GENERIC, unsigned token = 0) {
     if (!enabled()) return GRANTED;
     if (m_ft_mode && m_cycle != (unsigned long long)-1)
       assert(cycle >= m_cycle && "FT bank clock must be physical and monotonic");
@@ -2449,7 +2466,7 @@ class ep_l2_payload_store {
       m_cycle = cycle;
       m_resident_reads = m_resident_writes = m_bypass_reads = m_bypass_writes = 0;
       std::fill(m_bank_services, m_bank_services+4, 0);
-      if (banked()) {
+      if (banked() && !m_rg1) {
         for (unsigned b = 0; b < 4; ++b) {
           // A production retry need not return in the single cycle after it
           // was selected.  Retain an unconsumed oldest grant until its owner
@@ -2480,6 +2497,7 @@ class ep_l2_payload_store {
     assert(global_id < m_slots.size());
     const unsigned bank = global_id % 4;
     ++m_bank_attempts;
+    if(m_rg1)return request_rg1(r,id,write,cycle,sequence,op_class,client,token,global_id,bank);
     for (unsigned selected=0; selected<m_granted[bank].size(); ++selected) {
       const pending_op op = m_granted[bank][selected];
       if (op.r == r && op.id == id && op.write == write) {
@@ -2541,12 +2559,13 @@ class ep_l2_payload_store {
   request_result request(const payload_handle &handle, bool write,
                          unsigned long long cycle,
                          unsigned long long sequence = (unsigned long long)-1,
-                         operation_class op_class = RESIDENT_HIT_READ) {
+                         operation_class op_class = RESIDENT_HIT_READ,
+                         unsigned client = GENERIC, unsigned token = 0) {
     assert(handle_live(handle));
     const role r = m_slots[handle.payload_id].allocation_role;
     const unsigned local_id = r == BYPASS ? handle.payload_id - k_resident_slots :
                                                handle.payload_id;
-    return request(r, local_id, write, cycle, sequence, op_class);
+    return request(r, local_id, write, cycle, sequence, op_class,client,token);
   }
   // A compact oldest-ready arbiter used by directed regressions. Production
   // directed regressions. All candidates are made ready before `grant_oldest`;
@@ -2655,9 +2674,12 @@ class ep_l2_payload_store {
                unsigned long long arrival_cycle_value = 0)
         : r(role_value), id(id_value), write(write_value), sequence(sequence_value),
           true_conflict(false), first_conflict_cycle(arrival_cycle_value) {}
+    unsigned client=GENERIC, token=0, generation=0;
+    unsigned long long first_attempt=0, first_ready=(unsigned long long)-1;
     role r; unsigned id; bool write; unsigned long long sequence;
     bool true_conflict; unsigned long long first_conflict_cycle;
   };
+  #include "ep-l2-rg1.inc"
   unsigned m_mode, m_ft_mode, m_wbuf;
   bool m_ideal_wb, m_static_s64;
   unsigned m_bank_ops; unsigned long long m_cycle;
@@ -2696,10 +2718,27 @@ class l2_cache : public data_cache {
         m_ep_l2_last_payload_request_result(ep_l2_payload_store::GRANTED),
         m_ep_l2_tag_payload(ep_l2_payload_store::k_resident_slots) {
     validate_ep_l2_mode_config();
+    m_ep_l2_payload.set_rg1_enabled(config.m_ep_l2_rg1);
     m_ft_last_wb_versions.fill(0);
     if (ft_enabled()) m_tag_array->bind_ft_replacement(&m_ft_pending.request, &m_ft_pending.tag_index);
   }
 
+  void ft_bind_ready_source(std::function<bool(unsigned,unsigned)> f) { m_ep_l2_payload.bind_ready_source(f); }
+  void ft_observe_service_cycle(unsigned long long cycle) { m_ep_l2_payload.observe_ready_cycle(cycle); }
+  bool ft_lower_uid_ready(unsigned uid) const {
+    if(m_miss_queue.empty())return false;
+    auto head=m_miss_queue.front();return head->get_request_uid()==uid && !m_memport->full(head->size(),head->get_is_write());
+  }
+  void ft_cancel_service_transaction(unsigned uid) { m_ep_l2_payload.cancel_transaction(uid); }
+  bool ft_service_phase_current(unsigned client,unsigned uid) const {
+    using P=ep_l2_payload_store;
+    if(client==P::COPY_READ || client==P::COPY_WRITE)
+      return m_ft_pending.request && m_ft_pending.request->get_request_uid()==uid &&
+          m_ft_pending.phase==(client==P::COPY_READ?0u:1u);
+    if(client==P::FRONTEND && m_ft_pending.request && m_ft_pending.request->get_request_uid()==uid)
+      return !m_ft_pending.dirty || m_config.m_ep_l2_ft_mode==2 || m_ft_pending.phase>=2;
+    return true;
+  }
   virtual ~l2_cache() {}
 
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
@@ -2725,7 +2764,7 @@ class l2_cache : public data_cache {
                    m_ep_l2_payload.handle_live(handle)
                ? m_ep_l2_payload.request(handle, true, cycle,
                                           (unsigned long long)-1,
-                                          ep_l2_payload_store::FILL_WRITE)
+                                          ep_l2_payload_store::FILL_WRITE,ep_l2_payload_store::FILL,mf->get_request_uid())
                : ep_l2_payload_store::LEGACY_PORT_BUSY;
   }
   bool ep_l2_last_payload_bank_contention() const {
@@ -2964,12 +3003,13 @@ class l2_cache : public data_cache {
   std::map<mem_fetch *,ep_l2_payload_store::payload_handle> m_ft_read_refs;
   std::array<unsigned long long,4> m_ft_last_wb_versions;
   void validate_ep_l2_mode_config() const {
-    if ((m_config.m_ep_l2_mq2 || m_config.m_ep_l2_rg1) &&
+    if ((m_config.m_ep_l2_mq2 && m_config.m_ep_l2_rg1) ||
+        ((m_config.m_ep_l2_mq2 || m_config.m_ep_l2_rg1) &&
         (!ft_enabled() || m_config.m_ep_l2_wbuf_entries != 16 ||
          m_config.m_ep_l2_bank_ops != 1 || m_config.m_ep_l2_wb_local_cap ||
          m_config.m_ep_l2_ideal_wb || m_config.m_ep_l2_ideal_meta ||
-         m_config.m_ep_l2_ideal_read_hit || m_config.m_ep_l2_rg1)) {
-      fprintf(stderr,"EP-L2 service candidate supports MQ2 finite P1 B16/S64/U only; RG1 unqualified\n");
+         m_config.m_ep_l2_ideal_read_hit))) {
+      fprintf(stderr,"EP-L2 service candidate supports MQ2 finite P1 B16/S64/U only\n");
       abort();
     }
     if ((m_config.m_ep_l2_ideal_wb && m_config.m_ep_l2_ft_mode != 1) ||

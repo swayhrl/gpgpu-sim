@@ -1,8 +1,10 @@
 // Real native cache/Tag/MSHR/WB path, no injected queue or arbiter state.
 #include "micro_fixture.h"
 int main(int argc,char **argv) {
-  assert(argc==5);setvbuf(stdout,NULL,_IOLBF,0);
+  assert(argc==5 || argc==6);setvbuf(stdout,NULL,_IOLBF,0);
   unsigned mode=std::stoul(argv[3]);bool enabled=std::stoul(argv[4]);
+  std::string variant=argc==6?argv[5]:"ordinary";
+  bool bypass=enabled && variant=="ordinary";
   micro_fixture f(argv[1],argv[2],mode,16,64,1);
   const new_addr_type stride=64*128;
   std::map<new_addr_type,std::array<unsigned long long,4>> ref;
@@ -14,7 +16,16 @@ int main(int argc,char **argv) {
   assert(f.port.packets.size()==4);f.port.packets.clear();f.port.blocked=true;
   auto w=f.make(16*stride,true);assert(f.access(w));delete w;
   assert(f.staged()==1 && f.wad()==1 && f.cache->miss_queue_occupancy()==1);
-  auto read=f.make(256,false,GLOBAL_ACC_R,true);assert(f.access(read));
+  // Same-line demand must remain behind the dirty WB's live WAD, before
+  // even acquiring a MissQ descriptor. No illegal same-line queue injection.
+  new_addr_type wb_owner=0;
+  const auto &observed=f.cache->ep_l2_payload_for_test();
+  for(unsigned i=0;i<observed.physical_slots();++i)
+    if(observed.resident(i).status==ep_l2_payload_store::WB_STAGED)wb_owner=observed.resident(i).owner;
+  auto same=f.make(wb_owner,false,GLOBAL_ACC_R,true);std::list<cache_event> ev;
+  assert(f.cache->access(same->get_addr(),same,f.time,ev)==RESERVATION_FAIL);
+  assert(f.cache->miss_queue_occupancy()==1 && f.wad()==1);delete same;
+  auto read=f.make(256,false,GLOBAL_ACC_R,variant!="unknown");assert(f.access(read));
   assert(f.cache->miss_queue_occupancy()==2);
   const auto &store=f.cache->ep_l2_payload_for_test();unsigned wb_bank=99;
   for(unsigned i=0;i<store.physical_slots();++i)
@@ -24,21 +35,21 @@ int main(int argc,char **argv) {
   assert(fill);std::array<unsigned long long,4> data={{101,0,0,0}};fill->set_ft_wb_data(data);
   assert(f.cache->ep_l2_payload_fill_request(fill,f.time)==ep_l2_payload_store::GRANTED);
   f.cache->fill(fill,1000000);
-  f.port.blocked=false;
+  f.port.blocked=variant=="lower-full";
   unsigned bank=fill->get_ep_l2_payload_id()%4;
   unsigned before=f.cache->ep_l2_payload_bank_grants(bank);
   f.cycle();
   assert(f.cache->ep_l2_payload_bank_grants(bank)==before);
   assert(f.staged()==1 && f.wad()==1);
-  if(enabled){assert(f.port.packets.size()==1 && f.port.packets.front()==read);f.port.packets.pop_front();}
+  if(bypass){assert(f.port.packets.size()==1 && f.port.packets.front()==read);f.port.packets.pop_front();}
   else assert(f.port.packets.empty());
-  printf("MQ2 opportunity real fill-bank/WB-head/independent-read mode=%u enabled=%u bypass=%zu PASS\n",mode,enabled,enabled?size_t(1):size_t(0));
+  printf("MQ2 opportunity real fill-bank/WB-head/independent-read mode=%u enabled=%u bypass=%zu PASS\n",mode,enabled,bypass?size_t(1):size_t(0));
   // On recovery the original WB wins; identity/sector versions survive exactly.
-  f.cycle();assert(!f.port.packets.empty());auto wb=f.port.packets.front();f.port.packets.pop_front();
+  f.port.blocked=false;f.cycle();assert(!f.port.packets.empty());auto wb=f.port.packets.front();f.port.packets.pop_front();
   assert(wb->get_access_type()==L2_WRBK_ACC && wb->get_ft_wb_data()==ref.at(wb->get_addr()));
   assert(!f.staged() && f.cache->ep_l2_wad_contains(wb->get_addr()));
   f.cache->ep_l2_wad_complete(wb->get_addr(),f.time);delete wb;
-  if(!enabled){f.cycle();assert(f.port.packets.size()==1 && f.port.packets.front()==read);f.port.packets.pop_front();}
+  if(!bypass){f.cycle();assert(f.port.packets.size()==1 && f.port.packets.front()==read);f.port.packets.pop_front();}
   read->set_ft_wb_data(data);
   for(unsigned n=0;f.cache->ep_l2_payload_fill_request(read,f.time)!=ep_l2_payload_store::GRANTED;++n){assert(n<100);f.cycle();}
   f.cache->fill(read,2000000);

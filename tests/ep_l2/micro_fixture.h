@@ -59,7 +59,8 @@ struct micro_fixture {
     mem_access_sector_mask_t mask;mask.set(sector);
 #ifdef EPL2_MICROOPT_CANDIDATE
     if(ordinary) {
-      warp_inst_t inst(gpu->getShaderCoreConfig());inst.op=LOAD_OP;
+      warp_inst_t inst(gpu->getShaderCoreConfig());inst.op=LOAD_OP;inst.pc=0x100;
+      inst.memory_op=memory_load;inst.data_size=4;
       inst.space=memory_space_t(global_space);inst.cache_op=CACHE_ALL;
       inst.ep_l2_mq2_ordinary_read=inst_t::ep_l2_plain_ldg({"LDG","E"});
       inst.issue(active,0,time,0,0,0);
