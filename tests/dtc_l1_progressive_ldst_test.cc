@@ -16,7 +16,7 @@
 #include <unistd.h>
 static void rejects(const std::function<void()> &f) {
   auto pid=fork(); assert(pid>=0);
-  if(!pid) { f(); _exit(0); }
+  if(!pid) { std::signal(SIGABRT,SIG_DFL); f(); _exit(0); }
   int status; assert(waitpid(pid,&status,0)==pid);
   assert(WIFSIGNALED(status) && WTERMSIG(status)==SIGABRT);
 }
@@ -45,7 +45,11 @@ int main(int argc, const char **argv) {
   auto *rf=dynamic_cast<opndcoll_rfu_t *>(ld->m_operand_collector); assert(rf);
   const auto *sc=gpu->getShaderCoreConfig();
   auto inst=[&](unsigned uid, bool reg=false) {
-    warp_inst_t i(sc); active_mask_t active; active.set(0);
+    warp_inst_t i(sc);
+    // Real decoders initialize every output slot; inst_t's constructor only
+    // zeros sizeof(unsigned) bytes. Synthetic instructions must do the rest.
+    std::fill(std::begin(i.out),std::end(i.out),0U);
+    active_mask_t active; active.set(0);
     i.issue(active,0,1,0,0,0); i.m_uid=uid; i.pc=0; i.op=LOAD_OP; i.op_pipe=MEM__OP;
     i.space=memory_space_t(global_space); i.cache_op=CACHE_ALL;
     if(reg) { i.out[0]=1; i.arch_reg.dst[0]=1; }
@@ -140,5 +144,8 @@ int main(int argc, const char **argv) {
   rewind(stream); char buffer[4096]; while(auto n=fread(buffer,1,sizeof(buffer),stream)) fwrite(buffer,1,n,stdout);
   fclose(stream);
   gpu->gpu_print_stat(0); // actual normal entrypoint, no GPU cycle()/kernel
+  std::printf("AD_HOST_LAYOUT physical_line=%zu entry=%zu config=%zu service=%zu frontend=%zu ldst=%zu\n",
+      sizeof(dtc_l1::oo_frontend::physical_line), sizeof(dtc_l1::oo_frontend::entry),
+      sizeof(dtc_l1::config), sizeof(dtc_l1::service_entry), sizeof(dtc_l1::oo_frontend), sizeof(ldst_unit));
   std::puts("PASS real_LDST legal_4x32 sectors duplicate illegal stale_generation plus1 own_ready late_merge partial_admission collection RF_WB_backpressure ledger_retire K1 final_ref fence_sidecar normal_export_repeat_readonly kernels=0 gpu_cycle_calls=0 threads_started=0 payload_values=UNPROVEN");
 }

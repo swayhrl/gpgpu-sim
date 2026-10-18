@@ -104,6 +104,7 @@ static void multi_reference_and_replacement() {
   f.complete(b); f.advance_service(3); assert(f.entry_ready_for(1));
   // Successful retirement is the only ref decrement; readiness did not free a.
   assert(f.ref_count(a) == 1 && f.is_allocated(a));
+  f.advance_service(4);
   assert(f.retire_ready_uid(4, 1) && !f.is_allocated(a));
   assert(f.access(4, 2, 256).kind == io_access_kind::NEW_MISS);
   f.assert_shadow_refs();
