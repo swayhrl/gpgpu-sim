@@ -116,6 +116,40 @@ if(GPGPUSIM_BUILD_DTC_L1_TESTS)
     target_include_directories(dtc_l1_k0_equivalence_test PRIVATE
                                ${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim)
     add_test(NAME dtc_l1_k0_equivalence_test COMMAND dtc_l1_k0_equivalence_test)
+    add_executable(dtc_l1_progressive_wakeup_test tests/dtc_l1_progressive_wakeup_test.cc)
+    target_include_directories(dtc_l1_progressive_wakeup_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim)
+    add_test(NAME dtc_l1_progressive_wakeup_test COMMAND dtc_l1_progressive_wakeup_test)
+    add_executable(dtc_l1_progressive_ldst_test tests/dtc_l1_progressive_ldst_test.cc)
+    target_include_directories(dtc_l1_progressive_ldst_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/libcuda
+        ${CUDAToolkit_INCLUDE_DIRS})
+    target_compile_options(dtc_l1_progressive_ldst_test PRIVATE -fno-access-control)
+    target_link_libraries(dtc_l1_progressive_ldst_test PRIVATE cudart)
+    add_test(NAME dtc_l1_progressive_ldst_test COMMAND dtc_l1_progressive_ldst_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/configs/tested-cfgs/SM7_QV100/gpgpusim.config)
+    set_tests_properties(dtc_l1_progressive_ldst_test PROPERTIES
+        ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cudart>;CUDA_VISIBLE_DEVICES=")
+    # Pinned, read-only X2 header for same-build OFF differential CPU traces.
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/ad_x2_header")
+    execute_process(COMMAND git show e32afdcf44be3374ff36d22568ed01a075459b6f:src/gpgpu-sim/dtc-l1-common.h
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        OUTPUT_FILE "${CMAKE_BINARY_DIR}/ad_x2_header/dtc-l1-common.h"
+        RESULT_VARIABLE ad_x2_status)
+    if(NOT ad_x2_status EQUAL 0)
+        message(FATAL_ERROR "AD OFF comparison requires the fixed X2 header")
+    endif()
+    foreach(ad_variant IN ITEMS candidate x2)
+        add_executable(dtc_l1_ad_off_${ad_variant} tests/dtc_l1_ad_off_trace.cc)
+        add_executable(dtc_l1_ad_modes_${ad_variant} tests/dtc_l1_k0_equivalence_test.cc)
+        if(ad_variant STREQUAL "x2")
+            set(ad_header_dir "${CMAKE_BINARY_DIR}/ad_x2_header")
+        else()
+            set(ad_header_dir "${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim")
+        endif()
+        target_include_directories(dtc_l1_ad_off_${ad_variant} PRIVATE ${ad_header_dir})
+        target_include_directories(dtc_l1_ad_modes_${ad_variant} PRIVATE ${ad_header_dir})
+    endforeach()
     add_executable(dtc_l1_normal_export_probe tests/dtc_l1_normal_export_probe.cc)
     target_include_directories(dtc_l1_normal_export_probe PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/libcuda

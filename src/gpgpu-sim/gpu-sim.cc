@@ -407,6 +407,10 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          "DTC-L1 pending-instruction entries", "8");
   dtc_l1::register_source_invalidation_option(
       opp, &dtc_l1_invalidate_on_source_event);
+  option_parser_register(opp, "-gpgpu_dtc_l1_progressive_wakeup", OPT_BOOL,
+                         &dtc_l1_progressive_wakeup,
+                         "Progressive own-waiter wakeup (finite PAPER_OO only)",
+                         "0");
   option_parser_register(opp, "-gpgpu_dtc_l1_finite_service", OPT_BOOL,
                          &dtc_l1_finite_service,
                          "Opt-in preregistered whole-line DTC finite service V1", "0");
