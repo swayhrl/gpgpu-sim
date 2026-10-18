@@ -122,6 +122,18 @@ if(GPGPUSIM_BUILD_DTC_L1_TESTS)
         ${CUDAToolkit_INCLUDE_DIRS})
     target_compile_options(dtc_l1_normal_export_probe PRIVATE -fno-access-control)
     target_link_libraries(dtc_l1_normal_export_probe PRIVATE cudart ${CMAKE_DL_LIBS})
+    add_executable(dtc_l1_collect_wb_pipeline_probe
+                   tests/dtc_l1_collect_wb_pipeline_probe.cc)
+    target_include_directories(dtc_l1_collect_wb_pipeline_probe PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/libcuda
+        ${CUDAToolkit_INCLUDE_DIRS})
+    target_compile_options(dtc_l1_collect_wb_pipeline_probe PRIVATE -fno-access-control)
+    target_link_libraries(dtc_l1_collect_wb_pipeline_probe PRIVATE cudart ${CMAKE_DL_LIBS})
+    add_executable(dtc_l1_collect_wb_resource_test
+                   tests/dtc_l1_collect_wb_resource_test.cc)
+    target_include_directories(dtc_l1_collect_wb_resource_test PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim)
+    add_test(NAME dtc_l1_collect_wb_resource_test COMMAND dtc_l1_collect_wb_resource_test)
 endif()
 
 # Set linker option for libcudart.so

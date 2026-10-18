@@ -58,6 +58,7 @@
 #include "addrdec.h"
 #include "delayqueue.h"
 #include "dtc-l1-common.h"
+#include "dtc-l1-collect-wb.h"
 #include "dtc-l1-invalidation.h"
 #include "dram.h"
 #include "gpu-cache.h"
@@ -1997,6 +1998,7 @@ class ldst_unit : public pipelined_simd_unit {
   void display_l1d_deadlock_state(FILE *fp) const;
   void get_dtc_l1_stats(dtc_l1::paper_frontend_stats &stats) const;
   void print_dtc_l1_invalidation_summary(FILE *fp) const;
+  void print_dtc_l1_collect_wb_stats(FILE *fp) const;
   void print_dtc_l1_io_deadlock(FILE *fp) const;
   void get_l1d_cache_stats(cache_stats &cs) const;
   void get_cache_stats(unsigned &read_accesses, unsigned &write_accesses,
@@ -2106,6 +2108,9 @@ class ldst_unit : public pipelined_simd_unit {
   void dtc_l1_oo_issue_lower_requests();
   bool dtc_l1_oo_consume_response(mem_fetch *mf);
   bool dtc_l1_oo_writeback_ready();
+  bool dtc_l1_oo_pipeline_eligible(unsigned uid) const;
+  void dtc_l1_oo_pipeline_collect();
+  bool dtc_l1_oo_pipeline_wb_candidate(uint64_t *uid) const;
   void dtc_l1_oo_complete_instruction(const warp_inst_t &inst,
                                       unsigned dependencies);
   enum class dtc_l1_m4_operation : uint8_t {
@@ -2152,6 +2157,7 @@ class ldst_unit : public pipelined_simd_unit {
   dtc_l1::service_quota m_dtc_service_inject;
   dtc_l1::service_quota m_dtc_service_retire;
   dtc_l1::service_quota m_dtc_service_collect{4};
+  dtc_l1::collect_wb_pipeline m_dtc_collect_wb;
   uint64_t m_dtc_service_sample_cycle = UINT64_MAX;
   uint64_t m_dtc_service_occupancy_sample_cycle = UINT64_MAX;
   uint64_t m_dtc_service_samples = 0;
@@ -2502,6 +2508,7 @@ class shader_core_config : public core_config {
   // reuse the conventional L1 bank/MSHR controls so LEGACY remains untouched.
   unsigned dtc_l1_mode;
   bool dtc_l1_finite_service;
+  bool dtc_l1_collect_wb_pipeline;
   bool dtc_l1_invalidate_on_source_event;
   unsigned dtc_l1_pib_entries;
   unsigned dtc_l1_mshr_entries;
@@ -3064,6 +3071,7 @@ class shader_core_ctx : public core_t {
                          unsigned &dl1_misses);
   void get_dtc_l1_stats(dtc_l1::paper_frontend_stats &stats) const;
   void print_dtc_l1_invalidation_summary(FILE *fp) const;
+  void print_dtc_l1_collect_wb_stats(FILE *fp) const;
   void print_dtc_l1_io_deadlock(FILE *fp) const;
   void get_l1d_cache_stats(cache_stats &cs) const;
 
@@ -3593,6 +3601,7 @@ class simt_core_cluster {
                          unsigned &dl1_misses) const;
   void get_dtc_l1_stats(dtc_l1::paper_frontend_stats &stats) const;
   void print_dtc_l1_invalidation_summary(FILE *fp) const;
+  void print_dtc_l1_collect_wb_stats(FILE *fp) const;
   void print_dtc_l1_io_deadlock(FILE *fp) const;
   void get_l1d_cache_stats(cache_stats &cs) const;
 
