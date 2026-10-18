@@ -14,6 +14,7 @@
 #include <dlfcn.h>
 #include <fstream>
 #include <numeric>
+#include <sstream>
 #include <string>
 #include <sys/resource.h>
 #include <unistd.h>
@@ -46,8 +47,8 @@ struct fixture {
     ctx.func_sim->ptx_opcocde_latency_options(parser);
     option_parser_cfgfile(parser, config);
     const char *args[] = {"AC_CPU", "-gpgpu_n_clusters", sms,
-        "-gpgpu_n_cores_per_cluster", "1", "-gpgpu_n_mem", "1",
-        "-gpgpu_n_sub_partition_per_mchannel", "1",
+        "-gpgpu_n_cores_per_cluster", "1", "-gpgpu_n_mem", "32",
+        "-gpgpu_n_sub_partition_per_mchannel", "2",
         "-gpgpu_shader_core_pipeline", "128:32", "-gpgpu_shader_cta", "2",
         "-gpgpu_smem_latency", "2", "-network_mode", "2",
         "-gpgpu_dtc_l1_mode", mode, "-gpgpu_dtc_l1_finite_service", finite,
@@ -212,7 +213,7 @@ struct fixture {
     std::printf("AC_EDGE cycle=%llu pib=%zu refs=%llu allocated=%zu "
                 "sectors=%llu retires=%llu closed=%llu inflight=%zu fifo=%zu "
                 "create_used=%u inject_used=%u refill_used=%u retire_used=%u collect_used=%u\n",
-        now(), unit->m_dtc_l1_oo_pib.size(), (unsigned long long)front().active_refs(),
+        (unsigned long long)now(), unit->m_dtc_l1_oo_pib.size(), (unsigned long long)front().active_refs(),
         front().allocated_lines(),
         (unsigned long long)(unit->m_dtc_service_collected_sectors - before_sectors),
         (unsigned long long)(front().retires() - before_retire),
@@ -223,11 +224,12 @@ struct fixture {
         used(unit->m_dtc_service_collect));
     for (const auto &entry : unit->m_dtc_l1_oo_pib)
       std::printf("AC_ENTRY cycle=%llu uid=%u admitted=%zu total=%zu "
-          "ready=%llu collect_start=%llu collect_done=%llu left=%u\n", now(),
+          "ready=%llu collect_start=%llu collect_done=%llu left=%u\n", (unsigned long long)now(),
           entry.inst.get_uid(), entry.next_reference, entry.references.size(),
           (unsigned long long)entry.service.ready_cycle,
           (unsigned long long)entry.service.collect_start_cycle,
           (unsigned long long)entry.service.collect_done_cycle, entry.service.sectors_left);
+    dump_state();
 #ifndef DTC_COLLECT_WB_PROBE_BASELINE
     if (on) {
       const auto &p = unit->m_dtc_collect_wb;
@@ -244,6 +246,78 @@ struct fixture {
   }
   unsigned used(const dtc_l1::service_quota &q) {
     return q.m_cycle == now() ? q.m_used : 0;
+  }
+  void dump_state() {
+    // Typed fields, no padding/pointers/host addresses in the equality witness.
+    std::ostringstream out;
+    auto &f = front();
+    out << "AC_STATE cycle=" << now() << " physical=";
+    for (const auto &p : f.m_phys) {
+      out << p.allocated << ',' << p.ready << ',' << p.tag_valid << ','
+          << p.generation << ',' << p.ref_count << '[';
+      for (auto w : p.waiters) out << w.slot << ':' << w.slot_generation << ',';
+      out << "];";
+    }
+    out << " tags=";
+    for (const auto &t : f.m_tags)
+      out << t.valid << ',' << t.line << ',' << t.physical.id << ','
+          << t.physical.generation << ',' << t.lru << ';';
+    out << " slots=";
+    for (const auto &s : f.m_slots)
+      out << s.active << ',' << s.uid << ',' << s.generation << ';';
+    out << " owners=";
+    for (const auto &e : f.m_entries) {
+      out << e.uid << ',' << e.slot << ',' << e.slot_generation << ','
+          << e.pending_dependencies << ',' << e.external_dependencies << '[';
+      for (auto p : e.references) out << p.id << ':' << p.generation << ',';
+      out << "];";
+    }
+    out << " returns=";
+    for (auto r : f.m_service_returns)
+      out << r.physical.id << ':' << r.physical.generation << ':'
+          << r.ready_cycle << ':' << r.next_waiter << ';';
+    out << " map_loss=";
+    for (auto p : f.m_service_map_loss) out << p.first << ':' << p.second << ';';
+    out << " quotas=";
+    for (const auto *q : {&unit->m_dtc_service_collect, &unit->m_dtc_service_retire,
+                         &unit->m_dtc_service_refill, &unit->m_dtc_service_create,
+                         &unit->m_dtc_service_inject})
+      out << q->m_width << ':' << q->m_used << ':' << q->m_cycle << ';';
+    out << " service=" << unit->m_dtc_service_sample_cycle << ','
+        << unit->m_dtc_service_occupancy_sample_cycle << ','
+        << unit->m_dtc_service_samples << ',' << unit->m_dtc_service_pib_integral
+        << ',' << unit->m_dtc_service_physical_integral << ','
+        << unit->m_dtc_service_ready_to_complete_sum << ','
+        << unit->m_dtc_service_ready_to_collect_sum << ','
+        << unit->m_dtc_service_collection_cycles << ',' << unit->m_dtc_service_wb_wait
+        << ',' << unit->m_dtc_service_retired << ',' << unit->m_dtc_service_collected_sectors;
+    out << " frontend_control=" << f.m_cycle << ',' << f.m_retire_cycle << ','
+        << f.m_service_cycle << ',' << f.m_lru_clock << ',' << f.m_allocations_this_cycle
+        << ',' << f.m_rr_next << ',' << f.m_tag_cycle << ',' << f.m_total_tag_requests_this_cycle;
+    for (auto count : f.m_tag_requests_this_cycle) out << ',' << count;
+    out << " completion_ledger=";
+    std::map<unsigned, ldst_unit::dtc_l1_r4c0_entry> ledger(
+        unit->m_dtc_l1_r4c0_completion_trace.begin(), unit->m_dtc_l1_r4c0_completion_trace.end());
+    for (const auto &item : ledger) {
+      const auto &e = item.second;
+      out << item.first << ':' << unsigned(e.accounting.state()) << ':'
+          << e.accounting.registered() << ':' << e.accounting.pib_owned() << ':'
+          << e.accounting.closed() << ':' << e.completion_attempts << ';';
+    }
+    out << " pending=";
+    std::map<unsigned, std::map<unsigned, unsigned>> pending;
+    for (const auto &w : unit->m_pending_writes)
+      for (auto r : w.second) pending[w.first][r.first] = r.second;
+    for (const auto &w : pending)
+      for (auto r : w.second) out << w.first << ':' << r.first << ':' << r.second << ';';
+    const auto &k = unit->m_dtc_invalidation;
+    out << " k1=" << k.requests << ',' << k.ordinary_commits << ',' << k.order
+        << ',' << k.changed << ',' << k.retained << ',' << k.reclaimed << ','
+        << k.no_op_requests << ',' << k.first_request_cycle << ',' << k.last_request_cycle
+        << ',' << k.first_ordinary_commit_cycle << ',' << k.last_ordinary_commit_cycle
+        << ',' << k.pending_first_request << ',' << k.pending_last_request << ',' << k.events_omitted;
+    for (auto n : k.source_counts) out << ',' << n;
+    std::puts(out.str().c_str());
   }
   void drain(unsigned microsteps = 1) {
     for (unsigned count = 0; !unit->m_dtc_l1_oo_pib.empty(); ++count) {
