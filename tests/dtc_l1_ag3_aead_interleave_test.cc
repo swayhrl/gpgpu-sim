@@ -19,7 +19,7 @@ int main() {
     }
     f.advance_service(26);f.complete(old);
     bool retired[15]={};unsigned count=0;uint64_t previous=0;
-    for(uint64_t cycle=27;cycle<=40;++cycle) {
+    for(uint64_t cycle=27;cycle<=64;++cycle) {
       f.advance_service(cycle);
       assert(f.wakeups()-previous<=4);previous=f.wakeups();
       f.advance_service(cycle);assert(f.wakeups()==previous);
@@ -46,7 +46,7 @@ int main() {
     }
     assert(count==14&&f.active_refs()==0&&f.occupancy()==0);
     assert(!f.is_allocated(old));assert(f.is_allocated(fresh));
-    f.invalidate_lookup(41);assert(f.allocated_lines()==0);
+    f.invalidate_lookup(65);assert(f.allocated_lines()==0);
     assert(f.wakeups()==14&&f.new_misses()==2&&f.pending_hits()==12);
     std::cout<<"PASS AG3 hash="<<hash<<" progressive="<<progressive
              <<" quota4 plus1 late_slot_reuse K1_generation Ref_closed retired=14\n";
