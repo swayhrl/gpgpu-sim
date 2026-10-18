@@ -90,6 +90,8 @@ if(GPGPUSIM_BUILD_DTC_L1_TESTS)
                                ${CUDAToolkit_INCLUDE_DIRS})
     add_test(NAME dtc_l1_reclaimable_victim_option_test
              COMMAND dtc_l1_reclaimable_victim_option_test)
+    set_tests_properties(dtc_l1_reclaimable_victim_option_test PROPERTIES
+        ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cudart>")
     add_executable(dtc_l1_m1_common_test tests/dtc_l1_m1_common_test.cc)
     target_include_directories(dtc_l1_m1_common_test PRIVATE
                                ${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim)
