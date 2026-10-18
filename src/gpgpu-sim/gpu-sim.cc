@@ -411,6 +411,9 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_dtc_l1_finite_service", OPT_BOOL,
                          &dtc_l1_finite_service,
                          "Opt-in preregistered whole-line DTC finite service V1", "0");
+  option_parser_register(opp, "-gpgpu_dtc_l1_collect_wb_pipeline", OPT_BOOL,
+                         &dtc_l1_collect_wb_pipeline,
+                         "Opt-in bounded collection/WB overlap: PAPER_OO + finite V1 only", "0");
   option_parser_register(opp, "-gpgpu_dtc_l1_mshr_entries", OPT_UINT32,
                          &dtc_l1_mshr_entries,
                          "DTC-L1 Paper Base traditional MSHR entries", "32");

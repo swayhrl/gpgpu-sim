@@ -3520,13 +3520,122 @@ void ldst_unit::dtc_l1_oo_complete_instruction(const warp_inst_t &inst,
   dtc_l1_r4c0_retire(inst);
 }
 
+// The ON pipeline uses the original full-admission/readiness/fence predicates.
+// Stage ownership is additional to PIB ownership; no Ref moves at these edges.
+bool ldst_unit::dtc_l1_oo_pipeline_eligible(unsigned uid) const {
+  for (auto candidate = m_dtc_l1_oo_pib.begin();
+       candidate != m_dtc_l1_oo_pib.end(); ++candidate) {
+    if (candidate->inst.get_uid() != uid) continue;
+    if (candidate->operation == dtc_l1_m4_operation::CACHEABLE_LOAD &&
+        candidate->next_reference != candidate->references.size()) return false;
+    if (!m_dtc_l1_oo_frontend->entry_ready_for(uid)) return false;
+    for (auto older = m_dtc_l1_oo_pib.begin(); older != candidate; ++older)
+      if (older->inst.warp_id() == candidate->inst.warp_id() &&
+          older->operation == dtc_l1_m4_operation::PROXY_FENCE) return false;
+    return true;
+  }
+  return false;
+}
+
+bool ldst_unit::dtc_l1_oo_pipeline_wb_candidate(uint64_t *uid) const {
+  const uint64_t cycle = m_core->get_gpu()->global_cycle();
+  uint64_t first_uid = 0;
+  if (dtc_l1_oo_select_ready(&first_uid)) {
+    for (const auto &entry : m_dtc_l1_oo_pib)
+      if (entry.inst.get_uid() == first_uid &&
+          entry.operation != dtc_l1_m4_operation::CACHEABLE_LOAD) {
+        // Keep the original selector's sidecar priority. No data bank and no
+        // second architectural completion, even when a result is waiting.
+        *uid = first_uid;
+        return true;
+      }
+  }
+  if (m_dtc_collect_wb.result_valid) {
+    const unsigned owner = static_cast<unsigned>(m_dtc_collect_wb.result_uid);
+    assert(dtc_l1_oo_pipeline_eligible(owner));
+    if (m_dtc_collect_wb.last_wb_attempt_cycle == cycle) return false;
+    *uid = owner;
+    return true;
+  }
+  return false;
+}
+
+void ldst_unit::dtc_l1_oo_pipeline_collect() {
+  auto &pipe = m_dtc_collect_wb;
+  const uint64_t cycle = m_core->get_gpu()->global_cycle();
+  if (pipe.sampled_cycle == cycle) return; // absolute cycle, not LDST microstep
+  pipe.begin_edge(cycle);
+  assert(m_dtc_l1_oo_frontend && !m_dtc_l1_sector_frontend);
+  unsigned eligible_ready = 0, eligible_collect = 0;
+  dtc_l1_oo_pib_entry *next = nullptr;
+  for (auto &entry : m_dtc_l1_oo_pib) {
+    if (entry.operation != dtc_l1_m4_operation::CACHEABLE_LOAD ||
+        !dtc_l1_oo_pipeline_eligible(entry.inst.get_uid())) continue;
+    ++eligible_ready;
+    if (entry.service.ready_cycle != UINT64_MAX &&
+        cycle > entry.service.ready_cycle && entry.service.sectors_left)
+      ++eligible_collect;
+    if (!next && (!pipe.result_valid || pipe.result_uid != entry.inst.get_uid()) &&
+        (!pipe.collecting_valid || pipe.collecting_uid != entry.inst.get_uid()))
+      next = &entry;
+  }
+  auto promote = [&]() {
+    if (!pipe.collecting_valid || pipe.result_valid) return;
+    auto *owner = dtc_l1_oo_find_entry(static_cast<unsigned>(pipe.collecting_uid));
+    assert(owner && dtc_l1_oo_pipeline_eligible(owner->inst.get_uid()));
+    if (!owner->service.sectors_left &&
+        owner->service.collect_done_cycle != UINT64_MAX) pipe.promote();
+  };
+  promote();
+  if (!pipe.collecting_valid && next) {
+    unsigned sectors = 0;
+    for (const auto &reference : next->references)
+      sectors += __builtin_popcount(reference.sector_mask);
+    // Each admitted unique logical reference pins a distinct physical identity.
+    // Both finite data banks are charged the entire physical-pool byte bound.
+    if (!sectors || sectors > pipe.bank_capacity_sectors) {
+      fprintf(stderr, "DTC_COLLECT_WB_RESULT_CAPACITY_STOP sm=%u uid=%u "
+                      "sectors=%u capacity=%u\n", m_sid, next->inst.get_uid(),
+              sectors, pipe.bank_capacity_sectors);
+      abort();
+    }
+    assert(next->service.collect_start_cycle == UINT64_MAX);
+    pipe.claim(next->inst.get_uid(), sectors);
+  }
+  if (pipe.collecting_valid) {
+    auto *owner = dtc_l1_oo_find_entry(static_cast<unsigned>(pipe.collecting_uid));
+    assert(owner && dtc_l1_oo_pipeline_eligible(owner->inst.get_uid()));
+    const unsigned before = owner->service.sectors_left;
+    // observe_ready() already ran at the existing LDST service edge. Preserve
+    // that timestamp and the original strictly-later collection/WB limits.
+    assert(owner->service.ready_cycle != UINT64_MAX);
+    dtc_l1_service_collect(owner->service, owner->references);
+    pipe.consumed(cycle, before - owner->service.sectors_left);
+  }
+  promote();
+  bool backpressure = false;
+  if (pipe.collecting_valid && pipe.result_valid) {
+    const auto *owner = dtc_l1_oo_find_entry(static_cast<unsigned>(pipe.collecting_uid));
+    backpressure = owner->service.sectors_left == 0;
+  }
+  bool arbitration_blocked = false;
+  if (pipe.result_valid && pipe.last_wb_attempt_cycle != cycle) {
+    const auto *owner = dtc_l1_oo_find_entry(static_cast<unsigned>(pipe.result_uid));
+    arbitration_blocked = cycle > owner->service.collect_done_cycle;
+  }
+  pipe.sample(cycle, eligible_ready, eligible_collect, backpressure,
+              arbitration_blocked);
+}
+
 bool ldst_unit::dtc_l1_oo_writeback_ready() {
   const uint64_t service_cycle = m_core->get_gpu()->global_cycle();
   if (dtc_l1_finite_service_active() &&
       !m_dtc_service_retire.available(service_cycle)) return false;
   if (!dtc_l1_paper_oo_active()) return false;
   uint64_t uid = 0;
-  const bool ready = dtc_l1_oo_select_ready(&uid);
+  const bool ready = m_config->dtc_l1_collect_wb_pipeline
+                         ? dtc_l1_oo_pipeline_wb_candidate(&uid)
+                         : dtc_l1_oo_select_ready(&uid);
   if (!ready) return false;
   dtc_l1_oo_pib_entry *entry = dtc_l1_oo_find_entry(static_cast<unsigned>(uid));
   assert(entry);
@@ -3547,19 +3656,30 @@ bool ldst_unit::dtc_l1_oo_writeback_ready() {
         break;
       }
     ++m_dtc_l1_m4_observation_retires;
+    if (m_config->dtc_l1_collect_wb_pipeline)
+      m_dtc_collect_wb.retired(service_cycle, uid, false);
     m_dtc_l1_oo_out_of_order_retires =
         dtc_l1_sector_oo_active()
             ? m_dtc_l1_sector_frontend->out_of_order_retires()
             : m_dtc_l1_oo_frontend->out_of_order_retires();
     return true;
   }
-  if (!dtc_l1_service_collect(entry->service, entry->references)) return false;
+  if (m_config->dtc_l1_collect_wb_pipeline) {
+    assert(m_dtc_collect_wb.result_valid && m_dtc_collect_wb.result_uid == uid);
+    assert(entry->service.collect_done_cycle != UINT64_MAX &&
+           !entry->service.sectors_left);
+    if (service_cycle <= entry->service.collect_done_cycle) return false;
+  } else if (!dtc_l1_service_collect(entry->service, entry->references)) return false;
   m_next_wb = entry->inst;
   if (!m_operand_collector->writeback(m_next_wb)) {
+    if (m_config->dtc_l1_collect_wb_pipeline)
+      m_dtc_collect_wb.attempted(service_cycle, false);
     ++m_dtc_l1_oo_ready_but_wb_blocked_cycles;
     m_next_wb.clear();
     return false;
   }
+  if (m_config->dtc_l1_collect_wb_pipeline)
+    m_dtc_collect_wb.attempted(service_cycle, true);
   // Mirror IO: readiness becomes a non-retryable ledger transition only on
   // the successful shared-operand-collector grant.
   dtc_l1_r4c1_record_ready(entry->inst,
@@ -3576,6 +3696,8 @@ bool ldst_unit::dtc_l1_oo_writeback_ready() {
                               : m_dtc_l1_oo_frontend->retire_ready_uid(cycle,
                                                                        uid);
   assert(retired_ok);
+  if (m_config->dtc_l1_collect_wb_pipeline)
+    m_dtc_collect_wb.retired(service_cycle, uid, true);
   for (auto it = m_dtc_l1_oo_pib.begin(); it != m_dtc_l1_oo_pib.end(); ++it) {
     if (it->inst.get_uid() == uid) {
       m_dtc_l1_oo_pib.erase(it);
@@ -3666,6 +3788,10 @@ void ldst_unit::dtc_l1_io_identity_event(const char *event,
 void ldst_unit::print_dtc_l1_invalidation_summary(FILE *fp) const {
   if (m_config->dtc_l1_invalidate_on_source_event)
     m_dtc_invalidation.print(fp);
+}
+
+void ldst_unit::print_dtc_l1_collect_wb_stats(FILE *fp) const {
+  if (m_config->dtc_l1_collect_wb_pipeline) m_dtc_collect_wb.print(fp, m_sid);
 }
 
 void ldst_unit::print_dtc_l1_stats(FILE *fp) const {
@@ -4279,6 +4405,14 @@ void ldst_unit::init(mem_fetch_interface *icnt,
       config->dtc_l1_mode == static_cast<unsigned>(dtc_l1::mode::PAPER_OO),
       config->dtc_l1_finite_service, config->dtc_l1_logical_sets,
       config->dtc_l1_tag_banks);
+  if (config->dtc_l1_collect_wb_pipeline) {
+    if (config->dtc_l1_mode != static_cast<unsigned>(dtc_l1::mode::PAPER_OO) ||
+        !config->dtc_l1_finite_service || config->m_L1D_config.disabled()) {
+      fprintf(stderr, "DTC_COLLECT_WB_REQUIRES_PAPER_OO_FINITE_V1_L1D_STOP\n");
+      abort();
+    }
+    m_dtc_collect_wb.configure(config->dtc_l1_physical_lines);
+  }
   m_memory_config = mem_config;
   m_icnt = icnt;
   m_mf_allocator = mf_allocator;
@@ -4411,6 +4545,10 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
     : pipelined_simd_unit(NULL, config, 3, core, 0),
       m_L1D(new_l1d_cache),
       m_next_wb(config) {
+  if (config->dtc_l1_collect_wb_pipeline) {
+    fprintf(stderr, "DTC_COLLECT_WB_EXTERNAL_CACHE_CONSTRUCTOR_STOP\n");
+    abort();
+  }
   if (config->dtc_l1_invalidate_on_source_event) {
     fprintf(stderr, "OO_K1_EXTERNAL_CACHE_CONSTRUCTOR_UNSUPPORTED_STOP\n");
     abort();
@@ -4958,6 +5096,9 @@ void ldst_unit::writeback() {
   if (serviced_client != (unsigned)-1) {
     m_writeback_arb = (serviced_client + 1) % m_num_writeback_clients;
   }
+  // Independent collection stage, including cycles where another client wins
+  // WB arbitration. Uses only the unchanged absolute-cycle 4-sector port.
+  if (m_config->dtc_l1_collect_wb_pipeline) dtc_l1_oo_pipeline_collect();
 }
 
 unsigned ldst_unit::clock_multiplier() const {
@@ -5774,6 +5915,15 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
     fprintf(fout, "DTC_INVALIDATE_V1_SNAPSHOT_END version=1 sms=%u "
                   "cycle=%llu\n", m_shader_config->num_shader(),
             (unsigned long long)global_cycle());
+  }
+
+  if (m_shader_config->dtc_l1_collect_wb_pipeline) {
+    fprintf(fout, "DTC_COLLECT_WB_V1_SNAPSHOT_BEGIN version=1 sms=%u cycle=%llu\n",
+            m_shader_config->num_shader(), (unsigned long long)global_cycle());
+    for (unsigned i = 0; i < m_shader_config->n_simt_clusters; ++i)
+      m_cluster[i]->print_dtc_l1_collect_wb_stats(fout);
+    fprintf(fout, "DTC_COLLECT_WB_V1_SNAPSHOT_END version=1 sms=%u cycle=%llu\n",
+            m_shader_config->num_shader(), (unsigned long long)global_cycle());
   }
 
   dtc_l1::paper_frontend_stats total;
@@ -7042,6 +7192,10 @@ void shader_core_ctx::print_dtc_l1_invalidation_summary(FILE *fp) const {
   m_ldst_unit->print_dtc_l1_invalidation_summary(fp);
 }
 
+void shader_core_ctx::print_dtc_l1_collect_wb_stats(FILE *fp) const {
+  m_ldst_unit->print_dtc_l1_collect_wb_stats(fp);
+}
+
 void shader_core_ctx::get_dtc_l1_stats(
     dtc_l1::paper_frontend_stats &stats) const {
   m_ldst_unit->get_dtc_l1_stats(stats);
@@ -7887,6 +8041,11 @@ void simt_core_cluster::print_cache_stats(FILE *fp, unsigned &dl1_accesses,
 void simt_core_cluster::print_dtc_l1_invalidation_summary(FILE *fp) const {
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i)
     m_core[i]->print_dtc_l1_invalidation_summary(fp);
+}
+
+void simt_core_cluster::print_dtc_l1_collect_wb_stats(FILE *fp) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i)
+    m_core[i]->print_dtc_l1_collect_wb_stats(fp);
 }
 
 void simt_core_cluster::get_dtc_l1_stats(
