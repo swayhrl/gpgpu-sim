@@ -17,6 +17,8 @@
 #include <set>
 #include <vector>
 
+#include "dtc-l1-tag-index.h"
+
 namespace dtc_l1 {
 
 constexpr uint64_t kLogicalLineBytes = 128;
@@ -39,6 +41,7 @@ struct config {
   unsigned io_pib_entries = 256;
   unsigned oo_pib_entries = 128;
   unsigned ref_count_bits = 13;
+  bool tag_hash_bankrow = false;
 };
 
 // Absolute core-cycle quota; checking availability never consumes a grant.
@@ -171,6 +174,8 @@ struct lookup_invalidation_result {
 class io_frontend {
  public:
   explicit io_frontend(config cfg) : m_cfg(cfg), m_tags(cfg.logical_sets * cfg.logical_ways), m_phys(cfg.physical_lines) {
+    check_tag_hash_bankrow(cfg.tag_hash_bankrow, false, cfg.finite_service,
+                           cfg.logical_sets, cfg.tag_banks);
     assert(cfg.logical_sets && cfg.logical_ways && cfg.physical_lines);
     assert(cfg.allocation_width && cfg.io_pib_entries);
     assert(cfg.tag_banks && cfg.tag_requests_per_bank_per_cycle &&
@@ -501,6 +506,9 @@ class oo_frontend {
         m_tags(cfg.logical_sets * cfg.logical_ways),
         m_phys(cfg.physical_lines),
         m_slots(cfg.oo_pib_entries) {
+    check_tag_hash_bankrow(cfg.tag_hash_bankrow,
+                           cfg.selected_mode == mode::PAPER_OO,
+                           cfg.finite_service, cfg.logical_sets, cfg.tag_banks);
     assert(cfg.logical_sets && cfg.logical_ways && cfg.physical_lines);
     assert(cfg.allocation_width && cfg.oo_pib_entries);
     assert(cfg.ref_count_bits && cfg.ref_count_bits < 32);
@@ -548,8 +556,7 @@ class oo_frontend {
                 m_tag_requests_this_cycle.end(), 0);
       m_total_tag_requests_this_cycle = 0;
     }
-    const unsigned set = static_cast<unsigned>(
-        (address / kLogicalLineBytes) % m_cfg.logical_sets);
+    const unsigned set = tag_set(address);
     const unsigned bank = set % m_cfg.tag_banks;
     if (m_total_tag_requests_this_cycle >= m_cfg.tag_requests_per_cycle ||
         m_tag_requests_this_cycle[bank] >=
@@ -565,6 +572,8 @@ class oo_frontend {
 
   // See io_frontend::will_new_miss().  Existing Valid/Pending tags need no
   // lower candidate and must remain serviceable while that queue is full.
+  // Historical find_tag touches LRU even for this precheck. Preserve that
+  // exact recency policy in BOTH hash modes; this is not a read-only peek.
   bool will_new_miss(uint64_t address) {
     const uint64_t line = address & ~(kLogicalLineBytes - 1);
     return find_tag(line) == nullptr;
@@ -947,9 +956,11 @@ class oo_frontend {
         return false;
     return true;
   }
+  unsigned tag_set(uint64_t address) const {
+    return logical_tag_set(address, m_cfg.logical_sets, m_cfg.tag_hash_bankrow);
+  }
   tag_entry *find_tag(uint64_t line) {
-    const unsigned set = static_cast<unsigned>(
-        (line / kLogicalLineBytes) % m_cfg.logical_sets);
+    const unsigned set = tag_set(line);
     for (unsigned way = 0; way < m_cfg.logical_ways; ++way) {
       tag_entry &tag = m_tags[set * m_cfg.logical_ways + way];
       if (tag.valid && tag.line == line) {
@@ -960,8 +971,7 @@ class oo_frontend {
     return nullptr;
   }
   tag_entry *select_victim(uint64_t line) {
-    const unsigned set = static_cast<unsigned>(
-        (line / kLogicalLineBytes) % m_cfg.logical_sets);
+    const unsigned set = tag_set(line);
     tag_entry *victim = &m_tags[set * m_cfg.logical_ways];
     for (unsigned way = 0; way < m_cfg.logical_ways; ++way) {
       tag_entry &tag = m_tags[set * m_cfg.logical_ways + way];
@@ -1048,6 +1058,8 @@ class sector_oo_frontend {
         m_tags(cfg.logical_sets * cfg.logical_ways),
         m_phys(cfg.physical_lines),
         m_slots(cfg.oo_pib_entries) {
+    check_tag_hash_bankrow(cfg.tag_hash_bankrow, false, cfg.finite_service,
+                           cfg.logical_sets, cfg.tag_banks);
     assert(cfg.logical_sets && cfg.logical_ways && cfg.physical_lines);
     assert(cfg.allocation_width && cfg.oo_pib_entries);
     assert(cfg.ref_count_bits && cfg.ref_count_bits < 32);
@@ -1818,6 +1830,8 @@ inline std::vector<line_reference> group_128b_references(
 class paper_frontend {
  public:
   explicit paper_frontend(config cfg) : m_cfg(cfg) {
+    check_tag_hash_bankrow(cfg.tag_hash_bankrow, false, cfg.finite_service,
+                           cfg.logical_sets, cfg.tag_banks);
     assert(m_cfg.pib_entries > 0);
     assert(m_cfg.tag_banks > 0);
     assert(m_cfg.tag_requests_per_bank_per_cycle > 0);

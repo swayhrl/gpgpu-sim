@@ -122,6 +122,22 @@ if(GPGPUSIM_BUILD_DTC_L1_TESTS)
         ${CUDAToolkit_INCLUDE_DIRS})
     target_compile_options(dtc_l1_normal_export_probe PRIVATE -fno-access-control)
     target_link_libraries(dtc_l1_normal_export_probe PRIVATE cudart ${CMAKE_DL_LIBS})
+    # AG qualification of the fixed, independently published AE frontend test.
+    add_executable(dtc_l1_tag_hash_bankrow_test
+                   tests/dtc_l1_tag_hash_bankrow_test.cc)
+    target_include_directories(dtc_l1_tag_hash_bankrow_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_options(dtc_l1_tag_hash_bankrow_test PRIVATE
+        -UNDEBUG -fno-access-control)
+    target_compile_definitions(dtc_l1_tag_hash_bankrow_test PRIVATE DTC_AE_NEW=1)
+    foreach(ae_case mapping conflicts lru late)
+        add_test(NAME dtc_l1_ae_${ae_case}_on
+                 COMMAND dtc_l1_tag_hash_bankrow_test ${ae_case} 64 8 1)
+    endforeach()
+    foreach(ae_sequence stride4096 neutral adversary)
+        add_test(NAME dtc_l1_ae_trace_${ae_sequence}_on
+                 COMMAND dtc_l1_tag_hash_bankrow_test trace 64 8 1 ${ae_sequence})
+    endforeach()
 endif()
 
 # Set linker option for libcudart.so
