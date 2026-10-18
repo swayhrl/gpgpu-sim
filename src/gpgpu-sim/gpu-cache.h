@@ -586,6 +586,8 @@ class cache_config {
     m_ep_l2_static_s64 = false;
     m_ep_l2_wb_local_cap = 0;
     m_ep_l2_bank_ops = 1;
+    m_ep_l2_mq2 = false;
+    m_ep_l2_rg1 = false;
     m_ep_l2_payload_policy = 0;
     m_ep_l2_feature_unified_payload = false;
     m_ep_l2_feature_ro_pending_state = false;
@@ -868,7 +870,8 @@ class cache_config {
     return m_ep_l2_ft_mode == 1 && m_ep_l2_wbuf_entries == 16 &&
         m_ep_l2_payload_mode == 2 && !m_ep_l2_static_s64 &&
         !m_ep_l2_wb_local_cap && m_ep_l2_bank_ops == 1 &&
-        !m_ep_l2_ideal_wb && !m_ep_l2_ideal_meta && !m_ep_l2_ideal_read_hit;
+        !m_ep_l2_ideal_wb && !m_ep_l2_ideal_meta && !m_ep_l2_ideal_read_hit &&
+        !m_ep_l2_mq2 && !m_ep_l2_rg1;
   }
   enum mshr_config_t get_mshr_type() const { return m_mshr_type; }
   void set_assoc(unsigned n) {
@@ -963,6 +966,7 @@ class cache_config {
   bool m_ep_l2_static_s64;
   unsigned m_ep_l2_wb_local_cap;
   unsigned m_ep_l2_bank_ops;
+  bool m_ep_l2_mq2, m_ep_l2_rg1;
   // M1 is infrastructure: functional mechanism bits default OFF.
   // Policy 0 is the only currently supported static policy.
   unsigned m_ep_l2_payload_policy;
@@ -1565,6 +1569,7 @@ class baseline_cache : public cache_t {
   /// Sends next request to lower level of memory
   void cycle();
   virtual bool lower_ready(mem_fetch *, unsigned long long) { return true; }
+  virtual bool lower_mq2_safe(mem_fetch *, mem_fetch *) { return false; }
   virtual void lower_accepted(mem_fetch *, unsigned long long) {}
   virtual void descriptor_admitted(mem_fetch *, unsigned) {}
   virtual void lower_read_enqueued(mem_fetch *, unsigned) {}
@@ -2839,6 +2844,7 @@ class l2_cache : public data_cache {
       m_ft_wb.empty() && m_ft_read_refs.empty() && !m_ep_l2_payload.wb_used() &&
       !m_ft_quota.reserved && !m_ft_quota.live); }
   bool lower_ready(mem_fetch *mf, unsigned long long cycle) override;
+  bool lower_mq2_safe(mem_fetch *head, mem_fetch *next) override;
   void lower_accepted(mem_fetch *mf, unsigned long long cycle) override;
   void descriptor_admitted(mem_fetch *mf, unsigned cache_index) override;
   void lower_read_enqueued(mem_fetch *mf, unsigned cache_index) override;
@@ -2938,6 +2944,7 @@ class l2_cache : public data_cache {
     ft_wb_record() : born(0) { expected.fill(0); }
   };
   struct ft_counters {
+    unsigned long long mq2_wb_bank_waits=0, mq2_bypasses=0;
     unsigned long long accepted, wb_created, lower_accept, wbuf_full, pool_full, pin_block,
         bank_block, issue_block, copy_lines, staging_reads, staged_max,
         staging_lifetime, borrow_bypass, borrow_resident, rollback, data_checks,
@@ -2957,6 +2964,14 @@ class l2_cache : public data_cache {
   std::map<mem_fetch *,ep_l2_payload_store::payload_handle> m_ft_read_refs;
   std::array<unsigned long long,4> m_ft_last_wb_versions;
   void validate_ep_l2_mode_config() const {
+    if ((m_config.m_ep_l2_mq2 || m_config.m_ep_l2_rg1) &&
+        (!ft_enabled() || m_config.m_ep_l2_wbuf_entries != 16 ||
+         m_config.m_ep_l2_bank_ops != 1 || m_config.m_ep_l2_wb_local_cap ||
+         m_config.m_ep_l2_ideal_wb || m_config.m_ep_l2_ideal_meta ||
+         m_config.m_ep_l2_ideal_read_hit || m_config.m_ep_l2_rg1)) {
+      fprintf(stderr,"EP-L2 service candidate supports MQ2 finite P1 B16/S64/U only; RG1 unqualified\n");
+      abort();
+    }
     if ((m_config.m_ep_l2_ideal_wb && m_config.m_ep_l2_ft_mode != 1) ||
         (m_config.m_ep_l2_ideal_read_hit &&
          (m_config.m_ep_l2_ideal_wb || m_config.m_ep_l2_ft_mode == 2))) {

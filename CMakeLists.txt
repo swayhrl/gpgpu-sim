@@ -216,10 +216,11 @@ foreach(ideal_test ideal_wb ideal_meta ideal_meta_integrated ideal_read_hit
 endforeach()
 
 # Opt-in source-bound structural diagnostics, not application experiments.
-foreach(potential_test potential_s64 potential_a1 potential_ucap potential_ucap_retry potential_p2)
+foreach(potential_test potential_s64 potential_a1 potential_ucap potential_ucap_retry potential_p2 micro_mq2 micro_rg1_partition)
   add_executable(ep_l2_${potential_test} EXCLUDE_FROM_ALL tests/ep_l2/test_${potential_test}.cc)
   target_include_directories(ep_l2_${potential_test} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
   target_link_libraries(ep_l2_${potential_test} PRIVATE -Wl,--start-group
       entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
       ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
 endforeach()
+target_compile_definitions(ep_l2_micro_mq2 PRIVATE EPL2_MICROOPT_CANDIDATE=1)

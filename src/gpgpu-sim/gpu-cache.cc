@@ -1575,10 +1575,23 @@ bool baseline_cache::bandwidth_management::fill_port_free() const {
 /// Sends next request to lower level of memory
 void baseline_cache::cycle() {
   if (!m_miss_queue.empty()) {
-    mem_fetch *mf = m_miss_queue.front();
-    if (!m_memport->full(mf->size(), mf->get_is_write()) &&
-        lower_ready(mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle)) {
-      m_miss_queue.pop_front();
+    auto selected = m_miss_queue.begin();
+    mem_fetch *mf = *selected;
+    bool ready = false;
+    if (!m_memport->full(mf->size(), mf->get_is_write())) {
+      ready = lower_ready(mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+      if (!ready && m_config.m_ep_l2_mq2 && m_miss_queue.size() >= 2) {
+        auto second = selected; ++second;
+        // Exactly two visible entries. The failed head call retains its
+        // original bank identity and age; no cancellation or port refund.
+        if (!m_memport->full((*second)->size(), (*second)->get_is_write()) &&
+            lower_mq2_safe(mf, *second)) {
+          selected = second; mf = *second; ready = true;
+        }
+      }
+    }
+    if (ready) {
+      m_miss_queue.erase(selected);
       m_memport->push(mf);
       lower_accepted(mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
     }

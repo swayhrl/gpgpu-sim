@@ -390,13 +390,37 @@ void l2_cache::send_write_request(mem_fetch *mf, cache_event event, unsigned tim
   data_cache::send_write_request(mf, event, time, events);
 }
 
+bool l2_cache::lower_mq2_safe(mem_fetch *head, mem_fetch *next) {
+  if (!m_config.m_ep_l2_mq2 || !ft_enabled() ||
+      head->get_access_type() != L2_WRBK_ACC || !m_ft_wb.count(head) ||
+      next->get_type() != READ_REQUEST || next->get_is_write() ||
+      next->get_access_type() != GLOBAL_ACC_R || next->isatomic() ||
+      next->get_inst().empty() || !next->get_inst().ep_l2_mq2_ordinary_read ||
+      next->get_inst().cache_op == CACHE_VOLATILE ||
+      !next->get_inst().is_load() || next->get_inst().m_is_ldgsts ||
+      next->get_original_wr_mf() ||
+      m_config.block_addr(head->get_addr()) == m_config.block_addr(next->get_addr()))
+    return false;
+  // Native MSHR admission owns this exact descriptor/generation; write
+  // allocation and unknown/synthetic requests cannot acquire this proof.
+  auto it=m_ft_read_refs.find(next);
+  const bool safe=it!=m_ft_read_refs.end() && next->has_ep_l2_payload_identity() &&
+      it->second.payload_id == next->get_ep_l2_payload_id() &&
+      it->second.generation == next->get_ep_l2_payload_generation() &&
+      m_ep_l2_payload.handle_owner_matches(it->second,m_config.block_addr(next->get_addr()));
+  if(safe)++m_ft_stats.mq2_bypasses;
+  return safe;
+}
+
 bool l2_cache::lower_ready(mem_fetch *mf, unsigned long long cycle) {
   if (!ft_enabled() || mf->get_access_type() != L2_WRBK_ACC) return true;
   std::map<mem_fetch *,ft_wb_record>::iterator it = m_ft_wb.find(mf);
   assert(it != m_ft_wb.end());
   const ep_l2_payload_store::request_result result = m_ep_l2_payload.request(
       it->second.handle, false, cycle, (unsigned long long)-1, ep_l2_payload_store::WB_READOUT);
-  if (result != ep_l2_payload_store::GRANTED) { ++m_ft_stats.bank_block; return false; }
+  if (result != ep_l2_payload_store::GRANTED) { ++m_ft_stats.bank_block;
+    if(m_config.m_ep_l2_mq2)++m_ft_stats.mq2_wb_bank_waits;
+    return false; }
   assert(m_ep_l2_payload.inspect(it->second.handle).versions == it->second.expected);
   m_ft_last_wb_versions = it->second.expected;
   mf->set_ft_wb_data(it->second.expected);
@@ -425,6 +449,7 @@ void l2_cache::lower_accepted(mem_fetch *mf, unsigned long long cycle) {
 void l2_cache::ft_print(FILE *fp, unsigned slice) const {
   if (!ft_enabled()) return;
   ft_assert_quota();
+  fprintf(fp,"EPL2SERVICEV1|MQ2|slice=%u|enabled=%u|wb_bank_waits=%llu|bypasses=%llu|window=2|lower_enqueues_per_cycle=1\n",slice,m_config.m_ep_l2_mq2,m_ft_stats.mq2_wb_bank_waits,m_ft_stats.mq2_bypasses);
   fprintf(fp,"EPL2STRUCTV1|BANK_PEAK|slice=%u|ops_per_physical_cycle=%u|bank0=%u|bank1=%u|bank2=%u|bank3=%u\n",slice,
       m_ep_l2_payload.bank_service_limit(),m_ep_l2_payload.bank_peak(0),m_ep_l2_payload.bank_peak(1),
       m_ep_l2_payload.bank_peak(2),m_ep_l2_payload.bank_peak(3));

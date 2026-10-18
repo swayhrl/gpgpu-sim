@@ -976,6 +976,17 @@ class inst_t {
     return (op == LOAD_OP || op == TENSOR_CORE_LOAD_OP ||
             memory_op == memory_load);
   }
+  // Fail-closed ordering proof carried by decoded ordinary trace LDG only.
+  // PTX, unknown modifiers, atomics and instructionless requests stay false.
+  bool ep_l2_mq2_ordinary_read = false;
+  static bool ep_l2_plain_ldg(const std::vector<std::string> &tokens) {
+    if (tokens.empty() || tokens.front() != "LDG") return false;
+    for (unsigned i=1; i<tokens.size(); ++i)
+      if (tokens[i] != "E" && tokens[i] != "64" && tokens[i] != "128" &&
+          tokens[i] != "U8" && tokens[i] != "S8" &&
+          tokens[i] != "U16" && tokens[i] != "S16") return false;
+    return true;
+  }
   bool is_store() const {
     return (op == STORE_OP || op == TENSOR_CORE_STORE_OP ||
             memory_op == memory_store);
