@@ -65,6 +65,15 @@ int main(int argc,const char **argv) {
   rlimit limit{0,0}; setrlimit(RLIMIT_CORE,&limit);
   binding();
   if (argc==2 && !strcmp(argv[1],"resource")) { resource(); return 0; }
+  if (argc==2 && !strcmp(argv[1],"compact-option")) {
+    // A STOP artifact must not silently accept an unimplemented production flag.
+    gpgpu_context ctx;
+    gpgpu_sim_config cfg(&ctx);
+    auto parser=option_parser_create(); cfg.reg_options(parser);
+    const char *opts[]={"AC2_NEGATIVE","-gpgpu_dtc_l1_collect_wb_compact","1"};
+    option_parser_cmdline(parser,3,opts);
+    return 99; // Unexpected acceptance is a test failure, not a compact mode.
+  }
   if (argc!=6) return 64; // config pipeline sectors coalesced|pool K1
   const unsigned demand=std::stoul(argv[3]);
   const bool pool=!strcmp(argv[4],"pool");
