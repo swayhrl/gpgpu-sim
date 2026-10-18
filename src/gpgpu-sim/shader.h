@@ -2502,6 +2502,7 @@ class shader_core_config : public core_config {
   // reuse the conventional L1 bank/MSHR controls so LEGACY remains untouched.
   unsigned dtc_l1_mode;
   bool dtc_l1_finite_service;
+  bool dtc_l1_reclaimable_victim_fallback;
   bool dtc_l1_invalidate_on_source_event;
   unsigned dtc_l1_pib_entries;
   unsigned dtc_l1_mshr_entries;

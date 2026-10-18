@@ -26,6 +26,8 @@ enum class mode { LEGACY, PAPER_BASE, PAPER_IO, PAPER_OO, MODERN_OO_SECTOR };
 
 struct config {
   bool finite_service = false;
+  // AF candidate model only; frozen models retain exact LRU when false.
+  bool reclaimable_victim_fallback = false;
   mode selected_mode = mode::LEGACY;
   unsigned pib_entries = 8;
   unsigned tag_banks = 4;
@@ -506,6 +508,8 @@ class oo_frontend {
     assert(cfg.ref_count_bits && cfg.ref_count_bits < 32);
     assert(cfg.tag_banks && cfg.tag_requests_per_bank_per_cycle &&
            cfg.tag_requests_per_cycle);
+    assert(!cfg.reclaimable_victim_fallback ||
+           cfg.selected_mode == mode::PAPER_OO);
   }
 
   void begin_cycle(uint64_t cycle) {
@@ -627,6 +631,15 @@ class oo_frontend {
 
     tag_entry *victim = select_victim(line);
     int free_id = find_free_physical();
+    // Retry lookup above always wins, including after another consumer or K1
+    // changed the directory. Only the no-free/live-LRU corner may deviate.
+    if (m_cfg.reclaimable_victim_fallback && free_id < 0 && victim->valid &&
+        m_phys[victim->physical.id].ref_count != 0) {
+      if (tag_entry *fallback = select_reclaimable_victim(line)) {
+        victim = fallback;
+        ++m_reclaimable_victim_fallbacks;
+      }
+    }
     const bool can_reclaim_victim =
         victim->valid && m_phys[victim->physical.id].ref_count == 0;
     if (free_id < 0 && !can_reclaim_victim) {
@@ -818,6 +831,11 @@ class oo_frontend {
   uint64_t allocation_width_limited_events() const {
     return m_allocation_width_limited_events;
   }
+  // Candidate-local successful selection events, including retry attempts as
+  // independent access calls. Reading this counter has no side effects.
+  uint64_t reclaimable_victim_fallbacks() const {
+    return m_reclaimable_victim_fallbacks;
+  }
   uint64_t tag_requests() const { return m_tag_requests; }
   uint64_t tag_conflicts() const { return m_tag_conflicts; }
   size_t allocated_lines() const {
@@ -970,6 +988,31 @@ class oo_frontend {
     }
     return victim;
   }
+  bool safely_reclaimable(const tag_entry &tag) const {
+    if (!tag.valid || !fill_identity_matches(tag.physical)) return false;
+    const physical_line &physical = m_phys[tag.physical.id];
+    if (!physical.tag_valid || !physical.ready || physical.ref_count ||
+        !physical.waiters.empty()) return false;
+    for (const auto &pending : m_service_returns)
+      if (pending.physical.id == tag.physical.id &&
+          pending.physical.generation == tag.physical.generation) return false;
+    // A pending lower keeps its accepted consumer Ref until retire. Ready is
+    // set only after its saved-identity fill/finite metadata work completes.
+    // Thus ready + Ref0 + no waiter/service owner also excludes lower owners;
+    // it is not a global-quiescence or ordinary-cache-drain assumption.
+    return true;
+  }
+  tag_entry *select_reclaimable_victim(uint64_t line) {
+    const unsigned set = static_cast<unsigned>(
+        (line / kLogicalLineBytes) % m_cfg.logical_sets);
+    tag_entry *oldest = nullptr;
+    for (unsigned way = 0; way < m_cfg.logical_ways; ++way) {
+      tag_entry &candidate = m_tags[set * m_cfg.logical_ways + way];
+      if (safely_reclaimable(candidate) &&
+          (!oldest || candidate.lru < oldest->lru)) oldest = &candidate;
+    }
+    return oldest;
+  }
   int find_free_physical() {
     for (unsigned offset = 0; offset < m_phys.size(); ++offset) {
       const unsigned id = (m_rr_next + offset) % m_phys.size();
@@ -1019,6 +1062,7 @@ class oo_frontend {
            m_wakeups = 0, m_tag_evictions = 0, m_immediate_reclaims = 0,
            m_deferred_reclaims = 0, m_final_ref_reclaims = 0,
            m_no_free_physical_events = 0,
+           m_reclaimable_victim_fallbacks = 0,
            m_allocation_width_limited_events = 0, m_tag_cycle = UINT64_MAX,
            m_tag_requests = 0, m_tag_conflicts = 0;
   unsigned m_allocations_this_cycle = 0, m_rr_next = 0;

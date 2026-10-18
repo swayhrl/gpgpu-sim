@@ -410,6 +410,11 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_dtc_l1_finite_service", OPT_BOOL,
                          &dtc_l1_finite_service,
                          "Opt-in preregistered whole-line DTC finite service V1", "0");
+  option_parser_register(
+      opp, "-gpgpu_dtc_l1_reclaimable_victim_fallback", OPT_BOOL,
+      &dtc_l1_reclaimable_victim_fallback,
+      "AF candidate PAPER_OO only: oldest safe same-set victim when pool full "
+      "and original LRU has live owners (default off)", "0");
   option_parser_register(opp, "-gpgpu_dtc_l1_mshr_entries", OPT_UINT32,
                          &dtc_l1_mshr_entries,
                          "DTC-L1 Paper Base traditional MSHR entries", "32");

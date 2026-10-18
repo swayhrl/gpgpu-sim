@@ -4352,6 +4352,13 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
     abort();
   }
   dtc_l1::config dtc_config;
+  if (m_config->dtc_l1_reclaimable_victim_fallback &&
+      m_config->dtc_l1_mode != static_cast<unsigned>(dtc_l1::mode::PAPER_OO)) {
+    fprintf(stderr, "Reclaimable victim fallback is scoped to PAPER_OO only\n");
+    abort();
+  }
+  dtc_config.reclaimable_victim_fallback =
+      m_config->dtc_l1_reclaimable_victim_fallback;
   dtc_config.finite_service = dtc_l1_finite_service_active();
   if (m_config->dtc_l1_finite_service && !dtc_config.finite_service) {
     fprintf(stderr, "Finite service V1 is scoped to PAPER_IO/PAPER_OO only\n");
