@@ -4274,6 +4274,11 @@ void ldst_unit::init(mem_fetch_interface *icnt,
                      Scoreboard *scoreboard, const shader_core_config *config,
                      const memory_config *mem_config, shader_core_stats *stats,
                      unsigned sid, unsigned tpc) {
+  dtc_l1::check_tag_hash_bankrow(
+      config->dtc_l1_tag_hash_bankrow,
+      config->dtc_l1_mode == static_cast<unsigned>(dtc_l1::mode::PAPER_OO),
+      config->dtc_l1_finite_service, config->dtc_l1_logical_sets,
+      config->dtc_l1_tag_banks);
   m_memory_config = mem_config;
   m_icnt = icnt;
   m_mf_allocator = mf_allocator;
@@ -4381,6 +4386,7 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
     m_dtc_l1_io_frontend = std::make_unique<dtc_l1::io_frontend>(dtc_config);
   if (m_config->dtc_l1_mode == static_cast<unsigned>(dtc_l1::mode::PAPER_OO)) {
     dtc_config.selected_mode = dtc_l1::mode::PAPER_OO;
+    dtc_config.tag_hash_bankrow = m_config->dtc_l1_tag_hash_bankrow;
     m_dtc_l1_oo_frontend = std::make_unique<dtc_l1::oo_frontend>(dtc_config);
   }
   if (m_config->dtc_l1_mode ==
@@ -4407,6 +4413,10 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
       m_next_wb(config) {
   if (config->dtc_l1_invalidate_on_source_event) {
     fprintf(stderr, "OO_K1_EXTERNAL_CACHE_CONSTRUCTOR_UNSUPPORTED_STOP\n");
+    abort();
+  }
+  if (config->dtc_l1_tag_hash_bankrow) {
+    fprintf(stderr, "TAG_HASH_BANKROW_EXTERNAL_CACHE_CONSTRUCTOR_STOP\n");
     abort();
   }
   init(icnt, mf_allocator, core, operand_collector, scoreboard, config,
