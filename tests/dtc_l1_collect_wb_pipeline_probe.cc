@@ -397,6 +397,9 @@ int main(int argc, const char **argv) {
     for (unsigned i = 0; i < count; ++i) f.enqueue(1, 0);
     if (scenario == "generation") {
       const auto old = f.front().m_entries.front().references.front();
+      f.edge(false, false); // issue the real lower root BEFORE mapping loss
+      assert(f.unit->m_dtc_l1_oo_inflight.size() == 1 && !f.link.roots.empty());
+      assert(f.gpu->dtc_l1_lower_outstanding() == 1);
       f.unit->invalidate(dtc_l1::invalidation_source::IDLE_CLUSTER);
       assert(!f.front().tag_visible(old) && f.front().ref_count(old) == 1);
       f.enqueue(1, 0, 1);
