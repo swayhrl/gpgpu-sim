@@ -38,6 +38,7 @@ enum WaitReason {
   // 14 is the published MSV1 any-to-admission output row, not a new wait.
   // Keep that identity stable when adding mechanism-specific measurements.
   VICTIM_LOOKUP = 15,
+  READONLY_LOOKUP,
   WAIT_REASONS
 };
 static const unsigned k_legacy_any_to_admission_reason = 14;

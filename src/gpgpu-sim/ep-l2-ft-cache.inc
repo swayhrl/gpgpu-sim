@@ -7,6 +7,7 @@ unsigned long long l2_cache::ft_physical_cycle() const {
 void l2_cache::force_tag_access(new_addr_type addr, unsigned time,
                                 mem_access_sector_mask_t mask) {
   if (!ft_enabled()) { baseline_cache::force_tag_access(addr, time, mask); return; }
+  if(m_ro)m_ro->prefill_begin(m_config.block_addr(addr));
   if (!ft_try_force_tag_access(addr, time, mask)) {
     fprintf(stderr, "EP-L2 host prefill requires quiescent clean ownership; no pending/dirty victim may be discarded\n");
     abort();
@@ -15,6 +16,7 @@ void l2_cache::force_tag_access(new_addr_type addr, unsigned time,
 
 bool l2_cache::ft_try_force_tag_access(new_addr_type addr, unsigned time,
                                       mem_access_sector_mask_t mask) {
+  if(m_ro && !m_ro->prefill_allowed(m_config.block_addr(addr)))return false;
   // This is untimed host initialization, not a source of GPU bank grants or
   // free WB service. Fail BEFORE changing Tag, generation, owner or offset.
   if (!ft_enabled() || m_config.m_cache_type != SECTOR || mask.count() != 1 ||
@@ -110,6 +112,7 @@ bool l2_cache::ft_try_force_tag_access(new_addr_type addr, unsigned time,
     if (mask.test(sector)) slot.versions[sector] = 0;
   slot.status = m_tag_array->block_is_modified(index) ?
       ep_l2_payload_store::RESIDENT_DIRTY : ep_l2_payload_store::RESIDENT_VALID;
+  if(m_ro)m_ro->prefill_complete(index,handle,owner,mask);
   assert(m_ep_l2_payload.ownership_consistent());
   return true;
 }
@@ -132,6 +135,7 @@ void l2_cache::lower_read_enqueued(mem_fetch *mf, unsigned index) {
 }
 
 mem_fetch *l2_cache::peek_next_access() const {
+  if(m_ro && m_ro->selected)return m_ro->reply.request;
   mem_fetch *mf = baseline_cache::peek_next_access();
   if (ft_enabled()) {
     std::map<mem_fetch *,ep_l2::PayloadHandle>::const_iterator it = m_ft_read_refs.find(mf);
@@ -142,7 +146,11 @@ mem_fetch *l2_cache::peek_next_access() const {
 }
 
 bool l2_cache::ft_response_ready(unsigned long long cycle) {
+  if(m_ro && !m_ro->native_response_chosen && m_ro->has_response() &&
+      (m_ro->reply.transaction.valid() || m_ro->prefer_ro || !baseline_cache::access_ready()))
+    return m_ro->prepare(cycle);
   if (!ft_enabled()) return true;
+  if(m_ro)m_ro->native_response_chosen=true; // Before the possibly denied read.
   mem_fetch *mf = baseline_cache::peek_next_access();
   std::map<mem_fetch *,ep_l2::PayloadHandle>::const_iterator it = m_ft_read_refs.find(mf);
   assert(it != m_ft_read_refs.end());
@@ -178,7 +186,7 @@ void l2_cache::ms_sample() {
         m_ep_l2_payload.handle_live(h);
   }
   m_ms_observer.sample(m_ep_l2_payload.wb_used(), ep_l2_wad_occupancy(),
-      mshr_targets_used(), m_ep_l2_payload.resident_used(), bound,
+      m_mshrs.descriptor_count_used(), m_ep_l2_payload.resident_used(), bound,
       m_ep_l2_payload.pending_resident_landings());
 }
 
@@ -192,6 +200,8 @@ unsigned long long l2_cache::ms_frontend_blockers(mem_fetch *mf,
   // handle the head. A previously observed paid victim lookup has completed;
   // do not accidentally extend its measured wait through unrelated admission.
   known |= 1ULL << M::VICTIM_LOOKUP;
+  known |= 1ULL << M::READONLY_LOOKUP;
+  if (plan.ep_l2_ro_lookup_wait) blocked |= 1ULL << M::READONLY_LOOKUP;
   known |= (1ULL << M::SAME_ADDRESS_WB) | (1ULL << M::FRONTEND_TRANSACTION) |
       (1ULL << M::COPY_PIPELINE);
   if (!plan.ep_l2_wad_same_address_hazard) known |= 1ULL << M::TAG_SET_PENDING;
@@ -242,6 +252,7 @@ unsigned long long l2_cache::ms_frontend_blockers(mem_fetch *mf,
 }
 
 void l2_cache::commit_next_access() {
+  if(m_ro && m_ro->selected){m_ro->commit(ft_physical_cycle());return;}
   if (!ft_enabled()) { baseline_cache::commit_next_access(); return; }
   // A synthetic write-allocate response may already have been deleted by the
   // frontend. Use its pointer only as an identity key, never dereference it.
@@ -252,6 +263,7 @@ void l2_cache::commit_next_access() {
   baseline_cache::commit_next_access();
   m_ep_l2_payload.unpin(h);
   m_ft_read_refs.erase(it);
+  if(m_ro){m_ro->native_response_chosen=false;m_ro->prefer_ro=true;}
   ++m_ft_stats.descriptor_responses;
 }
 
@@ -293,12 +305,27 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   const unsigned long long physical_cycle = ft_physical_cycle();
   m_ep_l2_last_payload_request_result = ep_l2_payload_store::GRANTED;
   const new_addr_type owner = m_config.block_addr(addr);
+  if(m_ro) {
+    if(m_ro->native_owner_conflict(mf))return RESERVATION_FAIL;
+    cache_request_status merged;
+    if(m_ro->merge_existing(mf,time,events,merged)){
+      if(merged!=RESERVATION_FAIL){++m_ft_stats.accepted;
+        m_stats.inc_stats(mf->get_access_type(),MSHR_HIT,mf->get_streamID());
+        m_stats.inc_stats_pw(mf->get_access_type(),MSHR_HIT,mf->get_streamID());
+      }
+      return merged;
+    }
+  }
+  const bool ro_new=m_ro && m_ro->new_request(mf);
+  if(ro_new && !m_ro->directory_ready(mf))return RESERVATION_FAIL;
   if (tvd_write_candidate(mf) && !tvd_promote(mf,time,events)) return RESERVATION_FAIL;
   unsigned index = (unsigned)-1;
   cache_request_status probe = m_tag_array->probe(owner, index, mf, mf->is_write(), true);
+  if(probe==RESERVATION_FAIL && m_ro){m_ro->relieve(addr);probe=m_tag_array->probe(owner,index,mf,mf->is_write(),true);}
   if (probe == RESERVATION_FAIL) return RESERVATION_FAIL;
   if (m_tvd && probe == MISS &&
       !(m_tvd_lookup == mf && m_tvd_lookup_done)) return RESERVATION_FAIL;
+  if(ro_new && (!m_ro->capacity(mf,false) || !miss_queue_has_slots(mf->get_access_sector_mask().count()+(probe==MISS && m_tag_array->block_is_modified(index)))))return RESERVATION_FAIL;
   if (m_ft_pending.request && m_ft_pending.request != mf) return RESERVATION_FAIL;
   if (m_tvd ? tvd_cached_wad_contains(mf,owner) : ep_l2_wad_contains(owner)) {
     ++m_ep_l2_wad_same_address_wait_count; return RESERVATION_FAIL;
@@ -328,7 +355,8 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     const bool read = !mf->get_is_write();
     const new_addr_type key = m_config.mshr_addr(addr);
     unsigned slots = dirty ? 1 : 0;
-    if (read) {
+    if(ro_new) {slots+=mf->get_access_sector_mask().count();}
+    else if (read) {
       if (m_mshrs.full(key)) return RESERVATION_FAIL;
       if (m_mshrs.needs_lower_read(key, mf->get_access_sector_mask())) ++slots;
     } else if (m_config.m_write_alloc_policy == WRITE_ALLOCATE) {
@@ -490,7 +518,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   }
   const ep_l2::PayloadHandle handle = tag_payload_handle(index);
   mf->set_ep_l2_payload_identity(handle.payload_id, handle.generation);
-  const cache_request_status result = data_cache::access(addr, mf, time, events);
+  const cache_request_status result = ro_new ? m_ro->accept_new(mf,index,probe,time,events) : data_cache::access(addr, mf, time, events);
   if (result == RESERVATION_FAIL) {
     if (replacement) ft_rollback();
     return result;
@@ -510,7 +538,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
       slot.ready_sector_mask |= mf->get_access_sector_mask();
   }
   if (m_tag_array->block_is_modified(index)) slot.status = ep_l2_payload_store::RESIDENT_DIRTY;
-  else if (slot.pending_sector_mask.none()) slot.status = ep_l2_payload_store::RESIDENT_VALID;
+  else if (slot.pending_sector_mask.none() && slot.allocation_role!=ep_l2_payload_store::RO) slot.status = ep_l2_payload_store::RESIDENT_VALID;
   if (!mf->get_is_write()) mf->set_ft_wb_data(slot.versions);
   if (replacement) m_ft_pending = ft_replacement();
   if (m_tvd_lookup==mf) m_tvd_lookup=NULL;
@@ -595,6 +623,7 @@ void l2_cache::lower_accepted(mem_fetch *mf, unsigned long long cycle) {
   if (ft_enabled() && !mf->get_is_write()) {
     ++m_ft_stats.lower_read_packets; m_ft_stats.lower_read_bytes+=mf->get_data_size();
   }
+  if(mf->ro_lower_packet()) {if(!m_ro)throw std::logic_error("RO packet without runtime");m_ro->tx->lower_accepted(ep_l2::PayloadHandle(mf->get_ep_l2_payload_id(),mf->get_ep_l2_payload_generation()),mf->get_access_sector_mask().to_ulong());return;}
   if (!ft_enabled() || mf->get_access_type() != L2_WRBK_ACC) return;
   std::map<mem_fetch *,ft_wb_record>::iterator it = m_ft_wb.find(mf);
   assert(it != m_ft_wb.end());

@@ -263,8 +263,8 @@ foreach(victim_test bank_identity fixed_partition)
 endforeach()
 
 # One shared B/C production-partition input; never built/run by default.
-# The current public preimage lacks RO; do not advertise a compilable joint
-# target merely because its fixture source has arrived before C's adapter.
+# Common RO source and the shared B/C input are integrated; both remain
+# uncompiled. The switch only opts into the target, never native execution.
 option(EP_L2_BUILD_VRW_FIXTURE "Build A-integrated shared V/RO/W fixture" OFF)
 if(EP_L2_BUILD_VRW_FIXTURE)
   if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim/ep-l2-ro-runtime.inc")
@@ -277,3 +277,49 @@ if(EP_L2_BUILD_VRW_FIXTURE)
       entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
       ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
 endif()
+
+# C bounded production fixtures integrated by A. Bank facade needs source
+# extraction, not a direct production target; see prepare_ro_bank_progress.py.
+foreach(ro_test ro_runtime ro_partition ro_transactions ro_store_port ro_oracle_certificate ro_epoch_entry)
+  add_executable(ep_l2_${ro_test} EXCLUDE_FROM_ALL tests/ep_l2/test_${ro_test}.cc)
+  target_include_directories(ep_l2_${ro_test} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+  target_link_libraries(ep_l2_${ro_test} PRIVATE -Wl,--start-group
+      entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
+      ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
+endforeach()
+
+# Explicit source-bound facade only. Never configured/run by default.
+option(EP_L2_BUILD_RO_BANK_FIXTURE "Build source-bound RO bank facade" OFF)
+set(EP_L2_RO_BANK_SOURCE_COMMIT "" CACHE STRING "Exact immutable RO Core source")
+if(EP_L2_BUILD_RO_BANK_FIXTURE)
+  string(LENGTH "${EP_L2_RO_BANK_SOURCE_COMMIT}" ro_source_length)
+  if(NOT ro_source_length EQUAL 40 OR NOT EP_L2_RO_BANK_SOURCE_COMMIT MATCHES "^[0-9a-f]+$")
+    message(FATAL_ERROR "RO bank fixture requires exact40-hex source commit")
+  endif()
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  set(ro_bank_generated "${CMAKE_CURRENT_BINARY_DIR}/ro_bank_bound")
+  add_custom_command(OUTPUT "${ro_bank_generated}/SOURCE_BINDING.json"
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/ep_l2/prepare_ro_bank_progress.py"
+      --source "${EP_L2_RO_BANK_SOURCE_COMMIT}" --output "${ro_bank_generated}"
+    DEPENDS tests/ep_l2/prepare_ro_bank_progress.py tests/ep_l2/test_ro_bank_progress.cc
+      src/gpgpu-sim/gpu-cache.h src/gpgpu-sim/gpu-cache.cc
+      src/gpgpu-sim/ep-l2-ro-mshr.inc src/gpgpu-sim/ep-l2-ro-runtime.inc
+      src/gpgpu-sim/ep-l2-ro-transactions.h src/gpgpu-sim/ep-l2-ro-store-port.h
+      src/gpgpu-sim/ep-l2-ro-oracle.h src/gpgpu-sim/ep-l2-ft-cache.inc
+    COMMENT "Bind finite bank facade to exact RO source; no native execution"
+    VERBATIM)
+  add_custom_target(ep_l2_ro_bank_bind DEPENDS "${ro_bank_generated}/SOURCE_BINDING.json")
+  add_executable(ep_l2_ro_bank_progress EXCLUDE_FROM_ALL tests/ep_l2/test_ro_bank_progress.cc)
+  add_dependencies(ep_l2_ro_bank_progress ep_l2_ro_bank_bind)
+  target_include_directories(ep_l2_ro_bank_progress PRIVATE "${ro_bank_generated}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim" "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/libcuda" ${CUDAToolkit_INCLUDE_DIRS})
+  # Actual source methods are included once in this standalone facade.
+  # Linking gpu-cache.o as well would redefine those methods.
+  target_compile_options(ep_l2_ro_bank_progress PRIVATE -O2 -g0)
+endif()
+
+add_executable(ep_l2_ro_tvd_combined EXCLUDE_FROM_ALL tests/ep_l2/ms_ro_combined/test_combined.cc)
+target_include_directories(ep_l2_ro_tvd_combined PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+target_link_libraries(ep_l2_ro_tvd_combined PRIVATE -Wl,--start-group entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)

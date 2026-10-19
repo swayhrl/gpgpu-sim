@@ -40,12 +40,16 @@ int main() {
   o.observe(10,115,0,true);
   assert(o.waits[M::VICTIM_LOOKUP].requests==1 &&
          o.waits[M::VICTIM_LOOKUP].sum==1);
+  const auto ro_lookup=1ULL << M::READONLY_LOOKUP;
+  o.observe(11,120,ro_lookup,false,ro_lookup);o.observe(11,121,0,true);
+  assert(o.waits[M::READONLY_LOOKUP].requests==1 && o.waits[M::READONLY_LOOKUP].sum==1);
   FILE *fp=tmpfile(); assert(fp); o.print(fp,0); rewind(fp);
   char bytes[65536]={}; const auto used=fread(bytes,1,sizeof(bytes)-1,fp);
   assert(used>0 && !ferror(fp)); fclose(fp);
   const std::string text(bytes,used);
   assert(text.find("EPL2MSV1|WAIT|slice=0|reason=14|")!=std::string::npos);
   assert(text.find("EPL2MSV2|WAIT|slice=0|reason=15|")!=std::string::npos);
+  assert(text.find("EPL2MSV2|WAIT|slice=0|reason=16|")!=std::string::npos);
   assert(text.find("EPL2MSV1|WAIT|slice=0|reason=15|")==std::string::npos);
   puts("MS_OBSERVER_BOUNDED_IDENTITY_FIRST_WAIT_AND_DISABLED_NATIVE_PASS");
 }

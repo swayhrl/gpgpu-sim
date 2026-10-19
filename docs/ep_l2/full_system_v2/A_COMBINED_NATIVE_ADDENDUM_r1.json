@@ -1,0 +1,27 @@
+{
+  "schema": "A_COMBINED_NATIVE_ADDENDUM_V1",
+  "status": "SOURCE_PREPARED_NOT_COMPILED_NOT_RUN",
+  "C_13_case_plan": "Framework547cc5d204e84ae725d4d36e293079630779d1dc C/full_system_v2_r1/NATIVE_TEST_PLAN.json",
+  "new_cases": [
+    {
+      "id": "native_ro_mux",
+      "target": "ep_l2_ro_tvd_combined",
+      "C_input": "T1M1.config",
+      "mode_arg": "native_ro_mux",
+      "required_marker": "C_FULL_V2|case=native_denied_then_ready_ro_shared_response_head|status=PASS",
+      "scope": "actual partition RESPONSE mux; explicit public RAM contender; no fake queue records"
+    },
+    {
+      "id": "full_data_free",
+      "target": "ep_l2_ro_tvd_combined",
+      "C_input": "T1M1.config with A exact generated overlay DATA_FREE1 and observer1",
+      "mode_arg": "data_free",
+      "required_marker": "C_FULL_V2|case=wb_victim_ro_native_D512|data_free=1|status=PASS",
+      "scope": "real512 shared descriptors/mandatoryWB/RO/native lifetime + backpressure + values; zero physical grants, real logical RO/WB operations"
+    }
+  ],
+  "observer_schema": "V1 reasons0..13/aggregate14 unchanged; V2 victim15, readonly16",
+  "actual_native_executions": 0,
+  "full_application_count": 0,
+  "fresh_E_admission_required": true
+}

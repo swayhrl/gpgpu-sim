@@ -60,6 +60,11 @@ bool l2_cache::tvd_reclaim_one(unsigned bank, unsigned long long now) {
 l2_cache::tvd_frontend_result l2_cache::tvd_frontend(mem_fetch *mf,
     unsigned long long now, bool response_space) {
   if (!m_tvd) return TVD_NORMAL;
+  // Guard the path that can complete before l2_cache::access. A certificate
+  // contradiction must fail before lookup, promotion, pin or enqueue mutation.
+  if(m_ro) {
+    m_ro->check_access(mf);
+  }
   unsigned index = (unsigned)-1;
   const auto address = m_config.block_addr(mf->get_addr());
   const auto tag = m_tag_array->probe(address, index, mf, mf->is_write(), true);
@@ -150,6 +155,7 @@ void l2_cache::tvd_response_commit(mem_fetch *mf, unsigned long long now) {
         e.status==tvd_directory::WB_COMPLETE?ep_l2_payload_store::TVD_VALID:ep_l2_payload_store::TVD_INFLIGHT);
   }
   m_tvd_read.reset(); m_tvd_lookup = NULL;
+  if(m_ro)m_ro->record_accepted(mf);
   ++m_ft_stats.accepted;
   ms_observe_frontend(mf, now, 0, true, 0); // Actual response enqueue, exactly once.
 }
