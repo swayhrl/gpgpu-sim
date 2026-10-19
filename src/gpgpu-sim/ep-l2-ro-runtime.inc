@@ -277,7 +277,8 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     for(unsigned n=0;n<4;++n)if(mask>>n&1) {
       mem_access_byte_mask_t bytes;for(unsigned b=n*32;b<n*32+32;++b)bytes.set(b);
       auto packet=c.m_memfetch_creator->alloc(c.m_config.block_addr(m->get_addr())+32*n,GLOBAL_ACC_R,
-        m->get_access_warp_mask(),bytes,mem_access_sector_mask_t(1<<n),32,false,cycle,-1,-1,-1,NULL,m->get_streamID());
+        m->get_access_warp_mask(),bytes,mem_access_sector_mask_t(1<<n),32,false,cycle,
+        m->get_wid(),m->get_sid(),m->get_tpc(),NULL,m->get_streamID());
       packet->set_chip(m->get_tlx_addr().chip);packet->set_partition(m->get_sub_partition_id());
       packet->set_ft_wb_data(c.m_ep_l2_payload.inspect(h).versions);
       packet->set_ro_lower_packet();packet->set_ep_l2_payload_identity(h.payload_id,h.generation);
