@@ -324,7 +324,7 @@ static void observer_data_free(char **argv) {
   assert(o.any_to_admission.requests==o.any_to_admission.resolved &&
          !o.head_changes_without_admission && o.sampled_cycles>0);
   const auto &ram=f.cache->ep_l2_payload_for_test();
-  const bool data_free=f.gpu->getMemoryConfig()->m_L2_config.m_ep_l2_diag_l2_data_free;
+  const bool data_free=ram.diagnostic_exempts(ep_l2_payload_store::FRONTEND);
   if (data_free) {
     assert(!ram.bank_grants() && !ram.pending_operations());
     assert(ram.diagnostic_services(ep_l2_payload_store::FILL)>0 &&
