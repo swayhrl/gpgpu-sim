@@ -115,3 +115,11 @@ source-extracted facade processes (a2/a3/controls, C16 only) are separate.
 Thus25 additional RO processes are prepared; actual compiler/native count0.
 The whole-Framework driver hook itself still needs admitted compilation and
 E's independently accepted whole-commandlist canary, never a unit-test waiver.
+
+The opt-in EP_L2_BUILD_RO_BANK_FIXTURE CMake entry now prepares exact-source
+methods and builds ep_l2_ro_bank_progress as a standalone facade, not linked
+against a duplicate gpu-cache.o. It requires40-hex Core source, uses the same
+C++17 headers/compiler with explicit O2/g0 and assertions, and never configures
+or runs by default. This entry has NOT been configured or compiled; its own
+compile/link qualification is pending the same E gate. Production targets
+retain their common flags. The facade is never a production-path waiver.

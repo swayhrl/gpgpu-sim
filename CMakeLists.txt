@@ -247,3 +247,35 @@ foreach(ro_test ro_runtime ro_partition ro_transactions ro_store_port ro_oracle_
       entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
       ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
 endforeach()
+
+# Explicit source-bound facade only. Never configured/run by default.
+option(EP_L2_BUILD_RO_BANK_FIXTURE "Build source-bound RO bank facade" OFF)
+set(EP_L2_RO_BANK_SOURCE_COMMIT "" CACHE STRING "Exact immutable RO Core source")
+if(EP_L2_BUILD_RO_BANK_FIXTURE)
+  string(LENGTH "${EP_L2_RO_BANK_SOURCE_COMMIT}" ro_source_length)
+  if(NOT ro_source_length EQUAL 40 OR NOT EP_L2_RO_BANK_SOURCE_COMMIT MATCHES "^[0-9a-f]+$")
+    message(FATAL_ERROR "RO bank fixture requires exact40-hex source commit")
+  endif()
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  set(ro_bank_generated "${CMAKE_CURRENT_BINARY_DIR}/ro_bank_bound")
+  add_custom_command(OUTPUT "${ro_bank_generated}/SOURCE_BINDING.json"
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/ep_l2/prepare_ro_bank_progress.py"
+      --source "${EP_L2_RO_BANK_SOURCE_COMMIT}" --output "${ro_bank_generated}"
+    DEPENDS tests/ep_l2/prepare_ro_bank_progress.py tests/ep_l2/test_ro_bank_progress.cc
+      src/gpgpu-sim/gpu-cache.h src/gpgpu-sim/gpu-cache.cc
+      src/gpgpu-sim/ep-l2-ro-mshr.inc src/gpgpu-sim/ep-l2-ro-runtime.inc
+      src/gpgpu-sim/ep-l2-ro-transactions.h src/gpgpu-sim/ep-l2-ro-store-port.h
+      src/gpgpu-sim/ep-l2-ro-oracle.h src/gpgpu-sim/ep-l2-ft-cache.inc
+    COMMENT "Bind finite bank facade to exact RO source; no native execution"
+    VERBATIM)
+  add_custom_target(ep_l2_ro_bank_bind DEPENDS "${ro_bank_generated}/SOURCE_BINDING.json")
+  add_executable(ep_l2_ro_bank_progress EXCLUDE_FROM_ALL tests/ep_l2/test_ro_bank_progress.cc)
+  add_dependencies(ep_l2_ro_bank_progress ep_l2_ro_bank_bind)
+  target_include_directories(ep_l2_ro_bank_progress PRIVATE "${ro_bank_generated}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim" "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/libcuda" ${CUDAToolkit_INCLUDE_DIRS})
+  # Actual source methods are included once in this standalone facade.
+  # Linking gpu-cache.o as well would redefine those methods.
+  target_compile_options(ep_l2_ro_bank_progress PRIVATE -O2 -g0)
+endif()
