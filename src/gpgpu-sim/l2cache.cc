@@ -1676,6 +1676,9 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       mf->set_status(IN_PARTITION_L2_TO_DRAM_QUEUE,
                      m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
       m_L2_dram_queue->push(mf);
+      // A real bypass commit also needs its request token. Its later lower
+      // return uses the same exact-once response accounting as cache misses.
+      ft_record_admission(mf);
       m_l2_block_state.erase(mf);
       if (m_l2_char_collector) m_l2_char_collector->clear_frontend_request(mf);
       m_icnt_L2_queue->pop();

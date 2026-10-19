@@ -54,6 +54,9 @@ No code in this worktree was compiled, executed, or linked to old archives.
 - Normal controller bypass alone now waits for a full lower FIFO. No global
   lower-full condition is added to ordinary cache hits. Native regression
   source holds one real bypass FIFO entry and checks the next head survives.
+  A successful bypass enqueue now also acquires its original FT audit token;
+  the later bypass response no longer reaches exact-once accounting without
+  an admission. Full FIFO retries acquire no token and never pop the head.
 
 ## Finite pending evidence and supported boundary
 
