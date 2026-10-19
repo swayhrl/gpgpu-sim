@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstdio>
 #include <map>
+#include <set>
 #include "../../libcuda/gpgpu_context.h"
 #include "../../src/gpgpu-sim/gpu-sim.h"
 #include "../../src/gpgpu-sim/icnt_wrapper.h"
@@ -15,6 +16,9 @@ struct scenario {
   exec_gpgpu_sim *gpu; memory_stats_t *stats; memory_partition_unit *part;
   memory_sub_partition *sp; partition_mf_allocator *alloc;
   std::map<unsigned, unsigned long long> responses;
+  std::set<unsigned> bypass_responses;
+  // Observe actual lower FIFO removals without replacing the DRAM producer.
+  std::map<unsigned, unsigned> issued_lower_reads;
   unsigned long long audited_cycles = 0;
   unsigned max_physical_bank_grants = 0;
   explicit scenario(const char *base, const char *overlay, bool dirty=false, bool tvd=true, bool hold=false, unsigned sets=1, unsigned ft_mode=2, unsigned ways=1, unsigned wbuf=16, bool texture_only=false)
@@ -116,6 +120,7 @@ struct scenario {
   void collect() {
     while(auto mf=sp->pop()) {
       assert(!responses.count(mf->get_request_uid()));
+      assert(!bypass_responses.count(mf->get_request_uid()));
       // Zero is an explicit sector-version label. A missing read payload must
       // not silently become zero and make warmed/clean read assertions pass.
       assert((mf->get_is_write() || mf->has_ft_wb_data()) &&
@@ -128,7 +133,16 @@ struct scenario {
   void step(bool drain=true) {
     unsigned long long before[4];
     for(unsigned b=0;b<4;++b) before[b]=sp->ft_bank_grants_for_test(b);
-    part->cache_cycle(gpu->gpu_sim_cycle); part->simple_dram_model_cycle();
+    part->cache_cycle(gpu->gpu_sim_cycle);
+    const auto lower=sp->L2_dram_queue_empty()?nullptr:sp->L2_dram_queue_top();
+    const bool pending_read=lower && !lower->get_is_write();
+    const auto lower_uid=lower?lower->get_request_uid():0;
+    part->simple_dram_model_cycle();
+    // A real accepted DRAM issue removes this exact FIFO head. The cache
+    // memport counter intentionally excludes the direct texture-only bypass.
+    const auto next=sp->L2_dram_queue_empty()?nullptr:sp->L2_dram_queue_top();
+    if(pending_read && next!=lower)
+      ++issued_lower_reads[lower_uid];
     for(unsigned b=0;b<4;++b) {
       const auto grants=sp->ft_bank_grants_for_test(b)-before[b];
       assert(grants<=1 && "at most one grant per bank per physical GPU cycle");
@@ -167,6 +181,7 @@ static void texture_bypass_does_not_consume_tvd(const char *base,const char *ove
   assert(dir->live(t));const auto h=dir->at(t.index).payload;
   const auto lower=f.sp->ep_l2_lower_read_issue_count();
   const auto served=dir->stats().read_responses;
+  const auto queries=f.cache()->tvd_lookup_queries_for_test();
   const auto uid=f.push(0);bool returned=false;
   // A bypass return has no cache payload identity/version contract. Inspect
   // its real queue response here; do not weaken collect()'s cache-read guard
@@ -176,10 +191,16 @@ static void texture_bypass_does_not_consume_tvd(const char *base,const char *ove
     if(auto mf=f.sp->pop()) {
       assert(mf->get_request_uid()==uid && !returned);
       assert(!mf->has_ep_l2_payload_identity());
+      assert(f.bypass_responses.insert(uid).second);
       delete mf;returned=true;
     }
   }
-  assert(returned && f.sp->ep_l2_lower_read_issue_count()==lower+1);
+  printf("R14_BYPASS_OBSERVATION|returned=%u|actual_uid_lower_issues=%u|cache_memport_delta=%llu\n",
+      unsigned(returned),f.issued_lower_reads[uid],
+      f.sp->ep_l2_lower_read_issue_count()-lower);
+  assert(returned && f.issued_lower_reads[uid]==1);
+  assert(f.sp->ep_l2_lower_read_issue_count()==lower); // bypass never uses cache memport
+  assert(f.cache()->tvd_lookup_queries_for_test()==queries);
   assert(dir->stats().read_responses==served && dir->live(t) && dir->at(t.index).payload==h);
   auto again=texture_push(0);f.await(again);
   assert(f.responses.at(again)==0 && dir->stats().read_responses==served+1);
@@ -560,6 +581,16 @@ int main(int argc,char **argv) {
       //1024x1 geometry stresses bank-local capacity, not application behavior.
       dirty_bank_pool_full(argv[1],argv[2]);
       partial_dirty_promotion(argv[1],argv[2]);return 0;
+    }
+    // Individual selectors retain independent evidence when another gate fails.
+    if (negative=="--r14-texture-gate") {
+      texture_bypass_does_not_consume_tvd(argv[1],argv[2]);return 0;
+    }
+    if (negative=="--r14-clean-retention-gate") {
+      clean_retention_physical_cost(argv[1],argv[2]);return 0;
+    }
+    if (negative=="--r14-dirty-promotion-gate") {
+      full_shared_directory_dirty_promotion(argv[1],argv[2]);return 0;
     }
     if (negative=="--r14-integration-gates") {
       texture_bypass_does_not_consume_tvd(argv[1],argv[2]);
