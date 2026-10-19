@@ -26,6 +26,7 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
   mutable std::array<uint64_t,6> first_wait{},unique_blocks{},wait_cycles{};
   mutable std::array<std::array<uint64_t,16>,6> wait_hist{};
   uint64_t accepted_global_reads, accepted_candidates, accepted_ro;
+  uint64_t epoch_begin_cycle=0,epoch_end_cycle=0,last_response_cycle=0;
   ep_l2_ro_runtime(l2_cache &cache) : c(cache), port(c.m_ep_l2_payload,*this),
     generations(c.m_config.get_num_lines(),1),open(false),ever_open(false),selected(false),command_bound(false),prefer_ro(true),
     reply(),response_cycle(0),cursor(0),accepted_global_reads(0),accepted_candidates(0),accepted_ro(0) {
@@ -319,6 +320,7 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
   void commit(uint64_t cycle) {
     if(!selected)throw std::logic_error("RO response commit without grant");
     tx->commit_response(reply.transaction,true,cycle);cursor=(reply.transaction.payload_id+1)%c.m_ep_l2_payload.physical_slots();
+    last_response_cycle=cycle;
     reply.transaction=handle();selected=false;prefer_ro=false;
   }
 };
@@ -331,11 +333,12 @@ void l2_cache::ro_begin_epoch(){if(m_ro){
   if(!m_ro->command_bound||m_ro->ever_open||!ft_drained()||m_mshrs.descriptor_count_used()||!m_miss_queue.empty()||ep_l2_wad_occupancy())
     throw std::logic_error("RO epoch activation requires complete prior drain");
   m_ro->tx->begin_epoch(1,m_ro->cert->manifest_sha256());m_ro->open=m_ro->ever_open=true;
+  m_ro->epoch_begin_cycle=m_ro->physical_cycle();
 }}
 void l2_cache::ro_end_epoch(){if(m_ro){
   if(!m_ro->open||!ft_drained()||m_mshrs.descriptor_count_used()||!m_miss_queue.empty()||!m_ro->tx->end_epoch())
     throw std::logic_error("RO whole-commandlist end is not drained");
-  m_ro->open=false;
+  m_ro->epoch_end_cycle=m_ro->physical_cycle();m_ro->open=false;
 }}
 bool l2_cache::ro_drained() const {return !m_ro||m_ro->tx->drained();}
 bool l2_cache::access_ready() const {return (m_ro&&m_ro->has_response())||baseline_cache::access_ready();}
@@ -359,6 +362,11 @@ void l2_cache::ro_print(FILE *f,unsigned slice) const {if(m_ro){
     s.peak_transactions,s.peak_shared_descriptors,s.peak_shared_lines,
     (unsigned long long)s.lower_sectors*32,(unsigned long long)s.duplicate_sectors*32,
     (unsigned long long)m_ro->query_count,(unsigned long long)m_ro->query_wait_cycles,(unsigned long long)m_ro->query_port_waits);
+  const std::string begin=m_ro->ever_open?std::to_string(m_ro->epoch_begin_cycle):"NA";
+  const std::string end=m_ro->ever_open&&!m_ro->open?std::to_string(m_ro->epoch_end_cycle):"NA";
+  const std::string last=s.responses?std::to_string(m_ro->last_response_cycle):"NA";
+  fprintf(f,"EPL2ROC1|LOWER_CONCURRENCY|slice=%u|peak_lower_transactions=%u|peak_independent_lower_lines=%u|epoch_begin_gpu_cycle=%s|epoch_end_gpu_cycle=%s|last_response_gpu_cycle=%s|completed_ro_requesters=%llu|scope=RO_ISSUED_NOT_RETURNED_PER_SLICE|measurement=OBSERVER_ONLY_NO_ADMISSION_LOOKUP\n",
+    slice,s.peak_lower_transactions,s.peak_independent_lower_lines,begin.c_str(),end.c_str(),last.c_str(),(unsigned long long)s.responses);
   static const char *reasons[]={"TAG_SET_ALL_PENDING","LINE_MSHR_FULL","SHARED_DESCRIPTOR_FULL","PER_ADDRESS_FULL","LANDING_FULL","WAD"};
   for(unsigned r=0;r<4;++r) {
     fprintf(f,"EPL2ROC1|WAIT|slice=%u|reason=%s|unique_head_requests=%llu|first_to_accept_cycles=%llu|pending_head=%u|hist_log2=",

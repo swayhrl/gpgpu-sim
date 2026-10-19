@@ -67,6 +67,7 @@ class transactions {
     uint64_t responses, rejected_oracle, response_backpressure;
     uint64_t normal_line_allocations=0, avoided_line_allocations=0;
     unsigned peak_transactions=0,peak_shared_descriptors=0,peak_shared_lines=0;
+    unsigned peak_lower_transactions=0,peak_independent_lower_lines=0;
     counters() : admits(0), merges(0), detached(0), lower_sectors(0),
       duplicate_sectors(0), responses(0), rejected_oracle(0),
       response_backpressure(0) {}
@@ -225,6 +226,7 @@ class transactions {
     e.issued |= mask;
     if (!m_features.line_mshr_bypass)
       m_shared.ro_line_issue(e.line, sector_mask(mask));
+    observe_lower_peaks();
   }
   bool fill(identity h, unsigned mask, uint64_t cycle) {
     check_mask(mask);
@@ -285,6 +287,20 @@ class transactions {
   }
 
  private:
+  // Observer only: finite scratch derived from paid landing identities. This
+  // is never searched for admission/merge and supplies no address CAM, data,
+  // requester capacity or extra hardware port. Sample on real lower acceptance;
+  // fills/retirements cannot increase either pending-lower peak.
+  void observe_lower_peaks() {
+    std::array<new_addr_type,1168> lines;
+    unsigned n=0;
+    for(const auto &e:m_slots)
+      if(e.live && (e.issued&~e.ready))lines[n++]=e.line;
+    stats.peak_lower_transactions=std::max(stats.peak_lower_transactions,n);
+    std::sort(lines.begin(),lines.begin()+n);
+    const unsigned unique=std::unique(lines.begin(),lines.begin()+n)-lines.begin();
+    stats.peak_independent_lower_lines=std::max(stats.peak_independent_lower_lines,unique);
+  }
   void observe_peaks() {
     stats.peak_transactions=std::max(stats.peak_transactions,live_transactions());
     stats.peak_shared_descriptors=std::max(stats.peak_shared_descriptors,m_shared.descriptor_count_used());

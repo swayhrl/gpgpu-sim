@@ -11,6 +11,23 @@ import subprocess
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
+def check_four_mode_observations(text):
+    """The tiny same-set A/B/A witness must pay for duplicate lower work."""
+    cells={};current=None
+    for line in text.splitlines():
+        fields=line.split('|')
+        if fields[0]=='RO_C_FOUR_MODE_BEGIN':
+            current=tuple(int(f.split('=')[1]) for f in fields[1:])
+        elif line.startswith('EPL2ROC1|LOWER_CONCURRENCY|') and current is not None:
+            values=dict(f.split('=',1) for f in fields[2:])
+            cells[current]=(int(values['peak_lower_transactions']),int(values['peak_independent_lower_lines']))
+            current=None
+    # 00 has no RO runtime. M-only cannot pass the occupied Tag. T-only
+    # finds old A via the real line record; T+M issues A twice as well as B.
+    expected={(0,1):(1,1),(1,0):(2,2),(1,1):(3,2)}
+    if cells!=expected:raise RuntimeError(f'RO native lower-concurrency witness mismatch: {cells!r} != {expected!r}')
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--build',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
@@ -54,12 +71,13 @@ def main():
         log=o/(name+'.log')
         with log.open('w') as f:r=subprocess.run(cmd,cwd=root,stdout=f,stderr=subprocess.STDOUT,timeout=120)
         text=log.read_text();ok=(r.returncode!=0 and reason in text) if reason else r.returncode==0 and 'PASS' in text
+        if ok and name=='runtime':check_four_mode_observations(text)
         row=dict(name=name,status='PASS' if ok else 'FAIL',exit_code=r.returncode,expected_rejection=reason,
             command=cmd,binary_sha256=sha(Path(cmd[0])),log_sha256=sha(log))
         rows.append(row);print(name,row['status'],flush=True)
         if not ok:raise RuntimeError(text[-4000:])
-    summary=dict(schema='EP_L2_RO_PRODUCTION_DIRECTED_R5',core_source_commit=a.source,
-        status='PRODUCER_DIRECTED_PASS_NOT_LANE5_INDEPENDENT_QUALIFICATION',
+    summary=dict(schema='EPL2_MS_C_RO_PRODUCTION_DIRECTED_V1',core_source_commit=a.source,
+        status='PRODUCER_DIRECTED_PASS_NOT_E_INDEPENDENT_QUALIFICATION',
         fixture='SYNTHETIC_SECTOR_VERSION_REFERENCE_NOT_SASS_NUMERICAL_OUTPUT',
         base_config_sha256=sha(base),overlay_config_sha256=sha(overlay),
         fixture_config_sha256=sha(o/'binding.config'),fixture_command_sha256=sha(o/'kernelslist.g'),

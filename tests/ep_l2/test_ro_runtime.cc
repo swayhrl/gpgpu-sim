@@ -80,6 +80,7 @@ struct rig {
 };
 std::string rig::command;
 static void modes(const char *base,const char *overlay,const char *binding,unsigned d,unsigned b){
+  printf("RO_C_FOUR_MODE_BEGIN|detach=%u|bypass=%u\n",d,b);
   rig f(base,overlay,binding,d,b);auto a=f.make(0);assert(f.admit(a)!=RESERVATION_FAIL);auto h=f.tag();
   if(d||b){
     bool rejected=false;try{f.cache->ro_end_epoch();}catch(const std::logic_error&){rejected=true;}assert(rejected);

@@ -30,7 +30,8 @@ class reference_port : public payload_port {
   std::array<uint64_t,4> used_cycle;
   std::array<unsigned char,128> observed;
   unsigned reads, fills, releases, tag_updates;
-  reference_port() : slots(1168), reads(0), fills(0), releases(0), tag_updates(0) {
+  bool refuse_pin;
+  reference_port() : slots(1168), reads(0), fills(0), releases(0), tag_updates(0),refuse_pin(false) {
     used_cycle.fill(~0ULL); observed.fill(0);
   }
   static unsigned char memory(new_addr_type line, unsigned byte) {
@@ -52,7 +53,7 @@ class reference_port : public payload_port {
     if(used_cycle[h.payload_id%4]==cycle) return false;
     used_cycle[h.payload_id%4]=cycle; return true;
   }
-  bool pin(identity h) { ++slots[h.payload_id].pins; return true; }
+  bool pin(identity h) { if(refuse_pin)return false;++slots[h.payload_id].pins; return true; }
   void unpin(identity h) {
     assert(slots[h.payload_id].pins); --slots[h.payload_id].pins;
   }
@@ -136,6 +137,7 @@ static void same_line_detached_instances_and_generation() {
   identity b=p.reserve(4,0x2000,0);
   assert(t.admit(2,0x2000,b,p.binding(0),request(11),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
   t.lower_accepted(b,1); assert(t.stats.duplicate_sectors==1);
+  assert(t.stats.peak_lower_transactions==2 && t.stats.peak_independent_lower_lines==1);
   assert(shared.num_entries_used()==0 && shared.descriptor_count_used()==2);
   assert(!t.end_epoch());
   assert(t.fill(b,1,1)); unsigned updates=p.tag_updates;
@@ -280,6 +282,7 @@ static void detached_address_cap_and_exactly_once_permuted_fills() {
   assert(t.admit(11,0xc000,refused,p.binding(0),request(1200),1,true,GLOBAL_DEMAND_READ)==DESCRIPTOR_OR_ADDRESS_FULL);
   assert(shared.descriptor_count_used()==32 && shared.num_entries_used()==0);
   assert(t.stats.duplicate_sectors==31 && t.stats.lower_sectors==32);
+  assert(t.stats.peak_lower_transactions==32 && t.stats.peak_independent_lower_lines==1);
   for(unsigned n=0;n<32;++n)assert(t.fill(handles[31-n],1,n+1));
   std::set<mem_fetch*> seen;
   for(unsigned n=0;n<32;++n) {
@@ -290,6 +293,49 @@ static void detached_address_cap_and_exactly_once_permuted_fills() {
   assert(t.end_epoch() && shared.descriptor_count_used()==0 && p.releases==32);
 }
 
+static void failed_pin_rolls_back_shared_allocator() {
+  // MODULE scope: real native line/D512 allocator; reference payload port.
+  // Failed admission owns no descriptor/line/pin; caller retains its landing.
+  for(unsigned bypass=0;bypass<2;++bypass) {
+    mshr_table shared(128,32,512,32);reference_port p;
+    transactions t(shared,p,1168,certificate(),switches(true,bypass));t.begin_epoch(12,hash());
+    identity h=p.reserve(0,0xd000,0);p.refuse_pin=true;
+    assert(t.admit(12,0xd000,h,p.binding(0),request(1300),1,true,GLOBAL_DEMAND_READ)==TRANSACTION_SLOT_BUSY);
+    assert(!t.live(h) && t.drained() && shared.descriptor_count_used()==0 && shared.num_entries_used()==0);
+    identity target;assert(!shared.lookup_ro_line(0xd000,target));
+    assert(p.slots[0].allocated && p.slots[0].pins==0 && p.releases==0 && t.stats.admits==0);
+    p.refuse_pin=false;
+    assert(t.admit(12,0xd000,h,p.binding(0),request(1300),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
+    assert(shared.descriptor_count_used()==1 && shared.num_entries_used()==(bypass?0u:1u));
+    t.lower_accepted(h,1);assert(t.detach(h));assert(t.fill(h,1,1));response r;
+    assert(t.prepare_response(h,2,r));t.commit_response(h,true,2);
+    assert(t.end_epoch() && shared.descriptor_count_used()==0 && shared.num_entries_used()==0);
+    assert(p.slots[0].pins==0 && !p.slots[0].allocated && p.releases==1);
+  }
+}
+
+static void pending_lower_distinguishes_duplicates_from_addresses() {
+  mshr_table shared(128,32,512,32);reference_port p;
+  transactions t(shared,p,1168,certificate(),switches(true,true));t.begin_epoch(13,hash());
+  std::array<identity,3> handles;
+  for(unsigned n=0;n<3;++n) {
+    const new_addr_type line=n==2?0xf000:0xe000;
+    handles[n]=p.reserve(n,line,n);
+    assert(t.admit(13,line,handles[n],p.binding(n),request(1400+n),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
+    // An admitted but unissued transaction is not outstanding lower work.
+    assert(t.stats.peak_lower_transactions==n);
+    t.lower_accepted(handles[n],1);assert(t.detach(handles[n]));
+  }
+  assert(t.stats.peak_transactions==3 && t.stats.peak_lower_transactions==3);
+  assert(t.stats.peak_independent_lower_lines==2 && t.stats.duplicate_sectors==1);
+  for(unsigned n=0;n<3;++n)assert(t.fill(handles[n],1,n+1));
+  for(unsigned n=0;n<3;++n) {
+    response r;
+    assert(t.prepare_response(handles[n],n+4,r));t.commit_response(handles[n],true,n+4);
+  }
+  assert(t.end_epoch() && t.stats.peak_lower_transactions==3 && t.stats.peak_independent_lower_lines==2);
+}
+
 int main() {
   out_of_order_backpressure_and_waiter_protection();
   same_line_detached_instances_and_generation();
@@ -298,5 +344,7 @@ int main() {
   detach_only_uses_the_actual_line_mshr_limit();
   partial_resident_and_cycle_grant_validation();
   detached_address_cap_and_exactly_once_permuted_fills();
+  failed_pin_rolls_back_shared_allocator();
+  pending_lower_distinguishes_duplicates_from_addresses();
   puts("EP-L2 Lane 3 RO production-module/reference tests: PASS (7 scenario groups)");
 }
