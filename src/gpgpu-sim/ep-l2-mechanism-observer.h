@@ -100,13 +100,16 @@ class Observer {
     if (wb) lower_wb_bytes += bytes;
   }
   void print(FILE *fp, unsigned slice) const {
+    if (!enabled) {
+      fprintf(fp, "EPL2MSV1|OBSERVER|slice=%u|enabled=0|measurement=DISABLED_NOT_OBSERVED\n", slice);
+      return;  // Unobserved pressure is not a measured zero.
+    }
     fprintf(fp, "EPL2MSV1|OBSERVER|slice=%u|enabled=%u|sampled_cycles=%llu|wb_sum=%llu|wb_peak=%u|wad_sum=%llu|wad_peak=%u|descriptor_peak=%u|physical_resident_peak=%u|bound_tag_peak=%u|pending_landing_peak=%u|lower_reads=%llu|lower_read_bytes=%llu|lower_writes=%llu|lower_write_bytes=%llu|lower_wb_bytes=%llu|unfinished_head=%u|head_changes_without_admission=%llu|unclassified_refusal_observations=%llu\n",
         slice, enabled, sampled_cycles, wb_occupancy_sum, wb_peak,
         wad_occupancy_sum, wad_peak, descriptor_peak, physical_resident_peak,
         bound_tag_peak, pending_landing_peak, lower_reads, lower_read_bytes,
         lower_writes, lower_write_bytes, lower_wb_bytes, active_,
         head_changes_without_admission, unclassified_refusal_observations);
-    if (!enabled) return;
     for (unsigned r = 0; r <= WAIT_REASONS; ++r) {
       const Wait &w = r == WAIT_REASONS ? any_to_admission : waits[r];
       fprintf(fp, "EPL2MSV1|WAIT|slice=%u|reason=%u|requests=%llu|observations=%llu|resolved=%llu|sum=%llu|max=%llu|unknown_while_unresolved=%llu|hist_log2=",
