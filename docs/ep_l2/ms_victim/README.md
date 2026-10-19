@@ -1,4 +1,13 @@
-# B source r3 — no native qualification
+# B source r4 — A949 incremental candidate, no native qualification
+
+Current source adopts A CLEAN_ONLY94996ec5 directory/UID/ticket/control-cost
+interfaces and preserves B dirty/fixed/last-unpin deltas. Use ONLY
+`adapter_A949_r4/A_INCREMENTAL_HOOKS.patch` plus current modules/test_plan_r4
+on exact94996ec5 for the next isolated A integration. Read
+`R4_A949_INTEGRATION.md`. All21 inputs remain NOT_RUN. Oldr1–r3 commits,
+patches and plans are preserved; old adapters are not for these current modules.
+
+# Historical r3 — no native qualification
 
 Current r3 closes a source lifecycle gap: completion during a pinned read of
 an already-TVD-role slot must finish TVD_INFLIGHT→TVD_VALID at last response

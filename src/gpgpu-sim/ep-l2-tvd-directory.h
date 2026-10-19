@@ -32,10 +32,13 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     address_type line;
     Handle payload;
     unsigned valid_sectors, dirty_sectors, readers;
+    unsigned wb_request_uid;
+    bool wb_uid_bound;
     std::uint64_t incarnation, age;
     cycle_type born, lower_accepted;
     entry() : status(EMPTY), line(0), valid_sectors(0), dirty_sectors(0),
-              readers(0), incarnation(0), age(0), born(0), lower_accepted(0) {}
+              readers(0), wb_request_uid(0), wb_uid_bound(false),
+              incarnation(0), age(0), born(0), lower_accepted(0) {}
     bool mandatory() const { return status == WB_STAGED || status == WB_INFLIGHT; }
     bool reclaimable() const {
       return (status == CLEAN || status == WB_COMPLETE) && readers == 0;
@@ -48,8 +51,9 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     Handle displaced;
     address_type line;
     bool writeback;
+    bool native_owner_proven_unique;
     install_plan() : status(DIRECTORY_FULL), index(128), revision(0), line(0),
-                     writeback(false) {}
+                     writeback(false), native_owner_proven_unique(false) {}
   };
   struct promotion_plan {
     result status;
@@ -141,9 +145,17 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
   }
   // Non-mutating preview. Mandatory WB may reclaim clean/WB-complete entries;
   // opportunistic clean retention never preempts pending/inflight WB.
-  install_plan preview_install(address_type line, bool dirty) const {
+  install_plan preview_install(address_type line, bool dirty,
+                                bool native_owner_proven_unique = false) const {
     install_plan p; p.revision = m_revision; p.line = line; p.writeback = dirty;
-    if ((line & 127) || live(find(line))) { p.status = INVALID_INPUT; return p; }
+    p.native_owner_proven_unique = native_owner_proven_unique;
+    if (line & 127) { p.status = INVALID_INPUT; return p; }
+    if (native_owner_proven_unique) {
+      // Native selected resident owner is disjoint from directory owners.
+      // This assertion checks that protocol invariant in software; it is not
+      // another functional CAM lookup or an extra modeled query port.
+      assert(!live(find(line)));
+    } else if (live(find(line))) { p.status = INVALID_INPUT; return p; }
     if (!dirty && !m_clean) { p.status = DISABLED; return p; }
     for (unsigned i = 0; i < m_capacity; ++i)
       if (m_entries[i].status == EMPTY) {
@@ -168,15 +180,20 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     if (p.status != OK) return p.status;
     if (p.revision != m_revision || p.index >= m_capacity) return STALE;
     if (p.line != line || p.writeback != writeback) return INVALID_INPUT;
-    if ((line & 127) || live(find(line)) || (valid & ~15u) ||
+    if ((line & 127) || (valid & ~15u) ||
         (dirty & ~valid) || pending || (!writeback && (!valid || dirty)) ||
         (!writeback && !handle.valid()) || (writeback && !dirty))
       return INVALID_INPUT;
+    if (p.native_owner_proven_unique) assert(!live(find(line)));
+    else if (live(find(line))) return INVALID_INPUT;
     if ((!writeback && !m_clean) || (writeback && handle.valid() && !m_dirty))
       return DISABLED;
-    for (unsigned i = 0; i < m_capacity; ++i)
-      if (m_entries[i].status != EMPTY && handle.valid() &&
-          same(m_entries[i].payload, handle)) return INVALID_INPUT;
+    for (unsigned i = 0; i < m_capacity; ++i) {
+      const bool duplicate = m_entries[i].status != EMPTY && handle.valid() &&
+          same(m_entries[i].payload, handle);
+      if (p.native_owner_proven_unique) assert(!duplicate);
+      else if (duplicate) return INVALID_INPUT;
+    }
     advance(now);
     entry &e = m_entries[p.index];
     assert(e.status == EMPTY || e.reclaimable());
@@ -185,6 +202,7 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     e.status = writeback ? WB_STAGED : CLEAN;
     e.line = line; e.payload = handle;
     e.valid_sectors = valid; e.dirty_sectors = dirty; e.readers = 0;
+    e.wb_request_uid = 0; e.wb_uid_bound = false;
     e.age = ++m_age; e.born = now; e.lower_accepted = 0;
     installed = ticket(p.index, e.incarnation);
     ++m_revision;
@@ -266,7 +284,8 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
   // Caller must pre-reserve the real WB/lower resources without mutation.
   promotion_plan preview_dirty_promotion(ticket source, address_type victim_line,
                                          Handle victim, unsigned valid,
-                                         unsigned dirty, unsigned pending, bool retain = true) const {
+                                         unsigned dirty, unsigned pending, bool retain = true,
+                                         bool native_owner_proven_unique = false) const {
     promotion_plan p;
     if (!m_clean && !m_dirty) { p.status = DISABLED; return p; }
     if (!live(source)) { p.status = STALE; return p; }
@@ -274,9 +293,14 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     if (e.mandatory()) { p.status = WAIT_WRITEBACK; return p; }
     if (e.readers) { p.status = PINNED; return p; }
     if ((victim_line & 127) || !victim.valid() || !dirty || (valid & ~15u) ||
-        (dirty & ~valid) || pending || live(find(victim_line))) return p;
-    for (unsigned i = 0; i < m_capacity; ++i)
-      if (m_entries[i].status != EMPTY && same(m_entries[i].payload, victim)) return p;
+        (dirty & ~valid) || pending) return p;
+    if (native_owner_proven_unique) assert(!live(find(victim_line)));
+    else if (live(find(victim_line))) return p;
+    for (unsigned i = 0; i < m_capacity; ++i) {
+      const bool duplicate = m_entries[i].status != EMPTY && same(m_entries[i].payload, victim);
+      if (native_owner_proven_unique) assert(!duplicate);
+      else if (duplicate) return p;
+    }
     p.status = OK; p.source = source; p.revision = m_revision;
     p.victim_line = victim_line; p.victim = victim; p.valid = valid; p.dirty = dirty;
     p.retain_payload = m_dirty && retain;
@@ -291,6 +315,7 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     advance(now); promoted = e.payload;
     bump(e.incarnation); e.status = WB_STAGED; e.line = p.victim_line;
     e.payload = p.retain_payload ? p.victim : Handle(); e.valid_sectors = p.valid; e.dirty_sectors = p.dirty;
+    e.wb_request_uid = 0; e.wb_uid_bound = false;
     e.age = ++m_age; e.born = now; e.lower_accepted = 0;
     writeback = ticket(p.source.index, e.incarnation);
     ++m_revision; ++m_stats.promotions; ++m_stats.dirty_installs;
@@ -310,6 +335,17 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     if (!live(t) || m_entries[t.index].status != WB_STAGED) return STALE;
     if (m_entries[t.index].readers) return PINNED;
     advance(now); erase(m_entries[t.index]); return OK;
+  }
+  result bind_writeback(ticket t, unsigned request_uid) {
+    if (!live(t) || m_entries[t.index].status != WB_STAGED) return STALE;
+    entry &e = m_entries[t.index];
+    if (e.wb_uid_bound) return INVALID_INPUT;
+    e.wb_request_uid = request_uid; e.wb_uid_bound = true; ++m_revision;
+    return OK;
+  }
+  bool writeback_matches(ticket t, address_type line, unsigned request_uid) const {
+    return live(t) && m_entries[t.index].line == line &&
+        m_entries[t.index].wb_uid_bound && m_entries[t.index].wb_request_uid == request_uid;
   }
   result lower_accept(ticket t, bool lower_has_independent_data, cycle_type now) {
     if (!live(t) || m_entries[t.index].status != WB_STAGED) return STALE;
@@ -359,6 +395,7 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
   void erase(entry &e) {
     assert(!e.readers); bump(e.incarnation); e.status = EMPTY;
     e.payload = Handle(); e.valid_sectors = e.dirty_sectors = 0; ++m_revision;
+    e.wb_uid_bound = false;
   }
   unsigned m_capacity;
   bool m_clean, m_dirty;

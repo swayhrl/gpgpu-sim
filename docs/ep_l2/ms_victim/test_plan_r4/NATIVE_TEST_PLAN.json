@@ -1,0 +1,356 @@
+{
+  "identity": {
+    "base_config": "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+    "base_config_sha256": "8ccad878b6abfec8254ecd6c7e0efee2714908dc3a04f611ff8787000e277bd3",
+    "parent_core": "84359d4ba492acb639a2092fa271e9169038bf7d",
+    "A_interface": "980072bbbcbd4ad00cdf85650283931e94cad395",
+    "native_integration_base_core": "94996ec59b4a0264b64146932977bfe6ea4f195b",
+    "public_adapter": "docs/ep_l2/ms_victim/adapter_A949_r4/A_INCREMENTAL_HOOKS.patch",
+    "runtime_framework_parent": "197741be9be9b8e390a557d639503b416d8e95f0",
+    "vendor_pybind11": "f90c430c3a1ce8f08c09942a5a1c3a797bb2295b",
+    "built_binary": null,
+    "native_tests_executed": false,
+    "full_apps": 0,
+    "required_resource_admission": "E fresh campaign lease plus48GiB workspace40GiB Share64GiB RAM; no bypass",
+    "maximum_parallel_jobs": 1,
+    "small_module_budget": {
+      "cpu": 1,
+      "memory_bytes": 268435456,
+      "output_bytes": 8388608
+    },
+    "production_fixture_budget_pending_A_build": {
+      "cpu": 1,
+      "memory_bytes": 2147483648,
+      "output_bytes": 268435456
+    },
+    "sources": {
+      "src/gpgpu-sim/ep-l2-tvd-directory.h": "335e4968649ebdd1da15c12cf55b6da88cb76ae270d0916b7d031b56ea2bd738",
+      "src/gpgpu-sim/ep-l2-tvd-cache.inc": "0cdb0301244726092ab4fe1bbe888f8a2b677184b1e5b0dbb4b03d3414b4ddc6",
+      "src/gpgpu-sim/ep-l2-tvd-bank-identity.h": "278efb42c6428ccc690439e96ee68aa5847aa4e1866901e0692aafb355370e79",
+      "src/gpgpu-sim/ep-l2-tvd-fixed-pool.inc": "419d91ba6226275e6cca2d0e199d8a11ac7a3117da39dac5865058e415aa6e7b",
+      "tests/ep_l2/ms_victim/test_bank_identity.cc": "d9504f7b2aa19653109e85c29c829d3e75366f0b4e397b08299e1cc7e659ec8c",
+      "tests/ep_l2/ms_victim/test_fixed_partition.cc": "c5ad68f079a92bf0272854ceb52ac89c1f59703c5396680eb4ce420630d4e01f",
+      "tests/ep_l2/test_tvd_directory.cc": "b7298636d8fb31425b2f612ceaacc312dc2509ae8bb78400934b8442c00d1c84",
+      "tests/ep_l2/test_tvd_production.cc": "8b535059857901043cd6185f01f6a568bcc37e2a196911c01a984aa3f45107f3",
+      "tests/ep_l2/ms_victim/test_native.cc": "e080a0fd1e8e1d1650dc97143885a31e1cdc68a010fb29534e5d5679729a2064",
+      "tests/ep_l2/ms_victim/native_fixture.h": "83650f18ea4b8c9713357545552fd49d7885c15f768f7f2f244056068624aa67",
+      "tests/ep_l2/potential_fixture.h": "5f7ab170479818ad451c57037b8aa34010711c56307e95226b131467a34b9ca6"
+    }
+  },
+  "configs": {
+    "off": {
+      "path": "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/off.config",
+      "sha256": "96d0c6b3d45e654ee13326e1a3bfb660820dd62e5be66cbcf4cbf11aaec4f352",
+      "ordered_sources": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/tests/ep_l2/ft_wbuf.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/tests/ep_l2/ms_victim/off.config"
+      ]
+    },
+    "clean": {
+      "path": "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/clean.config",
+      "sha256": "915b893dafbc9797cab8d49f038db5aa7443f0596367e7d42e00f3776ea6b072",
+      "ordered_sources": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/tests/ep_l2/ft_wbuf.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/tests/ep_l2/ms_victim/clean.config"
+      ]
+    },
+    "dirty_full": {
+      "path": "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/dirty_full.config",
+      "sha256": "7f5777b105bc2682a7bea3af75b8fb1c96821cd1cc67cce7673575cabb9d30c9",
+      "ordered_sources": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/tests/ep_l2/ft_wbuf.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/tests/ep_l2/ms_victim/dirty_full.config"
+      ]
+    },
+    "fixed64": {
+      "path": "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/fixed64.config",
+      "sha256": "358e7d9513ec6b0aa1bb866fb2a226358507a2169a7b5b3a15d7f162d9bb4d94",
+      "ordered_sources": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/tests/ep_l2/ft_wbuf.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/tests/ep_l2/ms_victim/fixed64.config"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "name": "directory_clean",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "B_BOUND_tvd_directory",
+      "arguments": [
+        "--clean"
+      ],
+      "scope": "directory+native payload arbiter component, not cache response or DRAM data proof"
+    },
+    {
+      "name": "directory_dirty",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "B_BOUND_tvd_directory",
+      "arguments": [],
+      "scope": "same component; actual cache/DRAM lifecycle checked by separate native fixtures"
+    },
+    {
+      "name": "bank_identity--legacy",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "A_BOUND_tvd_bank_identity",
+      "arguments": [
+        "--legacy"
+      ],
+      "expected_exit": 21,
+      "scope": "real native P1 arbiter; legacy failure is expected but NOT yet observed"
+    },
+    {
+      "name": "bank_identity--extended",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "A_BOUND_tvd_bank_identity",
+      "arguments": [
+        "--extended"
+      ],
+      "expected_exit": 0,
+      "scope": "real native P1 arbiter; legacy failure is expected but NOT yet observed"
+    },
+    {
+      "name": "fixed_allocator",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "A_BOUND_tvd_fixed_partition",
+      "arguments": [],
+      "expected_exit": 0,
+      "scope": "real native1168 allocator, reciprocal64/1104 quotas/credit/rollback; not cache-response proof"
+    },
+    {
+      "name": "off__cycle",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "A_BOUND_native_victim_fixture",
+      "arguments": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/off.config",
+        "2",
+        "16",
+        "0",
+        "0",
+        "1",
+        "cycle"
+      ],
+      "scope": "real1024Tag1168payloadD512 partition; controlled external memory versions, not native DRAM timing"
+    },
+    {
+      "name": "clean__cycle",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "A_BOUND_native_victim_fixture",
+      "arguments": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/clean.config",
+        "2",
+        "16",
+        "0",
+        "0",
+        "1",
+        "cycle"
+      ],
+      "scope": "real1024Tag1168payloadD512 partition; controlled external memory versions, not native DRAM timing"
+    },
+    {
+      "name": "off__stream",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "A_BOUND_native_victim_fixture",
+      "arguments": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/off.config",
+        "2",
+        "16",
+        "0",
+        "0",
+        "1",
+        "stream"
+      ],
+      "scope": "real1024Tag1168payloadD512 partition; controlled external memory versions, not native DRAM timing"
+    },
+    {
+      "name": "clean__stream",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "A_BOUND_native_victim_fixture",
+      "arguments": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/clean.config",
+        "2",
+        "16",
+        "0",
+        "0",
+        "1",
+        "stream"
+      ],
+      "scope": "real1024Tag1168payloadD512 partition; controlled external memory versions, not native DRAM timing"
+    },
+    {
+      "name": "clean__sectors",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "A_BOUND_native_victim_fixture",
+      "arguments": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/clean.config",
+        "2",
+        "16",
+        "0",
+        "0",
+        "1",
+        "sectors"
+      ],
+      "scope": "real1024Tag1168payloadD512 partition; controlled external memory versions, not native DRAM timing"
+    },
+    {
+      "name": "clean__partial",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "A_BOUND_native_victim_fixture",
+      "arguments": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/clean.config",
+        "2",
+        "16",
+        "0",
+        "0",
+        "1",
+        "partial"
+      ],
+      "scope": "real1024Tag1168payloadD512 partition; controlled external memory versions, not native DRAM timing"
+    },
+    {
+      "name": "dirty_full__dirty",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "A_BOUND_native_victim_fixture",
+      "arguments": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/dirty_full.config",
+        "2",
+        "16",
+        "0",
+        "0",
+        "1",
+        "dirty"
+      ],
+      "scope": "real1024Tag1168payloadD512 partition; controlled external memory versions, not native DRAM timing"
+    },
+    {
+      "name": "dirty_full__dirty_pending",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "A_BOUND_native_victim_fixture",
+      "arguments": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/dirty_full.config",
+        "2",
+        "16",
+        "0",
+        "0",
+        "1",
+        "dirty_pending"
+      ],
+      "scope": "real1024Tag1168payloadD512 partition; controlled external memory versions, not native DRAM timing"
+    },
+    {
+      "name": "dirty_full__dirty_icnt_pinned",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "A_BOUND_native_victim_fixture",
+      "arguments": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/dirty_full.config",
+        "2",
+        "16",
+        "0",
+        "0",
+        "1",
+        "dirty_icnt_pinned"
+      ],
+      "scope": "real1024Tag1168payloadD512 partition; controlled external memory versions, not native DRAM timing"
+    },
+    {
+      "name": "clean__clean_wb_reuse",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "A_BOUND_native_victim_fixture",
+      "arguments": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/clean.config",
+        "2",
+        "16",
+        "0",
+        "0",
+        "1",
+        "clean_wb_reuse"
+      ],
+      "scope": "real1024Tag1168payloadD512 partition; controlled external memory versions, not native DRAM timing"
+    },
+    {
+      "name": "clean__fixed_quota",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "A_BOUND_native_victim_fixture",
+      "arguments": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/clean.config",
+        "2",
+        "16",
+        "0",
+        "0",
+        "1",
+        "fixed_quota"
+      ],
+      "scope": "real1024Tag1168payloadD512 partition; controlled external memory versions, not native DRAM timing"
+    },
+    {
+      "name": "fixed64__fixed_quota64",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "A_BOUND_native_victim_fixture",
+      "arguments": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/fixed64.config",
+        "2",
+        "16",
+        "0",
+        "0",
+        "1",
+        "fixed_quota64"
+      ],
+      "scope": "real1024Tag1168payloadD512 partition; controlled external memory versions, not native DRAM timing"
+    },
+    {
+      "name": "--study-clean",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "A_BOUND_native_tvd_production",
+      "arguments": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/off.config",
+        "--study-clean"
+      ],
+      "scope": "native partition/simpleDRAM; tiny and primary geometries labelled in source"
+    },
+    {
+      "name": "--study-dirty-inflight",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "A_BOUND_native_tvd_production",
+      "arguments": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/off.config",
+        "--study-dirty-inflight"
+      ],
+      "scope": "native partition/simpleDRAM; tiny and primary geometries labelled in source"
+    },
+    {
+      "name": "--study-dirty-boundaries",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "A_BOUND_native_tvd_production",
+      "arguments": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/off.config",
+        "--study-dirty-boundaries"
+      ],
+      "scope": "native partition/simpleDRAM; tiny and primary geometries labelled in source"
+    },
+    {
+      "name": "--candidate62-gates",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "executable": "A_BOUND_native_tvd_production",
+      "arguments": [
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/test_plan_r4/off.config",
+        "--candidate62-gates"
+      ],
+      "scope": "native partition/simpleDRAM; tiny and primary geometries labelled in source"
+    }
+  ]
+}

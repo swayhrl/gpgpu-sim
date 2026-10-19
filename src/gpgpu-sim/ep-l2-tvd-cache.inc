@@ -5,17 +5,35 @@ unsigned long long l2_cache::m_gpu_cycle_for_tvd() const {
 }
 
 bool l2_cache::tvd_install_victim(new_addr_type address, ep_l2::PayloadHandle h,
-    unsigned valid, unsigned dirty, bool wb, unsigned long long now) {
-  auto plan = m_tvd->preview_install(address, wb);
+    unsigned valid, unsigned dirty, bool wb, unsigned long long now,
+    tvd_directory::ticket *installed) {
+  auto plan = m_tvd->preview_install(address, wb, true);
   if (plan.status != tvd_directory::OK) return false;
   tvd_directory::ticket ticket;
   if (m_tvd->commit_install(plan, address, h, valid, dirty, 0, wb, now, ticket) != tvd_directory::OK)
     return false;
+  ++m_tvd_native_installs;
+  if (installed) *installed = ticket;
   if (plan.displaced.valid()) {
     assert(m_ep_l2_payload.inspect(plan.displaced).pins == 0);
     m_ep_l2_payload.release(plan.displaced);
   }
   return true;
+}
+
+bool l2_cache::tvd_cached_wad_contains(mem_fetch *mf, new_addr_type address) const {
+  assert(m_tvd);
+  if (m_tvd_lookup == mf && m_tvd_lookup_done) {
+    const auto t = m_tvd_lookup_ticket;
+    return m_tvd->live(t) && m_tvd->at(t.index).line == address &&
+        m_tvd->at(t.index).mandatory();
+  }
+  // A normal resident hit/sector miss cannot alias a mandatory WB owner:
+  // miss lookup blocks on WAD; promotion waits for completion; host prefill
+  // requires quiescence. No new functional address lookup is issued here.
+  // Before the query pipeline this is UNKNOWN to an observational preview;
+  // it is not an admission proof. ft_access below refuses an unqueried MISS.
+  return false;
 }
 
 bool l2_cache::tvd_reclaim_one(unsigned bank, unsigned long long now) {
@@ -61,7 +79,6 @@ l2_cache::tvd_frontend_result l2_cache::tvd_frontend(mem_fetch *mf,
   }
   const auto ticket = m_tvd_lookup_ticket;
   if (!m_tvd->live(ticket)) return TVD_NORMAL;
-  const auto &entry = m_tvd->at(ticket.index);
   // Dirty pending/inflight reads use a distinct client+UID+generation key
   // in the existing bank scoreboard. The public r2 adapter delays WB->TVD
   // role transitions while the reader is pinned. CLEAN_ONLY WAD records have
@@ -160,17 +177,19 @@ bool l2_cache::tvd_promote(mem_fetch *mf, unsigned time, std::list<cache_event> 
     const bool retain = m_config.m_ep_l2_tvd_dirty && (dirty_mask & ~ready_mask) == 0;
     auto plan = m_tvd->preview_dirty_promotion(t, block->m_block_addr, victim,
         retain ? ready_mask : dirty_mask, dirty_mask,
-        saved.pending_sector_mask.to_ulong(), retain);
+        saved.pending_sector_mask.to_ulong(), retain, true);
     if (plan.status != tvd_directory::OK) return false;
     evicted_block_info evicted;
     evicted.set_info(block->m_block_addr, block->get_modified_size(),
         block->get_dirty_byte_mask(), block->get_dirty_sector_mask());
     assert(m_tvd->commit_dirty_promotion(plan, physical_cycle, promoted, wb_ticket) == tvd_directory::OK);
+    ++m_tvd_native_promotions;
     assert(m_ep_l2_wad_birth_cycle.insert(std::make_pair(evicted.m_block_addr, physical_cycle)).second);
     m_ep_l2_payload.transfer(victim, ep_l2_payload_store::WB, ep_l2_payload_store::WB_STAGED);
     auto &p = m_ft_pending; p.request = mf; p.dirty = p.wad = true;
     p.tag_index = index; p.victim = p.staging = victim;
     p.victim_address = evicted.m_block_addr; p.born = physical_cycle;
+    p.wad_ticket = wb_ticket;
     mem_fetch *packet = m_memfetch_creator->alloc(evicted.m_block_addr, L2_WRBK_ACC,
         mf->get_access_warp_mask(), evicted.m_byte_mask, evicted.m_sector_mask,
         evicted.m_modified_size, true, time, -1, -1, -1, NULL, mf->get_streamID());
@@ -179,6 +198,7 @@ bool l2_cache::tvd_promote(mem_fetch *mf, unsigned time, std::list<cache_event> 
     assert(p.bound); p = ft_replacement();
   } else {
     assert(m_tvd->promote(t, promoted, physical_cycle) == tvd_directory::OK);
+    ++m_tvd_native_promotions;
     if (live) m_ep_l2_payload.release(victim);
   }
   m_ep_l2_payload.transfer(promoted, ep_l2_payload_store::RESIDENT, ep_l2_payload_store::RESIDENT_VALID);
@@ -197,6 +217,9 @@ void l2_cache::tvd_epoch_cleanup(unsigned long long now) {
 
 void l2_cache::tvd_print(FILE *fp, unsigned slice) {
   m_tvd->advance(m_gpu_cycle_for_tvd()); const auto &s = m_tvd->stats();
+  fprintf(fp,"EPL2TVDV3|METADATA_COST|slice=%u|frontend_cam_queries=%llu|frontend_cam_ports=1|completion_cam_queries=%llu|completion_cam_ports=1|indexed_wb_accept=%llu|indexed_rollback=%llu|native_install_commits=%llu|native_promotion_commits=%llu|extra_packet_identity_bits=0|directory_bound_wb_uid_bits=32|indexed_control_read_views=3|indexed_control_update_lanes=3|metadata_PPA=UNKNOWN|metadata_clock_closure=UNKNOWN\n",
+      slice,m_tvd_lookup_queries,m_tvd_indexed_completions,m_tvd_indexed_accepts,
+      m_tvd_indexed_rollbacks,m_tvd_native_installs,m_tvd_native_promotions);
   fprintf(fp, "EPL2TVDV2|SUMMARY|slice=%u|clean_installs=%llu|dirty_installs=%llu|"
       "read_responses=%llu|dirty_forward_responses=%llu|served_sectors=%llu|served_sector_bytes=%llu|"
       "promotions=%llu|live=%u|mandatory=%u|role_tvd=%u|retention_slot_cycles=%llu|"

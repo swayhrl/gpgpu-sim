@@ -24,8 +24,8 @@ def main():
     identity = {'base_config': str(base), 'base_config_sha256': hashlib.sha256(base.read_bytes()).hexdigest(),
                 'parent_core': '84359d4ba492acb639a2092fa271e9169038bf7d',
                 'A_interface': '980072bbbcbd4ad00cdf85650283931e94cad395',
-                'native_integration_base_core': '44c940b748fceaec8f21fa2b443907d5afd2756b',
-                'public_adapter': 'docs/ep_l2/ms_victim/adapter_A44_r3/A_PUBLIC_HOOKS.patch',
+                'native_integration_base_core': '94996ec59b4a0264b64146932977bfe6ea4f195b',
+                'public_adapter': 'docs/ep_l2/ms_victim/adapter_A949_r4/A_INCREMENTAL_HOOKS.patch',
                 'runtime_framework_parent': '197741be9be9b8e390a557d639503b416d8e95f0',
                 'vendor_pybind11': 'f90c430c3a1ce8f08c09942a5a1c3a797bb2295b',
                 'built_binary': None, 'native_tests_executed': False, 'full_apps': 0,
@@ -68,7 +68,7 @@ def main():
                'src/gpgpu-sim/ep-l2-tvd-bank-identity.h','src/gpgpu-sim/ep-l2-tvd-fixed-pool.inc',
                'tests/ep_l2/ms_victim/test_bank_identity.cc','tests/ep_l2/ms_victim/test_fixed_partition.cc',
                'tests/ep_l2/test_tvd_directory.cc', 'tests/ep_l2/test_tvd_production.cc',
-               'tests/ep_l2/ms_victim/test_native.cc', 'tests/ep_l2/ms_victim/native_fixture.h']
+               'tests/ep_l2/ms_victim/test_native.cc', 'tests/ep_l2/ms_victim/native_fixture.h','tests/ep_l2/potential_fixture.h']
     identity['sources'] = {p: hashlib.sha256((core / p).read_bytes()).hexdigest() for p in sources}
     (args.out / 'NATIVE_TEST_PLAN.json').write_text(json.dumps(dict(identity=identity, configs=configs, cases=cases), indent=2)+'\n')
     print(json.dumps(dict(status='PREPARED_ONLY', native_executions=0, planned_processes=len(cases), out=str(args.out))))

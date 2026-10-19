@@ -287,11 +287,38 @@ static void promotion_displaces_dirty_resident_atomically() {
   puts("PASS promotion_dirty_resident_full_directory_atomic_slot_reuse");
 }
 
+static void native_owner_proof_and_indexed_completion() {
+  directory d(1,true,false);
+  auto plan=d.preview_install(0x1000,true,true);
+  directory::ticket old;
+  assert(d.commit_install(plan,0x1000,handle(),1,1,0,true,0,old)==directory::OK);
+  assert(d.bind_writeback(old,101)==directory::OK);
+  assert(d.writeback_matches(old,0x1000,101) && !d.writeback_matches(old,0x1000,102));
+  assert(old.index==0 && d.lower_accept(old,true,1)==directory::OK);
+  assert(d.set_done(old,2)==directory::OK && !d.live(old));
+  plan=d.preview_install(0x2000,true,true);
+  directory::ticket fresh;
+  assert(d.commit_install(plan,0x2000,handle(),1,1,0,true,3,fresh)==directory::OK);
+  assert(d.bind_writeback(fresh,202)==directory::OK);
+  assert(!d.writeback_matches(fresh,0x2000,101));
+  assert(fresh.index==old.index && fresh.incarnation>old.incarnation);
+  assert(d.lower_accept(fresh,true,4)==directory::OK);
+  assert(d.set_done(old,5)==directory::STALE);
+  assert(d.live(fresh) && d.at(fresh.index).status==directory::WB_INFLIGHT);
+  assert(d.set_done(fresh,6)==directory::OK);
+  // Generic/unproven callers keep the real duplicate-address/handle check.
+  auto p=d.preview_install(0x3000,false);
+  assert(d.commit_install(p,0x3000,handle(4,7),1,0,0,false,7,fresh)==directory::OK);
+  assert(d.preview_install(0x3000,false).status==directory::INVALID_INPUT);
+  puts("PASS A_native_owner_proof_indexed_completion_stale_row_reuse");
+}
+
 int main(int argc, char **argv) {
   clean_read_and_backpressure();
   sectors_and_promotions();
   capacity_reservations_and_epochs();
   reference_versions_follow_payload_identity();
+  native_owner_proof_and_indexed_completion();
   if (argc == 1 || std::strcmp(argv[1], "--clean") != 0) {
     dirty_data_forward_and_ordering();
     mandatory_priority_and_shared_capacity();

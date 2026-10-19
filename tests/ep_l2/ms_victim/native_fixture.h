@@ -8,7 +8,7 @@
 struct victim_fixture : fixture {
   unsigned long long lower_read_packets = 0, lower_read_bytes = 0;
   unsigned long long previous_queries = 0;
-  explicit victim_fixture(char **argv) : fixture(argv) {
+  explicit victim_fixture(char **argv, const char *queues="512:2:64:64") : fixture(argv,queues) {
     assert(cache->ep_l2_payload_for_test().physical_slots()==1168);
     assert(cache->ep_l2_payload_for_test().bank_service_limit()==1);
     assert(cache->ep_l2_descriptor_pool_capacity()==512);
@@ -22,6 +22,13 @@ struct victim_fixture : fixture {
           if(r->get_access_sector_mask().test(sector))
             assert(r->get_ft_wb_data()[sector]==memory.at(r->get_addr())[sector]);
         assert(cache->ep_l2_wad_contains(r->get_addr()));
+        if (cache->tvd_enabled()) {
+          const auto row=cache->tvd_for_test()->find(r->get_addr());
+          assert(cache->tvd_for_test()->live(row));
+          assert(cache->tvd_for_test()->at(row.index).line == r->get_addr());
+          assert(cache->tvd_for_test()->at(row.index).status == l2_cache::tvd_directory::WB_INFLIGHT);
+          assert(cache->tvd_for_test()->writeback_matches(row,r->get_addr(),r->get_request_uid()));
+        }
         ++lower_wb; wb.push_back(r);
       } else {
         assert(!r->get_is_write());
@@ -83,13 +90,14 @@ struct victim_fixture : fixture {
     memory[line][sector]=expected.at(uid)[sector];send(r);wait(uid);return uid;
   }
   void complete_writebacks() {
-    for(auto packet:wb) {
+    while(!wb.empty()) {
+      auto packet=wb.front();wb.erase(wb.begin());
       assert(cache->ep_l2_wad_contains(packet->get_addr()));
       // The independent packet must preserve its original snapshot even if
       // a later cached writer eventually changes the same line.
       sp->set_done(packet);delete packet;++completed_wb;
+      step(); // Respect the explicit single completion-CAM port per cycle.
     }
-    wb.clear();
   }
   void finish() {
     for(unsigned n=0;n<20000 && (part->busy() || !reads.empty() || !wb.empty());++n) {

@@ -1,0 +1,28 @@
+{
+  "revision": "r4",
+  "at": "2026-10-19T13:54:20.725270+00:00",
+  "status": "TEXT_IDENTITIES_ONLY_PASS",
+  "adapter_base": "94996ec59b4a0264b64146932977bfe6ea4f195b",
+  "isolated_index_patch_check": true,
+  "real_index_unchanged": true,
+  "public_worktree_files_equal84359d4": [
+    "src/gpgpu-sim/gpu-cache.h",
+    "src/gpgpu-sim/gpu-cache.cc",
+    "src/gpgpu-sim/gpu-sim.cc",
+    "src/gpgpu-sim/ep-l2-ft-cache.inc",
+    "src/gpgpu-sim/ep-l2-rg1.inc",
+    "CMakeLists.txt"
+  ],
+  "A_UID_tickets_and_metadata_cost_markers_preserved": true,
+  "A_directory_and_UID_unit_tests_exactly_adopted": true,
+  "B_pending_fixed_last_unpin_changes_preserved": true,
+  "r1_r2_r3_adapter_plan_bytes_preserved": true,
+  "python_AST_parse": true,
+  "planned_native_processes": 21,
+  "native_compile_attempts": 0,
+  "native_executions": 0,
+  "full_apps": 0,
+  "actual_hits": null,
+  "actual_DRAM_delta": null,
+  "effective_dump": null
+}
