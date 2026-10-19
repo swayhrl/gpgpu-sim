@@ -49,6 +49,25 @@ int main(int argc, char **argv) {
     assert(std::stoul(argv[3]) == 1); capacity(f, observer);
     f.cache->ft_print(stdout, 0); puts("MS_PARTITION_CAPACITY_NATIVE_PASS"); return 0;
   }
+  if (std::string(argv[10]) == "latency7") {
+    auto r = f.make(0x4000, false);
+    const auto uid = r->get_request_uid();
+    const auto address = r->get_addr();
+    const auto pushed = f.gpu->gpu_sim_cycle;
+    f.send(r);
+    for (unsigned n = 0; n < 7; ++n) { f.step(); assert(f.reads.empty()); }
+    for (unsigned n = 0; !f.reads.count(address); ++n) { assert(n < 64); f.step(); }
+    assert(f.gpu->gpu_sim_cycle - pushed >= 8 && !f.replies.count(uid));
+    f.return_read(address); f.step();
+    // A real lower return fills at this cycle; native response consumption is
+    // in the later cycle, even with DATA_FREE. No direct synthetic reply.
+    assert(!f.replies.count(uid));
+    for (unsigned n = 0; !f.replies.count(uid); ++n) { assert(n < 64); f.step(); }
+    assert(f.reads.empty() && f.cache->ft_drained());
+    f.cache->ft_print(stdout, 0);
+    printf("EPL2MS_TEST|LATENCY|rop=7|cold_lower_reads=1|later_response_cycle=1|cycles=%llu|PASS\n", f.gpu->gpu_sim_cycle);
+    return 0;
+  }
   assert(std::string(argv[10]) == "service");
   mem_access_sector_mask_t mask; mask.set(0);
   assert(f.sp->ft_try_force_l2_tag_update(512, f.gpu->gpu_sim_cycle, mask));
