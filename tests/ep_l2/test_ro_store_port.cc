@@ -81,7 +81,8 @@ int main(){
   ep_l2_payload_store static_store(2,1,16);
   assert(!static_store.preview_free(ep_l2_payload_store::RO).valid());
   bool rejected=false;try{store_port invalid(static_store,tags);}catch(const std::invalid_argument&){rejected=true;}assert(rejected);
-  ep_l2_payload_store sensitivity(2,2,8);store_port s8(sensitivity,tags);
-  assert(sensitivity.physical_slots()==1160);accounting(sensitivity);
+  ep_l2_payload_store sensitivity(2,2,8);rejected=false;
+  try{store_port s8(sensitivity,tags);}catch(const std::invalid_argument&){rejected=true;}assert(rejected);
+  assert(sensitivity.physical_slots()==1160);accounting(sensitivity); // Historical storage remains; C accepts exact1168 only.
   puts("EP-L2 Lane 3 actual shared-store/pin/bank/version integration: PASS");
 }
