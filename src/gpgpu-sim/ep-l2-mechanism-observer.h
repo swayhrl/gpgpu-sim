@@ -110,9 +110,13 @@ class Observer {
         bound_tag_peak, pending_landing_peak, lower_reads, lower_read_bytes,
         lower_writes, lower_write_bytes, lower_wb_bytes, active_,
         head_changes_without_admission, unclassified_refusal_observations);
-    for (unsigned r = 0; r <= WAIT_REASONS; ++r) {
-      const Wait &w = r == WAIT_REASONS ? any_to_admission : waits[r];
-      fprintf(fp, "EPL2MSV1|WAIT|slice=%u|reason=%u|requests=%llu|observations=%llu|resolved=%llu|sum=%llu|max=%llu|unknown_while_unresolved=%llu|hist_log2=",
+    for (unsigned r = 0; r < WAIT_REASONS; ++r) {
+      const Wait &w = r == k_legacy_any_to_admission_reason ?
+          any_to_admission : waits[r];
+      // V1 rows0..13 and aggregate14 keep their exact identities. The new
+      // victim-query row has an explicit V2 namespace; never reinterpret14.
+      fprintf(fp, "%s|WAIT|slice=%u|reason=%u|requests=%llu|observations=%llu|resolved=%llu|sum=%llu|max=%llu|unknown_while_unresolved=%llu|hist_log2=",
+          r < VICTIM_LOOKUP ? "EPL2MSV1" : "EPL2MSV2",
           slice, r, w.requests, w.observations, w.resolved, w.sum, w.maximum, w.unknown_while_unresolved);
       for (unsigned b = 0; b < k_bins; ++b)
         fprintf(fp, "%s%llu", b ? "," : "", w.histogram[b]);

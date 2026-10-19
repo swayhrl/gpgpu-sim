@@ -1,0 +1,59 @@
+{
+  "schema": "A_TVD_OBSERVER_DATA_FREE_DIRECTED_SOURCE_V1",
+  "preimage": "eb6739b03883fecee155ba6b12a3a9f92c00d444",
+  "status": "NOT_COMPILED_NOT_RUN",
+  "native_cases": [
+    {
+      "id": "observer_normal",
+      "target": "ep_l2_ms_victim_native",
+      "args": [
+        "{CORE}/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "{CORE}/tests/ep_l2/ms_victim/a_observer_normal.config",
+        "2",
+        "16",
+        "0",
+        "0",
+        "1",
+        "observer_data_free"
+      ]
+    },
+    {
+      "id": "observer_data_free",
+      "target": "ep_l2_ms_victim_native",
+      "args": [
+        "{CORE}/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "{CORE}/tests/ep_l2/ms_victim/a_observer_data_free.config",
+        "2",
+        "16",
+        "0",
+        "0",
+        "1",
+        "observer_data_free"
+      ]
+    },
+    {
+      "id": "copy_free_rejected",
+      "target": "ep_l2_ms_mode_guard",
+      "args": [
+        "{CORE}/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "{CORE}/tests/ep_l2/ms_victim/a_reject_copy_free.config",
+        "2",
+        "copy_with_tvd",
+        "TVD requires finite native cache policy; COPY_FREE is static-only"
+      ]
+    },
+    {
+      "id": "observer_output_schema",
+      "target": "ep_l2_ms_observer",
+      "args": []
+    }
+  ],
+  "new_native_runs": 0,
+  "does_not_qualify": [
+    "RO_combination",
+    "full_F_DATA_FREE",
+    "application",
+    "DRAM_timing"
+  ],
+  "resource": "Fresh E source/hash/output admission required, no configure/compiler/native issued"
+}

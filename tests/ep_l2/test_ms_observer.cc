@@ -1,5 +1,6 @@
 // Native unit test; not a substitute for real partition observer ON/OFF replay.
 #include "../../src/gpgpu-sim/ep-l2-mechanism-observer.h"
+#include <string>
 int main() {
   namespace M = ep_l2::mechanism_v1;
   M::Observer o; o.enabled = true;
@@ -31,5 +32,20 @@ int main() {
   assert(o.lower_reads == 1 && o.lower_read_bytes == 32 && o.lower_wb_bytes == 64);
   o.enabled = false; o.observe(99, 100, wb, false); o.sample(100, 100, 999, 9999, 9999, 9999);
   assert(o.waits[M::WB_DATA_SPACE].requests == 3 && o.wb_peak == 16);
+  // Appended V2 lookup row must not reinterpret published V1 aggregate14.
+  o.enabled = true;
+  const auto lookup = 1ULL << M::VICTIM_LOOKUP;
+  o.observe(10,110,lookup,false,lookup);
+  o.observe(10,111,0,false,lookup); // Query finished before native admission.
+  o.observe(10,115,0,true);
+  assert(o.waits[M::VICTIM_LOOKUP].requests==1 &&
+         o.waits[M::VICTIM_LOOKUP].sum==1);
+  FILE *fp=tmpfile(); assert(fp); o.print(fp,0); rewind(fp);
+  char bytes[65536]={}; const auto used=fread(bytes,1,sizeof(bytes)-1,fp);
+  assert(used>0 && !ferror(fp)); fclose(fp);
+  const std::string text(bytes,used);
+  assert(text.find("EPL2MSV1|WAIT|slice=0|reason=14|")!=std::string::npos);
+  assert(text.find("EPL2MSV2|WAIT|slice=0|reason=15|")!=std::string::npos);
+  assert(text.find("EPL2MSV1|WAIT|slice=0|reason=15|")==std::string::npos);
   puts("MS_OBSERVER_BOUNDED_IDENTITY_FIRST_WAIT_AND_DISABLED_NATIVE_PASS");
 }

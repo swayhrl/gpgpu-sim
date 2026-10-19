@@ -188,6 +188,10 @@ unsigned long long l2_cache::ms_frontend_blockers(mem_fetch *mf,
   if (!m_ms_observer.enabled) return 0;
   namespace M = ep_l2::mechanism_v1;
   unsigned long long blocked = 0;
+  // This native path is reached only after the TVD frontend has declined to
+  // handle the head. A previously observed paid victim lookup has completed;
+  // do not accidentally extend its measured wait through unrelated admission.
+  known |= 1ULL << M::VICTIM_LOOKUP;
   known |= (1ULL << M::SAME_ADDRESS_WB) | (1ULL << M::FRONTEND_TRANSACTION) |
       (1ULL << M::COPY_PIPELINE);
   if (!plan.ep_l2_wad_same_address_hazard) known |= 1ULL << M::TAG_SET_PENDING;

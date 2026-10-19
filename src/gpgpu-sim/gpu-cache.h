@@ -3188,13 +3188,12 @@ class l2_cache : public data_cache {
   std::array<unsigned long long,4> m_ft_last_wb_versions;
   void validate_ep_l2_mode_config() const {
     if ((m_config.m_ep_l2_tvd_clean || m_config.m_ep_l2_tvd_dirty) &&
-        (m_config.m_ep_l2_diag_copy_free || m_config.m_ep_l2_diag_l2_data_free ||
-         m_config.m_ep_l2_ms_observer || m_config.m_ep_l2_payload_mode != 2 ||
+        (m_config.m_ep_l2_diag_copy_free || m_config.m_ep_l2_payload_mode != 2 ||
          m_config.m_ep_l2_descriptor_pool_size != 512 || m_config.m_mshr_entries != 128 ||
          m_config.get_num_lines() > 1024 || m_config.m_cache_type != SECTOR ||
          m_config.m_write_policy != WRITE_BACK ||
          m_config.m_write_alloc_policy != LAZY_FETCH_ON_READ)) {
-      fprintf(stderr,"A R3 TVD is separate from diagnostics/observer; original finite native cache policy required\n");
+      fprintf(stderr,"TVD requires finite native cache policy; COPY_FREE is static-only\n");
       abort();
     }
     const bool local_diag = m_config.m_ep_l2_diag_copy_free || m_config.m_ep_l2_diag_l2_data_free;

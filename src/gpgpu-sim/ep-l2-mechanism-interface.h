@@ -35,8 +35,12 @@ enum WaitReason {
   RESPONSE_QUEUE_FULL,
   DATA_SERVICE,
   COPY_PIPELINE,
+  // 14 is the published MSV1 any-to-admission output row, not a new wait.
+  // Keep that identity stable when adding mechanism-specific measurements.
+  VICTIM_LOOKUP = 15,
   WAIT_REASONS
 };
+static const unsigned k_legacy_any_to_admission_reason = 14;
 
 // Every adapter must revalidate this generation and its own sector/owner
 // premises. A Tag index alone cannot identify a detached or late response.

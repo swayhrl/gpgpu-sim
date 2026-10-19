@@ -301,6 +301,44 @@ static void bypass_full(char **argv) {
   puts("NATIVE_VICTIM|case=texture_only_full_bypass_fifo_holds_real_head|bypass_lower_packets=2|cache_lower_packets=0|status=PASS");
 }
 
+// A's local diagnostic/measurement gate, not a combined RO or application gate.
+// The same native fixture and independent sector versions run in normal P1
+// and DATA_FREE. Every actual frontend victim lookup must close its UID wait.
+static void observer_data_free(char **argv) {
+  victim_fixture f(argv);
+  namespace M = ep_l2::mechanism_v1;
+  assert(f.cache->tvd_enabled() && f.cache->ms_observer_for_test().enabled);
+  for (unsigned i=0;i<17;++i) f.read(i*stride);
+  const auto reads=f.lower_read_packets;
+  f.read(0);
+  assert(f.lower_read_packets==reads &&
+         f.cache->tvd_for_test()->stats().read_responses==1);
+  // Force real dirty evictions as well: exempted lower-WB readout must still
+  // preserve its packet's immutable data and survive accept/done/flush.
+  for (unsigned i=32;i<51;++i) f.write(i*stride);
+  f.finish();
+  const auto &o=f.cache->ms_observer_for_test();
+  const auto &query=o.waits[M::VICTIM_LOOKUP];
+  assert(query.requests>0 && query.resolved==query.requests &&
+         query.sum>=query.requests);
+  assert(o.any_to_admission.requests==o.any_to_admission.resolved &&
+         !o.head_changes_without_admission && o.sampled_cycles>0);
+  const auto &ram=f.cache->ep_l2_payload_for_test();
+  const bool data_free=f.gpu->getMemoryConfig()->m_L2_config.m_ep_l2_diag_l2_data_free;
+  if (data_free) {
+    assert(!ram.bank_grants() && !ram.pending_operations());
+    assert(ram.diagnostic_services(ep_l2_payload_store::FILL)>0 &&
+           ram.diagnostic_services(ep_l2_payload_store::RESPONSE)>0 &&
+           ram.diagnostic_services(ep_l2_payload_store::FRONTEND)>0 &&
+           ram.diagnostic_services(ep_l2_payload_store::LOWER_WB)>0);
+  } else assert(ram.bank_grants()>0);
+  o.print(stdout,0);
+  printf("NATIVE_VICTIM|case=observer_data_free|data_free=%u|"
+         "lookup_wait_requests=%llu|lookup_wait_resolved=%llu|"
+         "actual_lower_wb=%u|status=PASS|RO_combination=NOT_TESTED\n",
+         data_free,query.requests,query.resolved,f.lower_wb);
+}
+
 int main(int argc,char **argv) {
   assert(argc==9);setvbuf(stdout,NULL,_IOLBF,0);
   if(!strcmp(argv[8],"cycle"))cycle_or_stream(argv,true);
@@ -313,6 +351,7 @@ int main(int argc,char **argv) {
   else if(!strcmp(argv[8],"dirty_pending"))dirty_pending_complete_with_reader(argv);
   else if(!strcmp(argv[8],"clean_wb_reuse"))clean_only_late_wb_after_slot_reuse(argv);
   else if(!strcmp(argv[8],"dirty_icnt_pinned"))dirty_icnt_full_with_reader(argv);
+  else if(!strcmp(argv[8],"observer_data_free"))observer_data_free(argv);
   else if(!strcmp(argv[8],"fixed_quota"))fixed_capacity_capture(argv,0);
   else if(!strcmp(argv[8],"fixed_quota64"))fixed_capacity_capture(argv,64);
   else return 2;
