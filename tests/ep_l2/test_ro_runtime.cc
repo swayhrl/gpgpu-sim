@@ -93,6 +93,7 @@ static void modes(const char *base,const char *overlay,const char *binding,unsig
   }else{assert(f.admit(other)==RESERVATION_FAIL);delete other;}
   if(b)assert(f.cache->mshr_entries_used()==0);
   f.issue();
+  assert(f.port.packets.size()==(d?(b?3u:2u):1u)); // Actual duplicate lower traffic, not a shadow estimate.
   // Reverse lower-return order: old A may arrive after new A/reused Tag.
   while(!f.port.packets.empty()) {auto p=f.port.packets.back();f.port.packets.pop_back();while(!f.fill(p)){} }
   assert(f.cache->ep_l2_descriptor_count_used()==expect);
@@ -150,6 +151,26 @@ static void late_tag(const char *base,const char *overlay,const char *binding){
   auto newer=f.port.packets.front();f.port.packets.pop_front();while(!f.fill(newer)){}
   assert(f.cache->ft_raw_probe_for_test(b,tag_index)==HIT);
   f.consume(2);assert(!store.handle_live(ah));f.finish();puts("RO late A fill cannot validate or overwrite new B Tag PASS");
+}
+static void four_sector_lifetime(const char *base,const char *overlay,const char *binding){
+  rig f(base,overlay,binding,1,1);active_mask_t active;active.set(0);
+  mem_access_byte_mask_t bytes;bytes.set();mem_access_sector_mask_t sectors;sectors.set();
+  auto a=f.alloc->alloc(0,GLOBAL_ACC_R,active,bytes,sectors,128,false,f.time,0,0,0,nullptr,0);
+  assert(f.admit(a)!=RESERVATION_FAIL);auto ah=f.tag();
+  assert(f.admit(f.make(128))!=RESERVATION_FAIL);f.issue();
+  std::map<unsigned,mem_fetch*> pieces;mem_fetch *other=nullptr;
+  while(!f.port.packets.empty()) {auto p=f.port.packets.front();f.port.packets.pop_front();
+    if(p->get_ep_l2_payload_id()==ah.payload_id)pieces[p->get_access_sector_mask().to_ulong()]=p;
+    else other=p;
+  }
+  assert(pieces.size()==4 && other);
+  for(unsigned bit:{8u,2u,4u}) {while(!f.fill(pieces.at(bit))){} assert(!f.cache->access_ready());}
+  auto &store=f.cache->ep_l2_payload_for_test();
+  assert(store.inspect(ah).pins==1 && store.inspect(ah).pending_sector_mask.to_ulong()==1);
+  while(!f.fill(other)){}f.consume(1);assert(store.handle_live(ah));
+  while(!f.fill(pieces.at(1))){}assert(store.handle_live(ah)); // All data ready, response still owns landing.
+  f.consume(2);assert(!store.handle_live(ah));f.finish();
+  puts("RO four-sector3/1/2/0 order retains old landing through final response PASS");
 }
 static void classifier(const char *base,const char *overlay,const char *binding){
   rig f(base,overlay,binding,1,1);
@@ -279,6 +300,7 @@ int main(int argc,char **argv){
   for(unsigned d=0;d<2;++d)for(unsigned b=0;b<2;++b)modes(argv[1],argv[2],argv[3],d,b);
   for(unsigned d=0;d<2;++d)for(unsigned b=0;b<2;++b)line_pressure(argv[1],argv[2],argv[3],d,b);
   late_tag(argv[1],argv[2],argv[3]);
+  four_sector_lifetime(argv[1],argv[2],argv[3]);
   sectors(argv[1],argv[2],argv[3]);capacity(argv[1],argv[2],argv[3]);classifier(argv[1],argv[2],argv[3]);
   dirty_victim(argv[1],argv[2],argv[3]);native_pin_guard(argv[1],argv[2],argv[3]);epoch_binding(argv[1],argv[2],argv[3]);
   warmup_scope(argv[1],argv[2],argv[3]);
