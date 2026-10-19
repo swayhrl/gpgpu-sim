@@ -10,7 +10,8 @@
 #include "gpu-cache.h"
 #include "ep-l2-ro-oracle.h"
 
-// Lane 3 independent production candidate. There is deliberately no allocator
+// Mechanism-study C source candidate, restored from historical Lane3.
+// Current A integration/native qualification is pending. There is no allocator
 // here: the caller atomically reserves a landing through Lane 1's interface.
 // Every requester uses the existing mshr_table's descriptor free-list.
 namespace ep_l2_ro {

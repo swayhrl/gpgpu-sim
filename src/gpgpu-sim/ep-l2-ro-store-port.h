@@ -13,7 +13,8 @@ class tag_port {
   virtual void read(identity,unsigned,const std::array<unsigned long long,4>&) = 0;
 };
 
-// Executable binding against Lane-1 R0. Owns NO data array/allocator.
+// Source adapter for A's paid store APIs, restored from historical RO.
+// Owns NO data array/allocator; current A/E build qualification is pending.
 class store_port : public payload_port {
  public:
   store_port(ep_l2_payload_store &store,tag_port &tags)
