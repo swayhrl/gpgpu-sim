@@ -42,7 +42,9 @@ int main(int argc, char **argv) {
   assert(argc == 11); setvbuf(stdout, NULL, _IOLBF, 0);
   const unsigned diagnostic = std::stoul(argv[8]);
   const bool observer = std::stoul(argv[9]);
-  fixture f(argv);
+  // This finite pressure fixture deliberately holds ONE lower FIFO packet.
+  // Existing micro tests retain their original32-entry lower FIFO default.
+  fixture f(argv,"32:1:32:1");
   auto &pool = f.cache->ep_l2_payload_for_test();
   assert(pool.physical_slots() == 1168 && f.cache->ms_observer_for_test().enabled == observer);
   if (std::string(argv[10]) == "capacity") {
