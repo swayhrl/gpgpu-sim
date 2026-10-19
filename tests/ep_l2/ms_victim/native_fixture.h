@@ -57,6 +57,7 @@ struct victim_fixture : fixture {
     }
     cache->ft_assert_quota();
     assert(cache->ep_l2_payload_for_test().ownership_consistent());
+    assert(cache->ep_l2_payload_for_test().fixed_quota_consistent());
     if(response_consumer_ready) collect();
     if(!block_lower) lower();
     ++gpu->gpu_sim_cycle;

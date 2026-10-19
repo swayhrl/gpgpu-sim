@@ -62,11 +62,10 @@ l2_cache::tvd_frontend_result l2_cache::tvd_frontend(mem_fetch *mf,
   const auto ticket = m_tvd_lookup_ticket;
   if (!m_tvd->live(ticket)) return TVD_NORMAL;
   const auto &entry = m_tvd->at(ticket.index);
-  // STAGED read-forward requires distinct same-handle WB/read bank identities.
-  // This first port therefore supports CLEAN_ONLY and DIRTY_INFLIGHT_ONLY,
-  // and explicitly waits for lower acceptance in the dirty-pending phase.
-  // It is not the full original dirty-pending mechanism.
-  if (entry.status == tvd_directory::WB_STAGED) { ++m_tvd_wb_wait; return TVD_WAIT; }
+  // Dirty pending/inflight reads use a distinct client+UID+generation key
+  // in the existing bank scoreboard. The public r2 adapter delays WB->TVD
+  // role transitions while the reader is pinned. CLEAN_ONLY WAD records have
+  // no retained handle and still return WAIT_WRITEBACK below.
   auto op = mf->isatomic() ? tvd_directory::ATOMIC_OP :
             mf->get_is_write() ? tvd_directory::WRITE_OP : tvd_directory::READ_OP;
   auto observation = m_tvd->preview_ticket(ticket, mf->get_access_sector_mask().to_ulong(), op);
@@ -98,7 +97,16 @@ void l2_cache::tvd_response_commit(mem_fetch *mf, unsigned long long now) {
   assert(m_tvd_read && mf == m_tvd_lookup);
   const auto h = m_tvd_read->handle();
   assert(m_tvd->response_commit(*m_tvd_read, now) == tvd_directory::OK);
-  m_ep_l2_payload.unpin(h); m_tvd_read.reset(); m_tvd_lookup = NULL;
+  m_ep_l2_payload.unpin(h);
+  const auto ticket=m_tvd_lookup_ticket;
+  assert(m_tvd->live(ticket) && m_tvd->at(ticket.index).payload==h);
+  const auto &e=m_tvd->at(ticket.index);
+  const auto &slot=m_ep_l2_payload.inspect(h);
+  if (!slot.pins && slot.allocation_role==ep_l2_payload_store::WB &&
+      (e.status==tvd_directory::WB_INFLIGHT || e.status==tvd_directory::WB_COMPLETE))
+    m_ep_l2_payload.transfer(h,ep_l2_payload_store::TVD,
+        e.status==tvd_directory::WB_COMPLETE?ep_l2_payload_store::TVD_VALID:ep_l2_payload_store::TVD_INFLIGHT);
+  m_tvd_read.reset(); m_tvd_lookup = NULL;
   ++m_ft_stats.accepted;
 }
 
@@ -129,6 +137,10 @@ bool l2_cache::tvd_promote(mem_fetch *mf, unsigned time, std::list<cache_event> 
   const auto victim = tag_payload_handle(index);
   const bool live = m_ep_l2_payload.handle_live(victim);
   const bool dirty = block->is_modified_line();
+  // Fixed control withholds64 slots even when empty. A clean replaced
+  // resident gives back one same-bank non-victim credit; a dirty WB does not.
+  if(!m_ep_l2_payload.fixed_promotion_room(old.payload,
+      live&&!dirty?victim:ep_l2::PayloadHandle()))return false;
   ep_l2::PayloadHandle promoted; tvd_directory::ticket wb_ticket;
   if (dirty) {
     if (!miss_queue_has_slots(1)) return false;
