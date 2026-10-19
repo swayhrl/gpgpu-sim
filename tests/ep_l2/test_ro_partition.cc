@@ -52,8 +52,11 @@ int main(int argc,char**argv){
   assert(seen==expected);assert(peak>0);assert(backpressure);assert(!part.busy());assert(sp->l2_char_no_resource_leak());
   sp->ro_end_epoch();
   if(ro_on) {
-    assert(!sp->ft_try_force_l2_tag_update(0,gpu.gpu_sim_cycle,mem_access_sector_mask_t(1)));
-    assert(sp->ft_memcpy_offset_for_test()==activated_offset);
+    // The complete epoch is closed and all pins/descriptors are drained.
+    // V2 permits later clean/quiescent host initialization; only an ACTIVE
+    // certified epoch must reject this covered address (checked above).
+    assert(sp->ft_try_force_l2_tag_update(0,gpu.gpu_sim_cycle,mem_access_sector_mask_t(1)));
+    assert(sp->ft_memcpy_offset_for_test()==activated_offset+1);
   }
   sp->ro_cache_for_test()->ro_print(stdout,0);
   printf("RO_PHYSICAL_CLOCK|offset=%u|violations=%u|max_grants_per_physical_bank_cycle=%u\n",offset,violations,max_grants);
