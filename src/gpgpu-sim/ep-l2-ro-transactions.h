@@ -64,6 +64,8 @@ class transactions {
   struct counters {
     uint64_t admits, merges, detached, lower_sectors, duplicate_sectors;
     uint64_t responses, rejected_oracle, response_backpressure;
+    uint64_t normal_line_allocations=0, avoided_line_allocations=0;
+    unsigned peak_transactions=0,peak_shared_descriptors=0,peak_shared_lines=0;
     counters() : admits(0), merges(0), detached(0), lower_sectors(0),
       duplicate_sectors(0), responses(0), rejected_oracle(0),
       response_backpressure(0) {}
@@ -75,8 +77,8 @@ class transactions {
       : m_shared(shared), m_port(port), m_slots(payload_budget),
         m_features(features), m_oracle(certificate), m_epoch(0), m_epoch_open(false) {
     if (shared.descriptor_pool_capacity() != 512 ||
-        (payload_budget != 1168 && payload_budget != 1160))
-      throw std::invalid_argument("RO requires shared D512 and C16/C8 payload budget");
+        payload_budget != 1168)
+      throw std::invalid_argument("RO requires shared D512 and exact1168 payload budget");
   }
 
   // The binding layer must have verified every input and oracle artifact hash.
@@ -138,6 +140,9 @@ class transactions {
     e.waiters.push_back(waiter(d, mf, mask));
     if(!m_features.line_mshr_bypass)m_shared.bind_ro_line(line,h);
     ++stats.admits;
+    if (m_features.line_mshr_bypass) ++stats.avoided_line_allocations;
+    else ++stats.normal_line_allocations;
+    observe_peaks();
     return ACCEPTED;
   }
 
@@ -178,6 +183,7 @@ class transactions {
     e.waiters.push_back(waiter(d, mf, mask));
     e.required |= mask; e.reuse_seen = true;
     ++stats.merges;
+    observe_peaks();
     return ACCEPTED;
   }
 
@@ -278,6 +284,11 @@ class transactions {
   }
 
  private:
+  void observe_peaks() {
+    stats.peak_transactions=std::max(stats.peak_transactions,live_transactions());
+    stats.peak_shared_descriptors=std::max(stats.peak_shared_descriptors,m_shared.descriptor_count_used());
+    stats.peak_shared_lines=std::max(stats.peak_shared_lines,m_shared.num_entries_used());
+  }
   struct waiter {
     mshr_table::ro_descriptor_handle descriptor;
     mem_fetch *mf;

@@ -32,7 +32,7 @@ def main():
         for b in [0,1]:commands.append((f'partition_{d}{b}',[str(part),str(base),str(overlay),str(o/'binding.config'),str(o/'kernelslist.g'),str(d),str(b)],None))
     # Repair qualification: real warmup establishes nonzero native Tag offset;
     # independently count bank grants by physical GPU cycle for both budgets.
-    for entries in [8,16]:
+    for entries in [16]:
         for d in [0,1]:
             for b in [0,1]:
                 commands.append((f'partition_warm_C{entries}_{d}{b}',

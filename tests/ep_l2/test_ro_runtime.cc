@@ -38,6 +38,12 @@ struct rig {
   }
   void tick(){gpu->gpu_sim_cycle=time++;cache->cycle();}
   cache_request_status admit(mem_fetch*m) {
+    // Wait only for the explicit paid lookup. Never hide a capacity refusal.
+    for(unsigned wait=0;wait<2;++wait) {
+      gpu->gpu_sim_cycle=time;l2_access_plan p;cache->preview_access(m->get_addr(),m,p);
+      if(!p.ep_l2_ro_lookup_wait)break;
+      tick();
+    }
     gpu->gpu_sim_cycle=time;
     l2_access_plan plan;cache->preview_access(m->get_addr(),m,plan);
     std::list<cache_event> ev;auto r=cache->access(m->get_addr(),m,time,ev);tick();return r;
@@ -116,6 +122,34 @@ static void capacity(const char *base,const char *overlay,const char *binding){
   auto refused=f.make(512*128);assert(f.admit(refused)==RESERVATION_FAIL);delete refused;
   f.issue();while(!f.port.packets.empty()){auto p=f.port.packets.front();f.port.packets.pop_front();while(!f.fill(p)){} }
   f.consume(512);f.finish();puts("RO actual mixed native128/RO384 shared D512 capacity and drain PASS");
+}
+static void line_pressure(const char *base,const char *overlay,const char *binding,unsigned d,unsigned b){
+  rig f(base,overlay,binding,d,b,1024);unsigned admitted=0;
+  for(unsigned i=0;i<129;++i) {
+    auto m=f.make(i*128);auto r=f.admit(m);
+    if(i==128 && !b) {assert(r==RESERVATION_FAIL);delete m;}
+    else {assert(r!=RESERVATION_FAIL);++admitted;}
+  }
+  assert(f.cache->mshr_entries_used()==(b?0:128));
+  assert(f.cache->ep_l2_descriptor_count_used()==admitted);
+  f.issue();while(!f.port.packets.empty()) {auto p=f.port.packets.back();f.port.packets.pop_back();while(!f.fill(p)){} }
+  f.consume(admitted);f.finish();printf("RO independent line128 pressure T%u M%u admitted=%u PASS\n",d,b,admitted);
+}
+static void late_tag(const char *base,const char *overlay,const char *binding){
+  rig f(base,overlay,binding,1,1);auto a=f.make(0),b=f.make(128);
+  assert(f.admit(a)!=RESERVATION_FAIL);auto ah=f.tag();
+  assert(f.admit(b)!=RESERVATION_FAIL);auto bh=f.tag();assert(ah!=bh);
+  unsigned tag_index=~0U;assert(f.cache->ft_raw_probe_for_test(b,tag_index)==HIT_RESERVED);
+  f.issue();auto old=f.port.packets.front();f.port.packets.pop_front();
+  assert(old->get_ep_l2_payload_id()==ah.payload_id);
+  while(!f.fill(old)){}
+  assert(f.tag()==bh && f.cache->ft_raw_probe_for_test(b,tag_index)==HIT_RESERVED);
+  auto &store=f.cache->ep_l2_payload_for_test();
+  assert(store.inspect(bh).owner==128 && store.inspect(bh).ready_sector_mask.none());
+  assert(store.handle_live(ah)); // Old snapshot remains paid until response acceptance.
+  auto newer=f.port.packets.front();f.port.packets.pop_front();while(!f.fill(newer)){}
+  assert(f.cache->ft_raw_probe_for_test(b,tag_index)==HIT);
+  f.consume(2);assert(!store.handle_live(ah));f.finish();puts("RO late A fill cannot validate or overwrite new B Tag PASS");
 }
 static void classifier(const char *base,const char *overlay,const char *binding){
   rig f(base,overlay,binding,1,1);
@@ -233,16 +267,18 @@ static void warmup_scope(const char *base,const char *overlay,const char *bindin
   assert(f.tag()==h && f.cache->ep_l2_payload_for_test().bank_grants()==before_reject_grants);
   bool rejected=false;try{f.cache->force_tag_access(0,8192,mem_access_sector_mask_t(1));}
   catch(const std::logic_error&){rejected=true;}assert(rejected);
-  f.cache->ro_end_epoch();assert(!f.cache->ft_try_force_tag_access(0,8193,mem_access_sector_mask_t(1)));rejected=false;
-  try{f.cache->force_tag_access(0,8193,mem_access_sector_mask_t(1));}
-  catch(const std::logic_error&){rejected=true;}assert(rejected);
-  assert(f.tag()==h);puts("RO warmed handle/sector reuse and initialization-only scope PASS");
+  assert(f.cache->ft_try_force_tag_access(0x400000,8193,mem_access_sector_mask_t(1)));
+  assert(f.cache->ep_l2_payload_for_test().inspect(f.tag()).owner==0x400000);
+  f.cache->ro_end_epoch();assert(f.cache->ft_try_force_tag_access(0,8194,mem_access_sector_mask_t(1)));
+  assert(f.tag()!=h);puts("RO warmup, certified-write refusal and later clean/quiescent uncovered prefill PASS");
 }
 int main(int argc,char **argv){
   assert(argc==5);rig::command=argv[4];
   assert(ep_l2_ro::sha256("")=="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
   assert(ep_l2_ro::sha256("abc")=="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
   for(unsigned d=0;d<2;++d)for(unsigned b=0;b<2;++b)modes(argv[1],argv[2],argv[3],d,b);
+  for(unsigned d=0;d<2;++d)for(unsigned b=0;b<2;++b)line_pressure(argv[1],argv[2],argv[3],d,b);
+  late_tag(argv[1],argv[2],argv[3]);
   sectors(argv[1],argv[2],argv[3]);capacity(argv[1],argv[2],argv[3]);classifier(argv[1],argv[2],argv[3]);
   dirty_victim(argv[1],argv[2],argv[3]);native_pin_guard(argv[1],argv[2],argv[3]);epoch_binding(argv[1],argv[2],argv[3]);
   warmup_scope(argv[1],argv[2],argv[3]);

@@ -50,6 +50,14 @@ class oracle_certificate {
     --it;return line<=it->second;
   }
   const std::string &manifest_sha256() const { return m_manifest; }
+  bool overlaps_bytes(uint64_t address,uint64_t count) const {
+    if (!count) return false;
+    if (count-1>~uint64_t(0)-address) throw std::invalid_argument("host range overflow");
+    const auto first=address&~uint64_t(127),last=(address+count-1)&~uint64_t(127);
+    auto it=std::lower_bound(m_ranges.begin(),m_ranges.end(),std::make_pair(first,uint64_t(0)));
+    if (it!=m_ranges.begin() && std::prev(it)->second>=first) return true;
+    return it!=m_ranges.end() && it->first<=last;
+  }
   unsigned range_count() const { return m_ranges.size(); }
  private:
   std::string m_manifest;

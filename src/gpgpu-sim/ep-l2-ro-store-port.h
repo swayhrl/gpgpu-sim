@@ -18,9 +18,9 @@ class store_port : public payload_port {
  public:
   store_port(ep_l2_payload_store &store,tag_port &tags)
       : m_store(store), m_tags(tags), m_return(NULL), m_return_mask(0) {
-    if (!store.banked() || store.ft_mode()!=2 ||
-        (store.physical_slots()!=1168 && store.physical_slots()!=1160))
-      throw std::invalid_argument("RO requires unified banked C16/C8 store");
+    if (!store.banked() || store.ft_mode()!=2 || store.bank_service_limit()!=1 ||
+        store.physical_slots()!=1168)
+      throw std::invalid_argument("RO requires unified banked C16 store");
   }
   bool live(identity h,new_addr_type line) const {
     return m_store.handle_owner_matches(h,line);

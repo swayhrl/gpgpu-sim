@@ -18,6 +18,13 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
   ep_l2_ro::response reply;
   uint64_t response_cycle;
   unsigned cursor;
+  // A single frontend lookup ticket, not an address-indexed completion map.
+  mutable uint64_t query_uid=~uint64_t(0),query_ready_at=0,query_count=0;
+  mutable uint64_t query_issue_cycle=~uint64_t(0),query_port_waits=0;
+  mutable uint64_t query_last_wait=~uint64_t(0),query_wait_cycles=0;
+  mutable uint64_t observed_uid=~uint64_t(0),blocked_mask=0;
+  mutable std::array<uint64_t,6> first_wait{},unique_blocks{},wait_cycles{};
+  mutable std::array<std::array<uint64_t,16>,6> wait_hist{};
   uint64_t accepted_global_reads, accepted_candidates, accepted_ro;
   ep_l2_ro_runtime(l2_cache &cache) : c(cache), port(c.m_ep_l2_payload,*this),
     generations(c.m_config.get_num_lines(),1),open(false),ever_open(false),selected(false),command_bound(false),prefer_ro(true),
@@ -58,18 +65,17 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
   uint64_t physical_cycle() const {
     return c.ft_physical_cycle();
   }
-  bool prefill_allowed() const {
-    return !ever_open && !open && !selected && tx->drained();
+  bool prefill_allowed(new_addr_type address,uint64_t count=128) const {
+    return !selected && tx->drained() &&
+      !(open && cert->overlaps_bytes(address,count));
   }
-  void prefill_begin() const {
-    // The certified full application can start only once. A drained kernel
-    // boundary is not permission to mutate its whole-commandlist certificate.
-    if(!prefill_allowed())
-      throw std::logic_error("RO host prefill is initialization-only before epoch activation");
+  void prefill_begin(new_addr_type address,uint64_t count=128) const {
+    if(!prefill_allowed(address,count))
+      throw std::logic_error("RO host prefill conflicts with active ownership or certified epoch range");
   }
   void prefill_complete(unsigned index,handle h,new_addr_type owner,
                         mem_access_sector_mask_t mask) {
-    prefill_begin();unsigned actual=~0U;
+    prefill_begin(owner);unsigned actual=~0U;
     const auto result=c.m_tag_array->probe(owner,actual,mask,true,true);
     if(result!=HIT || actual!=index || index>=generations.size() ||
        c.tag_payload_handle(index)!=h || !c.m_ep_l2_payload.handle_owner_matches(h,owner) ||
@@ -86,6 +92,25 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     return m->get_access_type()==GLOBAL_ACC_R && !m->get_is_write() && !m->isatomic() && !m->ro_lower_packet();
   }
   bool candidate(const mem_fetch *m) const { return demand(m)&&cert->contains(c.m_config.block_addr(m->get_addr())); }
+  bool query_admissible(mem_fetch *m) const {
+    if (!new_request(m)) return true;
+    const auto now=physical_cycle();
+    if (query_uid!=m->get_request_uid()) {
+      if (query_issue_cycle==now) {++query_port_waits;return false;}
+      query_issue_cycle=now;
+      query_uid=m->get_request_uid();query_ready_at=now+1;++query_count;
+      query_last_wait=~uint64_t(0);
+    }
+    if (now>=query_ready_at) return true;
+    if (query_last_wait!=now) {++query_wait_cycles;query_last_wait=now;}
+    return false;
+  }
+  void observe_block(const mem_fetch *m,unsigned reason) const {
+    if (observed_uid!=m->get_request_uid()) {observed_uid=m->get_request_uid();blocked_mask=0;}
+    if (!(blocked_mask&(uint64_t(1)<<reason))) {
+      blocked_mask|=uint64_t(1)<<reason;first_wait[reason]=physical_cycle();++unique_blocks[reason];
+    }
+  }
   void check_access(mem_fetch *m) const {
     if(!open)throw std::logic_error("RO access outside full-commandlist epoch");
     if(m->get_is_write()||m->isatomic())tx->assert_no_epoch_write(1,c.m_config.block_addr(m->get_addr()));
@@ -93,6 +118,14 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
   void record_accepted(mem_fetch *m) {
     if(demand(m))++accepted_global_reads;
     if(candidate(m))++accepted_candidates;
+    if (observed_uid==m->get_request_uid()) {
+      for (unsigned r=0;r<6;++r) if (blocked_mask&(uint64_t(1)<<r)) {
+        uint64_t duration=physical_cycle()-first_wait[r];wait_cycles[r]+=duration;
+        unsigned bin=0;while (duration>1 && bin<15) {duration>>=1;++bin;}++wait_hist[r][bin];
+      }
+      blocked_mask=0;
+    }
+    if (query_uid==m->get_request_uid()) query_uid=~uint64_t(0);
   }
   bool matches(ep_l2_ro::tag_binding t,handle h,new_addr_type line) const override {
     return t.index<generations.size() && t.generation==generations[t.index] &&
@@ -175,6 +208,7 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     }
     if(!new_request(m))return false;
     p.exact=true;p.is_read=true;
+    if (!query_admissible(m)) {p.probe_status=RESERVATION_FAIL;p.ep_l2_ro_lookup_wait=true;return true;}
     handle h;bool existing=target(m,h);
     unsigned i=~0U;
     p.probe_status=c.m_tag_array->probe(c.m_config.block_addr(m->get_addr()),i,m,false,true);
@@ -182,7 +216,7 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
       p.probe_status=HIT_RESERVED;
     } else if(p.probe_status==RESERVATION_FAIL && detachable(m->get_addr(),i))p.probe_status=MISS;
     p.cache_index=i;
-    if(p.probe_status==RESERVATION_FAIL){p.ep_l2_tag_set_all_reserved=true;return true;}
+    if(p.probe_status==RESERVATION_FAIL){p.ep_l2_tag_set_all_reserved=true;observe_block(m,0);return true;}
     const unsigned mask=m->get_access_sector_mask().to_ulong();
     unsigned missing=existing?needed(m,h):mask;
     if(!existing && p.probe_status!=MISS) {
@@ -197,6 +231,9 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     p.new_missq_entries+=__builtin_popcount(missing);
     p.needs_new_mshr=!existing;p.needs_mshr_merge=existing;
     p.mshr_hit=existing;p.mshr_entry_available=p.mshr_merge_available=capacity(m,existing);
+    if (c.m_mshrs.descriptor_count_used()>=512) observe_block(m,2);
+    if (c.m_mshrs.targets_on_line(c.m_config.block_addr(m->get_addr()))>=32) observe_block(m,3);
+    if (!existing && !c.m_config.m_ro_line_mshr_bypass && c.m_mshrs.num_entries_used()>=128) observe_block(m,1);
     if(c.ep_l2_wad_contains(c.m_config.block_addr(m->get_addr()))) {p.probe_status=RESERVATION_FAIL;p.ep_l2_wad_same_address_hazard=true;}
     return true;
   }
@@ -302,6 +339,18 @@ void l2_cache::ro_print(FILE *f,unsigned slice) const {if(m_ro){
     (unsigned long long)s.admits,(unsigned long long)s.merges,(unsigned long long)s.detached,(unsigned long long)s.lower_sectors,
     (unsigned long long)s.duplicate_sectors,(unsigned long long)s.responses,
     m_ep_l2_payload.bank_ro_fill_write(),m_ep_l2_payload.bank_ro_response_read(),m_ro->tx->live_transactions(),m_ro->cert->manifest_sha256().c_str());
+  fprintf(f,"EPL2ROC1|RESOURCE|slice=%u|normal_line_allocations=%llu|avoided_line_allocations=%llu|peak_transactions=%u|peak_shared_descriptors=%u|peak_shared_lines=%u|lower_read_bytes=%llu|concurrent_duplicate_read_bytes=%llu|query_count=%llu|query_latency_gpu_cycles=1|query_ports_per_slice=1|query_wait_cycles=%llu|query_port_wait_attempts=%llu|shared_descriptor_capacity=512|payload_capacity=1168|line_capacity=128|oracle=FULL_COMMANDLIST_CLOSED_WORLD\n",
+    slice,(unsigned long long)s.normal_line_allocations,(unsigned long long)s.avoided_line_allocations,
+    s.peak_transactions,s.peak_shared_descriptors,s.peak_shared_lines,
+    (unsigned long long)s.lower_sectors*32,(unsigned long long)s.duplicate_sectors*32,
+    (unsigned long long)m_ro->query_count,(unsigned long long)m_ro->query_wait_cycles,(unsigned long long)m_ro->query_port_waits);
+  static const char *reasons[]={"TAG_SET_ALL_PENDING","LINE_MSHR_FULL","SHARED_DESCRIPTOR_FULL","PER_ADDRESS_FULL","LANDING_FULL","WAD"};
+  for(unsigned r=0;r<4;++r) {
+    fprintf(f,"EPL2ROC1|WAIT|slice=%u|reason=%s|unique_head_requests=%llu|first_to_accept_cycles=%llu|pending_head=%u|hist_log2=",
+      slice,reasons[r],(unsigned long long)m_ro->unique_blocks[r],(unsigned long long)m_ro->wait_cycles[r],unsigned((m_ro->blocked_mask>>r)&1));
+    for(unsigned b=0;b<16;++b)fprintf(f,"%s%llu",b?",":"",(unsigned long long)m_ro->wait_hist[r][b]);
+    fprintf(f,"|scope=SLICE_FRONTEND_HEAD_NONEXCLUSIVE_WAIT\n");
+  }
 }}
 
 void l2_cache::ro_bind_commandlist(const char *path){if(m_ro){
