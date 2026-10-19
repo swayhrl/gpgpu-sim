@@ -1,6 +1,7 @@
 // SOURCE CANDIDATE: no PASS is claimed until exact A-integrated native execution.
 #include "native_fixture.h"
 #include <cstring>
+#include <algorithm>
 
 static const new_addr_type stride=64*128;
 

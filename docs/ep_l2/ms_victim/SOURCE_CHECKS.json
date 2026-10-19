@@ -19,6 +19,7 @@
   "source_tool_repairs": [
     "Match actual IDEAL_REFERENCE role in current parent",
     "Preserve quota_reserved in current parent",
-    "Disambiguate host-prefill versus ft_access owner literals"
+    "Disambiguate host-prefill versus ft_access owner literals",
+    "Explicit <memory> dependency in proposed public header and <algorithm> in new native test; do not depend on transitive includes"
   ]
 }

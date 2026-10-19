@@ -1,15 +1,17 @@
 diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
 --- a/src/gpgpu-sim/gpu-cache.h
 +++ b/src/gpgpu-sim/gpu-cache.h
-@@ -39,6 +39,7 @@
+@@ -38,7 +38,9 @@
+ #include "../tr1_hash_map.h"
  #include "gpu-misc.h"
  #include "mem_fetch.h"
++#include <memory>
  #include "ep-l2-ft-interface.h"
 +#include "ep-l2-tvd-directory.h"
 
  #include <iostream>
  #include <stdexcept>
-@@ -593,6 +594,7 @@
+@@ -593,6 +595,7 @@
      m_ep_l2_feature_unified_payload = false;
      m_ep_l2_feature_ro_pending_state = false;
      m_ep_l2_feature_tvd = false;
@@ -17,7 +19,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
      m_ep_l2_feature_adaptive_policy = false;
      m_ep_l2_b0_stats = true;
      // M0a is deliberately opt-in.  It is a telemetry sidecar and is never
-@@ -974,6 +976,7 @@
+@@ -974,6 +977,7 @@
    bool m_ep_l2_feature_unified_payload;
    bool m_ep_l2_feature_ro_pending_state;
    bool m_ep_l2_feature_tvd;
@@ -25,7 +27,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
    bool m_ep_l2_feature_adaptive_policy;
    // Observational only. Disabling it must not change simulator timing.
    bool m_ep_l2_b0_stats;
-@@ -1107,6 +1110,19 @@
+@@ -1107,6 +1111,19 @@
    void add_pending_line(mem_fetch *mf);
    void remove_pending_line(mem_fetch *mf);
    void inc_dirty() { m_dirty++; }
@@ -45,7 +47,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
 
   protected:
    // This constructor is intended for use only from derived classes that wish to
-@@ -2096,7 +2112,7 @@
+@@ -2096,7 +2113,7 @@
          ep_l2_wad_same_address_hazard(false),
          ep_l2_wad_full(false),
          ep_l2_mshr_block_reason(mshr_table::EP_L2_BLOCK_NONE),
@@ -54,7 +56,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
 
    bool exact;
    cache_request_status probe_status;
-@@ -2129,6 +2145,7 @@
+@@ -2129,6 +2146,7 @@
    // additional admission input.
    mshr_table::ep_l2_block_reason ep_l2_mshr_block_reason;
    bool ep_l2_needs_lower_read;
@@ -62,7 +64,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
  };
 
  // C5/C6 metadata-only payload model. mem_fetch remains the functional data
-@@ -2138,7 +2155,7 @@
+@@ -2138,7 +2156,7 @@
    static const unsigned k_physical_slots = 1152;
    static const unsigned k_resident_slots = 1024;
    static const unsigned k_bypass_slots = 128;
@@ -71,7 +73,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
    // A boolean cannot distinguish an ordinary target-payload retry from a
    // physical same-bank denial.  C6c needs that distinction both for correct
    // same-cycle admission and for meaningful B0-Banked telemetry.
-@@ -2151,7 +2168,7 @@
+@@ -2151,7 +2169,7 @@
      FILL_WRITE,
      WB_READOUT,
      BYPASS_FILL,
@@ -80,7 +82,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
    };
    enum state {
      FREE,
-@@ -2159,7 +2176,7 @@
+@@ -2159,7 +2177,7 @@
      RESIDENT_VALID,
      RESIDENT_DIRTY,
      BYPASS_FILL_PENDING,
@@ -89,7 +91,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
    };
    // This is the sole physical-payload identity.  mem_fetch already carries
    // the same pair across the lower request/response path.
-@@ -2203,7 +2220,7 @@
+@@ -2203,7 +2221,7 @@
          m_bank_true_conflict_ops(0), m_bank_true_conflict_events(0),
          m_bank_wait_cycles(0), m_bank_resident_hit_read(0),
          m_bank_resident_write(0), m_bank_fill_write(0),
@@ -98,7 +100,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
          m_next_sequence(0) {
      if (static_s64 && (mode != 2 || ft_mode != 1 || wbuf != 16 || ideal_wb))
        throw std::invalid_argument("S64 requires static banked FT1, legacy WBUF16 anchor");
-@@ -2365,7 +2382,8 @@
+@@ -2365,7 +2383,8 @@
    unsigned wb_used() const { return used(WB); }
    unsigned pending_sector_count() const { unsigned n=0;
      for (const slot &s : m_slots) n += s.pending_sector_mask.count(); return n; }
@@ -108,7 +110,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
    const slot &inspect(const payload_handle &h) const { assert(handle_live(h)); return m_slots[h.payload_id]; }
    slot &inspect_mutable(const payload_handle &h) { assert(handle_live(h)); return m_slots[h.payload_id]; }
    payload_handle preview_free(role r, unsigned bank = (unsigned)-1) const {
-@@ -2612,6 +2630,9 @@
+@@ -2612,6 +2631,9 @@
              (s.status != RESIDENT_FILL_PENDING && s.status != RESIDENT_VALID &&
               s.status != RESIDENT_DIRTY)) return false;
          if (!owners.insert(s.owner).second) return false;
@@ -118,7 +120,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
        } else if (s.allocation_role == WB) {
          if (!m_ft_mode || (s.status != WB_RESERVED && s.status != WB_STAGED)) return false;
        } else {
-@@ -2666,6 +2687,7 @@
+@@ -2666,6 +2688,7 @@
        case WB_READOUT: ++m_bank_wb_readout; break;
        case BYPASS_FILL: ++m_bank_bypass_fill; break;
        case BYPASS_READ: ++m_bank_bypass_read; break;
@@ -126,7 +128,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
      }
    }
    struct pending_op {
-@@ -2692,7 +2714,7 @@
+@@ -2692,7 +2715,7 @@
        m_bank_true_conflict_events_by_bank[4], m_bank_wait_cycles_by_bank[4];
    unsigned long long m_bank_resident_hit_read, m_bank_resident_write,
        m_bank_fill_write, m_bank_wb_readout, m_bank_bypass_fill,
@@ -135,7 +137,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
    unsigned long long m_next_sequence;
    unsigned m_bank_services[4], m_bank_peak[4]; std::vector<slot> m_slots;
    std::vector<pending_op> m_pending[4], m_granted[4];
-@@ -2720,6 +2742,11 @@
+@@ -2720,6 +2743,11 @@
      validate_ep_l2_mode_config();
      m_ep_l2_payload.set_rg1_enabled(config.m_ep_l2_rg1);
      m_ft_last_wb_versions.fill(0);
@@ -147,7 +149,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
      if (ft_enabled()) m_tag_array->bind_ft_replacement(&m_ft_pending.request, &m_ft_pending.tag_index);
    }
 
-@@ -2826,6 +2853,23 @@
+@@ -2826,6 +2854,23 @@
      return true;
    }
 
@@ -171,7 +173,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
    bool ft_enabled() const { return m_config.m_ep_l2_ft_mode != 0; }
    void commit_next_access();
    mem_fetch *peek_next_access() const;
-@@ -2881,7 +2925,8 @@
+@@ -2881,7 +2926,8 @@
 
    bool ft_drained() const { return !ft_enabled() || (!m_ft_pending.request &&
        m_ft_wb.empty() && m_ft_read_refs.empty() && !m_ep_l2_payload.wb_used() &&
@@ -181,7 +183,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
    bool lower_ready(mem_fetch *mf, unsigned long long cycle) override;
    bool lower_mq2_safe(mem_fetch *head, mem_fetch *next) override;
    void lower_accepted(mem_fetch *mf, unsigned long long cycle) override;
-@@ -2893,7 +2938,7 @@
+@@ -2893,7 +2939,7 @@
    // exist before tag_array::access can evict a dirty victim; release happens
    // only when the corresponding no-return writeback reaches set_done().
    void ep_l2_wad_complete(new_addr_type block_addr, unsigned long long cycle);
@@ -190,7 +192,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
    unsigned ep_l2_wad_capacity() const { return m_config.m_ep_l2_wad_entries; }
    unsigned long long ep_l2_wad_full_blocks() const {
      return m_ep_l2_wad_full_block_count;
-@@ -2924,6 +2969,7 @@
+@@ -2924,6 +2970,7 @@
      return m_ep_l2_wad_lifetime_max;
    }
    bool ep_l2_wad_contains(new_addr_type block_addr) const {
@@ -198,7 +200,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
      return m_ep_l2_wad_entries_live.count(block_addr) != 0;
    }
    bool ep_l2_ideal_read_dependency(new_addr_type addr) const {
-@@ -2964,6 +3010,17 @@
+@@ -2964,6 +3011,17 @@
    void send_write_request(mem_fetch *mf, cache_event request, unsigned time,
        std::list<cache_event> &events) override;
    void ft_rollback();
@@ -216,7 +218,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
    struct ft_replacement {
      mem_fetch *request;
      unsigned tag_index, phase, landing_id;
-@@ -2972,9 +3029,9 @@
+@@ -2972,9 +3030,9 @@
      ep_l2_payload_store::slot saved;
      std::array<unsigned long long,4> copy_versions;
      unsigned long long born;
@@ -228,7 +230,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
    };
    struct ft_wb_record {
      ep_l2_payload_store::payload_handle handle;
-@@ -2987,11 +3044,11 @@
+@@ -2987,11 +3045,11 @@
      unsigned long long accepted, wb_created, lower_accept, wbuf_full, pool_full, pin_block,
          bank_block, issue_block, copy_lines, staging_reads, staged_max,
          staging_lifetime, borrow_bypass, borrow_resident, rollback, data_checks,
@@ -242,7 +244,7 @@ diff --git a/src/gpgpu-sim/gpu-cache.h b/src/gpgpu-sim/gpu-cache.h
    };
    struct ft_quota {
      unsigned reserved = 0, live = 0, reserved_peak = 0, live_peak = 0, total_peak = 0;
-@@ -3003,6 +3060,14 @@
+@@ -3003,6 +3061,14 @@
    std::map<mem_fetch *,ep_l2_payload_store::payload_handle> m_ft_read_refs;
    std::array<unsigned long long,4> m_ft_last_wb_versions;
    void validate_ep_l2_mode_config() const {

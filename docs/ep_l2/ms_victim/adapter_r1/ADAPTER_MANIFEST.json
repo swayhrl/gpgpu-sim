@@ -5,11 +5,11 @@
   "patch_applied": false,
   "compiled": false,
   "production_tests_run": false,
-  "patch_sha256": "1668e2c69dff34cff341d04016a2a7bfe3e2919a674d96b782ef03854a999b26",
+  "patch_sha256": "ebb8675004d2f8d31fb67ccd0ed7b25445ed6a5a845f928b53864e0fc352a11b",
   "files": {
     "src/gpgpu-sim/gpu-cache.h": {
       "base_sha256": "0a1b4ede4e0437e17ab16aeaf21f8cd19fa80c481120a9366f80991f7e7b6507",
-      "proposed_sha256": "8c7a7b1dbf592417af8a2420e05f80d72e258f595d7a331be51c6bfc62895edf"
+      "proposed_sha256": "42b775ad5292dda5b056adc16428c97ef959293771a9f5c822c249d56b1070a1"
     },
     "src/gpgpu-sim/gpu-cache.cc": {
       "base_sha256": "1b6e1b3d84d8bd40c5238dec0ee3664ae200518bc980d2d24cf1e18b22a7585c",

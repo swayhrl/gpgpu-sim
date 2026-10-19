@@ -31,7 +31,7 @@ def main():
         assert text[full].count(before) == count, (name, before[:100], text[full].count(before))
         text[full] = text[full].replace(before, after)
     h = 'gpu-cache.h'
-    replace(h, '#include "ep-l2-ft-interface.h"', '#include "ep-l2-ft-interface.h"\n#include "ep-l2-tvd-directory.h"')
+    replace(h, '#include "ep-l2-ft-interface.h"', '#include <memory>\n#include "ep-l2-ft-interface.h"\n#include "ep-l2-tvd-directory.h"')
     replace(h, '    m_ep_l2_feature_tvd = false;', '    m_ep_l2_feature_tvd = false;\n    m_ep_l2_tvd_clean = m_ep_l2_tvd_dirty = false;')
     replace(h, '  bool m_ep_l2_feature_tvd;', '  bool m_ep_l2_feature_tvd;\n  bool m_ep_l2_tvd_clean, m_ep_l2_tvd_dirty;')
     replace(h, 'ep_l2_needs_lower_read(false) {}', 'ep_l2_needs_lower_read(false), ep_l2_tvd_candidate(false) {}')
