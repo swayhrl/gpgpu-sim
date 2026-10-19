@@ -118,7 +118,8 @@ int main(int argc,char **argv) {
   for(unsigned i=0;i<17;++i)f.write(i*stride);
   auto a=dir->find(ro_base);assert(dir->live(a) && dir->at(a.index).status==l2_cache::tvd_directory::CLEAN);
   const H clean_a=dir->at(a.index).payload;
-  const auto before=f.lower_read_packets,served=dir->stats().read_responses;
+  const auto before=f.lower_read_packets;
+  const auto served=dir->stats().read_responses;
   auto hit=f.make(ro_base,false);const auto hit_uid=hit->get_request_uid();f.send(hit);
   for(unsigned n=0;n<20000 && !f.replies.count(hit_uid);++n){g.step();assert(!g.ro_packets);}
   assert(f.replies.count(hit_uid) && f.lower_read_packets==before);
