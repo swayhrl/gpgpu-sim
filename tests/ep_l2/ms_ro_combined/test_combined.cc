@@ -87,7 +87,7 @@ static void common_descriptor_pool_and_mandatory_wb(char **argv,bool data_free=f
   f.finish();
   if(data_free) {
     const auto &ram=f.cache->ep_l2_payload_for_test();
-    assert(f.gpu->getMemoryConfig()->m_L2_config.m_ep_l2_diag_l2_data_free &&
+    assert(ram.diagnostic_exempts(ep_l2_payload_store::FRONTEND) &&
            !ram.bank_grants() && !ram.pending_operations());
     assert(ram.diagnostic_services(ep_l2_payload_store::FILL)>0 &&
            ram.diagnostic_services(ep_l2_payload_store::RESPONSE)>0 &&
