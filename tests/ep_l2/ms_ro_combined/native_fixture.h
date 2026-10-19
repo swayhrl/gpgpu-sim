@@ -77,5 +77,7 @@ struct combined_fixture : victim_fixture {
     assert(cache->tvd_actual_lower_read_packets()==lower_read_packets && cache->tvd_actual_lower_read_bytes()==lower_read_bytes);
     sp->ro_end_epoch();cache->ro_print(stdout,0);sp->flushL2();
     assert(!cache->ep_l2_payload_for_test().ro_used() && !cache->ep_l2_payload_for_test().tvd_used());
+    printf("A_COMMON_FIXTURE|SEMANTIC|cycles=%llu|replies=%zu|lower_reads=%llu|lower_bytes=%llu|drained=1\n",
+           gpu->gpu_sim_cycle+gpu->gpu_tot_sim_cycle,replies.size(),lower_read_packets,lower_read_bytes);
   }
 };
