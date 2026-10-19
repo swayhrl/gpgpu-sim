@@ -86,11 +86,43 @@ static void empty_coverage_keeps_R_flags_but_uses_native_limit(char **argv) {
   f.return_one(0);f.await_frontend();f.finish();
   puts("C_FULL_V2|case=empty_coverage_flags_on_native_limit|status=PASS");
 }
+static void pinned_wb_completion_with_ro_landing(char **argv) {
+  combined_fixture f(argv);f.block_lower=true;
+  // Fill the actual16-entry lower FIFO: old victims16..18 stay WB_STAGED.
+  for(unsigned i=0;i<35;++i)f.write(0x400000+i*stride);
+  const auto address=0x400000+16*stride;auto dir=f.cache->tvd_for_test();auto ticket=dir->find(address);
+  assert(dir->live(ticket) && dir->at(ticket.index).status==l2_cache::tvd_directory::WB_STAGED);
+  auto wb_handle=dir->at(ticket.index).payload;auto saved=f.cache->ep_l2_payload_for_test().inspect(wb_handle).versions;
+  auto ro=f.make(128,false);auto ro_uid=ro->get_request_uid();f.send(ro);
+  for(unsigned n=0;n<1000 && !f.tag_for(128).valid();++n)f.step();
+  auto ro_handle=f.tag_for(128);auto &ram=f.cache->ep_l2_payload_for_test();
+  assert(ro_handle.valid() && ram.inspect(ro_handle).allocation_role==ep_l2_payload_store::RO && ram.inspect(ro_handle).pins==1);
+  auto reader=f.make(address,false);auto uid=reader->get_request_uid();f.send(reader);
+  for(unsigned n=0;n<1000 && !f.cache->tvd_lookup_started_for_test(reader);++n)f.step();
+  assert(f.cache->tvd_lookup_started_for_test(reader));
+  f.block_lower=false;f.take_lower(); // Real external FIFO consumption.
+  ep_l2::PayloadHandle contender;
+  for(unsigned i=0;i<1024;++i) {
+    auto h=f.cache->ep_l2_tag_payload_handle_for_test(i);
+    if(ram.handle_live(h) && h!=ro_handle && h!=wb_handle && h.payload_id%4==wb_handle.payload_id%4){contender=h;break;}
+  }
+  assert(contender.valid() && ram.request(contender,false,f.gpu->gpu_sim_cycle)==ep_l2_payload_store::GRANTED);
+  f.step();assert(dir->at(ticket.index).readers==1 && ram.inspect(wb_handle).pins==1);
+  f.step();assert(dir->at(ticket.index).status==l2_cache::tvd_directory::WB_INFLIGHT);
+  auto packet=std::find_if(f.wb.begin(),f.wb.end(),[&](mem_fetch *p){return p->get_addr()==address;});
+  assert(packet!=f.wb.end() && (*packet)->get_ft_wb_data()==saved);
+  f.sp->set_done(*packet);delete *packet;f.wb.erase(packet);++f.completed_wb;
+  assert(dir->at(ticket.index).status==l2_cache::tvd_directory::WB_COMPLETE && ram.inspect(wb_handle).pins==1);
+  assert(ram.handle_live(ro_handle) && ram.inspect(ro_handle).pins==1);
+  f.wait(uid,false);assert(!ram.inspect(wb_handle).pins && ram.inspect(wb_handle).status==ep_l2_payload_store::TVD_VALID);
+  f.wait(ro_uid);f.finish();puts("C_FULL_V2|case=pinned_wb_done_with_ro_landing|status=PASS|contender=PUBLIC_ARBITER");
+}
 int main(int argc,char **argv) {
   assert(argc==10);
   if(!strcmp(argv[9],"same_address"))late_ro_and_same_address_victim(argv);
   else if(!strcmp(argv[9],"shared_pool"))common_descriptor_pool_and_mandatory_wb(argv);
   else if(!strcmp(argv[9],"host_update"))host_update_invalidates_only_uncovered_victim(argv);
   else if(!strcmp(argv[9],"fallback"))empty_coverage_keeps_R_flags_but_uses_native_limit(argv);
+  else if(!strcmp(argv[9],"pinned_wb"))pinned_wb_completion_with_ro_landing(argv);
   else assert(false);
 }

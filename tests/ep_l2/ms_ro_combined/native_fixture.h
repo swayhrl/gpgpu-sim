@@ -18,6 +18,10 @@ struct combined_fixture : victim_fixture {
     assert(ram.free_slots()+ram.resident_used()+ram.bypass_used()+ram.wb_used()+ram.tvd_used()+ram.ro_used()==1168);
     peak_shared=std::max(peak_shared,cache->ep_l2_descriptor_count_used());assert(peak_shared<=512);
     if(consume)collect();
+    if(!block_lower)take_lower();
+    ++gpu->gpu_sim_cycle;
+  }
+  void take_lower() {
     while(!sp->L2_dram_queue_empty()) {
       auto packet=sp->L2_dram_queue_top();sp->L2_dram_queue_pop();
       if(packet->get_access_type()==L2_WRBK_ACC) {
@@ -27,7 +31,6 @@ struct combined_fixture : victim_fixture {
         assert(cache->ep_l2_wad_contains(packet->get_addr()));wb.push_back(packet);++lower_wb;
       } else {pending_reads.push_back(packet);++lower_read_packets;lower_read_bytes+=packet->get_data_size();}
     }
-    ++gpu->gpu_sim_cycle;
   }
   void return_one(unsigned index) {
     assert(index<pending_reads.size() && !sp->dram_L2_queue_full());
