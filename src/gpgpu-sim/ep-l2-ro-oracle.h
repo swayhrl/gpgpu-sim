@@ -19,7 +19,7 @@ class oracle_certificate {
                      const std::string &verified_manifest_sha256,
                      const std::string &scope)
       : m_manifest(verified_manifest_sha256) {
-    if (scope != "TRACE_MODEL_CLOSED_WORLD" || m_manifest.size() != 64 ||
+    if ((scope != "TRACE_MODEL_CLOSED_WORLD" && scope != "NO_READONLY_CERTIFICATION") || m_manifest.size() != 64 ||
         m_manifest.find_first_not_of("0123456789abcdef") != std::string::npos)
       throw std::invalid_argument("unverified oracle scope/identity");
     std::string line;
@@ -42,6 +42,8 @@ class oracle_certificate {
       m_ranges.push_back(std::make_pair(first,last));
     }
     if (!verified_ranges.eof()) throw std::invalid_argument("incomplete oracle read");
+    if(scope=="NO_READONLY_CERTIFICATION" && !m_ranges.empty())
+      throw std::invalid_argument("native fallback must certify zero lines");
   }
   bool contains(uint64_t line) const {
     if (line%128) return false;

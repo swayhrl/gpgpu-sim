@@ -44,7 +44,7 @@ struct runtime_facade {
   typedef identity handle;
   scheduler_cache &c;transaction_adapter *tx;
   bool selected=false,prefer_ro=true;facade_response reply;
-  uint64_t response_cycle=0;unsigned cursor=0;
+  uint64_t response_cycle=0,last_response_cycle=0;unsigned cursor=0;
   runtime_facade(scheduler_cache &cache,transaction_adapter *t):c(cache),tx(t){}
   uint64_t physical_cycle()const{return c.now;}
 #include "runtime_methods.inc"

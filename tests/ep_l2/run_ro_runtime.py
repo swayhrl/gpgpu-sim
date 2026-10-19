@@ -55,7 +55,17 @@ def main():
                 commands.append((f'partition_warm_C{entries}_{d}{b}',
                     [str(part),str(base),str(overlay),str(o/'binding.config'),str(o/'kernelslist.g'),
                      str(d),str(b),'4096',str(entries)],None))
-    commands.append(('r0_off_regression',[str(a.build.resolve()/'ep_l2_ft_directed'),str(base),str(overlay)],None))
+    for d in [0,1]:
+        for b in [0,1]:
+            commands.append((f'gpu_epoch_{d}{b}',[str(a.build.resolve()/'ep_l2_ro_epoch_entry'),
+                str(base),str(overlay),str(o/'binding.config'),str(o/'kernelslist.g'),str(d),str(b)],None))
+    for target in ['ro_transactions','ro_store_port','ro_oracle_certificate']:
+        commands.append((target,[str(a.build.resolve()/('ep_l2_'+target))],None))
+    (o/'texture_only.config').write_text(config+'-gpgpu_cache:dl2_texture_only 1\n')
+    commands.append(('reject_texture_only',[str(a.build.resolve()/'ep_l2_ro_epoch_entry'),
+        str(base),str(overlay),str(o/'texture_only.config'),str(o/'kernelslist.g'),'1','1'],
+        'RO requires enabled L2 for all access types'))
+    # A's mandatory affected-common suite owns the same-binary native OFF run.
     cases=[('range_hash',config.replace(sha(o/'ranges.csv'),'0'*64),'RO range SHA256 mismatch'),
            ('manifest_hash',config.replace(sha(o/'manifest.json'),'0'*64),'RO manifest SHA256 mismatch'),
            ('scope',config.replace('TRACE_MODEL_CLOSED_WORLD','KERNEL_ONLY'),'unverified oracle scope/identity')]

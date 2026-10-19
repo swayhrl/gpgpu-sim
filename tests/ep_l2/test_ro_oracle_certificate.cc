@@ -23,6 +23,12 @@ int main(int argc,char **argv) {
   std::istringstream empty("first_line,last_line_inclusive\n");
   oracle_certificate e(empty,hash(),"TRACE_MODEL_CLOSED_WORLD");
   assert(!e.contains(0x1000));
+  std::istringstream fallback("first_line,last_line_inclusive\n");
+  oracle_certificate no_ro(fallback,hash(),"NO_READONLY_CERTIFICATION");
+  assert(!no_ro.range_count() && !no_ro.contains(0x1000));
+  bool refused=false;std::istringstream forged("first_line,last_line_inclusive\n0000000000001000,0000000000001000\n");
+  try{oracle_certificate invalid(forged,hash(),"NO_READONLY_CERTIFICATION");}
+  catch(const std::invalid_argument&){refused=true;}assert(refused);
   if(argc==3) {
     std::ifstream actual(argv[1]);
     oracle_certificate a(actual,argv[2],"TRACE_MODEL_CLOSED_WORLD");

@@ -2,6 +2,7 @@
 #include "ep-l2-ro-store-port.h"
 #include "ep-l2-ro-sha256.h"
 #include <fstream>
+#include <sstream>
 #include <memory>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
@@ -27,7 +28,7 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
   mutable std::array<std::array<uint64_t,16>,6> wait_hist{};
   uint64_t accepted_global_reads, accepted_candidates, accepted_ro;
   uint64_t epoch_begin_cycle=0,epoch_end_cycle=0,last_response_cycle=0;
-  ep_l2_ro_runtime(l2_cache &cache) : c(cache), port(c.m_ep_l2_payload,*this),
+  ep_l2_ro_runtime(l2_cache &cache) : c(cache), port(c.m_ep_l2_payload,*this,true),
     generations(c.m_config.get_num_lines(),1),open(false),ever_open(false),selected(false),command_bound(false),prefer_ro(true),
     reply(),response_cycle(0),cursor(0),accepted_global_reads(0),accepted_candidates(0),accepted_ro(0) {
     const auto &cfg=c.m_config;
@@ -48,11 +49,13 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     if(ep_l2_ro::sha256(manifest)!=cfg.m_ro_manifest_sha256)throw std::invalid_argument("RO manifest SHA256 mismatch");
     boost::property_tree::ptree doc;std::istringstream json(manifest);
     boost::property_tree::read_json(json,doc);
+    const std::string scope=doc.get<std::string>("scope");
+    const bool fallback=doc.get<std::string>("status")=="SAFE_FALLBACK_NO_CERTIFIED_LINES";
     if(doc.get<std::string>("schema")!="EP_L2_RO_ORACLE_V1" ||
        doc.get<std::string>("epoch")!="whole_commandlist" ||
-       doc.get<std::string>("scope")!="TRACE_MODEL_CLOSED_WORLD" ||
+       scope!=cfg.m_ro_scope || scope!=(fallback?"NO_READONLY_CERTIFICATION":"TRACE_MODEL_CLOSED_WORLD") ||
        doc.get<std::string>("address_domain")!="CANONICAL_GPU_GLOBAL_VA_NO_TRANSLATION_ALIAS" ||
-       !doc.get_child("unresolved_opcodes").empty())throw std::invalid_argument("RO unsupported/incomplete epoch certificate");
+       (!fallback && !doc.get_child("unresolved_opcodes").empty()))throw std::invalid_argument("RO unsupported/incomplete epoch certificate");
     if(doc.get_child("artifacts").get<std::string>(boost::property_tree::ptree::path_type("certified_ranges.csv",'/'))!=cfg.m_ro_ranges_sha256)
       throw std::invalid_argument("RO ranges not bound to manifest");
     command_sha=doc.get<std::string>("commandlist_sha256");
@@ -60,6 +63,7 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
       throw std::invalid_argument("invalid RO command identity");
     std::istringstream ranges(bytes);
     cert.reset(new ep_l2_ro::oracle_certificate(ranges,cfg.m_ro_manifest_sha256,cfg.m_ro_scope));
+    if(fallback && cert->range_count())throw std::invalid_argument("fallback cannot enable any RO line");
     tx.reset(new ep_l2_ro::transactions(c.m_mshrs,port,c.m_ep_l2_payload.physical_slots(),*cert,
       ep_l2_ro::switches(cfg.m_ro_tag_detach,cfg.m_ro_line_mshr_bypass)));
   }
@@ -99,7 +103,7 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
   // Called once at the actual timed frontend-head observation point. Preview
   // itself never launches a lookup, reserves ownership or changes counters.
   void frontend_cycle(mem_fetch *m) {
-    if (!new_request(m)) return;
+    if (!new_request(m) || !directory_ready(m)) return;
     const auto now=physical_cycle();
     if (query_uid!=m->get_request_uid()) {
       if (query_issue_cycle==now) {++query_port_waits;return;}
@@ -119,6 +123,14 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     if (!existing && !c.m_config.m_ro_line_mshr_bypass && c.m_mshrs.num_entries_used()>=128) observe_block(m,1);
   }
   bool target_for_observer(mem_fetch *m) const {handle h;return target(m,h);}
+  bool directory_ready(mem_fetch *m) const {
+    if(!c.m_tvd)return true;
+    handle h;if(target(m,h))return true;
+    unsigned index=~0U;
+    const auto tag=c.m_tag_array->probe(c.m_config.block_addr(m->get_addr()),index,m,m->is_write(),true);
+    if(tag!=MISS && tag!=RESERVATION_FAIL)return true;
+    return c.m_tvd_lookup==m && c.m_tvd_lookup_done;
+  }
   void observe_block(const mem_fetch *m,unsigned reason) const {
     if (observed_uid!=m->get_request_uid()) {observed_uid=m->get_request_uid();blocked_mask=0;}
     if (!(blocked_mask&(uint64_t(1)<<reason))) {
@@ -222,6 +234,10 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     }
     if(!new_request(m))return false;
     p.exact=true;p.is_read=true;
+    // Read the existing paid frontend ticket; never issue a second/free TVD
+    // address CAM from observational RO preview. TVD hits complete on its own
+    // native frontend/ICNT path; RO owns only the resulting real cache miss.
+    if(!directory_ready(m)) {p.probe_status=RESERVATION_FAIL;p.ep_l2_ro_lookup_wait=true;return true;}
     if (!query_admissible(m)) {p.probe_status=RESERVATION_FAIL;p.ep_l2_ro_lookup_wait=true;return true;}
     handle h;bool existing=target(m,h);
     unsigned i=~0U;
@@ -250,7 +266,8 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     // Shared descriptor/per-address bounds still block an M-mode request,
     // without misreporting that it needs a traditional line-MSHR.
     if(!capacity(m,existing)) p.probe_status=RESERVATION_FAIL;
-    if(c.ep_l2_wad_contains(c.m_config.block_addr(m->get_addr()))) {p.probe_status=RESERVATION_FAIL;p.ep_l2_wad_same_address_hazard=true;}
+    if(c.m_tvd?c.tvd_cached_wad_contains(m,c.m_config.block_addr(m->get_addr())):
+        c.ep_l2_wad_contains(c.m_config.block_addr(m->get_addr()))) {p.probe_status=RESERVATION_FAIL;p.ep_l2_wad_same_address_hazard=true;}
     return true;
   }
   void issue(mem_fetch *m,handle h,unsigned mask,unsigned /*tag_time*/,std::list<cache_event>&events) {
@@ -347,21 +364,25 @@ bool l2_cache::ro_return(mem_fetch *m,unsigned long long cycle) {
   if(!m->has_ft_wb_data())throw std::logic_error("RO return lacks reference versions");
   if(cycle!=m_ro->physical_cycle())throw std::logic_error("RO return bank cycle must be physical GPU time");
   return m_ro->port.accept_return(*m_ro->tx,ep_l2::PayloadHandle(m->get_ep_l2_payload_id(),m->get_ep_l2_payload_generation()),
-    m->get_access_sector_mask().to_ulong(),cycle,m->get_ft_wb_data());
+    m->get_access_sector_mask().to_ulong(),cycle,m->get_ft_wb_data(),m->get_request_uid());
 }
 void l2_cache::ro_print(FILE *f,unsigned slice) const {if(m_ro){
   const auto &s=m_ro->tx->stats;
-  fprintf(f,"EPL2ROV1|SUMMARY|slice=%u|detach=%u|bypass=%u|accepted_global_reads=%llu|accepted_oracle_candidates=%llu|accepted_ro=%llu|transactions=%llu|merges=%llu|detached=%llu|lower_sectors=%llu|concurrent_duplicate_sectors=%llu|responses=%llu|ro_bank_fill_ops=%llu|ro_bank_response_ops=%llu|live=%u|manifest=%s|scope=TRACE_MODEL_CLOSED_WORLD\n",
+  fprintf(f,"EPL2ROV1|SUMMARY|slice=%u|detach=%u|bypass=%u|accepted_global_reads=%llu|accepted_oracle_candidates=%llu|accepted_ro=%llu|transactions=%llu|merges=%llu|detached=%llu|lower_sectors=%llu|concurrent_duplicate_sectors=%llu|responses=%llu|ro_bank_fill_ops=%llu|ro_bank_response_ops=%llu|live=%u|manifest=%s|scope=%s\n",
     slice,m_config.m_ro_tag_detach,m_config.m_ro_line_mshr_bypass,
     (unsigned long long)m_ro->accepted_global_reads,(unsigned long long)m_ro->accepted_candidates,(unsigned long long)m_ro->accepted_ro,
     (unsigned long long)s.admits,(unsigned long long)s.merges,(unsigned long long)s.detached,(unsigned long long)s.lower_sectors,
     (unsigned long long)s.duplicate_sectors,(unsigned long long)s.responses,
-    m_ep_l2_payload.bank_ro_fill_write(),m_ep_l2_payload.bank_ro_response_read(),m_ro->tx->live_transactions(),m_ro->cert->manifest_sha256().c_str());
-  fprintf(f,"EPL2ROC1|RESOURCE|slice=%u|normal_line_allocations=%llu|avoided_line_allocations=%llu|peak_transactions=%u|peak_shared_descriptors=%u|peak_shared_lines=%u|lower_read_bytes=%llu|concurrent_duplicate_read_bytes=%llu|query_count=%llu|query_latency_gpu_cycles=1|query_ports_per_slice=1|query_wait_cycles=%llu|query_port_wait_attempts=%llu|shared_descriptor_capacity=512|payload_capacity=1168|line_capacity=128|oracle=FULL_COMMANDLIST_CLOSED_WORLD\n",
+    m_ep_l2_payload.bank_ro_fill_write(),m_ep_l2_payload.bank_ro_response_read(),m_ro->tx->live_transactions(),m_ro->cert->manifest_sha256().c_str(),m_config.m_ro_scope);
+  fprintf(f,"EPL2ROC1|CLOSURE|slice=%u|native_descriptor_responses=%llu|ro_descriptor_responses=%llu|shared_descriptor_used=%u|shared_line_used=%u|ro_live=%u|epoch_closed=%u|scope=NATIVE_AND_RO_DISTINCT_SUBCOUNTERS_NOT_ALL_FRONTEND_REQUESTS\n",
+    slice,m_ft_stats.descriptor_responses,(unsigned long long)s.responses,
+    m_mshrs.descriptor_count_used(),m_mshrs.num_entries_used(),m_ro->tx->live_transactions(),
+    unsigned(m_ro->ever_open&&!m_ro->open));
+  fprintf(f,"EPL2ROC1|RESOURCE|slice=%u|normal_line_allocations=%llu|avoided_line_allocations=%llu|peak_transactions=%u|peak_shared_descriptors=%u|peak_shared_lines=%u|lower_read_bytes=%llu|concurrent_duplicate_read_bytes=%llu|query_count=%llu|query_latency_gpu_cycles=1|query_ports_per_slice=1|query_wait_cycles=%llu|query_port_wait_attempts=%llu|shared_descriptor_capacity=512|payload_capacity=1168|line_capacity=128|oracle=%s\n",
     slice,(unsigned long long)s.normal_line_allocations,(unsigned long long)s.avoided_line_allocations,
     s.peak_transactions,s.peak_shared_descriptors,s.peak_shared_lines,
     (unsigned long long)s.lower_sectors*32,(unsigned long long)s.duplicate_sectors*32,
-    (unsigned long long)m_ro->query_count,(unsigned long long)m_ro->query_wait_cycles,(unsigned long long)m_ro->query_port_waits);
+    (unsigned long long)m_ro->query_count,(unsigned long long)m_ro->query_wait_cycles,(unsigned long long)m_ro->query_port_waits,m_config.m_ro_scope);
   const std::string begin=m_ro->ever_open?std::to_string(m_ro->epoch_begin_cycle):"NA";
   const std::string end=m_ro->ever_open&&!m_ro->open?std::to_string(m_ro->epoch_end_cycle):"NA";
   const std::string last=s.responses?std::to_string(m_ro->last_response_cycle):"NA";

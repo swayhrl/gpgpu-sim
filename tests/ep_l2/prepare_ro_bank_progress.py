@@ -26,6 +26,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--source',required=True);p.add_argument('--store-source');p.add_argument('--runtime-source')
     p.add_argument('--output',type=Path,required=True);a=p.parse_args();root=Path(__file__).resolve().parents[2]
+    a.source=subprocess.check_output(['git','-C',str(root),'rev-parse',a.source+'^{commit}'],text=True).strip()
     a.output.mkdir(parents=True,exist_ok=False);out=a.output.resolve();binding={}
     def read(name,source=None):
         sha=source or a.source;path='src/gpgpu-sim/'+name
@@ -35,14 +36,17 @@ def main():
     for name in ['gpu-cache.h','ep-l2-ro-transactions.h','ep-l2-ro-oracle.h','ep-l2-ro-store-port.h']:
         source=a.store_source if name=='ep-l2-ro-store-port.h' else None
         (out/name).write_text(read(name,source))
-    cache=read('gpu-cache.cc');methods=[];spans={}
+    cache=read('gpu-cache.cc');ro_mshr=read('ep-l2-ro-mshr.inc');methods=[];spans={}
     for sig in ['unsigned mshr_table::ro_targets_on_line','unsigned mshr_table::targets_on_line',
                 'bool mshr_table::reserve_ro_descriptor','bool mshr_table::ro_descriptor_live',
                 'void mshr_table::release_ro_descriptor','bool mshr_table::reserve_ro_line',
                 'void mshr_table::bind_ro_line','bool mshr_table::lookup_ro_line',
                 'void mshr_table::release_ro_line','void mshr_table::ro_line_issue',
-                'void mshr_table::ro_line_ready','unsigned mshr_table::num_targets_used']:
-        body=function(cache,sig);methods.append(body);spans[sig]=hashlib.sha256(body.encode()).hexdigest()
+                 'void mshr_table::ro_line_ready',
+                 'mem_fetch *mshr_table::ro_descriptor_request',
+                 'mem_access_sector_mask_t mshr_table::ro_descriptor_sectors',
+                 'unsigned mshr_table::num_targets_used']:
+        body=function(cache if sig=='unsigned mshr_table::num_targets_used' else ro_mshr,sig);methods.append(body);spans[sig]=hashlib.sha256(body.encode()).hexdigest()
     (out/'mshr_methods.inc').write_text('\n'.join(methods)+'\n')
     rt=read('ep-l2-ro-runtime.inc',a.runtime_source);methods=[]
     for sig in ['  bool has_response()','  bool prepare(uint64_t cycle)','  void commit(uint64_t cycle)']:
@@ -56,7 +60,7 @@ def main():
     fixture=root/'tests/ep_l2/test_ro_bank_progress.cc';(out/'test_ro_bank_progress.cc').write_bytes(fixture.read_bytes())
     x={'schema':'RO_BANK_SOURCE_BOUND_CPP_FIXTURE_V1','base_source':a.source,'headers':binding,'exact_method_sha256':spans,
        'fixture_sha256':hashlib.sha256(fixture.read_bytes()).hexdigest(),
-       'scope':'Actual payload-store/transaction/store-port headers and12 actual MSHR definitions; exact runtime has_response/prepare/commit and response scheduler bodies.',
+       'scope':'Actual payload-store/transaction/store-port headers and14 actual MSHR definitions; exact runtime has_response/prepare/commit and response scheduler bodies.',
        'facades':'Synthetic physical clock, Tag callbacks, native ready flag and requester packet copy sink. Runtime response adapter forwards to actual transactions. Scheduler class qualifiers only renamed. Not a full cache/partition/DRAM simulation.',
        'oracle':'Inline synthetic directed ranges only; no frozen real oracle input read/changed.'}
     (out/'SOURCE_BINDING.json').write_text(json.dumps(x,indent=2)+'\n');print(out)

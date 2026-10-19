@@ -35,6 +35,9 @@ class payload_port {
   virtual bool fill_write(identity h, unsigned sectors, uint64_t cycle) = 0;
   virtual void lower_accepted(identity, unsigned) {}
   virtual bool response_read(identity h, unsigned sectors, uint64_t cycle) = 0;
+  virtual bool response_read_for_request(identity h,unsigned sectors,uint64_t cycle,mem_fetch *) {
+    return response_read(h,sectors,cycle);
+  }
   virtual bool tag_matches(tag_binding tag, identity h,
                            new_addr_type line) const = 0;
   virtual void tag_ready(tag_binding tag, identity h,
@@ -251,14 +254,19 @@ class transactions {
   bool prepare_response(identity h, uint64_t cycle, response &out) {
     entry &e = get(h);
     if (e.prepared && e.prepared_cycle != cycle) e.prepared = false;
-    if (!e.prepared) {
+    if (!e.response_chosen) {
       for (unsigned i = 0; i < e.waiters.size(); ++i) {
         if ((waiter_mask(e.waiters[i]) & ~e.ready) == 0) {
-          if (!m_port.response_read(h, waiter_mask(e.waiters[i]), cycle)) return false;
-          e.prepared = true; e.prepared_index = i; e.prepared_cycle = cycle;
+          e.response_chosen=true;e.prepared_index=i;
           break;
         }
       }
+    }
+    if (!e.response_chosen) return false;
+    if (!e.prepared) {
+      const auto &w=e.waiters[e.prepared_index];
+      if(!m_port.response_read_for_request(h,waiter_mask(w),cycle,waiter_request(w)))return false;
+      e.prepared=true;e.prepared_cycle=cycle;
     }
     if (!e.prepared) return false;
     waiter &w = e.waiters[e.prepared_index];
@@ -275,7 +283,7 @@ class transactions {
     }
     m_shared.release_ro_descriptor(e.waiters[e.prepared_index].descriptor);
     e.waiters.erase(e.waiters.begin() + e.prepared_index);
-    e.prepared = false; ++stats.responses;
+    e.prepared = e.response_chosen = false; ++stats.responses;
     retire_if_done(e);
   }
   unsigned pending(identity h) const {
@@ -320,11 +328,11 @@ class transactions {
     return m_shared.ro_descriptor_request(w.descriptor);
   }
   struct entry {
-    bool live, attached, reuse_seen, prepared;
+    bool live, attached, reuse_seen, prepared, response_chosen;
     unsigned required, issued, ready, prepared_index;
     identity h; tag_binding tag; new_addr_type line; uint64_t epoch, prepared_cycle;
     std::vector<waiter> waiters;
-    entry() : live(false), attached(false), reuse_seen(false), prepared(false),
+    entry() : live(false), attached(false), reuse_seen(false), prepared(false),response_chosen(false),
       required(0), issued(0), ready(0), prepared_index(0), line(0), epoch(0), prepared_cycle(0) {}
   };
   static void check_mask(unsigned mask) {

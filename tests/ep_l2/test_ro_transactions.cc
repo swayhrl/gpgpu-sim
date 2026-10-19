@@ -31,6 +31,7 @@ class reference_port : public payload_port {
   std::array<unsigned char,128> observed;
   unsigned reads, fills, releases, tag_updates;
   bool refuse_pin;
+  bool refuse_response=false;
   reference_port() : slots(1168), reads(0), fills(0), releases(0), tag_updates(0),refuse_pin(false) {
     used_cycle.fill(~0ULL); observed.fill(0);
   }
@@ -67,6 +68,7 @@ class reference_port : public payload_port {
     return true;
   }
   bool response_read(identity h,unsigned mask,uint64_t cycle) {
+    if(refuse_response)return false;
     if(!bank(h,cycle)) return false;
     ++reads;
     for(unsigned s=0;s<4;++s) if(mask>>s&1)
@@ -336,6 +338,22 @@ static void pending_lower_distinguishes_duplicates_from_addresses() {
   assert(t.end_epoch() && t.stats.peak_lower_transactions==3 && t.stats.peak_independent_lower_lines==2);
 }
 
+static void denied_bank_keeps_same_waiter_after_earlier_sector_arrives() {
+  mshr_table shared(128,32,512,32);reference_port p;
+  transactions t(shared,p,1168,certificate(),switches(true,true));t.begin_epoch(14,hash());
+  auto h=p.reserve(0,0x10000,0);
+  assert(t.admit(14,0x10000,h,p.binding(0),request(1500),1,true,GLOBAL_DEMAND_READ)==ACCEPTED);
+  assert(t.merge(h,request(1501),2,14,true,GLOBAL_DEMAND_READ)==ACCEPTED);
+  t.lower_accepted(h,3);assert(t.fill(h,2,1));response r;p.refuse_response=true;
+  assert(!t.prepare_response(h,2,r)); // waiter1501 selected before denied read.
+  assert(t.fill(h,1,3));p.refuse_response=false;
+  assert(t.prepare_response(h,4,r) && r.request==request(1501));
+  t.commit_response(h,false,4);assert(t.prepare_response(h,5,r) && r.request==request(1501));
+  t.commit_response(h,true,5);
+  assert(t.prepare_response(h,6,r) && r.request==request(1500));t.commit_response(h,true,6);
+  assert(t.end_epoch() && shared.descriptor_count_used()==0);
+}
+
 int main() {
   out_of_order_backpressure_and_waiter_protection();
   same_line_detached_instances_and_generation();
@@ -346,5 +364,6 @@ int main() {
   detached_address_cap_and_exactly_once_permuted_fills();
   failed_pin_rolls_back_shared_allocator();
   pending_lower_distinguishes_duplicates_from_addresses();
+  denied_bank_keeps_same_waiter_after_earlier_sector_arrives();
   puts("EP-L2 Lane 3 RO production-module/reference tests: PASS (7 scenario groups)");
 }
