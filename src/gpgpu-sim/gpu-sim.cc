@@ -297,6 +297,27 @@ void memory_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_ep_l2_rg1", OPT_BOOL,
                          &m_L2_config.m_ep_l2_rg1,
                          "Explicit-ready bank selection (not yet qualified)", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_ro_tag_detach", OPT_BOOL,
+                         &m_L2_config.m_ro_tag_detach,
+                         "Certified whole-commandlist RO pending Tag detach", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_ro_line_mshr_bypass", OPT_BOOL,
+                         &m_L2_config.m_ro_line_mshr_bypass,
+                         "Certified RO completions use shared D512 without native line records", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_ro_ranges", OPT_CSTR,
+                         &m_L2_config.m_ro_ranges,
+                         "RO certificate ranges; required when either RO mechanism is enabled", NULL);
+  option_parser_register(opp, "-gpgpu_ep_l2_ro_ranges_sha256", OPT_CSTR,
+                         &m_L2_config.m_ro_ranges_sha256,
+                         "RO certificate ranges_sha256; required when either RO mechanism is enabled", NULL);
+  option_parser_register(opp, "-gpgpu_ep_l2_ro_manifest", OPT_CSTR,
+                         &m_L2_config.m_ro_manifest,
+                         "RO certificate manifest; required when either RO mechanism is enabled", NULL);
+  option_parser_register(opp, "-gpgpu_ep_l2_ro_manifest_sha256", OPT_CSTR,
+                         &m_L2_config.m_ro_manifest_sha256,
+                         "RO certificate manifest_sha256; required when either RO mechanism is enabled", NULL);
+  option_parser_register(opp, "-gpgpu_ep_l2_ro_scope", OPT_CSTR,
+                         &m_L2_config.m_ro_scope,
+                         "RO certificate scope; required when either RO mechanism is enabled", NULL);
   option_parser_register(opp, "-gpgpu_ep_l2_diag_copy_free", OPT_BOOL,
                          &m_L2_config.m_ep_l2_diag_copy_free,
                          "L2-local S copy-service diagnostic; preserve copy values/placement, charge lower WB read", "0");
@@ -2366,6 +2387,25 @@ void shader_core_ctx::dump_warp_state(FILE *fout) const {
   fprintf(fout, "per warp functional simulation status:\n");
   for (unsigned w = 0; w < m_config->max_warps_per_shader; w++)
     m_warp[w]->print(fout);
+}
+
+bool gpgpu_sim::ro_enabled() const {
+  return m_memory_config->m_L2_config.ro_requested();
+}
+void gpgpu_sim::ro_bind_commandlist(const char *path) {
+  if (!ro_enabled()) return;
+  for (unsigned i=0;i<m_memory_config->m_n_mem_sub_partition;++i)
+    m_memory_sub_partition[i]->ro_bind_commandlist(path);
+}
+void gpgpu_sim::ro_begin_epoch() {
+  if (!ro_enabled()) return;
+  for (unsigned i=0;i<m_memory_config->m_n_mem_sub_partition;++i)
+    m_memory_sub_partition[i]->ro_begin_epoch();
+}
+void gpgpu_sim::ro_end_epoch() {
+  if (!ro_enabled()) return;
+  for (unsigned i=0;i<m_memory_config->m_n_mem_sub_partition;++i)
+    m_memory_sub_partition[i]->ro_end_epoch();
 }
 
 void gpgpu_sim::perf_memcpy_to_gpu(size_t dst_start_addr, size_t count) {

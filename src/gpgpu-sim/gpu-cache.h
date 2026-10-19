@@ -568,6 +568,7 @@ enum cache_type { NORMAL = 0, SECTOR };
 #define MAX_WARP_PER_SHADER 64
 
 class cache_config {
+  friend class ep_l2_ro_runtime;
  public:
   cache_config() {
     m_valid = false;
@@ -595,6 +596,8 @@ class cache_config {
     m_ep_l2_ms_observer = false;
     m_ep_l2_payload_policy = 0;
     m_ep_l2_feature_unified_payload = false;
+    m_ro_tag_detach=m_ro_line_mshr_bypass=false;
+    m_ro_ranges=m_ro_ranges_sha256=m_ro_manifest_sha256=m_ro_scope=m_ro_manifest=nullptr;
     m_ep_l2_feature_ro_pending_state = false;
     m_ep_l2_feature_tvd = false;
     m_ep_l2_feature_adaptive_policy = false;
@@ -868,6 +871,7 @@ class cache_config {
   }
   bool ep_l2_b0_stats_enabled() const { return m_ep_l2_b0_stats; }
   bool ep_l2_m0a_stats_enabled() const { return m_ep_l2_m0a_stats; }
+  bool ro_requested() const { return m_ro_tag_detach||m_ro_line_mshr_bypass; }
   unsigned ep_l2_ft_mode() const { return m_ep_l2_ft_mode; }
   // ALL_DATA is an independent reference scope on the B16 OFF background.
   // Expose a read-only compatibility query, never protected mutable fields.
@@ -877,7 +881,7 @@ class cache_config {
         !m_ep_l2_wb_local_cap && m_ep_l2_bank_ops == 1 &&
         !m_ep_l2_ideal_wb && !m_ep_l2_ideal_meta && !m_ep_l2_ideal_read_hit &&
         !m_ep_l2_mq2 && !m_ep_l2_rg1 && !m_ep_l2_diag_copy_free &&
-        !m_ep_l2_diag_l2_data_free && !m_ep_l2_ms_observer;
+        !m_ep_l2_diag_l2_data_free && !m_ep_l2_ms_observer && !ro_requested();
   }
   enum mshr_config_t get_mshr_type() const { return m_mshr_type; }
   void set_assoc(unsigned n) {
@@ -978,6 +982,8 @@ class cache_config {
   // Policy 0 is the only currently supported static policy.
   unsigned m_ep_l2_payload_policy;
   bool m_ep_l2_feature_unified_payload;
+  bool m_ro_tag_detach,m_ro_line_mshr_bypass;
+  char *m_ro_ranges,*m_ro_ranges_sha256,*m_ro_manifest_sha256,*m_ro_scope,*m_ro_manifest;
   bool m_ep_l2_feature_ro_pending_state;
   bool m_ep_l2_feature_tvd;
   bool m_ep_l2_feature_adaptive_policy;
@@ -1173,7 +1179,7 @@ class mshr_table {
         m_max_merged(max_merged),
         m_descriptor_pool_size(descriptor_pool_size),
         m_descriptor_per_line_cap(descriptor_per_line_cap),
-        m_ideal_meta(ideal_meta)
+        m_ideal_meta(ideal_meta), m_ro_descriptor_count(0)
 #if (tr1_hash_map_ismap == 0)
         ,
         m_data(2 * num_entries)
@@ -1243,6 +1249,30 @@ class mshr_table {
                : m_descriptor_pool.size() - m_free_descriptor_ids.size();
   }
   unsigned descriptor_pool_capacity() const { return m_descriptor_pool.size(); }
+  // Lane 3's completion objects borrow the SAME fixed descriptor free-list.
+  // No second requester pool, line-MSHR entry, or address-indexed RO entry.
+  struct ro_descriptor_handle {
+    unsigned id;
+    unsigned long long generation;
+    ro_descriptor_handle(unsigned i = (unsigned)-1,
+                         unsigned long long g = 0) : id(i), generation(g) {}
+    bool valid() const { return id != (unsigned)-1; }
+  };
+  bool reserve_ro_descriptor(new_addr_type line, mem_fetch *mf,
+                             const mem_access_sector_mask_t &sectors,
+                             ro_descriptor_handle &result);
+  bool ro_descriptor_live(const ro_descriptor_handle &handle) const;
+  void release_ro_descriptor(const ro_descriptor_handle &handle);
+  unsigned ro_targets_on_line(new_addr_type line) const;
+  unsigned targets_on_line(new_addr_type line) const;
+  bool reserve_ro_line(new_addr_type line);
+  void bind_ro_line(new_addr_type line, ep_l2::PayloadHandle h);
+  bool lookup_ro_line(new_addr_type line, ep_l2::PayloadHandle &h) const;
+  void release_ro_line(new_addr_type line);
+  void ro_line_issue(new_addr_type line, const mem_access_sector_mask_t &mask);
+  void ro_line_ready(new_addr_type line, const mem_access_sector_mask_t &mask);
+  mem_fetch *ro_descriptor_request(const ro_descriptor_handle &) const;
+  mem_access_sector_mask_t ro_descriptor_sectors(const ro_descriptor_handle &) const;
   void sector_masks(new_addr_type block_addr, mem_access_sector_mask_t &pending,
                     mem_access_sector_mask_t &issued,
                     mem_access_sector_mask_t &ready) const;
@@ -1277,13 +1307,17 @@ class mshr_table {
   const unsigned m_descriptor_pool_size;
   const unsigned m_descriptor_per_line_cap;
   const bool m_ideal_meta;
+  unsigned m_ro_descriptor_count;
   void ensure_descriptor_available();
 
   struct ep_l2_descriptor {
     mem_fetch *m_mf;
     mem_access_sector_mask_t m_sectors;
     bool m_response_queued;
-    ep_l2_descriptor() : m_mf(NULL), m_response_queued(false) {
+    bool m_ro_external;
+    new_addr_type m_ro_line;
+    unsigned long long m_ro_generation;
+    ep_l2_descriptor() : m_mf(NULL), m_response_queued(false), m_ro_external(false), m_ro_line(0), m_ro_generation(0) {
       m_sectors.reset();
     }
   };
@@ -1292,10 +1326,12 @@ class mshr_table {
     std::list<mem_fetch *> m_list;
     std::list<unsigned> m_descriptor_ids;
     bool m_has_atomic;
+    bool m_ro_line_owner;
+    ep_l2::PayloadHandle m_ro_handle;
     mem_access_sector_mask_t m_pending_sectors;
     mem_access_sector_mask_t m_issued_sectors;
     mem_access_sector_mask_t m_ready_sectors;
-    mshr_entry() : m_has_atomic(false) {
+    mshr_entry() : m_has_atomic(false), m_ro_line_owner(false) {
       m_pending_sectors.reset();
       m_issued_sectors.reset();
       m_ready_sectors.reset();
@@ -2135,6 +2171,7 @@ struct l2_access_plan {
   // additional admission input.
   mshr_table::ep_l2_block_reason ep_l2_mshr_block_reason;
   bool ep_l2_needs_lower_read;
+  bool ep_l2_ro_lookup_wait=false;
 };
 
 // C5/C6 metadata-only payload model. mem_fetch remains the functional data
@@ -2144,7 +2181,7 @@ class ep_l2_payload_store {
   static const unsigned k_physical_slots = 1152;
   static const unsigned k_resident_slots = 1024;
   static const unsigned k_bypass_slots = 128;
-  enum role { RESIDENT, BYPASS, WB, IDEAL_REFERENCE };
+  enum role { RESIDENT, BYPASS, WB, IDEAL_REFERENCE, RO };
   // A boolean cannot distinguish an ordinary target-payload retry from a
   // physical same-bank denial.  C6c needs that distinction both for correct
   // same-cycle admission and for meaningful B0-Banked telemetry.
@@ -2157,7 +2194,7 @@ class ep_l2_payload_store {
     FILL_WRITE,
     WB_READOUT,
     BYPASS_FILL,
-    BYPASS_READ
+    BYPASS_READ, RO_FILL_WRITE, RO_RESPONSE_READ
   };
   enum state {
     FREE,
@@ -2165,7 +2202,7 @@ class ep_l2_payload_store {
     RESIDENT_VALID,
     RESIDENT_DIRTY,
     BYPASS_FILL_PENDING,
-    BYPASS_READY, WB_RESERVED, WB_STAGED
+    BYPASS_READY, WB_RESERVED, WB_STAGED, RO_FILL_ATTACHED, RO_FILL_DETACHED
   };
   // This is the sole physical-payload identity.  mem_fetch already carries
   // the same pair across the lower request/response path.
@@ -2249,6 +2286,7 @@ class ep_l2_payload_store {
   }
   bool enabled() const { return m_mode != 0; }
   bool banked() const { return m_mode == 2; }
+  unsigned ft_mode() const {return m_ft_mode;}
   unsigned resident_used() const { return used(RESIDENT); }
   unsigned bypass_used() const { return used(BYPASS); }
   unsigned resident_free() const { return k_resident_slots - resident_used(); }
@@ -2391,6 +2429,10 @@ class ep_l2_payload_store {
     return m_slots.size() - (k_physical_slots + m_wbuf);
   }
   unsigned wb_used() const { return used(WB); }
+  unsigned ro_used() const {return used(RO);}
+  unsigned long long bank_ro_fill_write() const {return m_bank_ro_fill_write;}
+  unsigned long long bank_ro_response_read() const {return m_bank_ro_response_read;}
+  unsigned long long m_bank_ro_fill_write=0,m_bank_ro_response_read=0;
   unsigned pending_sector_count() const { unsigned n=0;
     for (const slot &s : m_slots) n += s.pending_sector_mask.count(); return n; }
   unsigned pending_resident_landings() const {
@@ -2400,10 +2442,11 @@ class ep_l2_payload_store {
           (s.status == RESIDENT_FILL_PENDING || s.pending_sector_mask.any());
     return n;
   }
-  unsigned free_slots() const { return physical_slots() - used(RESIDENT) - used(BYPASS) - used(WB); }
+  unsigned free_slots() const { return physical_slots() - used(RESIDENT) - used(BYPASS) - used(WB) - used(RO); }
   const slot &inspect(const payload_handle &h) const { assert(handle_live(h)); return m_slots[h.payload_id]; }
   slot &inspect_mutable(const payload_handle &h) { assert(handle_live(h)); return m_slots[h.payload_id]; }
   payload_handle preview_free(role r, unsigned bank = (unsigned)-1) const {
+    if(r==RO && m_ft_mode!=2)return payload_handle();
     for (unsigned id = 0; id < m_slots.size(); ++id) {
       if (m_slots[id].occupied() || (bank != (unsigned)-1 && id % 4 != bank)) continue;
       if (m_ft_mode == 1 && ((r == WB && id < wb_begin()) ||
@@ -2656,6 +2699,8 @@ class ep_l2_payload_store {
             (s.status != RESIDENT_FILL_PENDING && s.status != RESIDENT_VALID &&
              s.status != RESIDENT_DIRTY)) return false;
         if (!owners.insert(s.owner).second) return false;
+      } else if (s.allocation_role == RO) {
+        if(m_ft_mode!=2 || (s.status!=RO_FILL_ATTACHED && s.status!=RO_FILL_DETACHED)) return false;
       } else if (s.allocation_role == WB) {
         if (!m_ft_mode || (s.status != WB_RESERVED && s.status != WB_STAGED)) return false;
       } else {
@@ -2713,6 +2758,8 @@ class ep_l2_payload_store {
       case WB_READOUT: ++m_bank_wb_readout; break;
       case BYPASS_FILL: ++m_bank_bypass_fill; break;
       case BYPASS_READ: ++m_bank_bypass_read; break;
+      case RO_FILL_WRITE: ++m_bank_ro_fill_write;break;
+      case RO_RESPONSE_READ: ++m_bank_ro_response_read;break;
     }
   }
   struct pending_op {
@@ -2750,7 +2797,9 @@ class ep_l2_payload_store {
 
 /// Models second level shared cache with global write-back
 /// and write-allocate policies
+class ep_l2_ro_runtime;
 class l2_cache : public data_cache {
+  friend class ep_l2_ro_runtime;
  public:
   l2_cache(const char *name, cache_config &config, int core_id, int type_id,
            mem_fetch_interface *memport, mem_fetch_allocator *mfcreator,
@@ -2768,6 +2817,7 @@ class l2_cache : public data_cache {
         m_ep_l2_last_payload_request_result(ep_l2_payload_store::GRANTED),
         m_ep_l2_tag_payload(ep_l2_payload_store::k_resident_slots) {
     validate_ep_l2_mode_config();
+    ro_init();
     m_ep_l2_payload.set_rg1_enabled(config.m_ep_l2_rg1);
     m_ep_l2_payload.set_local_diagnostic(config.m_ep_l2_diag_copy_free ?
         ep_l2::mechanism_v1::COPY_FREE : config.m_ep_l2_diag_l2_data_free ?
@@ -2793,7 +2843,7 @@ class l2_cache : public data_cache {
       return !m_ft_pending.dirty || m_config.m_ep_l2_ft_mode==2 || m_ft_pending.phase>=2;
     return true;
   }
-  virtual ~l2_cache() {}
+  virtual ~l2_cache();
 
   virtual enum cache_request_status access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
@@ -2874,12 +2924,22 @@ class l2_cache : public data_cache {
       if ((!m_config.m_ep_l2_ft_mode && handle.payload_id != i) ||
           !m_ep_l2_payload.handle_live(handle) ||
           m_ep_l2_payload.resident(handle.payload_id).allocation_role !=
-              ep_l2_payload_store::RESIDENT)
+              ep_l2_payload_store::RESIDENT &&
+          !(m_ep_l2_payload.resident(handle.payload_id).allocation_role==ep_l2_payload_store::RO && m_ep_l2_payload.resident(handle.payload_id).status==ep_l2_payload_store::RO_FILL_ATTACHED))
         return false;
     }
     return true;
   }
 
+  bool ro_enabled() const {return m_ro!=nullptr;}
+  bool access_ready() const;
+  void ro_frontend_cycle(mem_fetch *);
+  void ro_bind_commandlist(const char *);
+  void ro_begin_epoch();
+  void ro_end_epoch();
+  bool ro_drained() const;
+  bool ro_return(mem_fetch *,unsigned long long);
+  void ro_print(FILE *,unsigned) const;
   bool ft_enabled() const { return m_config.m_ep_l2_ft_mode != 0; }
   void commit_next_access();
   mem_fetch *peek_next_access() const;
@@ -2954,9 +3014,9 @@ class l2_cache : public data_cache {
     return n;
   }
 
-  bool ft_drained() const { return !ft_enabled() || (!m_ft_pending.request &&
+  bool ft_drained() const { return ro_drained() && (!ft_enabled() || (!m_ft_pending.request &&
       m_ft_wb.empty() && m_ft_read_refs.empty() && !m_ep_l2_payload.wb_used() &&
-      !m_ft_quota.reserved && !m_ft_quota.live); }
+      !m_ft_quota.reserved && !m_ft_quota.live)); }
   bool lower_ready(mem_fetch *mf, unsigned long long cycle) override;
   bool lower_mq2_safe(mem_fetch *head, mem_fetch *next) override;
   void lower_accepted(mem_fetch *mf, unsigned long long cycle) override;
@@ -3078,7 +3138,11 @@ class l2_cache : public data_cache {
   std::map<mem_fetch *,ft_wb_record> m_ft_wb;
   std::map<mem_fetch *,ep_l2_payload_store::payload_handle> m_ft_read_refs;
   std::array<unsigned long long,4> m_ft_last_wb_versions;
+  ep_l2_ro_runtime *m_ro;
+  void ro_init();
   void validate_ep_l2_mode_config() const {
+    if(m_config.ro_requested() && (m_config.m_ep_l2_ft_mode!=2 || m_config.m_ep_l2_wbuf_entries!=16 || m_config.m_ep_l2_payload_mode!=2 || m_config.m_ep_l2_descriptor_pool_size!=512 || m_config.m_ep_l2_descriptor_per_line_cap!=32 || m_config.m_mshr_entries!=128 || m_config.m_ep_l2_wad_entries!=128 || m_config.m_ep_l2_bank_ops!=1 || m_config.m_ep_l2_static_s64 || m_config.m_ep_l2_wb_local_cap || m_config.m_ep_l2_mq2 || m_config.m_ep_l2_rg1 || m_config.m_ep_l2_ideal_wb || m_config.m_ep_l2_ideal_meta || m_config.m_ep_l2_ideal_read_hit || m_config.m_ep_l2_diag_copy_free || m_config.m_ep_l2_diag_l2_data_free)) {fprintf(stderr,"RO requires standalone U16 P1 D512/line128/WAD128\n");abort();}
+
     const bool local_diag = m_config.m_ep_l2_diag_copy_free || m_config.m_ep_l2_diag_l2_data_free;
     if ((m_config.m_ep_l2_diag_copy_free && m_config.m_ep_l2_diag_l2_data_free) ||
         ((local_diag || m_config.m_ep_l2_ms_observer) &&

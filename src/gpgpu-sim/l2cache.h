@@ -304,6 +304,12 @@ class memory_sub_partition {
 
   bool busy() const;
 
+  // One epoch for the entire trace commandlist, never per-kernel.
+  void ro_bind_commandlist(const char *path) { if (m_config->m_L2_config.ro_requested()) m_L2cache->ro_bind_commandlist(path); }
+  void ro_begin_epoch() { if (m_config->m_L2_config.ro_requested()) m_L2cache->ro_begin_epoch(); }
+  void ro_end_epoch() { if (m_config->m_L2_config.ro_requested()) m_L2cache->ro_end_epoch(); }
+  l2_cache *ro_cache_for_test() const { return m_L2cache; }
+
   void cache_cycle(unsigned cycle);
 
   bool full() const;

@@ -132,6 +132,8 @@ class mem_fetch {
   mem_fetch *get_original_wr_mf() { return original_wr_mf; }
 
   void set_ft_wb_data(const std::array<unsigned long long,4> &v) { m_ft_wb_data = v; m_ft_wb_data_valid = true; }
+  bool ro_lower_packet() const {return m_ro_lower_packet;}
+  void set_ro_lower_packet(){m_ro_lower_packet=true;}
   bool has_ft_wb_data() const { return m_ft_wb_data_valid; }
   const std::array<unsigned long long,4> &get_ft_wb_data() const { assert(m_ft_wb_data_valid); return m_ft_wb_data; }
 
@@ -152,6 +154,7 @@ class mem_fetch {
  private:
   std::array<unsigned long long,4> m_ft_wb_data;
   bool m_ft_wb_data_valid;
+  bool m_ro_lower_packet=false;
   // request source information
   unsigned m_request_uid;
   unsigned m_sid;

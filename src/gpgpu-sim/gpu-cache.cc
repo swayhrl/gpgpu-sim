@@ -686,6 +686,7 @@ mshr_table::ep_l2_block_reason mshr_table::full_reason(
   // RAW/WAR/atomic handling and response retirement remain the ordinary path.
   if (m_ideal_meta) return EP_L2_BLOCK_NONE;
   table::const_iterator i = m_data.find(block_addr);
+  if (m_descriptor_pool_size && ro_targets_on_line(block_addr)+(i==m_data.end()?0:i->second.m_list.size())>=m_descriptor_per_line_cap) return EP_L2_BLOCK_PER_ADDRESS_CAP;
   if (i != m_data.end()) {
     const unsigned per_line_limit =
         m_descriptor_pool_size ? m_descriptor_per_line_cap : m_max_merged;
@@ -699,6 +700,8 @@ mshr_table::ep_l2_block_reason mshr_table::full_reason(
     return EP_L2_BLOCK_DESCRIPTOR_POOL_FULL;
   return EP_L2_BLOCK_NONE;
 }
+
+#include "ep-l2-ro-mshr.inc"
 
 void mshr_table::ensure_descriptor_available() {
   if (!m_free_descriptor_ids.empty()) return;
@@ -927,10 +930,11 @@ void mshr_table::commit_next_access() {
     assert(mf != entry->second.m_list.end());
     entry->second.m_descriptor_ids.erase(id);
     entry->second.m_list.erase(mf);
-    descriptor = ep_l2_descriptor();
+    const auto generation=descriptor.m_ro_generation;
+    descriptor = ep_l2_descriptor();descriptor.m_ro_generation=generation;
     m_free_descriptor_ids.push_back(ready.m_descriptor_id);
     m_current_descriptor_response.pop_front();
-    if (entry->second.m_list.empty()) m_data.erase(entry);
+    if (entry->second.m_list.empty() && !entry->second.m_ro_line_owner) m_data.erase(entry);
     return;
   }
 
@@ -2491,10 +2495,14 @@ enum cache_request_status l1_cache::access(new_addr_type addr, mem_fetch *mf,
 // The l2 cache access function calls the base data_cache access
 // implementation.  When the L2 needs to diverge from L1, L2 specific
 // changes should be made here.
+// Runtime type must be complete before production access/preview use it.
+#include "ep-l2-ro-runtime.inc"
+
 enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events) {
-  if (ft_enabled()) return ft_access(addr, mf, time, events);
+  if(m_ro)m_ro->check_access(mf);
+  if(ft_enabled()) {if(m_ro && !m_ro->query_admissible(mf))return RESERVATION_FAIL;auto result=ft_access(addr,mf,time,events);if(m_ro && result!=RESERVATION_FAIL)m_ro->record_accepted(mf);return result;}
   m_ep_l2_last_payload_request_result = ep_l2_payload_store::GRANTED;
   unsigned payload_index = (unsigned)-1;
   bool payload_reserved = false;
@@ -2688,6 +2696,7 @@ void l2_cache::fill(mem_fetch *mf, unsigned time) {
 void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
                               l2_access_plan &plan) const {
   plan = l2_access_plan();
+  if(m_ro && m_ro->preview(mf,plan))return;
   if (!exact_l2_admission()) return;
 
   plan.exact = true;

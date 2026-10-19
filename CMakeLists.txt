@@ -237,3 +237,13 @@ foreach(ms_test ms_local_service ms_partition ms_mode_guard)
       ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
 endforeach()
 add_executable(ep_l2_ms_observer EXCLUDE_FROM_ALL tests/ep_l2/test_ms_observer.cc)
+
+# C bounded production fixtures integrated by A. Bank facade needs source
+# extraction, not a direct production target; see prepare_ro_bank_progress.py.
+foreach(ro_test ro_runtime ro_partition ro_transactions ro_store_port ro_oracle_certificate ro_epoch_entry)
+  add_executable(ep_l2_${ro_test} EXCLUDE_FROM_ALL tests/ep_l2/test_${ro_test}.cc)
+  target_include_directories(ep_l2_${ro_test} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+  target_link_libraries(ep_l2_${ro_test} PRIVATE -Wl,--start-group
+      entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
+      ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
+endforeach()

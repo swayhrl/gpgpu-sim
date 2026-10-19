@@ -1,0 +1,28 @@
+{
+  "schema": "A_RO_SOURCE_REVIEW_ONLY_V1",
+  "UTC": "2026-10-19T14:04:22.756309+00:00",
+  "parent": "17e7e224954e44a968a0447bcdfea91e3b2e5a96",
+  "C_Core": "b1d42152805e22b6a12774f37351926b6fcbeaf5",
+  "C_Framework": "d98ffab2f27d07f8b20f6c8ea63dcb4091c4c78b",
+  "actual_checks": [
+    {
+      "kind": "PYTHON_AST_ONLY",
+      "path": "tests/ep_l2/run_ro_runtime.py",
+      "sha256": "a18846c682e4805c8cf063cc3c0876d9151335e435046f5d47a22688e9f9781d",
+      "result": "PARSED_NOT_EXECUTED"
+    },
+    {
+      "kind": "PYTHON_AST_ONLY",
+      "path": "tests/ep_l2/prepare_ro_bank_progress.py",
+      "sha256": "bfaeca4c69e47b9adcffdc924fb81a6574b11e44acc083a38813418be1d754c2",
+      "result": "PARSED_NOT_EXECUTED"
+    }
+  ],
+  "compiler_starts": 0,
+  "native_executions": 0,
+  "full_application_starts": 0,
+  "runtime_qualified": false,
+  "all_native_scope": "NOT_COMPILED_NOT_RUN",
+  "required_build_owner": "A_AFTER_E_FRESH_ADMISSION",
+  "R1_entry_unchanged": true
+}
