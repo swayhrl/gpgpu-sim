@@ -102,10 +102,16 @@ void l2_cache::tvd_response_commit(mem_fetch *mf, unsigned long long now) {
   assert(m_tvd->live(ticket) && m_tvd->at(ticket.index).payload==h);
   const auto &e=m_tvd->at(ticket.index);
   const auto &slot=m_ep_l2_payload.inspect(h);
-  if (!slot.pins && slot.allocation_role==ep_l2_payload_store::WB &&
-      (e.status==tvd_directory::WB_INFLIGHT || e.status==tvd_directory::WB_COMPLETE))
+  // A reader may pin either a WB-role pending victim OR a TVD-role already
+  // accepted victim. Completion while either is pinned must eventually
+  // publish TVD_VALID; restricting this to roleWB strands TVD_INFLIGHT state.
+  if (!slot.pins &&
+      (e.status==tvd_directory::WB_INFLIGHT || e.status==tvd_directory::WB_COMPLETE)) {
+    assert(slot.allocation_role==ep_l2_payload_store::WB ||
+           slot.allocation_role==ep_l2_payload_store::TVD);
     m_ep_l2_payload.transfer(h,ep_l2_payload_store::TVD,
         e.status==tvd_directory::WB_COMPLETE?ep_l2_payload_store::TVD_VALID:ep_l2_payload_store::TVD_INFLIGHT);
+  }
   m_tvd_read.reset(); m_tvd_lookup = NULL;
   ++m_ft_stats.accepted;
 }

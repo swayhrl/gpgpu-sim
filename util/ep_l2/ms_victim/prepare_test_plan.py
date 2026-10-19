@@ -24,6 +24,8 @@ def main():
     identity = {'base_config': str(base), 'base_config_sha256': hashlib.sha256(base.read_bytes()).hexdigest(),
                 'parent_core': '84359d4ba492acb639a2092fa271e9169038bf7d',
                 'A_interface': '980072bbbcbd4ad00cdf85650283931e94cad395',
+                'native_integration_base_core': '44c940b748fceaec8f21fa2b443907d5afd2756b',
+                'public_adapter': 'docs/ep_l2/ms_victim/adapter_A44_r3/A_PUBLIC_HOOKS.patch',
                 'runtime_framework_parent': '197741be9be9b8e390a557d639503b416d8e95f0',
                 'vendor_pybind11': 'f90c430c3a1ce8f08c09942a5a1c3a797bb2295b',
                 'built_binary': None, 'native_tests_executed': False, 'full_apps': 0,
@@ -52,12 +54,13 @@ def main():
                       scope='real native1168 allocator, reciprocal64/1104 quotas/credit/rollback; not cache-response proof'))
     for profile, case in [('off', 'cycle'), ('clean', 'cycle'), ('off', 'stream'), ('clean', 'stream'),
                           ('clean', 'sectors'), ('clean', 'partial'), ('dirty_full', 'dirty'),
-                          ('dirty_full','dirty_pending'), ('clean','fixed_quota'),('fixed64','fixed_quota64')]:
+                          ('dirty_full','dirty_pending'), ('dirty_full','dirty_icnt_pinned'),
+                          ('clean','clean_wb_reuse'), ('clean','fixed_quota'),('fixed64','fixed_quota64')]:
         cases.append({'name': profile + '__' + case, 'status': 'NOT_COMPILED_NOT_RUN',
                       'executable': 'A_BOUND_native_victim_fixture',
                       'arguments': [str(base), configs[profile]['path'], '2', '16', '0', '0', '1', case],
                       'scope': 'real1024Tag1168payloadD512 partition; controlled external memory versions, not native DRAM timing'})
-    for selector in ('--study-clean', '--study-dirty-inflight','--candidate62-gates'):
+    for selector in ('--study-clean', '--study-dirty-inflight','--study-dirty-boundaries','--candidate62-gates'):
         cases.append({'name': selector, 'status': 'NOT_COMPILED_NOT_RUN', 'executable': 'A_BOUND_native_tvd_production',
                       'arguments': [str(base), configs['off']['path'], selector],
                       'scope': 'native partition/simpleDRAM; tiny and primary geometries labelled in source'})

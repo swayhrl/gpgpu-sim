@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Produce, never apply, B's public hooks against exact Core84359d4 for A.
+"""Produce, never apply, B's public hooks against an exact immutable Core for A.
 
 Historical TVD is reused selectively. Current atomic masks/completion, Tag
 victim identity binding, quota, RG1 and bypass fixes remain in their parent.
@@ -20,11 +20,13 @@ FILES = ['src/gpgpu-sim/' + p for p in ('gpu-cache.h', 'gpu-cache.cc', 'gpu-sim.
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--out', type=Path, required=True)
+    p.add_argument('--base', default=BASE, help='exact40-hex immutable Core; default historical production parent')
     a = p.parse_args()
     root = Path(__file__).resolve().parents[3]
+    assert len(a.base)==40 and all(c in '0123456789abcdef' for c in a.base)
     def blob(commit, name):
         return subprocess.check_output(['git', 'show', commit + ':' + name], cwd=root).decode()
-    original = {name: blob(BASE, name) for name in FILES}
+    original = {name: blob(a.base, name) for name in FILES}
     text = dict(original)
     def replace(name, before, after, count=1):
         full = 'src/gpgpu-sim/' + name
@@ -200,13 +202,23 @@ def main():
     extend(text)
     from fixed_adapter import extend as extend_fixed
     extend_fixed(text)
+    if 'm_ep_l2_diag_copy_free' in original['src/gpgpu-sim/gpu-cache.h']:
+        # A's exact44c940b7 independent diagnostic/observer source is retained.
+        # Its old combination guard cannot know these new switches. Do not
+        # silently open TVD+ideal or mislabel observer coverage of this path.
+        replace('gpu-cache.h', '  void validate_ep_l2_mode_config() const {', '''  void validate_ep_l2_mode_config() const {
+    if ((m_config.m_ep_l2_tvd_clean || m_config.m_ep_l2_tvd_dirty) &&
+        (m_config.m_ep_l2_diag_copy_free || m_config.m_ep_l2_diag_l2_data_free ||
+         m_config.m_ep_l2_ms_observer)) {
+      fprintf(stderr,"TVD study: diagnostic/observer combination not qualified; use isolated finite profile\\n");abort();
+    }''')
     patch = ''.join('diff --git a/{0} b/{0}\n'.format(name) + ''.join(difflib.unified_diff(original[name].splitlines(True), text[name].splitlines(True), fromfile='a/'+name, tofile='b/'+name)) for name in FILES if original[name] != text[name])
     # Git accepts an empty context line without a redundant space prefix;
     # preserve exact blank source context without embedding trailing blanks.
     patch=patch.replace('\n \n','\n\n')
     a.out.mkdir(parents=True, exist_ok=True)
     (a.out / 'A_PUBLIC_HOOKS.patch').write_text(patch)
-    manifest = dict(base_core=BASE, historical_module=OLD, public_files_mutated=False,
+    manifest = dict(base_core=a.base, historical_module=OLD, public_files_mutated=False,
                     patch_applied=False, compiled=False, production_tests_run=False,
                     patch_sha256=hashlib.sha256(patch.encode()).hexdigest(),
                     files={name: dict(base_sha256=hashlib.sha256(original[name].encode()).hexdigest(),

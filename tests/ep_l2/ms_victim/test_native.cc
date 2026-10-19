@@ -125,6 +125,107 @@ static void dirty_pending_complete_with_reader(char **argv) {
   puts("NATIVE_VICTIM|case=dirty_pending_lower_accept_done_while_reader_queued|status=PASS|component_contender=PUBLIC_ARBITER");
 }
 
+static void clean_only_late_wb_after_slot_reuse(char **argv) {
+  victim_fixture f(argv);
+  for(unsigned i=0;i<17;++i)f.write(i*stride);
+  auto dir=f.cache->tvd_for_test();const auto t=dir->find(0);
+  assert(dir->live(t) && dir->at(t.index).status==l2_cache::tvd_directory::WB_INFLIGHT);
+  assert(!dir->at(t.index).payload.valid()); // CLEAN_ONLY WAD, not dirty retain.
+  auto packet=std::find_if(f.wb.begin(),f.wb.end(),[](mem_fetch *p){return p->get_addr()==0;});
+  assert(packet!=f.wb.end());
+  const auto snapshot=(*packet)->get_ft_wb_data();
+  const ep_l2::PayloadHandle old((*packet)->get_ep_l2_payload_id(),(*packet)->get_ep_l2_payload_generation());
+  auto &ram=f.cache->ep_l2_payload_for_test();assert(!ram.handle_live(old));
+  f.read(128); // Actual native fill of a different set, same physical bank.
+  ep_l2::PayloadHandle reused;
+  for(unsigned i=0;i<1024;++i) {
+    auto x=f.cache->ep_l2_tag_payload_handle_for_test(i);
+    if(ram.handle_owner_matches(x,128))reused=x;
+  }
+  assert(reused.valid() && reused.payload_id==old.payload_id && reused.generation!=old.generation);
+  const auto saved=ram.inspect(reused).versions;const auto lower_before=f.lower_read_packets;
+  auto same_address=f.make(0,false);const auto uid=same_address->get_request_uid();f.send(same_address);
+  for(unsigned n=0;n<8;++n)f.step();
+  assert(!f.replies.count(uid) && f.lower_read_packets==lower_before);
+  assert((*packet)->get_ft_wb_data()==snapshot && dir->live(t));
+  f.sp->set_done(*packet);delete *packet;f.wb.erase(packet);++f.completed_wb;
+  assert(!dir->live(t) && ram.handle_owner_matches(reused,128));
+  assert(ram.inspect(reused).versions==saved && !ram.handle_live(old));
+  f.wait(uid);assert(f.lower_read_packets==lower_before+1);
+  f.read(128);assert(f.lower_read_packets==lower_before+1);
+  f.finish();
+  puts("NATIVE_VICTIM|case=clean_only_old_WB_packet_done_after_actual_slot_generation_reuse|status=PASS");
+}
+
+static void dirty_icnt_full_with_reader(char **argv) {
+  victim_fixture f(argv);
+  for(unsigned i=0;i<17;++i)f.write(i*stride);
+  auto dir=f.cache->tvd_for_test();const auto t=dir->find(0);
+  assert(dir->live(t) && dir->at(t.index).status==l2_cache::tvd_directory::WB_INFLIGHT);
+  const auto h=dir->at(t.index).payload;auto &ram=f.cache->ep_l2_payload_for_test();
+  assert(ram.inspect(h).allocation_role==ep_l2_payload_store::TVD);
+  const auto saved=ram.inspect(h).versions;
+  // Fill63 of the actual64 response-FIFO entries with genuine cache returns;
+  // no synthetic response insertion or additional response carrier.
+  for(unsigned i=1;i<=63;++i) {
+    auto cold=f.make(i*128,false);f.send(cold);
+    for(unsigned n=0;n<20000 && f.sp->ep_l2_l2icnt_occupancy()<i;++n) {
+      f.step(false);f.return_all_reads_reverse();
+    }
+    assert(f.sp->ep_l2_l2icnt_occupancy()==i);
+  }
+  // Second way of set1 maps to a different physical bank than old victim0.
+  const new_addr_type last_address=stride+128;
+  auto last=f.make(last_address,false);f.send(last);
+  for(unsigned n=0;n<20000 && !f.reads.count(last_address);++n)f.step(false);
+  assert(f.reads.count(last_address));
+  ep_l2::PayloadHandle last_handle;
+  for(unsigned i=0;i<1024;++i) {
+    auto x=f.cache->ep_l2_tag_payload_handle_for_test(i);
+    if(ram.handle_owner_matches(x,last_address))last_handle=x;
+  }
+  assert(last_handle.valid() && last_handle.payload_id%4!=h.payload_id%4);
+  auto read=f.make(0,false);const auto uid=read->get_request_uid();f.send(read);
+  for(unsigned n=0;n<1000 && !f.cache->tvd_lookup_started_for_test(read);++n)f.step(false);
+  assert(f.cache->tvd_lookup_started_for_test(read));
+  // Real ReturnQ fill at N readies another response for N+1, before that
+  // cycle's victim retry. Explicit public-arbiter contention denies the victim
+  // at N; no application opportunity is inferred from this constructed case.
+  f.return_read(last_address);
+  ep_l2::PayloadHandle contender;
+  for(unsigned i=0;i<1024;++i) {
+    auto x=f.cache->ep_l2_tag_payload_handle_for_test(i);
+    if(ram.handle_live(x) && x.payload_id%4==h.payload_id%4 && x!=h) {contender=x;break;}
+  }
+  assert(contender.valid() && ram.request(contender,false,f.gpu->gpu_sim_cycle)==ep_l2_payload_store::GRANTED);
+  const auto lower_before=f.lower_read_packets;
+  const auto served_before=dir->stats().read_responses;
+  f.step(false);
+  assert(dir->at(t.index).readers==1 && ram.inspect(h).pins==1);
+  assert(f.sp->ep_l2_l2icnt_occupancy()==63 && ram.pending_operations()==1);
+  f.step(false); // Native last response fills the FIFO before victim retry.
+  assert(f.sp->ep_l2_l2icnt_occupancy()==64);
+  for(unsigned n=0;n<4;++n) {
+    f.step(false);
+    assert(dir->at(t.index).readers==1 && ram.inspect(h).pins==1);
+    assert(ram.pending_operations()==1 && dir->stats().read_responses==served_before);
+    assert(ram.inspect(h).versions==saved && ram.handle_live(h));
+  }
+  auto packet=std::find_if(f.wb.begin(),f.wb.end(),[](mem_fetch *p){return p->get_addr()==0;});
+  assert(packet!=f.wb.end() && (*packet)->get_ft_wb_data()==saved);
+  f.sp->set_done(*packet);delete *packet;f.wb.erase(packet);++f.completed_wb;
+  assert(dir->at(t.index).status==l2_cache::tvd_directory::WB_COMPLETE);
+  // Existing TVD-role slot was INFLIGHT when pinned. Last response commit,
+  // not a free early unpin, must finish its state after ICNT space returns.
+  assert(ram.inspect(h).status==ep_l2_payload_store::TVD_INFLIGHT && ram.inspect(h).pins==1);
+  f.collect();f.wait(uid,false);
+  assert(ram.inspect(h).status==ep_l2_payload_store::TVD_VALID && !ram.inspect(h).pins);
+  assert(!ram.pending_operations() && f.lower_read_packets==lower_before);
+  assert(dir->stats().read_responses==served_before+1);
+  f.finish();
+  puts("NATIVE_VICTIM|case=dirty_inflight_selected_read_ICNT_full_done_last_unpin|status=PASS|old_role_guard_would_leave_INFLIGHT=1");
+}
+
 static void fixed_capacity_capture(char **argv,unsigned expected_fixed) {
   victim_fixture f(argv);const auto fixed=f.cache->ep_l2_payload_for_test().fixed_victim_entries();
   assert(f.cache->tvd_enabled() && fixed==expected_fixed);
@@ -153,6 +254,8 @@ int main(int argc,char **argv) {
   else if(!strcmp(argv[8],"partial"))missing_sector(argv);
   else if(!strcmp(argv[8],"dirty"))dirty_snapshot(argv);
   else if(!strcmp(argv[8],"dirty_pending"))dirty_pending_complete_with_reader(argv);
+  else if(!strcmp(argv[8],"clean_wb_reuse"))clean_only_late_wb_after_slot_reuse(argv);
+  else if(!strcmp(argv[8],"dirty_icnt_pinned"))dirty_icnt_full_with_reader(argv);
   else if(!strcmp(argv[8],"fixed_quota"))fixed_capacity_capture(argv,0);
   else if(!strcmp(argv[8],"fixed_quota64"))fixed_capacity_capture(argv,64);
   else return 2;
