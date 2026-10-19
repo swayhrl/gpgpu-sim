@@ -1,0 +1,25 @@
+{
+  "status": "PASS_TEXT_ONLY_PATCH_CHECK_AND_PYTHON_SOURCE_PARSE",
+  "UTC": "2026-10-19T13:02:06.592759+00:00",
+  "native_compile_attempts": 0,
+  "native_test_runs": 0,
+  "public_files_unchanged": [
+    "src/gpgpu-sim/gpu-cache.h",
+    "src/gpgpu-sim/gpu-cache.cc",
+    "src/gpgpu-sim/gpu-sim.cc",
+    "src/gpgpu-sim/l2cache.cc",
+    "src/gpgpu-sim/ep-l2-ft-cache.inc"
+  ],
+  "git_apply_check": true,
+  "patch_applied": false,
+  "A_interface_commit": "980072bbbcbd4ad00cdf85650283931e94cad395",
+  "A_interface_read": true,
+  "source_counter_claims": "Expected assertions only; no observed cache hit/read reduction yet",
+  "planning_processes": 11,
+  "source_tool_repairs": [
+    "Match actual IDEAL_REFERENCE role in current parent",
+    "Preserve quota_reserved in current parent",
+    "Disambiguate host-prefill versus ft_access owner literals",
+    "Explicit <memory> dependency in proposed public header and <algorithm> in new native test; do not depend on transitive includes"
+  ]
+}

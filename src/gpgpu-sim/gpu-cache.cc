@@ -2634,9 +2634,22 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
 }
 
 void l2_cache::ep_l2_wad_complete(new_addr_type block_addr,
-                                   unsigned long long cycle) {
+                                   unsigned long long cycle, unsigned completing_request_uid) {
   if (!ep_l2_wad_enabled()) return;
   const new_addr_type normalized = m_config.block_addr(block_addr);
+  tvd_directory::ticket completion;
+  if (m_tvd) {
+    // One explicitly costed completion-address CAM path, separate from the
+    // one-cycle frontend victim CAM. Never invent extra ICNT header bits.
+    assert(m_tvd_completion_cam_cycle!=cycle && "one completion CAM query per physical cycle");
+    m_tvd_completion_cam_cycle=cycle;
+    completion=m_tvd->find(normalized);
+    // Existing packet UID plus selected row state reject a late/different WB
+    // before timestamp, directory or payload mutation. Original UID wrap
+    // limitations are inherited; no generation field is narrowed here.
+    assert(m_tvd->writeback_matches(completion,normalized,completing_request_uid) &&
+           m_tvd->at(completion.index).status==tvd_directory::WB_INFLIGHT);
+  }
   std::map<new_addr_type, unsigned long long>::iterator birth =
       m_ep_l2_wad_birth_cycle.find(normalized);
   assert(birth != m_ep_l2_wad_birth_cycle.end());
@@ -2650,8 +2663,16 @@ void l2_cache::ep_l2_wad_complete(new_addr_type block_addr,
   m_ep_l2_wad_lifetime_max = std::max(m_ep_l2_wad_lifetime_max, lifetime);
   ++m_ep_l2_wad_lifetime_hist[lifetime];
   m_ep_l2_wad_birth_cycle.erase(birth);
-  const size_t erased = m_ep_l2_wad_entries_live.erase(normalized);
-  assert(erased == 1);
+  if (m_tvd) {
+    const tvd_directory::ticket t=completion;
+    assert(m_tvd->live(t) && m_tvd->at(t.index).line==normalized);
+    const auto h=m_tvd->at(t.index).payload;
+    assert(m_tvd->set_done(t,cycle)==tvd_directory::OK);
+    ++m_tvd_indexed_completions;
+    if (h.valid()) m_ep_l2_payload.transfer(h,ep_l2_payload_store::TVD,ep_l2_payload_store::TVD_VALID);
+  } else {
+    const size_t erased=m_ep_l2_wad_entries_live.erase(normalized); assert(erased==1);
+  }
 }
 
 void l2_cache::fill(mem_fetch *mf, unsigned time) {
@@ -2696,7 +2717,9 @@ void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
   plan.l1_writeback_absorbed = mf->get_access_type() == L1_WRBK_ACC;
 
   new_addr_type block_addr = m_config.block_addr(addr);
-  if (ep_l2_wad_enabled() && plan.is_read && ep_l2_wad_contains(block_addr)) {
+  if (tvd_write_candidate(mf)) { plan.ep_l2_tvd_candidate=true; plan.exact=false; return; }
+  if (ep_l2_wad_enabled() && plan.is_read &&
+      (m_tvd ? tvd_cached_wad_contains(mf,block_addr) : ep_l2_wad_contains(block_addr))) {
     // A WAD owns this old line until real writeback completion.  Treat the
     // frontend request as non-admissible before it can reach tag mutation.
     plan.probe_status = RESERVATION_FAIL;
@@ -2716,7 +2739,7 @@ void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
     plan.victim_valid = m_tag_array->block_is_valid(cache_index);
     plan.victim_dirty = m_tag_array->block_is_modified(cache_index);
     if (plan.victim_dirty && ep_l2_wad_enabled() &&
-        m_ep_l2_wad_entries_live.size() >= m_config.m_ep_l2_wad_entries &&
+        (m_tvd ? m_tvd->preview_install(m_tag_array->get_block(cache_index)->m_block_addr,true,true).status != tvd_directory::OK : m_ep_l2_wad_entries_live.size() >= m_config.m_ep_l2_wad_entries) &&
         !(ft_enabled() && m_ft_pending.request == mf && m_ft_pending.wad)) {
       // The required WAD must be allocated before data_cache::access()
       // destructively replaces this victim.
@@ -2925,3 +2948,4 @@ void tex_cache::display_state(FILE *fp) const {
 /******************************************************************************************************************************************/
 
 #include "ep-l2-ft-cache.inc"
+#include "ep-l2-tvd-cache.inc"

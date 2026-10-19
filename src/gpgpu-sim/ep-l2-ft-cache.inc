@@ -18,7 +18,7 @@ bool l2_cache::ft_try_force_tag_access(new_addr_type addr, unsigned time,
   // This is untimed host initialization, not a source of GPU bank grants or
   // free WB service. Fail BEFORE changing Tag, generation, owner or offset.
   if (!ft_enabled() || m_config.m_cache_type != SECTOR || mask.count() != 1 ||
-      !ft_drained() || !m_ep_l2_wad_entries_live.empty() ||
+      !ft_drained() || ep_l2_wad_occupancy() || m_tvd_lookup || m_tvd_read ||
       mshr_entries_used() || !miss_queue_empty() ||
       m_ep_l2_payload.pending_sector_count() || m_ep_l2_payload.pending_operations())
     return false;
@@ -26,7 +26,8 @@ bool l2_cache::ft_try_force_tag_access(new_addr_type addr, unsigned time,
   unsigned index = (unsigned)-1;
   const cache_request_status status = m_tag_array->probe(owner, index, mask, true, true);
   if (status == RESERVATION_FAIL || status == HIT_RESERVED ||
-      index >= m_config.get_num_lines() || m_tag_array->block_is_modified(index))
+      index >= m_config.get_num_lines() || m_tag_array->block_is_modified(index) ||
+      m_tag_array->get_block(index)->is_reserved_line())
     return false;
   ep_l2::PayloadHandle handle = tag_payload_handle(index);
   const bool live = m_ep_l2_payload.handle_live(handle);
@@ -37,31 +38,65 @@ bool l2_cache::ft_try_force_tag_access(new_addr_type addr, unsigned time,
         handle.payload_id % 4 != index % 4)
       return false;
   }
+  // TVD is another visibility of this exact host address. Preview all guards
+  // before removing its optional copy; failed try-prefill changes no state.
+  const auto alias = m_tvd ? m_tvd->find(owner) : tvd_directory::ticket();
+  const bool has_alias = m_tvd && m_tvd->live(alias);
+  ep_l2::PayloadHandle alias_payload;
+  if (has_alias) {
+    const auto &entry = m_tvd->at(alias.index);
+    alias_payload = entry.payload;
+    if (status != MISS || !entry.reclaimable() ||
+        entry.incarnation == std::numeric_limits<std::uint64_t>::max() ||
+        !m_ep_l2_payload.handle_owner_matches(alias_payload, owner))
+      return false;
+    const auto &slot = m_ep_l2_payload.inspect(alias_payload);
+    if (slot.allocation_role != ep_l2_payload_store::TVD || slot.pins ||
+        slot.pending_sector_mask.any() ||
+        alias_payload.generation == std::numeric_limits<unsigned>::max())
+      return false;
+  }
+  unsigned landing = index;
   if (status == MISS) {
-    unsigned landing = index;
     if (live) {
       // release and reserve each advance the generation; check both before
       // mutating either visibility. Epoch exhaustion is a refusal, not reuse.
       if (handle.generation >= std::numeric_limits<unsigned>::max() - 1)
         return false;
       landing = handle.payload_id;
-      m_ep_l2_payload.release(handle);
     } else if (m_config.m_ep_l2_ft_mode == 2) {
       const ep_l2::PayloadHandle free = m_ep_l2_payload.preview_free(
           ep_l2_payload_store::RESIDENT, index % 4);
-      if (!free.valid()) return false;
-      landing = free.payload_id;
+      if (free.valid()) {
+        if (!free.generation) return false; // preview must not wrap generation
+        landing = free.payload_id;
+      } else {
+        if (!alias_payload.valid() || alias_payload.payload_id % 4 != index % 4 ||
+            alias_payload.generation >= std::numeric_limits<unsigned>::max() - 1)
+          return false;
+        landing = alias_payload.payload_id;
+      }
     } else {
       const ep_l2_payload_store::slot &free = m_ep_l2_payload.resident(landing);
       if (free.occupied() || free.generation == std::numeric_limits<unsigned>::max())
         return false;
     }
     assert(landing % 4 == index % 4);
+  } else if (!m_ep_l2_payload.handle_owner_matches(handle, owner)) {
+    return false;
+  }
+  // Commit starts here: every resource and refusal has been previewed above.
+  if (has_alias) {
+    ep_l2::PayloadHandle released;
+    assert(m_tvd->reclaim(alias, released, ft_physical_cycle()) == tvd_directory::OK);
+    assert(released == alias_payload);
+    m_ep_l2_payload.release(released);
+  }
+  if (status == MISS) {
+    if (live) m_ep_l2_payload.release(handle);
     handle = m_ep_l2_payload.reserve(landing, ep_l2_payload_store::RESIDENT,
         owner, ep_l2_payload_store::RESIDENT_VALID);
     set_tag_payload_handle(index, handle);
-  } else {
-    if (!m_ep_l2_payload.handle_owner_matches(handle, owner)) return false;
   }
   baseline_cache::force_tag_access(addr, time, mask);
   unsigned actual_index = (unsigned)-1;
@@ -225,7 +260,11 @@ void l2_cache::ft_rollback() {
     p.quota_reserved = false; ++m_ft_quota.rollbacks;
   }
   if (p.wad) {
-    assert(m_ep_l2_wad_entries_live.erase(p.victim_address) == 1);
+    if (m_tvd) {
+      assert(m_tvd->rollback_staged(p.wad_ticket, ft_physical_cycle())==tvd_directory::OK);
+      ++m_tvd_indexed_rollbacks;
+    }
+    else assert(m_ep_l2_wad_entries_live.erase(p.victim_address)==1);
     assert(m_ep_l2_wad_birth_cycle.erase(p.victim_address) == 1);
   }
   if (p.staging.valid() && p.staging != p.victim && m_ep_l2_payload.handle_live(p.staging)) {
@@ -250,11 +289,16 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   const unsigned long long physical_cycle = ft_physical_cycle();
   m_ep_l2_last_payload_request_result = ep_l2_payload_store::GRANTED;
   const new_addr_type owner = m_config.block_addr(addr);
+  if (tvd_write_candidate(mf) && !tvd_promote(mf,time,events)) return RESERVATION_FAIL;
   unsigned index = (unsigned)-1;
   cache_request_status probe = m_tag_array->probe(owner, index, mf, mf->is_write(), true);
   if (probe == RESERVATION_FAIL) return RESERVATION_FAIL;
+  if (m_tvd && probe == MISS &&
+      !(m_tvd_lookup == mf && m_tvd_lookup_done)) return RESERVATION_FAIL;
   if (m_ft_pending.request && m_ft_pending.request != mf) return RESERVATION_FAIL;
-  if (ep_l2_wad_contains(owner)) { ++m_ep_l2_wad_same_address_wait_count; return RESERVATION_FAIL; }
+  if (m_tvd ? tvd_cached_wad_contains(mf,owner) : ep_l2_wad_contains(owner)) {
+    ++m_ep_l2_wad_same_address_wait_count; return RESERVATION_FAIL;
+  }
 
   if (probe == MISS && !m_ft_pending.request) {
     // Retire completed invalidated tag identities (e.g. a kernel flush), never
@@ -292,7 +336,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
       ++slots;
     }
     if (!miss_queue_has_slots(slots)) { ++m_ft_stats.issue_block; return RESERVATION_FAIL; }
-    if (dirty && m_ep_l2_wad_entries_live.size() >= m_config.m_ep_l2_wad_entries) {
+    if (dirty && (m_tvd ? m_tvd->preview_install(m_tag_array->get_block(index)->m_block_addr,true,true).status != tvd_directory::OK : m_ep_l2_wad_entries_live.size() >= m_config.m_ep_l2_wad_entries)) {
       ++m_ep_l2_wad_full_block_count; return RESERVATION_FAIL;
     }
     ep_l2::PayloadHandle staging, landing;
@@ -300,8 +344,17 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
       staging = m_ep_l2_payload.preview_free(ep_l2_payload_store::WB);
       if (!staging.valid()) { ++m_ft_stats.wbuf_full; return RESERVATION_FAIL; }
     }
+    bool retain_clean = false;
+    if (m_tvd && m_config.m_ep_l2_tvd_clean && live && !dirty &&
+        m_ep_l2_payload.inspect(victim).ready_sector_mask.any() &&
+        m_tvd->preview_install(m_ep_l2_payload.inspect(victim).owner,false,true).status==tvd_directory::OK) {
+      landing=m_ep_l2_payload.preview_free(ep_l2_payload_store::RESIDENT,index%4);
+      retain_clean=landing.valid();
+    }
     if (m_config.m_ep_l2_ft_mode == 2 && (dirty || !live)) {
       landing = m_ep_l2_payload.preview_free(ep_l2_payload_store::RESIDENT, index % 4);
+      if (!landing.valid() && m_tvd && tvd_reclaim_one(index%4,physical_cycle))
+        landing=m_ep_l2_payload.preview_free(ep_l2_payload_store::RESIDENT,index%4);
       if (!landing.valid()) { ++m_ft_stats.pool_full; return RESERVATION_FAIL; }
       if (dirty) staging = victim;
     }
@@ -315,7 +368,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     // live no other frontend request can steal its prechecked issue slots;
     // fills and lower drains cannot add entries to m_miss_queue.
     ft_replacement &p = m_ft_pending;
-    p.request = mf; p.tag_index = index; p.dirty = dirty; p.victim = live ? victim : ep_l2::PayloadHandle();
+    p.request = mf; p.tag_index = index; p.dirty = dirty; p.retain_clean=retain_clean; p.victim = live ? victim : ep_l2::PayloadHandle();
     p.born = physical_cycle;
     p.landing_id = landing.valid() ? landing.payload_id :
         (m_config.m_ep_l2_ft_mode == 2 && live ? victim.payload_id : index);
@@ -327,7 +380,13 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
         m_ft_quota.total_peak = std::max(m_ft_quota.total_peak, m_ft_quota.reserved + m_ft_quota.live);
       }
       p.victim_address = m_tag_array->get_block(index)->m_block_addr;
-      assert(m_ep_l2_wad_entries_live.insert(p.victim_address).second);
+      if (m_tvd) {
+        const auto dirty_mask=m_tag_array->get_block(index)->get_dirty_sector_mask().to_ulong();
+        const auto ready_mask=p.saved.ready_sector_mask.to_ulong();
+        const bool retain=m_config.m_ep_l2_tvd_dirty && (dirty_mask & ~ready_mask)==0;
+        assert(tvd_install_victim(p.victim_address,retain?victim:ep_l2::PayloadHandle(),
+            retain?ready_mask:dirty_mask,dirty_mask,true,physical_cycle,&p.wad_ticket));
+      } else assert(m_ep_l2_wad_entries_live.insert(p.victim_address).second);
       assert(m_ep_l2_wad_birth_cycle.insert(std::make_pair(p.victim_address, physical_cycle)).second);
       p.wad = true;
       if (m_config.m_ep_l2_ft_mode == 1)
@@ -423,6 +482,12 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     return result;
   }
   if (replacement && m_ft_pending.dirty) assert(m_ft_pending.bound);
+  if (replacement && m_ft_pending.retain_clean) {
+    auto &p=m_ft_pending;
+    if (tvd_install_victim(p.saved.owner,p.victim,p.saved.ready_sector_mask.to_ulong(),0,false,physical_cycle))
+      m_ep_l2_payload.transfer(p.victim,ep_l2_payload_store::TVD,ep_l2_payload_store::TVD_VALID);
+    else m_ep_l2_payload.release(p.victim);
+  }
   ep_l2_payload_store::slot &slot = m_ep_l2_payload.inspect_mutable(handle);
   if (mf->get_is_write() || (mf->isatomic() && probe == HIT)) {
     for (unsigned s = 0; s < 4; ++s)
@@ -434,6 +499,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   else if (slot.pending_sector_mask.none()) slot.status = ep_l2_payload_store::RESIDENT_VALID;
   if (!mf->get_is_write()) mf->set_ft_wb_data(slot.versions);
   if (replacement) m_ft_pending = ft_replacement();
+  if (m_tvd_lookup==mf) m_tvd_lookup=NULL;
   ++m_ft_stats.accepted;
   m_tag_array->l2_char_tracking_refresh_line(index);
   assert(m_ep_l2_payload.ownership_consistent());
@@ -447,6 +513,14 @@ void l2_cache::send_write_request(mem_fetch *mf, cache_event event, unsigned tim
     assert(p.request && p.dirty && p.wad && !p.bound);
     assert(m_config.block_addr(mf->get_addr()) == p.victim_address);
     ft_wb_record r; r.handle = p.staging; r.born = p.born;
+    if (m_tvd) {
+      assert(m_tvd->live(p.wad_ticket) &&
+             m_tvd->at(p.wad_ticket.index).line == p.victim_address);
+      r.wad_ticket = p.wad_ticket;
+      // Reuse the packet's existing UID. No directory ticket/header bits are
+      // transmitted through the frozen ICNT/DRAM model.
+      assert(m_tvd->bind_writeback(p.wad_ticket,mf->get_request_uid())==tvd_directory::OK);
+    }
     r.expected = m_ep_l2_payload.inspect(p.staging).versions;
     assert(m_ft_wb.size() < m_config.m_ep_l2_wad_entries);
     assert(m_ft_wb.insert(std::make_pair(mf, r)).second);
@@ -504,6 +578,9 @@ bool l2_cache::lower_ready(mem_fetch *mf, unsigned long long cycle) {
 void l2_cache::lower_accepted(mem_fetch *mf, unsigned long long cycle) {
   if (ft_enabled()) m_ms_observer.lower_accept(mf->get_is_write(),
       mf->get_access_type() == L2_WRBK_ACC, mf->get_data_size());
+  if (ft_enabled() && !mf->get_is_write()) {
+    ++m_ft_stats.lower_read_packets; m_ft_stats.lower_read_bytes+=mf->get_data_size();
+  }
   if (!ft_enabled() || mf->get_access_type() != L2_WRBK_ACC) return;
   std::map<mem_fetch *,ft_wb_record>::iterator it = m_ft_wb.find(mf);
   assert(it != m_ft_wb.end());
@@ -511,7 +588,16 @@ void l2_cache::lower_accepted(mem_fetch *mf, unsigned long long cycle) {
   // The physical lower FIFO now carries this packet's dirty sector bytes;
   // all subsequent queues must retain data until actual set_done. No original
   // payload pointer is needed with TVD disabled. These FIFO bytes are ledgered.
-  m_ep_l2_payload.release(it->second.handle);
+  if (m_tvd) {
+    const auto t=it->second.wad_ticket;
+    assert(m_tvd->live(t) && m_tvd->at(t.index).line==m_config.block_addr(mf->get_addr()));
+    assert(m_tvd->writeback_matches(t,m_config.block_addr(mf->get_addr()),mf->get_request_uid()));
+    assert(m_tvd->lower_accept(t,true,cycle)==tvd_directory::OK);
+    ++m_tvd_indexed_accepts;
+    if (m_tvd->at(t.index).payload.valid())
+      m_ep_l2_payload.transfer(it->second.handle,ep_l2_payload_store::TVD,ep_l2_payload_store::TVD_INFLIGHT);
+    else m_ep_l2_payload.release(it->second.handle);
+  } else m_ep_l2_payload.release(it->second.handle);
   m_ft_stats.staging_lifetime += cycle >= it->second.born ? cycle - it->second.born : 0;
   ++m_ft_stats.lower_accept;
   if (m_config.m_ep_l2_wb_local_cap) {
@@ -570,4 +656,5 @@ void l2_cache::ft_print(FILE *fp, unsigned slice) const {
       m_ep_l2_payload.free_slots(), m_ep_l2_payload.resident_used(), m_ep_l2_payload.bypass_used(),
       m_ep_l2_payload.ownership_consistent() ? 1 : 0, m_ft_stats.observed_cycles,
       m_ft_stats.staging_occupancy_sum, m_ft_stats.descriptor_responses);
+  if (m_tvd) const_cast<l2_cache *>(this)->tvd_print(fp,slice);
 }

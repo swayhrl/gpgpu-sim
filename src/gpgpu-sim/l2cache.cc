@@ -1303,10 +1303,23 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
   if (!m_config->m_L2_config.disabled() && m_config->m_L2_config.m_ep_l2_ms_observer)
     m_L2cache->ms_sample();
 
+  bool tvd_frontend_handled=false;
+  if (!m_config->m_L2_config.disabled() && m_L2cache->tvd_enabled() && !m_icnt_L2_queue->empty()) {
+    auto mf=m_icnt_L2_queue->top(); const auto now=m_gpu->gpu_sim_cycle+m_gpu->gpu_tot_sim_cycle;
+    const bool eligible=!m_config->m_L2_texure_only || mf->istexture();
+    const auto result=eligible?m_L2cache->tvd_frontend(mf,now,!m_L2_icnt_queue->full()):l2_cache::TVD_NORMAL;
+    tvd_frontend_handled=result!=l2_cache::TVD_NORMAL;
+    if (result==l2_cache::TVD_RESPONSE) {
+      mf->set_reply(); mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE,now);
+      ft_record_admission(mf); ep_l2_m0a_record_response_enqueue(); ft_record_response(mf);
+      m_L2_icnt_queue->push(mf); m_L2cache->tvd_response_commit(mf,now); m_icnt_L2_queue->pop();
+    }
+  }
+
   // New L2 texture accesses and/or non-texture accesses.  A full L2-to-DRAM
   // FIFO is not a frontend prerequisite: hits, MSHR merges, and locally
   // absorbed writes must only wait for resources they actually consume.
-  if (!m_icnt_L2_queue->empty()) {
+  if (!tvd_frontend_handled && !m_icnt_L2_queue->empty()) {
     mem_fetch *mf = m_icnt_L2_queue->top();
     if (!m_config->m_L2_config.disabled() &&
         ((m_config->m_L2_texure_only && mf->istexture()) ||
@@ -1332,7 +1345,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
           !m_L2cache->miss_queue_has_slots(2);
       bool admit = false;
       l2_admission_inputs admission;
-      if (plan.exact) {
+      if (plan.ep_l2_tvd_candidate) { admit=!m_L2_icnt_queue->full(); }
+      else if (plan.exact) {
         // C7d exact target telemetry is sourced from the same non-mutating
         // production preview used for admission.  None of these counters are
         // read by the controller.
@@ -1655,8 +1669,10 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         }
       }
       }
-    } else {
-      // L2 is disabled or non-texture access to texture-only L2
+    } else if (!m_L2_dram_queue->full()) {
+      // L2 is disabled or non-texture access to texture-only L2. This route
+      // actually pushes the lower FIFO; its head must survive a full queue.
+      // The ordinary cache-hit admission above has no global lower-full gate.
       mf->set_status(IN_PARTITION_L2_TO_DRAM_QUEUE,
                      m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
       m_L2_dram_queue->push(mf);
@@ -2670,7 +2686,8 @@ void memory_sub_partition::set_done(mem_fetch *mf) {
   if (mf->get_access_type() == L2_WRBK_ACC) {
     assert(!m_L2cache->ft_enabled() || mf->has_ft_wb_data());
     m_L2cache->ep_l2_wad_complete(
-        mf->get_addr(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+        mf->get_addr(), m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle,
+        mf->get_request_uid());
   }
   m_request_tracker.erase(mf);
   m_ideal_arrivals.erase(mf);

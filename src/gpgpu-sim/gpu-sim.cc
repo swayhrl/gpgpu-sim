@@ -318,6 +318,8 @@ void memory_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_ep_l2_feature_ro_pending_state", OPT_BOOL,
                          &m_L2_config.m_ep_l2_feature_ro_pending_state,
                          "EP-L2 future RO pending-state feature (unsupported in M1)", "0");
+  option_parser_register(opp,"-gpgpu_ep_l2_tvd_clean",OPT_BOOL,&m_L2_config.m_ep_l2_tvd_clean,"study CLEAN_ONLY", "0");
+  option_parser_register(opp,"-gpgpu_ep_l2_tvd_dirty",OPT_BOOL,&m_L2_config.m_ep_l2_tvd_dirty,"study DIRTY_INFLIGHT_ONLY (not pending-read forwarding)", "0");
   option_parser_register(opp, "-gpgpu_ep_l2_feature_tvd", OPT_BOOL,
                          &m_L2_config.m_ep_l2_feature_tvd,
                          "EP-L2 future TVD feature (unsupported in M1)", "0");

@@ -1,0 +1,31 @@
+{
+  "base_core": "84359d4ba492acb639a2092fa271e9169038bf7d",
+  "historical_module": "be5dcbe1fa5b9a501e81a77a6c399e6f6530e536",
+  "public_files_mutated": false,
+  "patch_applied": false,
+  "compiled": false,
+  "production_tests_run": false,
+  "patch_sha256": "ebb8675004d2f8d31fb67ccd0ed7b25445ed6a5a845f928b53864e0fc352a11b",
+  "files": {
+    "src/gpgpu-sim/gpu-cache.h": {
+      "base_sha256": "0a1b4ede4e0437e17ab16aeaf21f8cd19fa80c481120a9366f80991f7e7b6507",
+      "proposed_sha256": "42b775ad5292dda5b056adc16428c97ef959293771a9f5c822c249d56b1070a1"
+    },
+    "src/gpgpu-sim/gpu-cache.cc": {
+      "base_sha256": "1b6e1b3d84d8bd40c5238dec0ee3664ae200518bc980d2d24cf1e18b22a7585c",
+      "proposed_sha256": "924b7607666a657122cf3f065a004531802bdc81c88e58c8b386455d6e2648e3"
+    },
+    "src/gpgpu-sim/gpu-sim.cc": {
+      "base_sha256": "c7048e63365772b626c9bcf0630907010df57cdf6782a020b47e423c3cdcd020",
+      "proposed_sha256": "32cb123739e980edca27b39d7e7978e8e165145dde0b86b5274f6fdd6cf57e6e"
+    },
+    "src/gpgpu-sim/l2cache.cc": {
+      "base_sha256": "5bcc708db78845754b2799b42002eaf7d6962c8b47d108ed679b3e369b1819ee",
+      "proposed_sha256": "75fa147229ef49485b38fa18d61cdb421fddea455a8a23b7afae0b286de6ebed"
+    },
+    "src/gpgpu-sim/ep-l2-ft-cache.inc": {
+      "base_sha256": "43b4f213b5f41308fd257042db2dbbdbb175652bc71e89f0c98abe0b48db4afb",
+      "proposed_sha256": "ed726aa801ddb263ed0d063ade6799be062532d0c42d8b3d02f8eb5d4c0be134"
+    }
+  }
+}
