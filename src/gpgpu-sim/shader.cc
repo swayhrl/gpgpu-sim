@@ -4336,6 +4336,13 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
       m_next_wb(config),
       m_gpu(gpu) {
   assert(config->smem_latency > 1);
+  const unsigned collection_width = dtc_l1::diagnostic_collection_width(
+      config->dtc_l1_collection_quota, config->dtc_l1_mode,
+      config->dtc_l1_finite_service);
+  // Explicit0/default do not touch the existing default-initialized quota.
+  // No service operation has occurred before construction.
+  if (config->dtc_l1_collection_quota)
+    m_dtc_service_collect = dtc_l1::service_quota(collection_width);
   init(icnt, mf_allocator, core, operand_collector, scoreboard, config,
        mem_config, stats, sid, tpc);
   dtc_l1::check_source_invalidation_mode(
@@ -4430,6 +4437,10 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
     : pipelined_simd_unit(NULL, config, 3, core, 0),
       m_L1D(new_l1d_cache),
       m_next_wb(config) {
+  if (config->dtc_l1_collection_quota) {
+    fprintf(stderr, "DTC_COLLECTION_QUOTA_EXTERNAL_CACHE_CONSTRUCTOR_STOP\n");
+    abort();
+  }
   if (config->dtc_l1_progressive_wakeup) {
     fprintf(stderr, "DTC_PROGRESSIVE_WAKE_EXTERNAL_CACHE_CONSTRUCTOR_STOP\n");
     abort();

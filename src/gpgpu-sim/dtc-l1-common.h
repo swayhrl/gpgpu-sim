@@ -56,6 +56,19 @@ inline void check_progressive_wakeup_mode(bool enabled, unsigned selected,
   }
 }
 
+// ROB1 diagnostic: zero retains the original four-sector collector.
+// Only a one-sector finite PAPER_OO sensitivity point is authorized.
+inline unsigned diagnostic_collection_width(unsigned override_width,
+                                             unsigned selected, bool finite) {
+  if (!override_width) return 4;
+  if (override_width != 1 || !finite ||
+      selected != static_cast<unsigned>(mode::PAPER_OO)) {
+    std::fprintf(stderr, "DTC_COLLECTION_QUOTA_UNSUPPORTED_STOP\n");
+    std::abort();
+  }
+  return override_width;
+}
+
 // Absolute core-cycle quota; checking availability never consumes a grant.
 // Commit only after the owning operation actually succeeds.
 class service_quota {
