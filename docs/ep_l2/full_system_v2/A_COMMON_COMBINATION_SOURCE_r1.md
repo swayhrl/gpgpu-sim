@@ -73,3 +73,11 @@ native0, binaries0, apps0; no CMake configure or syntax compiler was invoked.
 Fresh E exact source/API/host/output admission is mandatory before actual build;
 E alone independently accepts and launches full applications under the SAME
 cumulative40 cap. No old14 automatic queue or F independent build is authorized.
+
+Follow-up source qualification: the normal RO frontend hook now checks epoch
+write/atomic validity before RO preview can defer behind an existing owner.
+This covers R with V disabled as well as the full TVD shortcut. same_address
+adds actual atomic-MF classification and asserts both frontend hooks reject
+before query/directory mutation or atomic callback execution. This is a
+certificate-negative source test, not expanded atomic application support or
+observed atomic numerical correctness. All native cases remain UNRUN.

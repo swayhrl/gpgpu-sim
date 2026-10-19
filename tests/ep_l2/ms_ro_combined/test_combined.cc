@@ -2,6 +2,8 @@
 #include "native_fixture.h"
 #include <cstring>
 static const new_addr_type stride=64*128;
+static unsigned forbidden_atomic_callbacks=0;
+static void forbidden_atomic_callback(const inst_t *,ptx_thread_info *) {++forbidden_atomic_callbacks;}
 static void late_ro_and_same_address_victim(char **argv) {
   combined_fixture f(argv);auto first=f.make(0,false);auto first_uid=first->get_request_uid();f.send(first);f.await_lower(1);
   auto old=f.tag_for(0);assert(old.valid());
@@ -21,7 +23,28 @@ static void late_ro_and_same_address_victim(char **argv) {
   const auto queries=f.cache->tvd_lookup_queries_for_test();auto writer=f.make(0,true);bool refused=false;
   try{f.cache->tvd_frontend(writer,f.gpu->gpu_sim_cycle,true);}catch(const std::logic_error&){refused=true;}
   assert(refused && f.cache->tvd_lookup_queries_for_test()==queries && dir->live(ticket));
+  refused=false;
+  try{f.cache->ro_frontend_cycle(writer);}catch(const std::logic_error&){refused=true;}
+  assert(refused && f.cache->tvd_lookup_queries_for_test()==queries && dir->live(ticket));
   f.expected.erase(writer->get_request_uid());delete writer;
+  // Real atomic MF classification; the callback must never execute in this
+  // certificate negative. Exercise both the victim shortcut and the normal
+  // RO frontend hook used by the F-minus-V path, before any query/mutation.
+  active_mask_t active;active.set(0);mem_access_byte_mask_t bytes;
+  for(unsigned i=0;i<4;++i)bytes.set(i);
+  warp_inst_t inst(f.gpu->getShaderCoreConfig());inst.initiation_interval=1;
+  inst.space=memory_space_t(global_space);inst.issue(active,0,f.gpu->gpu_sim_cycle,0,0,0);
+  inst.add_callback(0,forbidden_atomic_callback,nullptr,
+      reinterpret_cast<ptx_thread_info*>(&forbidden_atomic_callbacks),true);
+  mem_access_t access(GLOBAL_ACC_R,0,32,false,active,bytes,mem_access_sector_mask_t(1),&f.ctx);
+  auto atomic=new mem_fetch(access,&inst,0,8,0,0,0,f.gpu->getMemoryConfig(),f.gpu->gpu_sim_cycle);
+  assert(atomic->isatomic());refused=false;
+  try{f.cache->tvd_frontend(atomic,f.gpu->gpu_sim_cycle,true);}catch(const std::logic_error&){refused=true;}
+  assert(refused);refused=false;
+  try{f.cache->ro_frontend_cycle(atomic);}catch(const std::logic_error&){refused=true;}
+  assert(refused && !forbidden_atomic_callbacks &&
+         f.cache->tvd_lookup_queries_for_test()==queries && dir->live(ticket));
+  delete atomic;
   selected=~0U;for(unsigned i=0;i<f.pending_reads.size();++i)
     if(f.pending_reads[i]->get_ep_l2_payload_id()==old.payload_id)selected=i;
   assert(selected!=~0U);f.return_one(selected);f.wait(first_uid,false);

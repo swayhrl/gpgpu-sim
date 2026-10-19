@@ -406,4 +406,8 @@ void l2_cache::ro_bind_commandlist(const char *path){if(m_ro){
   m_ro->command_bound=true;
 }}
 
-void l2_cache::ro_frontend_cycle(mem_fetch *mf) {if(m_ro)m_ro->frontend_cycle(mf);}
+void l2_cache::ro_frontend_cycle(mem_fetch *mf) {if(m_ro){
+  // Also protect R without V: preview may otherwise defer a certified writer
+  // behind an RO owner before access() gets a chance to reject the violation.
+  m_ro->check_access(mf);m_ro->frontend_cycle(mf);
+}}
