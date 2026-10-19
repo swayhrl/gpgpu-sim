@@ -1,5 +1,8 @@
 # Paid resources, timing and evidence scope
 
+R2 update: `R2_DESIGN_AND_VALIDATION.md` and test_plan_r2 are current; the
+earlier clean/inflight plan remains frozen in test_plan_r1. No native test ran.
+
 | Item | Implementation / status |
 |---|---|
 | Data | Sole existing1168 slots ×128B, four banks. No victim data array. Existing four symbolic sector-version words per slot model data, not numerical SASS byte values. |
@@ -12,7 +15,7 @@
 | Responses | Existing ICNT FIFO; no free response data buffer. Backpressure can keep pin and pending grant; retries need a real later grant/consume. |
 | WB packet | Existing lower FIFO's independent version/data snapshot; local retained slot remains paid. WAD lives beyond local lower acceptance. |
 | Statistics | served_sector_bytes is useful service volume, NOT avoided DRAM bytes. Compare actual lower/DRAM issue counters OFF/ON. Unmeasured waits and missing application results stay UNKNOWN. |
-| Fixed baseline | Not implemented/qualified; no claim from a dynamic cap or extra RAM. |
+| Fixed baseline | R2 source reserves16 victim/276 other slots per bank (64/1104 total), even when empty. Reciprocal capacity quotas with same pointer mapping, not address-fixed IDs; one retention credit. NOT_COMPILED_NOT_RUN, no superiority claim. |
 
 ## Prepared finite tests — all NOT_COMPILED_NOT_RUN
 

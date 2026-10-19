@@ -97,10 +97,10 @@ request_result request_rg1(role r,unsigned id,bool write,unsigned long long cycl
 }
 public:
 void cancel_transaction(unsigned token) {
-  if(!m_rg1)return;
+  if(!m_rg1 && !m_tvd_identity)return;
   for(unsigned b=0;b<4;++b)for(auto *q:{&m_pending[b],&m_granted[b]})
     for(unsigned i=0;i<q->size();)
-      if((*q)[i].client!=GENERIC && (*q)[i].token==token){++m_rg_cancel[(*q)[i].client];q->erase(q->begin()+i);}
+      if((*q)[i].client!=GENERIC && (*q)[i].token==token){if(m_rg1)++m_rg_cancel[(*q)[i].client];q->erase(q->begin()+i);}
       else ++i;
 }
 private:

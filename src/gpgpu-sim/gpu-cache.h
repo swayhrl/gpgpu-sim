@@ -42,6 +42,7 @@
 #include "ep-l2-ft-interface.h"
 #include "ep-l2-mechanism-observer.h"
 #include "ep-l2-tvd-directory.h"
+#include "ep-l2-tvd-bank-identity.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -600,6 +601,7 @@ class cache_config {
     m_ep_l2_feature_ro_pending_state = false;
     m_ep_l2_feature_tvd = false;
     m_ep_l2_tvd_clean = m_ep_l2_tvd_dirty = false;
+    m_ep_l2_tvd_fixed_entries=0;
     m_ep_l2_feature_adaptive_policy = false;
     m_ep_l2_b0_stats = true;
     // M0a is deliberately opt-in.  It is a telemetry sidecar and is never
@@ -881,7 +883,7 @@ class cache_config {
         !m_ep_l2_ideal_wb && !m_ep_l2_ideal_meta && !m_ep_l2_ideal_read_hit &&
         !m_ep_l2_mq2 && !m_ep_l2_rg1 && !m_ep_l2_diag_copy_free &&
         !m_ep_l2_diag_l2_data_free && !m_ep_l2_ms_observer &&
-        !m_ep_l2_tvd_clean && !m_ep_l2_tvd_dirty;
+        !m_ep_l2_tvd_clean && !m_ep_l2_tvd_dirty && !m_ep_l2_tvd_fixed_entries;
   }
   enum mshr_config_t get_mshr_type() const { return m_mshr_type; }
   void set_assoc(unsigned n) {
@@ -985,6 +987,7 @@ class cache_config {
   bool m_ep_l2_feature_ro_pending_state;
   bool m_ep_l2_feature_tvd;
   bool m_ep_l2_tvd_clean, m_ep_l2_tvd_dirty;
+  unsigned m_ep_l2_tvd_fixed_entries;
   bool m_ep_l2_feature_adaptive_policy;
   // Observational only. Disabling it must not change simulator timing.
   bool m_ep_l2_b0_stats;
@@ -2229,6 +2232,12 @@ class ep_l2_payload_store {
     for (auto exempt : m_diagnostic_services) n += exempt;
     return n;
   }
+  #include "ep-l2-tvd-fixed-pool.inc"
+  void set_tvd_identity(bool enabled) {
+    assert(!enabled || (banked() && m_ft_mode==2 && m_bank_ops==1 && !m_rg1));
+    m_tvd_identity=enabled;
+  }
+  bool tvd_identity_enabled() const { return m_tvd_identity; }
   void set_rg1_enabled(bool enabled) { assert(!enabled || (banked() && m_ft_mode && m_bank_ops==1)); m_rg1=enabled; }
   void bind_ready_source(std::function<bool(unsigned,unsigned)> f) { m_ready_source=f; }
   bool rg1_enabled() const { return m_rg1; }
@@ -2300,7 +2309,7 @@ class ep_l2_payload_store {
            m_slots[handle.payload_id].owner == owner;
   }
   void restore_resident(unsigned id, const slot &saved) {
-    assert(id < k_resident_slots); m_slots[id] = saved;
+    assert(id < k_resident_slots); restore(id,saved);
   }
   unsigned resident_pending() const { return count_pending_sectors(RESIDENT); }
   unsigned resident_valid() const { return count_state(RESIDENT, RESIDENT_VALID) + count_state(RESIDENT, RESIDENT_DIRTY); }
@@ -2351,7 +2360,10 @@ class ep_l2_payload_store {
       m_slots[prior].pending_sector_mask.reset();
       ++m_slots[prior].generation;
     }
+    if(!m_slots[id].occupied() || m_slots[id].allocation_role==TVD)
+      assert(fixed_role_room(RESIDENT,id%4));
     assign(m_slots[id], id, owner, mf, RESIDENT_FILL_PENDING);
+    assert(fixed_quota_consistent());
   }
   void attach_resident_identity(unsigned id, mem_fetch *mf) const {
     assert(id < k_resident_slots && m_slots[id].occupied() && mf);
@@ -2387,7 +2399,11 @@ class ep_l2_payload_store {
     complete_resident_no_fill(id, owner, m_slots[id].generation, false);
   }
   void reserve_bypass(unsigned id, new_addr_type owner, mem_fetch *mf) {
-    assert(id < bypass_capacity()); assign(m_slots[k_resident_slots + id], k_resident_slots + id, owner, mf, BYPASS_FILL_PENDING);
+    assert(id < bypass_capacity());
+    if(!m_slots[k_resident_slots+id].occupied() || m_slots[k_resident_slots+id].allocation_role==TVD)
+      assert(fixed_role_room(BYPASS,(k_resident_slots+id)%4));
+    assign(m_slots[k_resident_slots+id],k_resident_slots+id,owner,mf,BYPASS_FILL_PENDING);
+    assert(fixed_quota_consistent());
   }
   void complete_bypass(unsigned id, new_addr_type owner, unsigned generation) {
     assert(id < bypass_capacity() && m_slots[k_resident_slots + id].status == BYPASS_FILL_PENDING &&
@@ -2426,6 +2442,7 @@ class ep_l2_payload_store {
   payload_handle preview_free(role r, unsigned bank = (unsigned)-1) const {
     for (unsigned id = 0; id < m_slots.size(); ++id) {
       if (m_slots[id].occupied() || (bank != (unsigned)-1 && id % 4 != bank)) continue;
+      if (!fixed_role_room(r,id%4)) continue;
       if (m_ft_mode == 1 && ((r == WB && id < wb_begin()) ||
           (r == RESIDENT && id >= k_resident_slots) ||
           (r == BYPASS && (id < k_resident_slots || id >= wb_begin())))) continue;
@@ -2445,6 +2462,7 @@ class ep_l2_payload_store {
       m_slots.push_back(slot());
     }
     assert(m_ft_mode && id < m_slots.size() && !m_slots[id].occupied());
+    assert(fixed_role_room(r,id%4));
     assert(m_ft_mode != 1 || static_role_matches(id, r));
     slot &s = m_slots[id];
     assert(s.generation != std::numeric_limits<unsigned>::max());
@@ -2455,13 +2473,19 @@ class ep_l2_payload_store {
   void release(const payload_handle &h) {
     slot &s = inspect_mutable(h); assert(!s.pins && s.pending_sector_mask.none());
     assert(s.generation != std::numeric_limits<unsigned>::max());
-    if(m_rg1){cancel_request(h,false);cancel_request(h,true);}
+    if(m_rg1 || m_tvd_identity){cancel_request(h,false);cancel_request(h,true);}
+    if(m_fixed_retention==h)m_fixed_retention=payload_handle();
     s.status = FREE; s.owner = 0; s.ready_sector_mask.reset(); ++s.generation;
+    assert(fixed_quota_consistent());
   }
   void transfer(const payload_handle &h, role r, state st) {
     assert(m_ft_mode != 1 || static_role_matches(h.payload_id, r));
     slot &s = inspect_mutable(h); assert(s.pending_sector_mask.none());
+    if(m_fixed_victim_entries && ((r==TVD)!=(s.allocation_role==TVD)) &&
+        !(m_fixed_retention==h && r==TVD))assert(fixed_role_room(r,h.payload_id%4));
     s.allocation_role = r; s.status = st;
+    if(m_fixed_retention==h && r==TVD)m_fixed_retention=payload_handle();
+    assert(fixed_quota_consistent());
   }
   void pin(const payload_handle &h) { ++inspect_mutable(h).pins; }
   void unpin(const payload_handle &h) { slot &s = inspect_mutable(h); assert(s.pins); --s.pins; }
@@ -2469,7 +2493,11 @@ class ep_l2_payload_store {
     slot &s = inspect_mutable(h); assert((mask & ~s.pending_sector_mask).none());
     s.pending_sector_mask &= ~mask; s.ready_sector_mask |= mask;
   }
-  void restore(unsigned id, const slot &saved) { assert(id < m_slots.size()); m_slots[id] = saved; }
+  void restore(unsigned id, const slot &saved) {
+    assert(id<m_slots.size());
+    if(m_fixed_retention.valid() && m_fixed_retention.payload_id==id)m_fixed_retention=payload_handle();
+    m_slots[id]=saved;assert(fixed_quota_consistent());
+  }
   void cancel_request(const payload_handle &h, bool write) {
     const slot &s = inspect(h); const role r = s.allocation_role;
     unsigned id = r == BYPASS ? h.payload_id - k_resident_slots : h.payload_id;
@@ -2564,7 +2592,8 @@ class ep_l2_payload_store {
     if(m_rg1)return request_rg1(r,id,write,cycle,sequence,op_class,client,token,global_id,bank);
     for (unsigned selected=0; selected<m_granted[bank].size(); ++selected) {
       const pending_op op = m_granted[bank][selected];
-      if (op.r == r && op.id == id && op.write == write) {
+      if (ep_l2::tvd_bank_request_matches(op,r,id,write,client,token,
+          m_slots[global_id].generation,m_tvd_identity)) {
         // Its first call was accounted as the logical operation.  This call
         // is the retry that finally consumes an oldest-ready grant.
         ++m_bank_retry_attempts;
@@ -2582,8 +2611,8 @@ class ep_l2_payload_store {
     // operation, even if it must wait behind older work or this cycle's grant.
     int pending_index = -1;
     for (unsigned i = 0; i < m_pending[bank].size(); ++i)
-      if (m_pending[bank][i].r == r && m_pending[bank][i].id == id &&
-          m_pending[bank][i].write == write) pending_index = i;
+      if (ep_l2::tvd_bank_request_matches(m_pending[bank][i],r,id,write,
+          client,token,m_slots[global_id].generation,m_tvd_identity)) pending_index=i;
     if (pending_index >= 0) ++m_bank_retry_attempts;
 
     // No selected/queued older op: a ready operation may consume one of the
@@ -2605,6 +2634,12 @@ class ep_l2_payload_store {
           sequence == (unsigned long long)-1 ? m_next_sequence++ : sequence,
           cycle));
       pending_index = m_pending[bank].size() - 1;
+      if (m_tvd_identity) {
+        auto &p=m_pending[bank][pending_index];
+        p.client=client; p.token=token; p.generation=m_slots[global_id].generation;
+        // Native response/fill/lower/frontend heads, no unbounded new queue.
+        assert(pending_operations()<=4);
+      }
     }
     // This denial has a real physical reason: an older selected/pending op,
     // or an operation already consumed this cycle.  It is no longer used for
@@ -2756,6 +2791,7 @@ class ep_l2_payload_store {
   std::array<unsigned long long, CLIENTS> m_diagnostic_services{};
   unsigned long long m_logical_copy_reads = 0, m_logical_copy_writes = 0;
   bool m_ideal_wb, m_static_s64;
+  bool m_tvd_identity=false;
   unsigned m_bank_ops; unsigned long long m_cycle;
   unsigned m_resident_reads, m_resident_writes, m_bypass_reads, m_bypass_writes;
   unsigned long long m_bank_logical_ops, m_bank_attempts, m_bank_grants,
@@ -2797,6 +2833,8 @@ class l2_cache : public data_cache {
         ep_l2::mechanism_v1::COPY_FREE : config.m_ep_l2_diag_l2_data_free ?
         ep_l2::mechanism_v1::L2_DATA_FREE : ep_l2::mechanism_v1::NORMAL);
     m_ms_observer.enabled = config.m_ep_l2_ms_observer;
+    m_ep_l2_payload.set_tvd_identity(config.m_ep_l2_tvd_dirty);
+    m_ep_l2_payload.set_fixed_victim_entries(config.m_ep_l2_tvd_fixed_entries);
     m_ft_last_wb_versions.fill(0);
     m_tvd_lookup = NULL; m_tvd_lookup_cycle = 0;
     m_tvd_query_cycle = (unsigned long long)-1; m_tvd_lookup_done = false;
@@ -2926,6 +2964,7 @@ class l2_cache : public data_cache {
   unsigned long long tvd_actual_lower_read_packets() const { return m_ft_stats.lower_read_packets; }
   unsigned long long tvd_actual_lower_read_bytes() const { return m_ft_stats.lower_read_bytes; }
   unsigned long long tvd_lookup_queries_for_test() const { return m_tvd_lookup_queries; }
+  bool tvd_lookup_started_for_test(const mem_fetch *mf) const { return m_tvd_lookup==mf; }
   bool ft_enabled() const { return m_config.m_ep_l2_ft_mode != 0; }
   void commit_next_access();
   mem_fetch *peek_next_access() const;
@@ -3146,18 +3185,14 @@ class l2_cache : public data_cache {
   std::map<mem_fetch *,ep_l2_payload_store::payload_handle> m_ft_read_refs;
   std::array<unsigned long long,4> m_ft_last_wb_versions;
   void validate_ep_l2_mode_config() const {
-    if (m_config.m_ep_l2_tvd_dirty) {
-      fprintf(stderr,"A R2 integrates CLEAN_ONLY source; dirty pending/inflight candidate remains unqualified and disabled\n");
-      abort();
-    }
-    if (m_config.m_ep_l2_tvd_clean &&
+    if ((m_config.m_ep_l2_tvd_clean || m_config.m_ep_l2_tvd_dirty) &&
         (m_config.m_ep_l2_diag_copy_free || m_config.m_ep_l2_diag_l2_data_free ||
          m_config.m_ep_l2_ms_observer || m_config.m_ep_l2_payload_mode != 2 ||
          m_config.m_ep_l2_descriptor_pool_size != 512 || m_config.m_mshr_entries != 128 ||
          m_config.get_num_lines() > 1024 || m_config.m_cache_type != SECTOR ||
          m_config.m_write_policy != WRITE_BACK ||
          m_config.m_write_alloc_policy != LAZY_FETCH_ON_READ)) {
-      fprintf(stderr,"A R2 CLEAN_ONLY is separate from diagnostics/observer; original finite native cache policy required\n");
+      fprintf(stderr,"A R3 TVD is separate from diagnostics/observer; original finite native cache policy required\n");
       abort();
     }
     const bool local_diag = m_config.m_ep_l2_diag_copy_free || m_config.m_ep_l2_diag_l2_data_free;
@@ -3178,13 +3213,20 @@ class l2_cache : public data_cache {
       fprintf(stderr, "EP-L2 mechanism study supports finite P1 S/U, isolated local diagnostics and observer only; COPY_FREE requires S\n");
       abort();
     }
+    if(m_config.m_ep_l2_tvd_fixed_entries &&
+        (m_config.m_ep_l2_tvd_fixed_entries!=64 || !m_config.m_ep_l2_tvd_clean || m_config.m_ep_l2_tvd_dirty)) {
+      fprintf(stderr,"FIXED64 requires CLEAN_ONLY; no dirty/diagnostic combined qualification\n");abort();
+    }
     if ((m_config.m_ep_l2_tvd_clean || m_config.m_ep_l2_tvd_dirty) &&
         (m_config.m_ep_l2_ft_mode != 2 || m_config.m_ep_l2_wbuf_entries != 16 ||
+         m_config.m_ep_l2_descriptor_pool_size != 512 || m_config.m_mshr_entries != 128 ||
+         m_config.get_num_lines() > 1024 || m_config.m_write_policy != WRITE_BACK ||
+         m_config.m_write_alloc_policy != LAZY_FETCH_ON_READ || m_config.m_cache_type != SECTOR ||
          m_config.m_ep_l2_wad_entries != 128 || m_config.m_ep_l2_bank_ops != 1 ||
          m_config.m_ep_l2_mq2 || m_config.m_ep_l2_rg1 || m_config.m_ep_l2_static_s64 ||
          m_config.m_ep_l2_wb_local_cap || m_config.m_ep_l2_ideal_wb ||
          m_config.m_ep_l2_ideal_meta || m_config.m_ep_l2_ideal_read_hit)) {
-      fprintf(stderr,"TVD study supports finite1168 Unified P1, CLEAN_ONLY or DIRTY_INFLIGHT_ONLY; combined modes unqualified\n"); abort();
+      fprintf(stderr,"TVD study supports finite1168 Unified P1, CLEAN_ONLY or DIRTY_PENDING_INFLIGHT; combined modes unqualified\n"); abort();
     }
     if ((m_config.m_ep_l2_mq2 && m_config.m_ep_l2_rg1) ||
         ((m_config.m_ep_l2_mq2 || m_config.m_ep_l2_rg1) &&

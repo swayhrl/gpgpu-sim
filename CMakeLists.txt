@@ -251,3 +251,13 @@ target_include_directories(ep_l2_ms_victim_native PRIVATE ${CUDAToolkit_INCLUDE_
 target_link_libraries(ep_l2_ms_victim_native PRIVATE -Wl,--start-group
     entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
     ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
+
+# B r2's real finite allocator/arbiter checks, A-owned integration only.
+foreach(victim_test bank_identity fixed_partition)
+  add_executable(ep_l2_ms_victim_${victim_test} EXCLUDE_FROM_ALL
+      tests/ep_l2/ms_victim/test_${victim_test}.cc)
+  target_include_directories(ep_l2_ms_victim_${victim_test} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+  target_link_libraries(ep_l2_ms_victim_${victim_test} PRIVATE -Wl,--start-group
+      entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
+      ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
+endforeach()

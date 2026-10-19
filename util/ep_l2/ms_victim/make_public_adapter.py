@@ -14,7 +14,7 @@ import subprocess
 
 BASE = '84359d4ba492acb639a2092fa271e9169038bf7d'
 OLD = 'be5dcbe1fa5b9a501e81a77a6c399e6f6530e536'
-FILES = ['src/gpgpu-sim/' + p for p in ('gpu-cache.h', 'gpu-cache.cc', 'gpu-sim.cc', 'l2cache.cc', 'ep-l2-ft-cache.inc')]
+FILES = ['src/gpgpu-sim/' + p for p in ('gpu-cache.h', 'gpu-cache.cc', 'gpu-sim.cc', 'l2cache.cc', 'ep-l2-ft-cache.inc', 'ep-l2-rg1.inc')]
 
 
 def main():
@@ -73,6 +73,7 @@ def main():
   unsigned long long tvd_actual_lower_read_packets() const { return m_ft_stats.lower_read_packets; }
   unsigned long long tvd_actual_lower_read_bytes() const { return m_ft_stats.lower_read_bytes; }
   unsigned long long tvd_lookup_queries_for_test() const { return m_tvd_lookup_queries; }
+  bool tvd_lookup_started_for_test(const mem_fetch *mf) const { return m_tvd_lookup==mf; }
   bool ft_enabled() const { return m_config.m_ep_l2_ft_mode != 0; }''')
     replace(h, '!m_ft_quota.reserved && !m_ft_quota.live); }', '!m_ft_quota.reserved && !m_ft_quota.live &&\n      (!m_tvd || (m_tvd->epoch_ready() && !m_tvd_read))); }')
     replace(h, 'unsigned ep_l2_wad_occupancy() const { return m_ep_l2_wad_entries_live.size(); }', 'unsigned ep_l2_wad_occupancy() const { return m_tvd ? m_tvd->mandatory() : m_ep_l2_wad_entries_live.size(); }')
@@ -96,6 +97,9 @@ def main():
     replace(h, '  void validate_ep_l2_mode_config() const {', '''  void validate_ep_l2_mode_config() const {
     if ((m_config.m_ep_l2_tvd_clean || m_config.m_ep_l2_tvd_dirty) &&
         (m_config.m_ep_l2_ft_mode != 2 || m_config.m_ep_l2_wbuf_entries != 16 ||
+         m_config.m_ep_l2_descriptor_pool_size != 512 || m_config.m_mshr_entries != 128 ||
+         m_config.get_num_lines() > 1024 || m_config.m_write_policy != WRITE_BACK ||
+         m_config.m_write_alloc_policy != LAZY_FETCH_ON_READ || m_config.m_cache_type != SECTOR ||
          m_config.m_ep_l2_wad_entries != 128 || m_config.m_ep_l2_bank_ops != 1 ||
          m_config.m_ep_l2_mq2 || m_config.m_ep_l2_rg1 || m_config.m_ep_l2_static_s64 ||
          m_config.m_ep_l2_wb_local_cap || m_config.m_ep_l2_ideal_wb ||
@@ -192,6 +196,10 @@ def main():
     replace(c, '  option_parser_register(opp, "-gpgpu_ep_l2_feature_tvd", OPT_BOOL,', '''  option_parser_register(opp,"-gpgpu_ep_l2_tvd_clean",OPT_BOOL,&m_L2_config.m_ep_l2_tvd_clean,"study CLEAN_ONLY", "0");
   option_parser_register(opp,"-gpgpu_ep_l2_tvd_dirty",OPT_BOOL,&m_L2_config.m_ep_l2_tvd_dirty,"study DIRTY_INFLIGHT_ONLY (not pending-read forwarding)", "0");
   option_parser_register(opp, "-gpgpu_ep_l2_feature_tvd", OPT_BOOL,''')
+    from pending_adapter import extend
+    extend(text)
+    from fixed_adapter import extend as extend_fixed
+    extend_fixed(text)
     patch = ''.join('diff --git a/{0} b/{0}\n'.format(name) + ''.join(difflib.unified_diff(original[name].splitlines(True), text[name].splitlines(True), fromfile='a/'+name, tofile='b/'+name)) for name in FILES if original[name] != text[name])
     # Git accepts an empty context line without a redundant space prefix;
     # preserve exact blank source context without embedding trailing blanks.

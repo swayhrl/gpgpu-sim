@@ -1,4 +1,16 @@
-# B victim source checkpoint — not a runtime release
+# B source r2 — no native qualification
+
+Current source extends the frozen clean-first89a75b24 candidate with dirty
+pending/inflight forwarding and a reciprocal fixed-capacity quota control.
+See `R2_DESIGN_AND_VALIDATION.md`, `adapter_r2_full/A_PUBLIC_HOOKS.patch`,
+`test_plan_r2/NATIVE_TEST_PLAN.json` and `RELEASE_CANDIDATE.json`.
+All18 finite processes remain NOT_COMPILED_NOT_RUN. Hits and DRAM delta are
+UNKNOWN. A public files remain untouched; A integrates, E admits/qualifies.
+Do not mix r2 consumers with r1 public hooks. The following text is the
+**historical r1 checkpoint**, preserved for review; r2 supersedes its pending
+and fixed-control implementation status, without conferring qualification.
+
+# Historical r1 source checkpoint — not a runtime release
 
 Authority: Framework d9263fa2431592b33e900d9b48c6f20029d8b544,
 mechanism_study_2026_10_19_v1. New branch

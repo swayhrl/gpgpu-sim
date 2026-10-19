@@ -2669,7 +2669,10 @@ void l2_cache::ep_l2_wad_complete(new_addr_type block_addr,
     const auto h=m_tvd->at(t.index).payload;
     assert(m_tvd->set_done(t,cycle)==tvd_directory::OK);
     ++m_tvd_indexed_completions;
-    if (h.valid()) m_ep_l2_payload.transfer(h,ep_l2_payload_store::TVD,ep_l2_payload_store::TVD_VALID);
+    if (h.valid() && !m_ep_l2_payload.inspect(h).pins)
+      m_ep_l2_payload.transfer(h,ep_l2_payload_store::TVD,ep_l2_payload_store::TVD_VALID);
+    // A pinned read completes independently; response commit finishes the role
+    // transition. Its payload generation and queued logical identity stay live.
   } else {
     const size_t erased=m_ep_l2_wad_entries_live.erase(normalized); assert(erased==1);
   }

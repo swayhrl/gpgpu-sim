@@ -76,7 +76,73 @@ static void dirty_snapshot(char **argv) {
   f.memory[0][0]=(unsigned long long)uid+1;
   f.wait(uid);f.read(0);
   assert(first!=uid && !f.cache->tvd_for_test()->live(token));
-  f.finish();puts("NATIVE_VICTIM|case=dirty_inflight_snapshot_wait_done_promote|status=PASS|dirty_pending_forward=NOT_SUPPORTED");
+  f.finish();puts("NATIVE_VICTIM|case=dirty_inflight_snapshot_wait_done_promote|status=PASS|dirty_pending_forward=NOT_EXERCISED_BY_THIS_CASE");
+}
+
+static void dirty_pending_complete_with_reader(char **argv) {
+  victim_fixture f(argv);f.block_lower=true;
+  // Actual native dirty traffic fills the two-entry lower FIFO. Third old
+  // victim stays WB_STAGED in MissQ; no fabricated cache/pool occupancy.
+  for(unsigned i=0;i<19;++i)f.write(i*stride);
+  const new_addr_type address=2*stride;
+  const auto token=f.cache->tvd_for_test()->find(address);
+  assert(f.cache->tvd_for_test()->live(token));
+  const auto h=f.cache->tvd_for_test()->at(token.index).payload;
+  assert(f.cache->tvd_for_test()->at(token.index).status==l2_cache::tvd_directory::WB_STAGED);
+  const auto saved=f.cache->ep_l2_payload_for_test().inspect(h).versions;
+  auto read=f.make(address,false);const auto read_uid=read->get_request_uid();f.send(read);
+  // ROP feeds the native ICNT-to-L2 FIFO at the END of a cache cycle.
+  // Wait for the actual Tag-miss observation, not an assumed one-step phase.
+  for(unsigned n=0;n<1000 && !f.cache->tvd_lookup_started_for_test(read);++n)f.step();
+  assert(f.cache->tvd_lookup_started_for_test(read));
+  assert(!f.replies.count(read_uid));
+  f.block_lower=false;f.lower(); // Legal external FIFO-consumer action.
+  // Explicit component contention through the PUBLIC actual arbiter. This
+  // is not claimed as a naturally observed application opportunity.
+  auto &ram=f.cache->ep_l2_payload_for_test();ep_l2::PayloadHandle contender;
+  for(unsigned i=0;i<1024;++i) {
+    auto x=f.cache->ep_l2_tag_payload_handle_for_test(i);
+    if(ram.handle_live(x) && x.payload_id%4==h.payload_id%4 && x!=h) {contender=x;break;}
+  }
+  assert(contender.valid() && ram.request(contender,false,f.gpu->gpu_sim_cycle)==ep_l2_payload_store::GRANTED);
+  f.step(); // Older lower-WB read and younger victim read both denied/queued.
+  assert(f.cache->tvd_for_test()->at(token.index).readers==1 && ram.inspect(h).pins==1);
+  assert(ram.pending_operations()>=2 && ram.inspect(h).allocation_role==ep_l2_payload_store::WB);
+  f.step(); // Lower-WB wins first, packet accepted, victim read still queued.
+  assert(f.cache->tvd_for_test()->at(token.index).status==l2_cache::tvd_directory::WB_INFLIGHT);
+  assert(ram.inspect(h).allocation_role==ep_l2_payload_store::WB && ram.inspect(h).pins==1);
+  auto packet=std::find_if(f.wb.begin(),f.wb.end(),[&](mem_fetch *p){return p->get_addr()==address;});
+  assert(packet!=f.wb.end() && (*packet)->get_ft_wb_data()==saved);
+  assert((*packet)->get_ep_l2_payload_id()==h.payload_id && (*packet)->get_ep_l2_payload_generation()==h.generation);
+  f.sp->set_done(*packet); // Real completion while victim reader is bank-denied.
+  assert(f.cache->tvd_for_test()->at(token.index).status==l2_cache::tvd_directory::WB_COMPLETE);
+  assert(ram.inspect(h).allocation_role==ep_l2_payload_store::WB && ram.inspect(h).pins==1);
+  assert((*packet)->get_ft_wb_data()==saved);delete *packet;f.wb.erase(packet);++f.completed_wb;
+  f.wait(read_uid,false);
+  assert(ram.inspect(h).pins==0 && ram.inspect(h).allocation_role==ep_l2_payload_store::TVD);
+  assert(ram.inspect(h).versions==saved && !ram.pending_operations());
+  f.write(address);f.read(address);f.finish();
+  puts("NATIVE_VICTIM|case=dirty_pending_lower_accept_done_while_reader_queued|status=PASS|component_contender=PUBLIC_ARBITER");
+}
+
+static void fixed_capacity_capture(char **argv,unsigned expected_fixed) {
+  victim_fixture f(argv);const auto fixed=f.cache->ep_l2_payload_for_test().fixed_victim_entries();
+  assert(f.cache->tvd_enabled() && fixed==expected_fixed);
+  for(unsigned i=0;i<96;++i)f.read(i*stride);
+  assert(f.lower_read_packets==96);
+  const auto before=f.lower_read_packets;
+  // All96 were actual cold reads; the first80 evictions fit dynamic128 rows.
+  // Fixed64 must reclaim oldest victims instead of borrowing unused quota.
+  f.read(0);
+  assert(f.lower_read_packets==before+(fixed?1u:0u));
+  for(unsigned b=0;b<4;++b) {
+    if(fixed)assert(f.cache->ep_l2_payload_for_test().fixed_charged_victims(b)<=16);
+  }
+  f.read(64*stride);f.write(64*stride);f.read(64*stride);
+  printf("NATIVE_VICTIM|case=fixed_capacity_capture_and_promotion|fixed_entries=%u|"
+         "actual_lower_read_packets=%llu|versions_checked=%zu|status=PASS\n",
+         fixed,f.lower_read_packets,f.replies.size());
+  f.finish();
 }
 
 static void clean_wb_ticket(char **argv) {
@@ -143,5 +209,8 @@ int main(int argc,char **argv) {
   else if(!strcmp(argv[8],"dirty"))dirty_snapshot(argv);
   else if(!strcmp(argv[8],"clean-wb-ticket"))clean_wb_ticket(argv);
   else if(!strcmp(argv[8],"bypass-full"))bypass_full(argv);
+  else if(!strcmp(argv[8],"dirty_pending"))dirty_pending_complete_with_reader(argv);
+  else if(!strcmp(argv[8],"fixed_quota"))fixed_capacity_capture(argv,0);
+  else if(!strcmp(argv[8],"fixed_quota64"))fixed_capacity_capture(argv,64);
   else return 2;
 }

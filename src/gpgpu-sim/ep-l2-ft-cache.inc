@@ -348,8 +348,18 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     if (m_tvd && m_config.m_ep_l2_tvd_clean && live && !dirty &&
         m_ep_l2_payload.inspect(victim).ready_sector_mask.any() &&
         m_tvd->preview_install(m_ep_l2_payload.inspect(victim).owner,false,true).status==tvd_directory::OK) {
-      landing=m_ep_l2_payload.preview_free(ep_l2_payload_store::RESIDENT,index%4);
-      retain_clean=landing.valid();
+      bool reserved=true;
+      if(m_ep_l2_payload.fixed_victim_entries()) {
+        reserved=m_ep_l2_payload.reserve_fixed_retention(victim);
+        if(!reserved && tvd_reclaim_one(index%4,physical_cycle))
+          reserved=m_ep_l2_payload.reserve_fixed_retention(victim);
+      }
+      if(reserved) {
+        landing=m_ep_l2_payload.preview_free(ep_l2_payload_store::RESIDENT,index%4);
+        retain_clean=landing.valid();
+        if(!retain_clean && m_ep_l2_payload.fixed_victim_entries())
+          m_ep_l2_payload.cancel_fixed_retention(victim);
+      }
     }
     if (m_config.m_ep_l2_ft_mode == 2 && (dirty || !live)) {
       landing = m_ep_l2_payload.preview_free(ep_l2_payload_store::RESIDENT, index % 4);
@@ -594,8 +604,11 @@ void l2_cache::lower_accepted(mem_fetch *mf, unsigned long long cycle) {
     assert(m_tvd->writeback_matches(t,m_config.block_addr(mf->get_addr()),mf->get_request_uid()));
     assert(m_tvd->lower_accept(t,true,cycle)==tvd_directory::OK);
     ++m_tvd_indexed_accepts;
-    if (m_tvd->at(t.index).payload.valid())
-      m_ep_l2_payload.transfer(it->second.handle,ep_l2_payload_store::TVD,ep_l2_payload_store::TVD_INFLIGHT);
+    if (m_tvd->at(t.index).payload.valid()) {
+      if (!m_ep_l2_payload.inspect(it->second.handle).pins)
+        m_ep_l2_payload.transfer(it->second.handle,ep_l2_payload_store::TVD,ep_l2_payload_store::TVD_INFLIGHT);
+      // Else retain WB role while a paid reader pin protects its retry key.
+    }
     else m_ep_l2_payload.release(it->second.handle);
   } else m_ep_l2_payload.release(it->second.handle);
   m_ft_stats.staging_lifetime += cycle >= it->second.born ? cycle - it->second.born : 0;
