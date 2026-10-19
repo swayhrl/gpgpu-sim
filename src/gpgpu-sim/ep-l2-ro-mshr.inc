@@ -96,3 +96,12 @@ void mshr_table::ro_line_ready(new_addr_type line,
   e->second.m_ready_sectors |= mask;
 }
 
+
+mem_fetch *mshr_table::ro_descriptor_request(const ro_descriptor_handle &h) const {
+  if (!ro_descriptor_live(h)) throw std::logic_error("stale shared RO descriptor");
+  return m_descriptor_pool[h.id].m_mf;
+}
+mem_access_sector_mask_t mshr_table::ro_descriptor_sectors(const ro_descriptor_handle &h) const {
+  if (!ro_descriptor_live(h)) throw std::logic_error("stale shared RO descriptor");
+  return m_descriptor_pool[h.id].m_sectors;
+}

@@ -160,7 +160,7 @@ class transactions {
     for(unsigned n=0;n<m_slots.size();++n) {
       const entry &e=m_slots[(n+start)%m_slots.size()];
       if(!e.live)continue;
-      for(const auto &w:e.waiters)if(!(w.sectors&~e.ready)){h=e.h;return true;}
+      for(const auto &w:e.waiters)if(!(waiter_mask(w)&~e.ready)){h=e.h;return true;}
     }
     return false;
   }
@@ -250,8 +250,8 @@ class transactions {
     if (e.prepared && e.prepared_cycle != cycle) e.prepared = false;
     if (!e.prepared) {
       for (unsigned i = 0; i < e.waiters.size(); ++i) {
-        if ((e.waiters[i].sectors & ~e.ready) == 0) {
-          if (!m_port.response_read(h, e.waiters[i].sectors, cycle)) return false;
+        if ((waiter_mask(e.waiters[i]) & ~e.ready) == 0) {
+          if (!m_port.response_read(h, waiter_mask(e.waiters[i]), cycle)) return false;
           e.prepared = true; e.prepared_index = i; e.prepared_cycle = cycle;
           break;
         }
@@ -259,7 +259,7 @@ class transactions {
     }
     if (!e.prepared) return false;
     waiter &w = e.waiters[e.prepared_index];
-    out.request = w.mf; out.sectors = w.sectors; out.transaction = h;
+    out.request = waiter_request(w); out.sectors = waiter_mask(w); out.transaction = h;
     return true;
   }
   void commit_response(identity h, bool fifo_accepted, uint64_t cycle) {
@@ -291,11 +291,17 @@ class transactions {
   }
   struct waiter {
     mshr_table::ro_descriptor_handle descriptor;
-    mem_fetch *mf;
-    unsigned sectors;
-    waiter(mshr_table::ro_descriptor_handle d, mem_fetch *m, unsigned s)
-      : descriptor(d), mf(m), sectors(s) {}
+    // Chain membership only. Request pointer and sector mask live exclusively
+    // in the existing sharedD512 descriptor, never in a second waiter record.
+    waiter(mshr_table::ro_descriptor_handle d, mem_fetch *, unsigned)
+      : descriptor(d) {}
   };
+  unsigned waiter_mask(const waiter &w) const {
+    return m_shared.ro_descriptor_sectors(w.descriptor).to_ulong();
+  }
+  mem_fetch *waiter_request(const waiter &w) const {
+    return m_shared.ro_descriptor_request(w.descriptor);
+  }
   struct entry {
     bool live, attached, reuse_seen, prepared;
     unsigned required, issued, ready, prepared_index;
