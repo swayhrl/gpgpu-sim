@@ -555,6 +555,12 @@ int main(int argc,char **argv) {
       dirty_partial(argv[1],argv[2]);
       dirty_wad_full(argv[1],argv[2]);return 0;
     }
+    if (negative=="--study-dirty-boundaries") {
+      // Reuse finite native cases with unchanged expected invariants. The
+      //1024x1 geometry stresses bank-local capacity, not application behavior.
+      dirty_bank_pool_full(argv[1],argv[2]);
+      partial_dirty_promotion(argv[1],argv[2]);return 0;
+    }
     if (negative=="--r14-integration-gates") {
       texture_bypass_does_not_consume_tvd(argv[1],argv[2]);
       clean_retention_physical_cost(argv[1],argv[2]);

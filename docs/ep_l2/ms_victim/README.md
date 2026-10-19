@@ -1,4 +1,23 @@
-# B source r2 — no native qualification
+# B source r4 — A949 incremental candidate, no native qualification
+
+Current source adopts A CLEAN_ONLY94996ec5 directory/UID/ticket/control-cost
+interfaces and preserves B dirty/fixed/last-unpin deltas. Use ONLY
+`adapter_A949_r4/A_INCREMENTAL_HOOKS.patch` plus current modules/test_plan_r4
+on exact94996ec5 for the next isolated A integration. Read
+`R4_A949_INTEGRATION.md`. All21 inputs remain NOT_RUN. Oldr1–r3 commits,
+patches and plans are preserved; old adapters are not for these current modules.
+
+# Historical r3 — no native qualification
+
+Current r3 closes a source lifecycle gap: completion during a pinned read of
+an already-TVD-role slot must finish TVD_INFLIGHT→TVD_VALID at last response
+commit too. See `R3_INTEGRATION_AND_LIFECYCLE.md` and source-bound regression
+receipt. `adapter_A44_r3` is checked against A's immutable44c940b7 with an
+isolated index; no public source was applied. `test_plan_r3` has21 prepared
+native process inputs and ZERO actual executions. Earlier r1/r2 directories
+and exact commits are preserved. The next section is the prior r2 checkpoint.
+
+# Historical r2 — no native qualification
 
 Current source extends the frozen clean-first89a75b24 candidate with dirty
 pending/inflight forwarding and a reciprocal fixed-capacity quota control.

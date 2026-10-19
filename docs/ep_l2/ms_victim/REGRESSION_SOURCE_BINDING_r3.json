@@ -1,0 +1,14 @@
+{
+  "status": "SOURCE_BOUND_COUNTEREXAMPLE_NOT_EXECUTED",
+  "old_core": "b90ed7c14e7b00ec4c68a26af224be3d2620f647",
+  "old_consumer_sha256": "25bbbe9a74f44160ad93e4f9b6903793d30a239caa3bdb7ad8a1078a53b1a42c",
+  "new_consumer_sha256": "8e6356d24dcf9506fe37977527a0908e3485d29246e7ae1c96d5272b986d6c0a",
+  "native_test_sha256": "e080a0fd1e8e1d1650dc97143885a31e1cdc68a010fb29534e5d5679729a2064",
+  "new_selector": "dirty_icnt_pinned",
+  "expected_old_failure": "Final TVD_VALID assertion: old completion leaves TVD_INFLIGHT after last unpin if slot was already roleTVD",
+  "old_result": null,
+  "new_result": null,
+  "comparison_scope": "A44 plus same public adapter and new native test; vary ONLY consumer response_commit old/new; legal A/E native build required; not claimed as an already executed old binary",
+  "test_uses_actual_ICNT_entries": 64,
+  "extra_response_data_buffers": 0
+}

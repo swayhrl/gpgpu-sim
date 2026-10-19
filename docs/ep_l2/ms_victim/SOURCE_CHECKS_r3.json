@@ -1,0 +1,21 @@
+{
+  "revision": "r3",
+  "at": "2026-10-19T13:43:27.187314+00:00",
+  "status": "TEXT_IDENTITY_ONLY_PASS",
+  "new_adapter_base": "44c940b748fceaec8f21fa2b443907d5afd2756b",
+  "A44_isolated_index_patch_check": true,
+  "no_patch_applied": true,
+  "real_index_unchanged": true,
+  "all_six_public_worktree_files_equal_original84359d4": true,
+  "r1_r2_packs_preserved": true,
+  "python_AST_parse": true,
+  "native_input_processes": 21,
+  "config_source_hashes_match": true,
+  "native_compile_attempts": 0,
+  "native_executions": 0,
+  "new_full_apps": 0,
+  "runtime_effective_dump": null,
+  "actual_legacy_failure": null,
+  "actual_hits": null,
+  "actual_DRAM_delta": null
+}

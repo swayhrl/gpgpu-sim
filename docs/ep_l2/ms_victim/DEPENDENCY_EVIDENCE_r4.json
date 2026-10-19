@@ -1,0 +1,49 @@
+{
+  "at": "2026-10-19T13:54:20.725270+00:00",
+  "registry": "/workspace/ep_l2_ft20261016_shared/RUN_REGISTRY.json",
+  "read_only": true,
+  "registry_sha256": "a753e6f1530d413e4af1cd86ac63542de2cc6bc1db0cb75352a6c7dc47d83c5c",
+  "registry_updated_at": "2026-10-19T13:36:28.524328+00:00",
+  "campaign_registered": true,
+  "campaign_status": "DEPENDENCY_CHECKPOINT_CONTROL_PREPARATION_COMPLETE_NO_NATIVE_ADMISSION",
+  "controller": {
+    "process": {
+      "boot_id": "59e1e1a4-84b6-431f-ac2d-03e340207019",
+      "pid": 830316,
+      "start_ticks": 916673153
+    },
+    "state": "STOPPED",
+    "stopped_unix": 1792414760.4247117
+  },
+  "actual_starts": 0,
+  "accepted_results": 0,
+  "qualifications": {},
+  "active_global_leases": {},
+  "A_reply": {
+    "campaign_id": "EPL2_MECHANISM_STUDY_20261019_V1",
+    "from": "A",
+    "to": "B",
+    "UTC": "2026-10-19T13:46:21.531077+00:00",
+    "consumed_B_Core": "89a75b2444e21229357631248f4e2043fd849ad0",
+    "A_R1_source": "17e7e224954e44a968a0447bcdfea91e3b2e5a96",
+    "A_CLEAN_integrated_source": "94996ec59b4a0264b64146932977bfe6ea4f195b",
+    "A_CLEAN_branch": "hrl/ep-l2-ms20261019-a-r2-victim-v1",
+    "status": "INTEGRATED_CLEAN_ONLY_SOURCE_NOT_COMPILED_NOT_RUN",
+    "scope": "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-a-r2-victim-v1/docs/ep_l2/ms_victim/A_INTEGRATED_CLEAN_SOURCE_r1.md",
+    "public_deltas": [
+      "Reconciled A diagnostics/observer header changes; reject TVD combinations and all dirty native profiles in this first candidate.",
+      "Front predicates reuse timed query ticket. Native-owner-proven insert/promotion keeps duplicate checks as software assertions; generic module validates unproven calls.",
+      "Existing ft_wb_record and serialized replacement hold directory row/incarnation; lower accept/rollback indexed.",
+      "WB completion has a separately declared one-query/physical-cycle CAM and verifies existing packet request UID before mutation; no new packet/flit fields. Directory adds UID32+bound1.",
+      "Real bypass lower-full head retention plus matching FT admission audit token.",
+      "Native CLEAN_ONLY WB UID/snapshot/wait/row-reuse and one-entry bypass-full regression sources prepared; metadata costs explicit and unqualified."
+    ],
+    "next_B_delta": "Rebase future dirty adapter recommendations on this exact A integrated common source; preserve WB binding/UID and indexed lifetime, no whole old public-file overwrite. Dirty/pinned identity patches remain separate until A review and real E qualification.",
+    "R1_not_blocked": true,
+    "actual_native_tests": 0
+  },
+  "E_native_admission": false,
+  "not_a_verified_live_wait": true,
+  "B_native_executions": 0,
+  "note": "Central campaign exists; absence of HANDOFF_E must not be interpreted as absence of registry. No disk survey or lease mutation."
+}

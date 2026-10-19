@@ -2829,6 +2829,8 @@ class l2_cache : public data_cache {
         m_ep_l2_tag_payload(ep_l2_payload_store::k_resident_slots) {
     validate_ep_l2_mode_config();
     m_ep_l2_payload.set_rg1_enabled(config.m_ep_l2_rg1);
+    m_ep_l2_payload.set_tvd_identity(config.m_ep_l2_tvd_dirty);
+    m_ep_l2_payload.set_fixed_victim_entries(config.m_ep_l2_tvd_fixed_entries);
     m_ep_l2_payload.set_local_diagnostic(config.m_ep_l2_diag_copy_free ?
         ep_l2::mechanism_v1::COPY_FREE : config.m_ep_l2_diag_l2_data_free ?
         ep_l2::mechanism_v1::L2_DATA_FREE : ep_l2::mechanism_v1::NORMAL);
