@@ -32,12 +32,13 @@ struct fixture {
   unsigned lower_wb = 0, completed_wb = 0, same_bank_copy = 0, cross_bank_copy = 0;
   std::map<new_addr_type,unsigned> source_banks;
   unsigned long long bank_max = 0;
-  fixture(char **argv, const char *queues="512:2:64:64"):cfg(&ctx) {
+  fixture(char **argv, const char *queues="512:2:64:64",
+      const char *geometry="S:64:128:16,L:B:m:L:L,A:128:1,256:0,32"):cfg(&ctx) {
     option_parser_t p=option_parser_create();
     ctx.ptx_reg_options(p);ctx.func_sim->ptx_opcocde_latency_options(p);icnt_reg_options(p);cfg.reg_options(p);
     option_parser_cfgfile(p,argv[1]);option_parser_cfgfile(p,argv[2]);
     const char *args[]={"a1","-gpgpu_ep_l2_ft_mode",argv[3],"-gpgpu_ep_l2_wbuf_entries",argv[4],
-      "-gpgpu_cache:dl2","S:64:128:16,L:B:m:L:L,A:128:1,256:0,32",
+      "-gpgpu_cache:dl2",geometry,
       "-gpgpu_dram_partition_queues",queues,
       "-gpgpu_ep_l2_static_s64",argv[5],
       "-gpgpu_ep_l2_wb_local_cap",argv[6],"-gpgpu_ep_l2_bank_ops",argv[7]};

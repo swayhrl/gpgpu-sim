@@ -8,7 +8,8 @@
 struct victim_fixture : fixture {
   unsigned long long lower_read_packets = 0, lower_read_bytes = 0;
   unsigned long long previous_queries = 0;
-  explicit victim_fixture(char **argv, const char *queues="512:2:64:64") : fixture(argv,queues) {
+  explicit victim_fixture(char **argv, const char *queues="512:2:64:64",
+      const char *geometry="S:64:128:16,L:B:m:L:L,A:128:1,256:0,32") : fixture(argv,queues,geometry) {
     assert(cache->ep_l2_payload_for_test().physical_slots()==1168);
     assert(cache->ep_l2_payload_for_test().bank_service_limit()==1);
     assert(cache->ep_l2_descriptor_pool_capacity()==512);
@@ -43,8 +44,9 @@ struct victim_fixture : fixture {
       assert(expected.count(uid) && replies.insert(uid).second);
       if(!r->get_is_write()) {
         assert(r->has_ft_wb_data());
-        const unsigned sector=(r->get_addr()>>5)&3;
-        assert(r->get_ft_wb_data()[sector]==expected.at(uid)[sector]);
+        for(unsigned sector=0;sector<4;++sector)
+          if(r->get_access_sector_mask().test(sector))
+            assert(r->get_ft_wb_data()[sector]==expected.at(uid)[sector]);
       }
       delete r;
     }

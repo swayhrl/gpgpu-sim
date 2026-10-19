@@ -1,0 +1,26 @@
+{
+  "status": "TEXT_AND_PREPARATION_CHECKS_ONLY_NO_CPP_COMPILE_OR_EXECUTION",
+  "patch_base": "6452b74d92c2cf72f80e5f5e102941d6cf9adf7a",
+  "patch_index_apply_check": true,
+  "unchanged_A645_helpers": [
+    "ep-l2-tvd-directory.h",
+    "ep-l2-tvd-bank-identity.h",
+    "ep-l2-tvd-fixed-pool.inc"
+  ],
+  "public_B_worktree_unchanged_vs843": [
+    "src/gpgpu-sim/gpu-cache.h",
+    "src/gpgpu-sim/gpu-cache.cc",
+    "src/gpgpu-sim/gpu-sim.cc",
+    "src/gpgpu-sim/l2cache.cc",
+    "src/gpgpu-sim/ep-l2-ft-cache.inc",
+    "src/gpgpu-sim/ep-l2-rg1.inc",
+    "CMakeLists.txt"
+  ],
+  "prepare_python_ast": true,
+  "native_compiles": 0,
+  "native_executions": 0,
+  "frozen_input_hashes_checked": true,
+  "full_synthetic_RO_write_disjoint": true,
+  "CPP_syntax_and_native_behavior": "NOT_COMPILED_NOT_RUN",
+  "existing_tests_rerun": 0
+}

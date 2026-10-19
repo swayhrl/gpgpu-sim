@@ -14,19 +14,21 @@
     "tests/ep_l2/ms_victim/dirty_full.config": "c39ca4225264102dd25e9764fcdc75c36582fa28ccbe5c4e7038d69d6046e467",
     "tests/ep_l2/ms_victim/dirty_inflight.config": "41980425ae9c8bcfa7433e57c7b83a5d5505365bd12d71c90fc60e098b9d717b",
     "tests/ep_l2/ms_victim/fixed64.config": "449f38250e463a872b52e53c6b81dab888f424032340b89a8e2edf52a47e3a26",
-    "tests/ep_l2/ms_victim/native_fixture.h": "83650f18ea4b8c9713357545552fd49d7885c15f768f7f2f244056068624aa67",
+    "tests/ep_l2/ms_victim/native_fixture.h": "9fc676d8f65f0d833440352f82315dc80ee3a836cca338bdb820873fed549684",
     "tests/ep_l2/ms_victim/off.config": "1200d54685a7a7dfa2ca3559880b3e35e44c438de56e87c3115a3789e433b6a0",
     "tests/ep_l2/ms_victim/test_bank_identity.cc": "d9504f7b2aa19653109e85c29c829d3e75366f0b4e397b08299e1cc7e659ec8c",
     "tests/ep_l2/ms_victim/test_fixed_partition.cc": "c5ad68f079a92bf0272854ceb52ac89c1f59703c5396680eb4ce420630d4e01f",
     "tests/ep_l2/ms_victim/test_native.cc": "e080a0fd1e8e1d1650dc97143885a31e1cdc68a010fb29534e5d5679729a2064",
-    "tests/ep_l2/potential_fixture.h": "5f7ab170479818ad451c57037b8aa34010711c56307e95226b131467a34b9ca6",
+    "tests/ep_l2/potential_fixture.h": "06fa71b0d486e3790137dedefb0b7ab8f577fb016cee7b4144a97367a627db04",
     "tests/ep_l2/test_tvd_directory.cc": "b7298636d8fb31425b2f612ceaacc312dc2509ae8bb78400934b8442c00d1c84",
     "tests/ep_l2/test_tvd_production.cc": "8b535059857901043cd6185f01f6a568bcc37e2a196911c01a984aa3f45107f3",
     "util/ep_l2/ms_victim/fixed_adapter.py": "07594f06dde686b5afdf2f51dd4e63320f8601fa04f9cc3afd4f54bfd7f20ccd",
     "util/ep_l2/ms_victim/make_integrated_adapter.py": "1d0bf77750fc8759ef589302c44e931f3644fcd3d14bc1c7825d70594e2d2a6e",
     "util/ep_l2/ms_victim/make_public_adapter.py": "8c0da6142b18ce2658fe076baca44683b54787a389c47156328be9ecfc900cfd",
     "util/ep_l2/ms_victim/pending_adapter.py": "668f160db4b172b35bbb078fe01c77b8d52e21b289a468fdda1ab436ebce0ac3",
-    "util/ep_l2/ms_victim/prepare_test_plan.py": "866ef8f5c4708ce9f883513a061aacb40cb5c15c6632e167ae6821a3705f14cd"
+    "util/ep_l2/ms_victim/prepare_test_plan.py": "866ef8f5c4708ce9f883513a061aacb40cb5c15c6632e167ae6821a3705f14cd",
+    "tests/ep_l2/ms_victim/test_vrw_interleave.cc": "87164678ccab461ce289663e6c846b951cc922ba40d8725182d3bb572409f135",
+    "util/ep_l2/ms_victim/prepare_vrw_interleave.py": "2167910e3e253119d11dd5d10245e30ac25e1f61cb019e23f7eecb9f0a9ccf83"
   },
   "subsets": {
     "CLEAN_ONLY": "SOURCE_READY_NATIVE_VALIDATION_PENDING",
@@ -50,15 +52,14 @@
     "victim_query_per_cycle": 1
   },
   "remaining": [
-    "A review/integrate exact B modules plus six-file A949 incremental source proposal, separate from clean-only R2 and primary R1; retain UID/ticket/metadata protocol",
-    "A WAD/metadata port/control-cost and fixed bank-capacity baseline review",
-    "E fresh legal admission; exact same-source native objects/executables/config effective dump",
-    "All21 prepared native processes including actual old-identity failure, nonzero responses/lower/nativeDRAM counters, dirty pinned ICNT and clean-only lateWB generation reuse",
-    "Real refusal rollback, late fill/epoch boundaries, metadata starvation and default-OFF equivalence still require exact integrated native evidence",
-    "Independent E qualification; D frozen opportunity; full apps by E only"
+    "A consume exact A645 last-unpin delta and combine V-before-R/host guards with C latest incremental modules",
+    "C review joint complete synthetic epoch and common bank response retry identity/mux; this is not a new app certificate",
+    "B/A fixed64 retained dirty WB accounting gap: guard remains until exact bounded resource delta and native negatives",
+    "A/E legal exact combined native build/effective dump and affected directed cases including old21",
+    "E independent acceptance before full apps; actual hit/data/traffic/native DRAM evidence still absent"
   ],
   "metadata_width_scope": "C++ control fields declared; no recycled RTL R3 PPA/hidden payload RAM",
-  "revision": "r4",
+  "revision": "full_system_v2_r1",
   "clean_first_frozen_core": "89a75b2444e21229357631248f4e2043fd849ad0",
   "adapter": "docs/ep_l2/ms_victim/adapter_A949_r4/A_INCREMENTAL_HOOKS.patch",
   "test_plan": "docs/ep_l2/ms_victim/test_plan_r4/NATIVE_TEST_PLAN.json",
@@ -90,5 +91,17 @@
     "indexed_control_update_lanes": 3,
     "new_packet_identity_bits": 0,
     "PPA_and_rate_qualified": false
-  }
+  },
+  "coordination_V2": "b2e5328aca825d6e9ebfe09e46fa208957834636",
+  "preserved_r4_core": "126bde88baadf3a6628e5f5de620825b06a5215f",
+  "A_latest_victim_preimage": "6452b74d92c2cf72f80e5f5e102941d6cf9adf7a",
+  "A_latest_RO_preimage": "aa2a92cc11ef0f22f9f2a6f3418ce31bdee33278",
+  "V2": "docs/ep_l2/ms_victim/full_system_v2_r1/README.md",
+  "exact_A_delta": "docs/ep_l2/ms_victim/full_system_v2_r1/A645_LAST_UNPIN.patch",
+  "joint_native_input": "docs/ep_l2/ms_victim/full_system_v2_r1/vrw_input/NATIVE_INPUT_PLAN.json",
+  "joint_source": "tests/ep_l2/ms_victim/test_vrw_interleave.cc",
+  "joint_C_review": "PENDING",
+  "campaign_cumulative_limit": 40,
+  "budget_ledger_writer": "E_ONLY",
+  "full_system_qualified": false
 }

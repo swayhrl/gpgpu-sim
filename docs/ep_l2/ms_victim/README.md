@@ -1,3 +1,7 @@
+Current continuation: [full-system V2 r1](full_system_v2_r1/README.md).
+Exact A645 last-unpin delta + one B/C actual-path input prepared; C review and
+A/E native qualification pending. Previous r1-r4 packs remain frozen below.
+
 # B source r4 — A949 incremental candidate, no native qualification
 
 Current source adopts A CLEAN_ONLY94996ec5 directory/UID/ticket/control-cost
