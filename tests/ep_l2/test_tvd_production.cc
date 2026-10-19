@@ -191,12 +191,12 @@ static void clean_retention_physical_cost(const char *base,const char *overlay) 
   scenario f(base,overlay);f.warm(0,4096);
   auto b=f.push(128);f.await(b);f.drain();
   auto dir=f.cache()->tvd_for_test();assert(dir->occupied()==1 && dir->live(dir->find(0)));
-  dir->advance(f.gpu->gpu_sim_cycle+f.gpu->gpu_tot_sim_cycle);
+  f.cache()->tvd_print(stdout,0); // Public snapshot charges the actual GPU clock.
   const auto clean=dir->stats().clean_retention_slot_cycles;
   const auto dirty=dir->stats().tvd_extra_retention_slot_cycles;
   const auto grants=f.cache()->ep_l2_payload_for_test().bank_grants();
   for(unsigned n=0;n<7;++n)f.step();
-  dir->advance(f.gpu->gpu_sim_cycle+f.gpu->gpu_tot_sim_cycle);
+  f.cache()->tvd_print(stdout,0);
   assert(dir->stats().clean_retention_slot_cycles==clean+7);
   assert(dir->stats().tvd_extra_retention_slot_cycles==dirty);
   assert(f.cache()->ep_l2_payload_for_test().bank_grants()==grants);
