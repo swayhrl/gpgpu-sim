@@ -125,9 +125,25 @@ static void dirty_pending_complete_with_reader(char **argv) {
   puts("NATIVE_VICTIM|case=dirty_pending_lower_accept_done_while_reader_queued|status=PASS|component_contender=PUBLIC_ARBITER");
 }
 
+// A write ACK need not wait for the separate paid lower-WB readout. Observe
+// the actual accepted packet before asserting INFLIGHT; never seed directory
+// state, complete a WB early or assume a fixed number of cycles.
+static void await_accepted_writeback(victim_fixture &f,new_addr_type address) {
+  auto accepted=[&]() {
+    return std::find_if(f.wb.begin(),f.wb.end(),[&](mem_fetch *p){return p->get_addr()==address;})!=f.wb.end();
+  };
+  const auto dir=f.cache->tvd_for_test();const auto before=dir->find(address);
+  const unsigned prior=dir->live(before)?unsigned(dir->at(before.index).status):~0U;
+  unsigned steps=0;
+  while(!accepted()) {assert(steps<128);f.step();++steps;}
+  printf("NATIVE_VICTIM|WB_ACCEPT_OBSERVATION|address=%llu|prior_state=%u|physical_steps=%u|packet_present=1\n",
+         (unsigned long long)address,prior,steps);
+}
+
 static void clean_only_late_wb_after_slot_reuse(char **argv) {
   victim_fixture f(argv);
   for(unsigned i=0;i<17;++i)f.write(i*stride);
+  await_accepted_writeback(f,0);
   auto dir=f.cache->tvd_for_test();const auto t=dir->find(0);
   assert(dir->live(t) && dir->at(t.index).status==l2_cache::tvd_directory::WB_INFLIGHT);
   assert(!dir->at(t.index).payload.valid()); // CLEAN_ONLY WAD, not dirty retain.
@@ -160,6 +176,7 @@ static void clean_only_late_wb_after_slot_reuse(char **argv) {
 static void dirty_icnt_full_with_reader(char **argv) {
   victim_fixture f(argv);
   for(unsigned i=0;i<17;++i)f.write(i*stride);
+  await_accepted_writeback(f,0);
   auto dir=f.cache->tvd_for_test();const auto t=dir->find(0);
   assert(dir->live(t) && dir->at(t.index).status==l2_cache::tvd_directory::WB_INFLIGHT);
   const auto h=dir->at(t.index).payload;auto &ram=f.cache->ep_l2_payload_for_test();
@@ -296,7 +313,10 @@ static void bypass_full(char **argv) {
   f.return_all_reads_reverse();
   for(unsigned n=0;f.replies.size()!=2;++n) { assert(n<64);f.step(); }
   assert(f.replies.count(a_uid) && f.replies.count(b_uid) && !f.part->busy());
-  assert(f.cache->tvd_lookup_queries_for_test()==0 && !f.cache->tvd_for_test()->occupied());
+  // This bypass profile explicitly disables TVD; absence is the expected
+  // state, so do not dereference its intentionally null directory observer.
+  assert(f.cache->tvd_lookup_queries_for_test()==0 && !f.cache->tvd_enabled() &&
+         f.cache->tvd_for_test()==nullptr);
   assert(f.cache->tvd_actual_lower_read_packets()==0 && f.lower_read_packets==2);
   puts("NATIVE_VICTIM|case=texture_only_full_bypass_fifo_holds_real_head|bypass_lower_packets=2|cache_lower_packets=0|status=PASS");
 }

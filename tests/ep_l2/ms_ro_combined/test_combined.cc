@@ -5,9 +5,16 @@ static const new_addr_type stride=64*128;
 static unsigned forbidden_atomic_callbacks=0;
 static void forbidden_atomic_callback(const inst_t *,ptx_thread_info *) {++forbidden_atomic_callbacks;}
 static void late_ro_and_same_address_victim(char **argv) {
-  combined_fixture f(argv);auto first=f.make(0,false);auto first_uid=first->get_request_uid();f.send(first);f.await_lower(1);
+  combined_fixture f(argv);
+  // Tag allocation takes the last invalid way; RO pressure detaches the first
+  // eligible way, not the LRU transaction. Fill the other15 ways first, then
+  // place line0 in way0 through real admissions. The17th pending miss must
+  // detach that exact old instance, with its lower response still withheld.
+  for(unsigned i=1;i<=15;++i) {f.send(f.make(i*stride,false));f.await_lower(i);}
+  auto first=f.make(0,false);auto first_uid=first->get_request_uid();f.send(first);f.await_lower(16);
   auto old=f.tag_for(0);assert(old.valid());
-  for(unsigned i=1;i<=16;++i) {f.send(f.make(i*stride,false));f.await_lower(i+1);}
+  assert(f.cache->ep_l2_tag_payload_handle_for_test(0)==old);
+  f.send(f.make(16*stride,false));f.await_lower(17);
   assert(!f.tag_for(0).valid() && f.cache->ep_l2_payload_for_test().handle_live(old));
   auto second=f.make(0,false);auto second_uid=second->get_request_uid();f.send(second);f.await_lower(18);
   auto newer=f.tag_for(0);assert(newer.valid() && newer!=old);
