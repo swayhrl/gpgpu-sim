@@ -93,18 +93,31 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
   }
   bool candidate(const mem_fetch *m) const { return demand(m)&&cert->contains(c.m_config.block_addr(m->get_addr())); }
   bool query_admissible(mem_fetch *m) const {
-    if (!new_request(m)) return true;
+    return !new_request(m) || (query_uid==m->get_request_uid() && physical_cycle()>=query_ready_at);
+  }
+  // Called once at the actual timed frontend-head observation point. Preview
+  // itself never launches a lookup, reserves ownership or changes counters.
+  void frontend_cycle(mem_fetch *m) {
+    if (!new_request(m)) return;
     const auto now=physical_cycle();
     if (query_uid!=m->get_request_uid()) {
-      if (query_issue_cycle==now) {++query_port_waits;return false;}
-      query_issue_cycle=now;
-      query_uid=m->get_request_uid();query_ready_at=now+1;++query_count;
+      if (query_issue_cycle==now) {++query_port_waits;return;}
+      query_issue_cycle=now;query_uid=m->get_request_uid();query_ready_at=now+1;++query_count;
       query_last_wait=~uint64_t(0);
     }
-    if (now>=query_ready_at) return true;
-    if (query_last_wait!=now) {++query_wait_cycles;query_last_wait=now;}
-    return false;
+    if (now<query_ready_at) {
+      if (query_last_wait!=now) {++query_wait_cycles;query_last_wait=now;}
+      return;
+    }
+    l2_access_plan p;
+    if (!preview(m,p)) return;
+    if (p.ep_l2_tag_set_all_reserved) {observe_block(m,0);return;}
+    const bool existing=p.mshr_hit || target_for_observer(m);
+    if (c.m_mshrs.descriptor_count_used()>=512) observe_block(m,2);
+    if (c.m_mshrs.targets_on_line(c.m_config.block_addr(m->get_addr()))>=32) observe_block(m,3);
+    if (!existing && !c.m_config.m_ro_line_mshr_bypass && c.m_mshrs.num_entries_used()>=128) observe_block(m,1);
   }
+  bool target_for_observer(mem_fetch *m) const {handle h;return target(m,h);}
   void observe_block(const mem_fetch *m,unsigned reason) const {
     if (observed_uid!=m->get_request_uid()) {observed_uid=m->get_request_uid();blocked_mask=0;}
     if (!(blocked_mask&(uint64_t(1)<<reason))) {
@@ -216,7 +229,7 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
       p.probe_status=HIT_RESERVED;
     } else if(p.probe_status==RESERVATION_FAIL && detachable(m->get_addr(),i))p.probe_status=MISS;
     p.cache_index=i;
-    if(p.probe_status==RESERVATION_FAIL){p.ep_l2_tag_set_all_reserved=true;observe_block(m,0);return true;}
+    if(p.probe_status==RESERVATION_FAIL){p.ep_l2_tag_set_all_reserved=true;return true;}
     const unsigned mask=m->get_access_sector_mask().to_ulong();
     unsigned missing=existing?needed(m,h):mask;
     if(!existing && p.probe_status!=MISS) {
@@ -236,9 +249,6 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     // Shared descriptor/per-address bounds still block an M-mode request,
     // without misreporting that it needs a traditional line-MSHR.
     if(!capacity(m,existing)) p.probe_status=RESERVATION_FAIL;
-    if (c.m_mshrs.descriptor_count_used()>=512) observe_block(m,2);
-    if (c.m_mshrs.targets_on_line(c.m_config.block_addr(m->get_addr()))>=32) observe_block(m,3);
-    if (!existing && !c.m_config.m_ro_line_mshr_bypass && c.m_mshrs.num_entries_used()>=128) observe_block(m,1);
     if(c.ep_l2_wad_contains(c.m_config.block_addr(m->get_addr()))) {p.probe_status=RESERVATION_FAIL;p.ep_l2_wad_same_address_hazard=true;}
     return true;
   }
@@ -364,3 +374,5 @@ void l2_cache::ro_bind_commandlist(const char *path){if(m_ro){
   if(ep_l2_ro::sha256(bytes)!=m_ro->command_sha)throw std::invalid_argument("RO commandlist identity mismatch");
   m_ro->command_bound=true;
 }}
+
+void l2_cache::ro_frontend_cycle(mem_fetch *mf) {if(m_ro)m_ro->frontend_cycle(mf);}

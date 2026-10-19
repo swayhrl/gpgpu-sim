@@ -40,7 +40,7 @@ struct rig {
   cache_request_status admit(mem_fetch*m) {
     // Wait only for the explicit paid lookup. Never hide a capacity refusal.
     for(unsigned wait=0;wait<2;++wait) {
-      gpu->gpu_sim_cycle=time;l2_access_plan p;cache->preview_access(m->get_addr(),m,p);
+      gpu->gpu_sim_cycle=time;cache->ro_frontend_cycle(m);l2_access_plan p;cache->preview_access(m->get_addr(),m,p);
       if(!p.ep_l2_ro_lookup_wait)break;
       tick();
     }
