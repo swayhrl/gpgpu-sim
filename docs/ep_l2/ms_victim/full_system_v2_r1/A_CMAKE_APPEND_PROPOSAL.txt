@@ -1,0 +1,7 @@
+# A only: append to the exact future combined preimage after merging fixtures.
+# This is a proposal, NOT an applied or configured public CMake change.
+add_executable(ep_l2_ms_vrw_interleave EXCLUDE_FROM_ALL tests/ep_l2/ms_victim/test_vrw_interleave.cc)
+target_include_directories(ep_l2_ms_vrw_interleave PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+target_link_libraries(ep_l2_ms_vrw_interleave PRIVATE -Wl,--start-group
+    entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
+    ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)

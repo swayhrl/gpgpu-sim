@@ -261,3 +261,19 @@ foreach(victim_test bank_identity fixed_partition)
       entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
       ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
 endforeach()
+
+# One shared B/C production-partition input; never built/run by default.
+# The current public preimage lacks RO; do not advertise a compilable joint
+# target merely because its fixture source has arrived before C's adapter.
+option(EP_L2_BUILD_VRW_FIXTURE "Build A-integrated shared V/RO/W fixture" OFF)
+if(EP_L2_BUILD_VRW_FIXTURE)
+  if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim/ep-l2-ro-runtime.inc")
+    message(FATAL_ERROR "VRW fixture requires A common RO runtime integration")
+  endif()
+  add_executable(ep_l2_ms_vrw_interleave EXCLUDE_FROM_ALL
+      tests/ep_l2/ms_victim/test_vrw_interleave.cc)
+  target_include_directories(ep_l2_ms_vrw_interleave PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+  target_link_libraries(ep_l2_ms_vrw_interleave PRIVATE -Wl,--start-group
+      entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
+      ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
+endif()
