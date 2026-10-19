@@ -280,7 +280,7 @@ endif()
 
 # C bounded production fixtures integrated by A. Bank facade needs source
 # extraction, not a direct production target; see prepare_ro_bank_progress.py.
-foreach(ro_test ro_runtime ro_partition ro_transactions ro_store_port ro_oracle_certificate ro_epoch_entry)
+foreach(ro_test ro_runtime ro_partition ro_detailed_origin ro_transactions ro_store_port ro_oracle_certificate ro_epoch_entry)
   add_executable(ep_l2_${ro_test} EXCLUDE_FROM_ALL tests/ep_l2/test_${ro_test}.cc)
   target_include_directories(ep_l2_${ro_test} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
   target_link_libraries(ep_l2_${ro_test} PRIVATE -Wl,--start-group
