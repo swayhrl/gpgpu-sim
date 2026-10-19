@@ -187,6 +187,13 @@ if(GPGPUSIM_SEM1_CONDITIONAL_VALUES)
         ${CUDAToolkit_INCLUDE_DIRS})
     target_compile_options(dtc_l1_sem1_values_ldst PRIVATE -fno-access-control)
     target_link_libraries(dtc_l1_sem1_values_ldst PRIVATE cudart ${CMAKE_DL_LIBS})
+    # Separate source-only follow-up; never replace the frozen ten-mode ELF.
+    add_executable(dtc_l1_sem1_litmus12_ldst tests/dtc_l1_sem1_litmus12_ldst.cc)
+    target_include_directories(dtc_l1_sem1_litmus12_ldst PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/libcuda
+        ${CUDAToolkit_INCLUDE_DIRS})
+    target_compile_options(dtc_l1_sem1_litmus12_ldst PRIVATE -fno-access-control -UNDEBUG)
+    target_link_libraries(dtc_l1_sem1_litmus12_ldst PRIVATE cudart ${CMAKE_DL_LIBS})
 endif()
 
 if(APPLE)
