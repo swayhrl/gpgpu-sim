@@ -26,6 +26,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--source',required=True);p.add_argument('--store-source');p.add_argument('--runtime-source')
     p.add_argument('--output',type=Path,required=True);a=p.parse_args();root=Path(__file__).resolve().parents[2]
+    a.source=subprocess.check_output(['git','-C',str(root),'rev-parse',a.source+'^{commit}'],text=True).strip()
     a.output.mkdir(parents=True,exist_ok=False);out=a.output.resolve();binding={}
     def read(name,source=None):
         sha=source or a.source;path='src/gpgpu-sim/'+name

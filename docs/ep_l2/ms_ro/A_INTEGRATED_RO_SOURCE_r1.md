@@ -105,3 +105,13 @@ GPU-wide prefix/bind/begin/end cases. Source-extracted bank A2/A3/grant tests
 need current exact source bindings, not an inherited PASS. Then the affected
 R1 OFF/diagnostic/host-prefill/physical-clock/atomic/version set on this new ABI.
 E alone runs any whole-app canary/four cells within24 actual-start budget.
+
+A integration finite runner enumerates22 child native processes: runtime1,
+partition4, warmup/clock partition4, GPU epoch4, module3, texture-only refusal1,
+certificate hash/scope/epoch refusals4, commandlist refusal1. The duplicate
+native OFF process in C's original runner is assigned to the mandatory affected
+R1 common suite instead; do not repeat a passed identical OFF test. Three
+source-extracted facade processes (a2/a3/controls, C16 only) are separate.
+Thus25 additional RO processes are prepared; actual compiler/native count0.
+The whole-Framework driver hook itself still needs admitted compilation and
+E's independently accepted whole-commandlist canary, never a unit-test waiver.

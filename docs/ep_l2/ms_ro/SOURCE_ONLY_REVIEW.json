@@ -8,13 +8,13 @@
     {
       "kind": "PYTHON_AST_ONLY",
       "path": "tests/ep_l2/run_ro_runtime.py",
-      "sha256": "a18846c682e4805c8cf063cc3c0876d9151335e435046f5d47a22688e9f9781d",
+      "sha256": "de5d6ff5106940e3fb059a591482b3620db16dc059f2057de93293414394d61e",
       "result": "PARSED_NOT_EXECUTED"
     },
     {
       "kind": "PYTHON_AST_ONLY",
       "path": "tests/ep_l2/prepare_ro_bank_progress.py",
-      "sha256": "bfaeca4c69e47b9adcffdc924fb81a6574b11e44acc083a38813418be1d754c2",
+      "sha256": "d6f730034e4c76324dcf5d004148f495a6bcb6e6ab0f57367a6b5d7509ba2a56",
       "result": "PARSED_NOT_EXECUTED"
     }
   ],
@@ -22,7 +22,8 @@
   "native_executions": 0,
   "full_application_starts": 0,
   "runtime_qualified": false,
-  "all_native_scope": "NOT_COMPILED_NOT_RUN",
+  "all_native_scope": "25_PREPARED_NOT_COMPILED_NOT_RUN",
   "required_build_owner": "A_AFTER_E_FRESH_ADMISSION",
-  "R1_entry_unchanged": true
+  "R1_entry_unchanged": true,
+  "prepared_additional_native_processes": 25
 }
