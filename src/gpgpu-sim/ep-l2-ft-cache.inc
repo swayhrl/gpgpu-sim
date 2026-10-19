@@ -134,6 +134,74 @@ void l2_cache::cycle() {
   }
 }
 
+void l2_cache::ms_sample() {
+  if (!m_ms_observer.enabled) return;
+  unsigned bound = 0;
+  for (unsigned t = 0; t < m_config.get_num_lines(); ++t) {
+    const ep_l2::PayloadHandle h = tag_payload_handle(t);
+    bound += !m_tag_array->get_block(t)->is_invalid_line() &&
+        m_ep_l2_payload.handle_live(h);
+  }
+  m_ms_observer.sample(m_ep_l2_payload.wb_used(), ep_l2_wad_occupancy(),
+      mshr_targets_used(), m_ep_l2_payload.resident_used(), bound,
+      m_ep_l2_payload.pending_resident_landings());
+}
+
+unsigned long long l2_cache::ms_frontend_blockers(mem_fetch *mf,
+    const l2_access_plan &plan, bool response_full, unsigned long long &known) const {
+  known = 0;
+  if (!m_ms_observer.enabled) return 0;
+  namespace M = ep_l2::mechanism_v1;
+  unsigned long long blocked = 0;
+  known |= (1ULL << M::SAME_ADDRESS_WB) | (1ULL << M::FRONTEND_TRANSACTION) |
+      (1ULL << M::COPY_PIPELINE);
+  if (!plan.ep_l2_wad_same_address_hazard) known |= 1ULL << M::TAG_SET_PENDING;
+  if (plan.ep_l2_wad_full || (plan.exact && plan.probe_status != RESERVATION_FAIL))
+    known |= 1ULL << M::WAD_FULL;
+  if (plan.exact && plan.probe_status != RESERVATION_FAIL)
+    known |= (1ULL << M::LINE_MSHR_FULL) | (1ULL << M::DESCRIPTOR_FULL) |
+        (1ULL << M::PER_LINE_CAP) | (1ULL << M::MISS_QUEUE_FULL) |
+        (1ULL << M::RESPONSE_QUEUE_FULL);
+  if (plan.ep_l2_tag_set_all_reserved) blocked |= 1ULL << M::TAG_SET_PENDING;
+  if (plan.ep_l2_wad_full) blocked |= 1ULL << M::WAD_FULL;
+  if (ep_l2_wad_contains(m_config.block_addr(mf->get_addr())))
+    blocked |= 1ULL << M::SAME_ADDRESS_WB;
+  if (plan.ep_l2_mshr_block_reason == mshr_table::EP_L2_BLOCK_LINE_MSHR_FULL)
+    blocked |= 1ULL << M::LINE_MSHR_FULL;
+  if (plan.ep_l2_mshr_block_reason == mshr_table::EP_L2_BLOCK_DESCRIPTOR_POOL_FULL)
+    blocked |= 1ULL << M::DESCRIPTOR_FULL;
+  if (plan.ep_l2_mshr_block_reason == mshr_table::EP_L2_BLOCK_PER_ADDRESS_CAP)
+    blocked |= 1ULL << M::PER_LINE_CAP;
+  if (!miss_queue_has_slots(plan.new_missq_entries))
+    blocked |= 1ULL << M::MISS_QUEUE_FULL;
+  if (plan.needs_immediate_response_slot && response_full)
+    blocked |= 1ULL << M::RESPONSE_QUEUE_FULL;
+  if (m_ft_pending.request && m_ft_pending.request != mf)
+    blocked |= 1ULL << M::FRONTEND_TRANSACTION;
+  if (plan.exact && plan.probe_status != RESERVATION_FAIL)
+    known |= (1ULL << M::WB_DATA_SPACE) | (1ULL << M::BANK_COMPATIBLE_LANDING);
+  if (plan.cache_index < m_config.get_num_lines()) {
+    known |= 1ULL << M::PINNED_PAYLOAD;
+    const ep_l2::PayloadHandle victim = tag_payload_handle(plan.cache_index);
+    const bool live = m_ep_l2_payload.handle_live(victim);
+    if (live && (plan.probe_status == MISS || mf->get_is_write() || mf->isatomic()) &&
+        (m_ep_l2_payload.inspect(victim).pins ||
+         (plan.probe_status == MISS && m_ep_l2_payload.inspect(victim).pending_sector_mask.any())))
+      blocked |= 1ULL << M::PINNED_PAYLOAD;
+    // A held transaction already owns its staging/landing. Its own
+    // reservation must not be misreported as a fresh capacity refusal.
+    if (plan.probe_status == MISS && !m_ft_pending.request) {
+      if (plan.victim_dirty && m_config.m_ep_l2_ft_mode == 1 &&
+          !m_ep_l2_payload.preview_free(ep_l2_payload_store::WB).valid())
+        blocked |= 1ULL << M::WB_DATA_SPACE;
+      if (m_config.m_ep_l2_ft_mode == 2 && (plan.victim_dirty || !live) &&
+          !m_ep_l2_payload.preview_free(ep_l2_payload_store::RESIDENT, plan.cache_index % 4).valid())
+        blocked |= 1ULL << M::BANK_COMPATIBLE_LANDING;
+    }
+  }
+  return blocked;
+}
+
 void l2_cache::commit_next_access() {
   if (!ft_enabled()) { baseline_cache::commit_next_access(); return; }
   // A synthetic write-allocate response may already have been deleted by the
@@ -290,7 +358,10 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
         p.born = physical_cycle; // actual source readout starts data-staging lifetime
         p.copy_versions = m_ep_l2_payload.inspect(p.victim).versions;
         p.phase = 1;
-        return RESERVATION_FAIL;
+        // COPY_FREE explicitly removes copy service and its staging delay.
+        // DATA_FREE removes port contention but retains this fixed one-cycle
+        // copy-latch transfer, even when source and target banks differ.
+        if (!m_config.m_ep_l2_diag_copy_free) return RESERVATION_FAIL;
       }
       if (p.phase == 1) {
         m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(p.staging,
@@ -431,6 +502,8 @@ bool l2_cache::lower_ready(mem_fetch *mf, unsigned long long cycle) {
 }
 
 void l2_cache::lower_accepted(mem_fetch *mf, unsigned long long cycle) {
+  if (ft_enabled()) m_ms_observer.lower_accept(mf->get_is_write(),
+      mf->get_access_type() == L2_WRBK_ACC, mf->get_data_size());
   if (!ft_enabled() || mf->get_access_type() != L2_WRBK_ACC) return;
   std::map<mem_fetch *,ft_wb_record>::iterator it = m_ft_wb.find(mf);
   assert(it != m_ft_wb.end());
@@ -451,6 +524,18 @@ void l2_cache::lower_accepted(mem_fetch *mf, unsigned long long cycle) {
 void l2_cache::ft_print(FILE *fp, unsigned slice) const {
   if (!ft_enabled()) return;
   ft_assert_quota();
+  m_ms_observer.print(fp, slice);
+  fprintf(fp, "EPL2MSV1|LOCAL_DIAGNOSTIC|slice=%u|copy_free=%u|l2_data_free=%u|logical_copy_reads=%llu|logical_copy_writes=%llu|exempt_response=%llu|exempt_fill=%llu|exempt_lower_wb=%llu|exempt_frontend=%llu|exempt_copy_read=%llu|exempt_copy_write=%llu|physical_grants=%llu|hardware_P1_throughput_eligible=%u\n",
+      slice, m_config.m_ep_l2_diag_copy_free, m_config.m_ep_l2_diag_l2_data_free,
+      m_ep_l2_payload.logical_copy_reads(), m_ep_l2_payload.logical_copy_writes(),
+      m_ep_l2_payload.diagnostic_services(ep_l2_payload_store::RESPONSE),
+      m_ep_l2_payload.diagnostic_services(ep_l2_payload_store::FILL),
+      m_ep_l2_payload.diagnostic_services(ep_l2_payload_store::LOWER_WB),
+      m_ep_l2_payload.diagnostic_services(ep_l2_payload_store::FRONTEND),
+      m_ep_l2_payload.diagnostic_services(ep_l2_payload_store::COPY_READ),
+      m_ep_l2_payload.diagnostic_services(ep_l2_payload_store::COPY_WRITE),
+      m_ep_l2_payload.bank_grants(),
+      !(m_config.m_ep_l2_diag_copy_free || m_config.m_ep_l2_diag_l2_data_free));
   m_ep_l2_payload.rg1_print(fp,slice);
   fprintf(fp,"EPL2SERVICEV1|MQ2|slice=%u|enabled=%u|wb_bank_waits=%llu|bypasses=%llu|window=2|lower_enqueues_per_cycle=1\n",slice,m_config.m_ep_l2_mq2,m_ft_stats.mq2_wb_bank_waits,m_ft_stats.mq2_bypasses);
   fprintf(fp,"EPL2STRUCTV1|BANK_PEAK|slice=%u|ops_per_physical_cycle=%u|bank0=%u|bank1=%u|bank2=%u|bank3=%u\n",slice,

@@ -297,6 +297,15 @@ void memory_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_ep_l2_rg1", OPT_BOOL,
                          &m_L2_config.m_ep_l2_rg1,
                          "Explicit-ready bank selection (not yet qualified)", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_diag_copy_free", OPT_BOOL,
+                         &m_L2_config.m_ep_l2_diag_copy_free,
+                         "L2-local S copy-service diagnostic; preserve copy values/placement, charge lower WB read", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_diag_l2_data_free", OPT_BOOL,
+                         &m_L2_config.m_ep_l2_diag_l2_data_free,
+                         "L2 payload services without bank contention; preserve fixed pipelines, capacity and lower memory", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_ms_observer", OPT_BOOL,
+                         &m_L2_config.m_ep_l2_ms_observer,
+                         "Bounded request-identity mechanism observations (no simulated timing change)", "0");
   option_parser_register(opp, "-gpgpu_ep_l2_static_s64", OPT_BOOL,
                          &m_L2_config.m_ep_l2_static_s64,
                          "Opt-in S64 static1024/80/64 fixed1168 payload layout; FT1/WBUF16 only", "0");

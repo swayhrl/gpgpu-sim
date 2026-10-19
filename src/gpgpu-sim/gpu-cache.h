@@ -39,6 +39,7 @@
 #include "gpu-misc.h"
 #include "mem_fetch.h"
 #include "ep-l2-ft-interface.h"
+#include "ep-l2-mechanism-observer.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -589,6 +590,9 @@ class cache_config {
     m_ep_l2_bank_ops = 1;
     m_ep_l2_mq2 = false;
     m_ep_l2_rg1 = false;
+    m_ep_l2_diag_copy_free = false;
+    m_ep_l2_diag_l2_data_free = false;
+    m_ep_l2_ms_observer = false;
     m_ep_l2_payload_policy = 0;
     m_ep_l2_feature_unified_payload = false;
     m_ep_l2_feature_ro_pending_state = false;
@@ -872,7 +876,8 @@ class cache_config {
         m_ep_l2_payload_mode == 2 && !m_ep_l2_static_s64 &&
         !m_ep_l2_wb_local_cap && m_ep_l2_bank_ops == 1 &&
         !m_ep_l2_ideal_wb && !m_ep_l2_ideal_meta && !m_ep_l2_ideal_read_hit &&
-        !m_ep_l2_mq2 && !m_ep_l2_rg1;
+        !m_ep_l2_mq2 && !m_ep_l2_rg1 && !m_ep_l2_diag_copy_free &&
+        !m_ep_l2_diag_l2_data_free && !m_ep_l2_ms_observer;
   }
   enum mshr_config_t get_mshr_type() const { return m_mshr_type; }
   void set_assoc(unsigned n) {
@@ -968,6 +973,7 @@ class cache_config {
   unsigned m_ep_l2_wb_local_cap;
   unsigned m_ep_l2_bank_ops;
   bool m_ep_l2_mq2, m_ep_l2_rg1;
+  bool m_ep_l2_diag_copy_free, m_ep_l2_diag_l2_data_free, m_ep_l2_ms_observer;
   // M1 is infrastructure: functional mechanism bits default OFF.
   // Policy 0 is the only currently supported static policy.
   unsigned m_ep_l2_payload_policy;
@@ -2182,6 +2188,28 @@ class ep_l2_payload_store {
   };
   enum service_client { GENERIC=0, RESPONSE=1, FILL=2, LOWER_WB=3,
                         FRONTEND=4, COPY_READ=5, COPY_WRITE=6, CLIENTS=7 };
+  void set_local_diagnostic(ep_l2::mechanism_v1::LocalDiagnostic mode) {
+    assert(mode == ep_l2::mechanism_v1::NORMAL ||
+           (banked() && m_ft_mode && m_bank_ops == 1 && !m_rg1));
+    assert(mode != ep_l2::mechanism_v1::COPY_FREE || m_ft_mode == 1);
+    assert(!m_bank_attempts && !pending_operations());
+    m_local_diagnostic = mode;
+  }
+  bool diagnostic_exempts(unsigned client) const {
+    return m_local_diagnostic == ep_l2::mechanism_v1::L2_DATA_FREE ||
+        (m_local_diagnostic == ep_l2::mechanism_v1::COPY_FREE &&
+         (client == COPY_READ || client == COPY_WRITE));
+  }
+  unsigned long long diagnostic_services(unsigned client) const {
+    assert(client < CLIENTS); return m_diagnostic_services[client];
+  }
+  unsigned long long logical_copy_reads() const { return m_logical_copy_reads; }
+  unsigned long long logical_copy_writes() const { return m_logical_copy_writes; }
+  unsigned long long observed_service_attempts() const {
+    unsigned long long n = m_bank_attempts;
+    for (auto exempt : m_diagnostic_services) n += exempt;
+    return n;
+  }
   void set_rg1_enabled(bool enabled) { assert(!enabled || (banked() && m_ft_mode && m_bank_ops==1)); m_rg1=enabled; }
   void bind_ready_source(std::function<bool(unsigned,unsigned)> f) { m_ready_source=f; }
   bool rg1_enabled() const { return m_rg1; }
@@ -2365,6 +2393,13 @@ class ep_l2_payload_store {
   unsigned wb_used() const { return used(WB); }
   unsigned pending_sector_count() const { unsigned n=0;
     for (const slot &s : m_slots) n += s.pending_sector_mask.count(); return n; }
+  unsigned pending_resident_landings() const {
+    unsigned n = 0;
+    for (const slot &s : m_slots)
+      n += s.occupied() && s.allocation_role == RESIDENT &&
+          (s.status == RESIDENT_FILL_PENDING || s.pending_sector_mask.any());
+    return n;
+  }
   unsigned free_slots() const { return physical_slots() - used(RESIDENT) - used(BYPASS) - used(WB); }
   const slot &inspect(const payload_handle &h) const { assert(handle_live(h)); return m_slots[h.payload_id]; }
   slot &inspect_mutable(const payload_handle &h) { assert(handle_live(h)); return m_slots[h.payload_id]; }
@@ -2496,6 +2531,15 @@ class ep_l2_payload_store {
     assert(r != BYPASS || id < bypass_capacity());
     assert(global_id < m_slots.size());
     const unsigned bank = global_id % 4;
+    if (diagnostic_exempts(client)) {
+      // Still execute the caller's real data/lifetime transition, but this
+      // local intervention consumes NO physical bank grant or retry token.
+      // Normal clients and normal P1 assertions remain untouched.
+      assert(client < CLIENTS);
+      record_logical_operation(bank, op_class, client);
+      ++m_diagnostic_services[client];
+      return GRANTED;
+    }
     ++m_bank_attempts;
     if(m_rg1)return request_rg1(r,id,write,cycle,sequence,op_class,client,token,global_id,bank);
     for (unsigned selected=0; selected<m_granted[bank].size(); ++selected) {
@@ -2529,13 +2573,13 @@ class ep_l2_payload_store {
     if (m_granted[bank].empty() && m_pending[bank].empty() &&
         m_bank_services[bank] < m_bank_ops) {
       assert(pending_index < 0);
-      record_logical_operation(bank, op_class);
+      record_logical_operation(bank, op_class, client);
       consume_bank(bank); ++m_bank_grants; ++m_bank_grants_by_bank[bank];
       return GRANTED;
     }
 
     if (pending_index < 0) {
-      record_logical_operation(bank, op_class);
+      record_logical_operation(bank, op_class, client);
       m_pending[bank].push_back(pending_op(
           r, id, write,
           sequence == (unsigned long long)-1 ? m_next_sequence++ : sequence,
@@ -2656,9 +2700,12 @@ class ep_l2_payload_store {
     s.status = new_state; s.owner = owner; s.pending_sector_mask.reset(); ++s.generation;
     if (mf) mf->set_ep_l2_payload_identity(payload_id, s.generation);
   }
-  void record_logical_operation(unsigned bank, operation_class op_class) {
+  void record_logical_operation(unsigned bank, operation_class op_class,
+                                unsigned client = GENERIC) {
     ++m_bank_logical_ops;
     ++m_bank_logical_ops_by_bank[bank];
+    if (client == COPY_READ) ++m_logical_copy_reads;
+    if (client == COPY_WRITE) ++m_logical_copy_writes;
     switch (op_class) {
       case RESIDENT_HIT_READ: ++m_bank_resident_hit_read; break;
       case RESIDENT_WRITE: ++m_bank_resident_write; break;
@@ -2681,6 +2728,9 @@ class ep_l2_payload_store {
   };
   #include "ep-l2-rg1.inc"
   unsigned m_mode, m_ft_mode, m_wbuf;
+  ep_l2::mechanism_v1::LocalDiagnostic m_local_diagnostic = ep_l2::mechanism_v1::NORMAL;
+  std::array<unsigned long long, CLIENTS> m_diagnostic_services{};
+  unsigned long long m_logical_copy_reads = 0, m_logical_copy_writes = 0;
   bool m_ideal_wb, m_static_s64;
   unsigned m_bank_ops; unsigned long long m_cycle;
   unsigned m_resident_reads, m_resident_writes, m_bypass_reads, m_bypass_writes;
@@ -2719,6 +2769,10 @@ class l2_cache : public data_cache {
         m_ep_l2_tag_payload(ep_l2_payload_store::k_resident_slots) {
     validate_ep_l2_mode_config();
     m_ep_l2_payload.set_rg1_enabled(config.m_ep_l2_rg1);
+    m_ep_l2_payload.set_local_diagnostic(config.m_ep_l2_diag_copy_free ?
+        ep_l2::mechanism_v1::COPY_FREE : config.m_ep_l2_diag_l2_data_free ?
+        ep_l2::mechanism_v1::L2_DATA_FREE : ep_l2::mechanism_v1::NORMAL);
+    m_ms_observer.enabled = config.m_ep_l2_ms_observer;
     m_ft_last_wb_versions.fill(0);
     if (ft_enabled()) m_tag_array->bind_ft_replacement(&m_ft_pending.request, &m_ft_pending.tag_index);
   }
@@ -2832,6 +2886,27 @@ class l2_cache : public data_cache {
   bool ft_response_ready(unsigned long long cycle);
   void cycle();
   void ft_print(FILE *fp, unsigned slice) const;
+  void ms_sample();
+  unsigned long long ms_frontend_blockers(mem_fetch *mf,
+      const l2_access_plan &plan, bool response_full, unsigned long long &known) const;
+  unsigned long long ms_service_attempts() const {
+    return m_ep_l2_payload.observed_service_attempts();
+  }
+  unsigned long long ms_failed_access_blockers(mem_fetch *mf) const {
+    if (!m_ms_observer.enabled) return 0;
+    if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED)
+      return 1ULL << ep_l2::mechanism_v1::DATA_SERVICE;
+    if (m_ft_pending.request == mf && m_ft_pending.phase == 1)
+      return 1ULL << ep_l2::mechanism_v1::COPY_PIPELINE;
+    return 0;
+  }
+  void ms_observe_frontend(mem_fetch *mf, unsigned long long cycle,
+      unsigned long long blockers, bool admitted, unsigned long long known) {
+    m_ms_observer.observe(mf->get_request_uid(), cycle, blockers, admitted, known);
+  }
+  const ep_l2::mechanism_v1::Observer &ms_observer_for_test() const {
+    return m_ms_observer;
+  }
   // Untimed host memcpy prefill must own payload storage as well as a Tag.
   // The non-FT route retains the historical Tag-only initialization.
   void force_tag_access(new_addr_type addr, unsigned time,
@@ -2999,10 +3074,29 @@ class l2_cache : public data_cache {
   } m_ft_quota;
   ft_replacement m_ft_pending;
   ft_counters m_ft_stats;
+  ep_l2::mechanism_v1::Observer m_ms_observer;
   std::map<mem_fetch *,ft_wb_record> m_ft_wb;
   std::map<mem_fetch *,ep_l2_payload_store::payload_handle> m_ft_read_refs;
   std::array<unsigned long long,4> m_ft_last_wb_versions;
   void validate_ep_l2_mode_config() const {
+    const bool local_diag = m_config.m_ep_l2_diag_copy_free || m_config.m_ep_l2_diag_l2_data_free;
+    if ((m_config.m_ep_l2_diag_copy_free && m_config.m_ep_l2_diag_l2_data_free) ||
+        ((local_diag || m_config.m_ep_l2_ms_observer) &&
+         (!ft_enabled() || m_config.m_ep_l2_wbuf_entries != 16 ||
+          m_config.m_ep_l2_payload_mode != 2 || m_config.m_ep_l2_wad_entries != 128 ||
+          m_config.m_ep_l2_descriptor_pool_size != 512 ||
+          m_config.m_mshr_entries != 128 || m_config.get_num_lines() > 1024 ||
+          m_config.m_write_policy != WRITE_BACK ||
+          m_config.m_write_alloc_policy != LAZY_FETCH_ON_READ ||
+          m_config.m_cache_type != SECTOR || m_config.m_ep_l2_bank_ops != 1 ||
+          m_config.m_ep_l2_static_s64 || m_config.m_ep_l2_wb_local_cap ||
+          m_config.m_ep_l2_mq2 || m_config.m_ep_l2_rg1 ||
+          m_config.m_ep_l2_ideal_meta || m_config.m_ep_l2_ideal_read_hit ||
+          m_config.m_ep_l2_ideal_wb)) ||
+        (m_config.m_ep_l2_diag_copy_free && m_config.m_ep_l2_ft_mode != 1)) {
+      fprintf(stderr, "EP-L2 mechanism study supports finite P1 S/U, isolated local diagnostics and observer only; COPY_FREE requires S\n");
+      abort();
+    }
     if ((m_config.m_ep_l2_mq2 && m_config.m_ep_l2_rg1) ||
         ((m_config.m_ep_l2_mq2 || m_config.m_ep_l2_rg1) &&
         (!ft_enabled() || m_config.m_ep_l2_wbuf_entries != 16 ||

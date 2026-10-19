@@ -1300,6 +1300,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
   // This is the frozen sampling point: prior-cycle drains and fills have
   // completed, but the current frontend head has not been admitted yet.
   l2_char_sample(m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+  if (!m_config->m_L2_config.disabled() && m_config->m_L2_config.m_ep_l2_ms_observer)
+    m_L2cache->ms_sample();
 
   // New L2 texture accesses and/or non-texture accesses.  A full L2-to-DRAM
   // FIFO is not a frontend prerequisite: hits, MSHR merges, and locally
@@ -1314,6 +1316,9 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
               mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle)) {
       l2_access_plan plan;
       m_L2cache->preview_access(mf->get_addr(), mf, plan);
+      unsigned long long ms_known = 0;
+      const unsigned long long ms_blockers = m_L2cache->ms_frontend_blockers(
+          mf, plan, m_L2_icnt_queue->full(), ms_known);
       if (plan.exact)
         m_ep_l2_last_preview_block_reason = plan.ep_l2_mshr_block_reason;
       if (plan.exact && plan.victim_dirty)
@@ -1425,6 +1430,9 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       // even though access() is intentionally not called.  Record it here so
       // blocker accounting describes the production admission decision rather
       // than only an unexpected reservation failure after admission.
+      if (!admit && m_config->m_L2_config.m_ep_l2_ms_observer)
+        m_L2cache->ms_observe_frontend(mf,
+            m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, ms_blockers, false, ms_known);
       if (plan.exact && !admit) {
         unsigned long long blockers = l2_admission_blockers(admission);
         if (!blockers) blockers = 1ULL << L2_BLOCK_OTHER;
@@ -1517,11 +1525,22 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
 
         unsigned missq_before = missq_occupancy_before;
         std::list<cache_event> events;
+        const auto ms_attempts_before = m_config->m_L2_config.m_ep_l2_ms_observer ?
+            m_L2cache->ms_service_attempts() : 0;
         enum cache_request_status status =
             m_L2cache->access(mf->get_addr(), mf,
                               m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
                                   m_memcpy_cycle_offset,
                               events);
+        if (m_config->m_L2_config.m_ep_l2_ms_observer) {
+          if (m_L2cache->ms_service_attempts() != ms_attempts_before)
+            ms_known |= 1ULL << ep_l2::mechanism_v1::DATA_SERVICE;
+          m_L2cache->ms_observe_frontend(mf,
+              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle,
+              ms_blockers | (status == RESERVATION_FAIL ?
+                  m_L2cache->ms_failed_access_blockers(mf) : 0),
+              status != RESERVATION_FAIL, ms_known);
+        }
         if (status != RESERVATION_FAIL) ft_record_admission(mf);
         // This is the commit point: preview said admissible and access did
         // mutate/accept the request.  A defensive reservation failure is not
