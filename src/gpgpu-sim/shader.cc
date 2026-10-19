@@ -3376,6 +3376,11 @@ bool ldst_unit::dtc_l1_oo_memory_cycle(
         m_dtc_l1_oo_lower_create_queue.push_back(
             {uid, result.physical, reference.line_address, 0xF});
       }
+#ifdef DTC_SEM1_CONDITIONAL_VALUES
+      if (m_sem1_values)
+        m_sem1_values->bind(uid, result.physical.id, result.physical.generation,
+                            reference.sector_mask);
+#endif
     }
     ++entry->next_reference;
     if (dtc_l1_finite_service_active()) {
@@ -3472,6 +3477,14 @@ bool ldst_unit::dtc_l1_oo_consume_response(mem_fetch *mf) {
     assert(false && "OO response identity/address mismatch");
   }
   record.response_sector_mask |= static_cast<uint8_t>(1U << sector);
+#ifdef DTC_SEM1_CONDITIONAL_VALUES
+  if (m_sem1_values) {
+    assert(!dtc_l1_sector_oo_active() && "SEM1 bound to whole-line OO only");
+    m_dtc_l1_oo_frontend->sem1_accept_sector(
+        record.physical, sector,
+        m_sem1_values->accept_reply(mf->get_request_uid()));
+  }
+#endif
   mem_fetch *original = mf->get_original_mf();
   const bool request_complete =
       record.response_sector_mask == record.expected_sector_mask;
@@ -3559,7 +3572,30 @@ bool ldst_unit::dtc_l1_oo_writeback_ready() {
             : m_dtc_l1_oo_frontend->out_of_order_retires();
     return true;
   }
-  if (!dtc_l1_service_collect(entry->service, entry->references)) return false;
+  // Collection may transfer sectors even when the collect+1 boundary prevents
+  // WB this cycle. The diagnostic cursor advances on exactly that real delta.
+#ifdef DTC_SEM1_CONDITIONAL_VALUES
+  unsigned sem1_before = entry->service.sectors_left;
+  if (entry->service.ready_cycle == UINT64_MAX) {
+    sem1_before = 0;
+    for (const auto &r : entry->references)
+      sem1_before += __builtin_popcount(r.sector_mask);
+  }
+#endif
+  const bool collected = dtc_l1_service_collect(entry->service, entry->references);
+#ifdef DTC_SEM1_CONDITIONAL_VALUES
+  if (m_sem1_values) {
+    assert(dtc_l1_finite_service_active() && !dtc_l1_sector_oo_active());
+    assert(m_dtc_l1_oo_frontend->entry_ready_for(uid));
+    for (unsigned n = entry->service.sectors_left; n < sem1_before; ++n) {
+      const auto b = m_sem1_values->next(uid);
+      const auto bytes = m_dtc_l1_oo_frontend->sem1_collect_sector(
+          {b.physical, b.generation}, b.sector);
+      m_sem1_values->collected(uid, b, bytes, service_cycle);
+    }
+  }
+#endif
+  if (!collected) return false;
   m_next_wb = entry->inst;
   if (!m_operand_collector->writeback(m_next_wb)) {
     ++m_dtc_l1_oo_ready_but_wb_blocked_cycles;
@@ -3574,6 +3610,9 @@ bool ldst_unit::dtc_l1_oo_writeback_ready() {
   const unsigned dependencies =
       dtc_l1_r4c3_registered_dependencies(entry->inst);
   dtc_l1_service_retired(entry->service);
+#ifdef DTC_SEM1_CONDITIONAL_VALUES
+  if (m_sem1_values) m_sem1_values->retired(uid, service_cycle);
+#endif
   dtc_l1_oo_complete_instruction(entry->inst, dependencies);
   uint64_t retired = 0;
   const bool retired_ok = dtc_l1_sector_oo_active()

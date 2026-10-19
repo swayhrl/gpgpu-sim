@@ -2198,6 +2198,10 @@ class ldst_unit : public pipelined_simd_unit {
   std::unique_ptr<dtc_l1::paper_frontend> m_dtc_l1_frontend;
   std::unique_ptr<dtc_l1::io_frontend> m_dtc_l1_io_frontend;
   std::unique_ptr<dtc_l1::oo_frontend> m_dtc_l1_oo_frontend;
+#ifdef DTC_SEM1_CONDITIONAL_VALUES
+  // Fixture attaches explicitly; null preserves all normal paths.
+  dtc_l1::sem1_values *m_sem1_values = nullptr;
+#endif
   std::unique_ptr<dtc_l1::sector_oo_frontend> m_dtc_l1_sector_frontend;
   struct dtc_l1_io_pib_entry {
     warp_inst_t inst;

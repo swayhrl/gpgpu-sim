@@ -3,6 +3,9 @@
 // This header deliberately has no dependency on cache implementation classes.
 // It gives Base/IO/OO one definition of a 128B logical reference and of the
 // bounded paper front-end resources.  LEGACY code never constructs this model.
+#ifdef DTC_SEM1_CONDITIONAL_VALUES
+#include "dtc-sem1-values.h"
+#endif
 
 #ifndef DTC_L1_COMMON_H
 #define DTC_L1_COMMON_H
@@ -706,6 +709,28 @@ class oo_frontend {
            m_phys[identity.id].generation == identity.generation;
   }
 
+#ifdef DTC_SEM1_CONDITIONAL_VALUES
+  // These bytes are conditional fixture data, not SASS/native values.
+  void sem1_accept_sector(physical_identity identity, unsigned sector,
+                          const sem1_values::bytes32 &bytes) {
+    assert(fill_identity_matches(identity) && sector < 4);
+    auto &p = m_phys[identity.id];
+    assert(!(p.sem1_received & (1U << sector)));
+    std::copy(bytes.begin(), bytes.end(), p.sem1_bytes.begin() + sector * 32);
+    p.sem1_received |= static_cast<uint8_t>(1U << sector);
+  }
+  sem1_values::bytes32 sem1_collect_sector(physical_identity identity,
+                                           unsigned sector) const {
+    assert(fill_identity_matches(identity) && sector < 4);
+    const auto &p = m_phys[identity.id];
+    assert(p.sem1_received & (1U << sector));
+    sem1_values::bytes32 bytes;
+    std::copy(p.sem1_bytes.begin() + sector * 32,
+              p.sem1_bytes.begin() + (sector + 1) * 32, bytes.begin());
+    return bytes;
+  }
+#endif
+
   void complete(physical_identity identity) {
     assert(fill_identity_matches(identity) &&
            "OO fill must match the original physical generation");
@@ -1013,6 +1038,10 @@ class oo_frontend {
   struct physical_line {
     bool allocated = false;
     bool ready = false; // all waiter notifications done (X2 meaning)
+#ifdef DTC_SEM1_CONDITIONAL_VALUES
+    std::array<uint8_t, 128> sem1_bytes{};
+    uint8_t sem1_received = 0;
+#endif
     bool data_ready = false; // AD only: real full return + metadata edge
     uint64_t return_cycle = UINT64_MAX;
     uint64_t first_notify_cycle = UINT64_MAX, last_notify_cycle = UINT64_MAX;
@@ -1144,6 +1173,10 @@ class oo_frontend {
     }
     physical.allocated = false;
     physical.ready = false;
+#ifdef DTC_SEM1_CONDITIONAL_VALUES
+    physical.sem1_bytes.fill(0xDE);
+    physical.sem1_received = 0;
+#endif
     physical.waiters.clear();
   }
 

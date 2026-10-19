@@ -18,6 +18,11 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 option(GPGPUSIM_ENABLE_TRACE "Whether to enable GPGPU-Sim debug tracing" ON)
 option(GPGPUSIM_BUILD_DTC_L1_TESTS
        "Build deterministic Decoupled-Tag L1 directed tests" OFF)
+option(GPGPUSIM_SEM1_CONDITIONAL_VALUES
+       "Isolated SEM1 fixture payload data plane (not architectural values)" OFF)
+if(GPGPUSIM_SEM1_CONDITIONAL_VALUES)
+    add_compile_definitions(DTC_SEM1_CONDITIONAL_VALUES=1)
+endif()
 
 # GPGPU-Sim conditional build variable
 set(GPGPUSIM_USE_POWER_MODEL OFF)
@@ -175,6 +180,15 @@ if(GPGPUSIM_BUILD_DTC_L1_TESTS)
 endif()
 
 # Set linker option for libcudart.so
+if(GPGPUSIM_SEM1_CONDITIONAL_VALUES)
+    add_executable(dtc_l1_sem1_values_ldst tests/dtc_l1_sem1_values_ldst.cc)
+    target_include_directories(dtc_l1_sem1_values_ldst PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/libcuda
+        ${CUDAToolkit_INCLUDE_DIRS})
+    target_compile_options(dtc_l1_sem1_values_ldst PRIVATE -fno-access-control)
+    target_link_libraries(dtc_l1_sem1_values_ldst PRIVATE cudart ${CMAKE_DL_LIBS})
+endif()
+
 if(APPLE)
     target_link_options(cudart PUBLIC "-Wl,-headerpad_max_install_names,-undefined,dynamic_lookup,-compatibility_version,1.1,-current_version,1.1;-lm;-lz;-pthread")
 else()
