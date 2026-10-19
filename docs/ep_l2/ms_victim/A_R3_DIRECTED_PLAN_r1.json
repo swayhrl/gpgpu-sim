@@ -265,7 +265,7 @@
       "executable": "ep_l2_ms_victim_native",
       "arguments": [
         "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-a-r3-victim-full-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
-        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-a-r3-victim-full-v1/docs/ep_l2/ms_victim/test_plan_r2/off.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-a-r3-victim-full-v1/docs/ep_l2/ms_victim/A_R3_bypass.config",
         "2",
         "16",
         "0",
