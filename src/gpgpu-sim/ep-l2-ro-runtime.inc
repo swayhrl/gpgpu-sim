@@ -229,8 +229,12 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     }
     p.will_send_lower_read=missing!=0;
     p.new_missq_entries+=__builtin_popcount(missing);
-    p.needs_new_mshr=!existing;p.needs_mshr_merge=existing;
+    p.needs_new_mshr=!existing && !c.m_config.m_ro_line_mshr_bypass;
+    p.needs_mshr_merge=existing && !c.m_config.m_ro_line_mshr_bypass;
     p.mshr_hit=existing;p.mshr_entry_available=p.mshr_merge_available=capacity(m,existing);
+    // Shared descriptor/per-address bounds still block an M-mode request,
+    // without misreporting that it needs a traditional line-MSHR.
+    if(!capacity(m,existing)) p.probe_status=RESERVATION_FAIL;
     if (c.m_mshrs.descriptor_count_used()>=512) observe_block(m,2);
     if (c.m_mshrs.targets_on_line(c.m_config.block_addr(m->get_addr()))>=32) observe_block(m,3);
     if (!existing && !c.m_config.m_ro_line_mshr_bypass && c.m_mshrs.num_entries_used()>=128) observe_block(m,1);
