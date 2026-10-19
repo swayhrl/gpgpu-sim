@@ -117,8 +117,27 @@ static void pinned_wb_completion_with_ro_landing(char **argv) {
   f.wait(uid,false);assert(!ram.inspect(wb_handle).pins && ram.inspect(wb_handle).status==ep_l2_payload_store::TVD_VALID);
   f.wait(ro_uid);f.finish();puts("C_FULL_V2|case=pinned_wb_done_with_ro_landing|status=PASS|contender=PUBLIC_ARBITER");
 }
+static void factors_on_common_victim_parent(char **argv,unsigned detach,unsigned bypass,bool line_pressure) {
+  combined_fixture f(argv,detach||bypass);
+  const unsigned admitted=line_pressure?128:16;
+  for(unsigned i=0;i<admitted;++i) {
+    f.send(f.make(line_pressure?i*128:i*stride,false));f.await_lower(i+1);
+  }
+  auto extra=f.make(line_pressure?admitted*128:admitted*stride,false);auto uid=extra->get_request_uid();f.send(extra);
+  const bool passes=line_pressure?bypass:detach;
+  for(unsigned n=0;n<128;++n)f.step();
+  assert(f.pending_reads.size()==admitted+unsigned(passes));
+  assert(f.cache->ep_l2_descriptor_count_used()==admitted+unsigned(passes));
+  assert(f.cache->mshr_entries_used()==(bypass?0:admitted+unsigned(passes)));
+  if(!passes){assert(!f.replies.count(uid));f.return_one(0);f.await_frontend();}
+  f.finish();printf("C_FULL_V2|case=factor_%s|T=%u|M=%u|status=PASS\n",line_pressure?"line128":"tag16",detach,bypass);
+}
 int main(int argc,char **argv) {
   assert(argc==10);
+  unsigned t=0,m=0;char kind[16]={};
+  if(sscanf(argv[9],"factor_%15[^_]_T%u_M%u",kind,&t,&m)==3) {
+    assert(t<2 && m<2);factors_on_common_victim_parent(argv,t,m,!strcmp(kind,"line"));return 0;
+  }
   if(!strcmp(argv[9],"same_address"))late_ro_and_same_address_victim(argv);
   else if(!strcmp(argv[9],"shared_pool"))common_descriptor_pool_and_mandatory_wb(argv);
   else if(!strcmp(argv[9],"host_update"))host_update_invalidates_only_uncovered_victim(argv);

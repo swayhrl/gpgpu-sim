@@ -125,7 +125,6 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
   bool target_for_observer(mem_fetch *m) const {handle h;return target(m,h);}
   bool directory_ready(mem_fetch *m) const {
     if(!c.m_tvd)return true;
-    handle h;if(target(m,h))return true;
     unsigned index=~0U;
     const auto tag=c.m_tag_array->probe(c.m_config.block_addr(m->get_addr()),index,m,m->is_write(),true);
     if(tag!=MISS && tag!=RESERVATION_FAIL)return true;

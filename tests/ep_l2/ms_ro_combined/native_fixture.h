@@ -5,8 +5,8 @@
 struct combined_fixture : victim_fixture {
   std::vector<mem_fetch *> pending_reads;
   unsigned peak_shared=0;
-  explicit combined_fixture(char **argv):victim_fixture(argv,"1024:16:64:64") {
-    assert(cache->tvd_enabled() && cache->ro_enabled());
+  explicit combined_fixture(char **argv,bool require_ro=true):victim_fixture(argv,"1024:16:64:64") {
+    assert(cache->tvd_enabled() && (!require_ro || cache->ro_enabled()));
     sp->ro_bind_commandlist(argv[8]);sp->ro_begin_epoch();
   }
   void step(bool consume=true) {
