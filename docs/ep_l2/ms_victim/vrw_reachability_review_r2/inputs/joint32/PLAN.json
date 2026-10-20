@@ -1,0 +1,52 @@
+{
+  "A_Framework_review": "156adbbb5ddcd49e8adb96939837372936ac451e",
+  "actual_native_runs_by_B": 0,
+  "argv": [
+    "A_FROZEN_TEST_BUILD/ep_l2_ms_vrw_reachable",
+    "A_CORE27/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+    "combined.config",
+    "kernelslist.g",
+    "16",
+    "0",
+    "0",
+    "1",
+    "joint32"
+  ],
+  "base_config_sha256": "8ccad878b6abfec8254ecd6c7e0efee2714908dc3a04f611ff8787000e277bd3",
+  "case": "joint32",
+  "change_production_protocol": false,
+  "cwd": "THIS_CASE_DIRECTORY",
+  "execution_owner": "A_UNIFIED_INTEGRATION_E_ADMISSION_AND_INDEPENDENT_ACCEPTANCE",
+  "expected_only": {
+    "RO_lower_bytes": 576,
+    "RO_lower_packets": 18,
+    "final_descriptors": 0,
+    "final_pending_bank_operations": 0,
+    "mandatory_rows_before_RO": 128,
+    "native_lower_read_packets": 1,
+    "shared_requester_descriptors": 18,
+    "total_lower_read_bytes": 608,
+    "total_lower_read_packets": 19
+  },
+  "fixture_binary_sha256": null,
+  "fixture_source_sha256": "d32f2a779de00836b608b1948fc504bbb57110b767dfcb7ff656ea89568997fe",
+  "observed_counts": null,
+  "old_failure_retained": true,
+  "overrides": {
+    "WAD_TVD_rows": 128,
+    "banks": 4,
+    "descriptors": 512,
+    "geometry": "S:64:128:16,L:B:m:L:L,A:128:32,256:0,32",
+    "native_lines": 128,
+    "ops_per_bank_cycle": 1,
+    "payloads": 1168,
+    "queues": "512:2:64:1",
+    "tags": 1024
+  },
+  "production_Core_preimage": "27ec10bda848e4929181c60a7cbb40d6b007945c",
+  "production_main_sha256": "773271ac70f009dddcd4c522f66dcd37967e4f57ce1e5082d3fc5aea61f2f9f5",
+  "reset_E_qualification": false,
+  "schema": "B_VRW_CORE27_REACHABLE_NATIVE_PLAN_V2",
+  "scope_limit": "Symbolic nonzero sector reference and constructed paid contention; not nativeDRAM/SASS or performance qualification",
+  "status": "PREPARED_NOT_COMPILED_NOT_RUN_C_REVIEW_PENDING"
+}

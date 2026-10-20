@@ -1,0 +1,37 @@
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/x86_64-linux-gnu/libthread_db.so.1".
+ep_l2_ms_vrw_interleave: /workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/tests/ep_l2/ms_victim/test_vrw_interleave.cc:86: {anonymous}::H {anonymous}::vrw_fixture::submit_ro(unsigned int, bool): Assertion `false' failed.
+
+Program received signal SIGABRT, Aborted.
+__pthread_kill_implementation (no_tid=0, signo=6, threadid=133458294306624) at ./nptl/pthread_kill.c:44
+44	./nptl/pthread_kill.c: No such file or directory.
+VRW_FRAME|function=(anonymous namespace)::vrw_fixture::submit_ro|line=86
+VRW_LOCAL|line=0
+VRW_LOCAL|full=<optimized out>
+VRW_LOCAL|before=<optimized out>
+VRW_STATE|ro_packets=20
+VRW_STATE|ro_bytes=640
+VRW_STATE|full_uid=275
+VRW_A0|slot=146|attached=1|reuse_seen=1|required=15|issued=15|ready=0|waiters=5
+VRW_FRAME|function=(anonymous namespace)::vrw_fixture::submit_ro|line=73
+VRW_LOCAL|line=0
+VRW_LOCAL|full=<optimized out>
+VRW_LOCAL|before=20
+VRW_STATE|ro_packets=20
+VRW_STATE|ro_bytes=640
+VRW_STATE|full_uid=275
+VRW_A0|slot=146|attached=1|reuse_seen=1|required=15|issued=15|ready=0|waiters=5
+VRW_FRAME|function=main|line=134
+VRW_LOCAL_UNAVAILABLE|line|Variable 'line' not found.
+VRW_LOCAL_UNAVAILABLE|full|Variable 'full' not found.
+VRW_LOCAL|before=<optimized out>
+#0  __pthread_kill_implementation (no_tid=0, signo=6, threadid=133458294306624) at ./nptl/pthread_kill.c:44
+#1  __pthread_kill_internal (signo=6, threadid=133458294306624) at ./nptl/pthread_kill.c:78
+#2  __GI___pthread_kill (threadid=133458294306624, signo=signo@entry=6) at ./nptl/pthread_kill.c:89
+#3  0x000079612e3de476 in __GI_raise (sig=sig@entry=6) at ../sysdeps/posix/raise.c:26
+#4  0x000079612e3c47f3 in __GI_abort () at ./stdlib/abort.c:79
+#5  0x000079612e3c471b in __assert_fail_base (fmt=0x79612e579130 "%s%s%s"..., assertion=0x58b1f62f8ffa "false", file=0x58b1f62ef290 "/works"..., line=86, function=<optimized out>) at ./assert/assert.c:94
+#6  0x000079612e3d5e96 in __GI___assert_fail (assertion=0x58b1f62f8ffa "false", file=0x58b1f62ef290 "/works"..., line=86, function=0x58b1f62ef520 "{anony"...) at ./assert/assert.c:103
+#7  0x000058b1f6003eeb in (anonymous namespace)::vrw_fixture::submit_ro (this=0x7ffd5533de40, line=0, full=<optimized out>) at /workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/tests/ep_l2/ms_victim/test_vrw_interleave.cc:86
+#8  (anonymous namespace)::vrw_fixture::submit_ro (this=0x7ffd5533de40, line=0, full=<optimized out>) at /workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/tests/ep_l2/ms_victim/test_vrw_interleave.cc:73
+#9  0x000058b1f5ffd0b7 in main (argc=<optimized out>, argv=<optimized out>) at /workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/tests/ep_l2/ms_victim/test_vrw_interleave.cc:134

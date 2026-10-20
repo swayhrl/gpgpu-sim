@@ -1,0 +1,145 @@
+{
+  "schema": "B_CORE27_VRW_SCIENTIFIC_REVIEW_R2",
+  "at": "2026-10-20T00:44:32.582842+00:00",
+  "A_Framework_review": "156adbbb5ddcd49e8adb96939837372936ac451e",
+  "production_Core": "27ec10bda848e4929181c60a7cbb40d6b007945c",
+  "production_Framework": "9dd1ee57a83d83b56b7874bc7c716185ab52c8f7",
+  "vendor": "f90c430c3a1ce8f08c09942a5a1c3a797bb2295b",
+  "production_main_sha256": "773271ac70f009dddcd4c522f66dcd37967e4f57ce1e5082d3fc5aea61f2f9f5",
+  "main_identity_source": "A_frozen_release_not_executed_or_rebuilt_by_B",
+  "old_failed_fixture_Core": "8027ec558b9704d41cb8268131e7e6aca3ae7775",
+  "old_fixture_binary_sha256": "265cfe127802cd7575d3bf016ba3f97b6ce0cfe6e1a2dff5f9a0368aa4cb4a67",
+  "classification": "TEST_EXPECTATION_AND_STIMULUS_REACHABILITY_ERROR_PRODUCTION_CORRECTNESS_BUG_NOT_DEMONSTRATED_BY_THIS_FAILURE",
+  "conclusion_limit": "Does not certify all production paths or grant/reinstate E scientific qualification; parent/descriptor later assertions were not reached",
+  "counts": {
+    "original_expected": {
+      "native_lower": 1,
+      "RO_first_A0": 4,
+      "RO_other16": 16,
+      "assumed_RO_duplicate": 1,
+      "total_lower": 22,
+      "total_bytes": 704,
+      "assumed_descriptors": 18
+    },
+    "original_observed_abort": {
+      "RO_lower": 20,
+      "RO_bytes": 640,
+      "A0_waiters": 5,
+      "all_A0_required_issued": 15,
+      "A0_ready": 0,
+      "reuse_seen": true,
+      "attached": true,
+      "abort_native_exit": -6,
+      "completed_total_lower_result": null
+    },
+    "original_source_inference": {
+      "partial_total_lower_including_initial_native": 21,
+      "partial_total_bytes": 672,
+      "RO_descriptors_at_abort": 21,
+      "formula": "4 sectorchildren +16other singleton requesters +1merged duplicate; required&( ~(issued|ready))=0 so repeat adds0lower",
+      "not_complete_result": true
+    },
+    "split128_expected": {
+      "lower_packets": 4,
+      "lower_bytes": 128,
+      "descriptors_peak": 5,
+      "sector_child_replies": 4,
+      "ordinary_duplicate_replies": 1,
+      "parent_replies": 0
+    },
+    "joint32_expected": {
+      "lower_packets": 19,
+      "lower_bytes": 608,
+      "RO_lower_packets": 18,
+      "RO_lower_bytes": 576,
+      "descriptors_peak": 18,
+      "formula": "1native+17singletonRO+1genuine detached-line duplicate",
+      "not_old_assertion_with_changed_constant": true
+    }
+  },
+  "source_facts": [
+    {
+      "path": "src/gpgpu-sim/mem_fetch.cc",
+      "line": 45,
+      "fact": "Every parent, sector child, ROlower and WB mem_fetch gets a distinct existing global UID; no copied UID or narrowed generation"
+    },
+    {
+      "path": "src/gpgpu-sim/l2cache.cc",
+      "line": 2564,
+      "fact": "128B parent -> four actual32B requesters, each original_mf points at parent; m_request_tracker tracks children"
+    },
+    {
+      "path": "src/gpgpu-sim/l2cache.cc",
+      "line": 2662,
+      "fact": "Partition pops actual requester child, no parent aggregation here; external fixture keeps parent until4children consumed"
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-ro-mshr.inc",
+      "line": 18,
+      "fact": "One common D512 descriptor for every actual requester pointer, generation checked; parent is not additional descriptor"
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-ro-transactions.h",
+      "line": 189,
+      "fact": "All merges set permanent reuse_seen, including siblings generated from same128Bparent; no future reuse oracle"
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-ro-transactions.h",
+      "line": 195,
+      "fact": "Detach requires !reuse_seen and unresolved required sector; fullparent sibling merges prevent detaching A0"
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-ro-transactions.h",
+      "line": 212,
+      "fact": "Only required minus issued-or-ready may issue; merged A0 duplicate has no new missing sector"
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-ro-runtime.inc",
+      "line": 275,
+      "fact": "Actual ROlower uses NULL origin, own UID, explicit RO marker and landing handle/generation; no requester descriptor of its own"
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-ft-cache.inc",
+      "line": 551,
+      "fact": "WB packet existing UID binds directory row/incarnation via m_ft_pending; no parent/RO UID substitution"
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-ft-cache.inc",
+      "line": 620,
+      "fact": "Paid WB readout precedes actual loweraccept; retained WB->TVD_INFLIGHT only without pins; independent packet preserves snapshot"
+    },
+    {
+      "path": "src/gpgpu-sim/gpu-cache.cc",
+      "line": 2644,
+      "fact": "Costed one completion CAM/physical cycle matches WB UID first; set WB_COMPLETE; defer role/state transition if pinned"
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-tvd-cache.inc",
+      "line": 138,
+      "fact": "After actual bank grant+ICNT enqueue, decrement reader/unpin; both WB and TVD roles finalize TVD_VALID on done"
+    }
+  ],
+  "WB_lifecycle": "Source matches frozen pending/inflight/pin/completion/last-unpin protocol; selected5existing raw+receipt hashes checked read-only; oldjointcase never reached these paths",
+  "original_failure_preserved": true,
+  "production_protocol_modified": false,
+  "shared_budget_modified": false,
+  "additional_downstream_packets_injected": false,
+  "new_native_simulator_runs_by_B": 0,
+  "syntax_only_invocations": 2,
+  "final_syntax_status": "SYNTAX_PASS_NOT_NATIVE_PASS",
+  "final_syntax_lease": "7ad24bd9197447b78440f2a12e32b3fc",
+  "syntax_leases_released": true,
+  "new_cpp_objects_or_ELFs": 0,
+  "new_full_applications_by_B": 0,
+  "E_qualification_reset": false,
+  "C_review": "REQUESTED_PENDING_NO_ENDORSEMENT_ASSUMED",
+  "shared_C_request": "/workspace/ep_l2_ms20261019_shared/REQUEST_B_TO_C_VRW_ACCOUNTING_REVIEW_r2.json",
+  "fixture_delta": "CORE27_FIXTURE_ONLY.patch",
+  "inputs": "inputs/{split128,joint32}",
+  "pending": [
+    "C independent source/whole-synthetic-epoch review and A integration of tests only",
+    "A exact Core27-native link/test under E current API/lease; one new test binary identity distinct from main773",
+    "E independently accepts or retains holds; no automatically waived required gate; existing source24 producer passes and oldfailedrows retained",
+    "New joint input reachability is source-constructed, not an observed PASS; external nonzero sector labels do not certify SASS arithmetic or DRAM timing"
+  ]
+}

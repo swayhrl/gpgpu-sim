@@ -1,0 +1,23 @@
+{
+  "command": [
+    "/workspace/build/ep-l2-ms20261020-a-vrw-joint-r32/ep_l2_ms_vrw_interleave",
+    "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+    "/workspace/worktrees/accel-sim-ep-l2-ms20261019-a-core-v1/docs/ep_l2/codex_handoff/mechanism_study_2026_10_19_v1/a/full_system_v2/VRW_BINDINGS_r32/combined_absolute.config",
+    "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/docs/ep_l2/ms_victim/full_system_v2_r1/vrw_input/kernelslist.g",
+    "16",
+    "0",
+    "0",
+    "1"
+  ],
+  "native_pid": 1214471,
+  "native_started_unix": 1792437774.0151155,
+  "expected_exit": 0,
+  "actual_exit": -6,
+  "required_terminal": "priority_reclaim_RO_duplicate_late_fill_pin_WB_done_write_order_drain=PASS",
+  "expectation_verified": false,
+  "raw_log": "/workspace/ep_l2_ms20261019_e_results/A_SHARED_VRW_CONTROLLED_r32/shared_vrw_typing_fixed_B_fixture.native.native.log",
+  "raw_log_sha256": "9e36e1247b269123ead97f563aa1d43c32a1367666ee81577e941497e21c4460",
+  "binary_sha256": "265cfe127802cd7575d3bf016ba3f97b6ce0cfe6e1a2dff5f9a0368aa4cb4a67",
+  "scientific_scope": "FINITE_NATIVE_EXPECTATION_ONLY_NOT_E_QUALIFICATION",
+  "legacy_toggle_is_old_source_binary_evidence": false
+}

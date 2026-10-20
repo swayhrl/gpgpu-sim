@@ -1,0 +1,242 @@
+--- /dev/null
++++ b/tests/ep_l2/ms_victim/test_vrw_reachable.cc
+@@ -0,0 +1,239 @@
++// B scientific-review fixture, targeted at A Core27. SOURCE ONLY until A/E run.
++// Original failed test_vrw_interleave.cc and its input are deliberately intact.
++#include "native_fixture.h"
++#include <algorithm>
++#include <deque>
++#include <cstring>
++
++namespace {
++using H=ep_l2::PayloadHandle;
++using P=ep_l2_payload_store;
++const new_addr_type stride=64*128,ro_base=0x400000;
++struct reviewed_fixture {
++  victim_fixture f;
++  std::deque<mem_fetch*> ro;
++  std::set<unsigned> lower_uids,child_uids;
++  mem_fetch *parent=nullptr;
++  unsigned parent_uid=0,child_sectors=0,ro_packets=0;
++  versions parent_reference{};
++  unsigned long long injected_grants[4]={};
++  explicit reviewed_fixture(char **a,const char *command):f(a,"512:2:64:1",
++      "S:64:128:16,L:B:m:L:L,A:128:32,256:0,32") {
++    assert(f.cache->ro_enabled() && f.cache->tvd_enabled());
++    f.sp->ro_bind_commandlist(command);f.sp->ro_begin_epoch();
++  }
++  void collect() {
++    while(auto p=f.sp->pop()) {
++      const auto uid=p->get_request_uid();const auto sectors=p->get_access_sector_mask();
++      if(parent && p->get_original_mf()==parent) {
++        assert(uid!=parent_uid && sectors.count()==1 && p->get_data_size()==32);
++        assert(child_uids.insert(uid).second && !(child_sectors&sectors.to_ulong()));
++        assert(!lower_uids.count(uid)); // RO lower UID is not child UID.
++        child_sectors|=sectors.to_ulong();f.expected[uid]=parent_reference;
++        printf("VRW_REVIEW|child_uid=%u|parent_uid=%u|sector_mask=%lu\n",uid,parent_uid,sectors.to_ulong());
++      }
++      assert(f.expected.count(uid) && f.replies.insert(uid).second);
++      if(!p->get_is_write()) {
++        assert(p->has_ft_wb_data());
++        for(unsigned s=0;s<4;++s)if(sectors.test(s))
++          assert(p->get_ft_wb_data()[s]==f.expected.at(uid)[s]);
++      }
++      delete p;
++      // The partition returns sector children, not a reassembled parent.
++      // External test owner reclaims its parent only after all4 actual replies.
++      if(parent && child_sectors==15){delete parent;parent=nullptr;}
++    }
++  }
++  void lower() {
++    while(!f.sp->L2_dram_queue_empty()) {
++      auto p=f.sp->L2_dram_queue_top();f.sp->L2_dram_queue_pop();
++      assert(lower_uids.insert(p->get_request_uid()).second);
++      if(p->get_access_type()==L2_WRBK_ACC) {
++        const auto t=f.cache->tvd_for_test()->find(p->get_addr());
++        assert(f.cache->tvd_for_test()->writeback_matches(t,p->get_addr(),p->get_request_uid()));
++        assert(p->has_ft_wb_data());
++        for(unsigned s=0;s<4;++s)if(p->get_access_sector_mask().test(s))
++          assert(p->get_ft_wb_data()[s]==f.memory.at(p->get_addr())[s]);
++        f.wb.push_back(p);++f.lower_wb;
++      } else {
++        ++f.lower_read_packets;f.lower_read_bytes+=p->get_data_size();
++        if(p->ro_lower_packet()) {
++          assert(!p->get_original_mf() && p->get_data_size()==32);
++          assert(p->get_access_sector_mask().count()==1);
++          ro.push_back(p);++ro_packets;
++        } else assert(f.reads.insert({p->get_addr(),p}).second);
++      }
++    }
++  }
++  void step(bool consume=true) {
++    unsigned long long before[4];
++    for(unsigned b=0;b<4;++b)before[b]=f.cache->ep_l2_payload_bank_grants(b);
++    const bool old=f.block_lower;f.block_lower=true;f.step(false);f.block_lower=old;
++    for(unsigned b=0;b<4;++b) {
++      assert(f.cache->ep_l2_payload_bank_grants(b)-before[b]+injected_grants[b]<=1);
++      injected_grants[b]=0;
++    }
++    if(consume)collect();
++    lower();
++    assert(f.cache->ep_l2_descriptor_count_used()<=512);
++  }
++  void paid_contender(H h) {
++    unsigned long long before[4];
++    for(unsigned b=0;b<4;++b)before[b]=f.cache->ep_l2_payload_bank_grants(b);
++    assert(f.cache->ep_l2_payload_for_test().request(h,false,f.gpu->gpu_sim_cycle)==P::GRANTED);
++    for(unsigned b=0;b<4;++b)injected_grants[b]+=f.cache->ep_l2_payload_bank_grants(b)-before[b];
++  }
++  H tag(new_addr_type line) {
++    auto &ram=f.cache->ep_l2_payload_for_test();
++    for(unsigned i=0;i<1024;++i) {
++      const H h=f.cache->ep_l2_tag_payload_handle_for_test(i);
++      if(ram.handle_owner_matches(h,line))return h;
++    }
++    return H();
++  }
++  void await_lower(unsigned n) {
++    for(unsigned k=0;k<20000 && ro_packets<n;++k)step();
++    assert(ro_packets==n);
++  }
++  void frontend_empty() {
++    bool seen=false;
++    for(unsigned k=0;k<20000;++k) {
++      step();seen|=f.sp->ep_l2_icntl2_occupancy()!=0;
++      if(seen && !f.sp->ep_l2_icntl2_occupancy()){step();return;}
++    }
++    assert(false);
++  }
++  H submit(unsigned i) {
++    const auto n=ro_packets;f.send(f.make(ro_base+i*stride,false));
++    await_lower(n+1);frontend_empty_if_needed();
++    for(auto it=ro.rbegin();it!=ro.rend();++it)if((*it)->get_addr()==ro_base+i*stride)
++      return H((*it)->get_ep_l2_payload_id(),(*it)->get_ep_l2_payload_generation());
++    assert(false);return H();
++  }
++  void frontend_empty_if_needed() {
++    for(unsigned k=0;k<20000 && f.sp->ep_l2_icntl2_occupancy();++k)step();
++    assert(!f.sp->ep_l2_icntl2_occupancy());step();
++  }
++  void queue(H h,unsigned sector) {
++    auto it=std::find_if(ro.begin(),ro.end(),[&](mem_fetch*p){return
++      p->get_ep_l2_payload_id()==h.payload_id && p->get_ep_l2_payload_generation()==h.generation &&
++      p->get_access_sector_mask().test(sector);});
++    assert(it!=ro.end() && !f.sp->dram_L2_queue_full());auto p=*it;ro.erase(it);
++    p->set_ft_wb_data(f.memory.at(p->get_addr()&~127ull));p->set_reply();f.sp->dram_L2_queue_push(p);
++  }
++  void wait(unsigned uid) {
++    for(unsigned k=0;k<20000 && !f.replies.count(uid);++k)step();
++    assert(f.replies.count(uid));
++  }
++  void done(new_addr_type line,bool consume=true) {
++    auto it=std::find_if(f.wb.begin(),f.wb.end(),[&](mem_fetch*p){return p->get_addr()==line;});
++    assert(it!=f.wb.end());auto p=*it;f.wb.erase(it);const auto saved=p->get_ft_wb_data();
++    f.sp->set_done(p);assert(p->get_ft_wb_data()==saved);delete p;++f.completed_wb;step(consume);
++  }
++  void finish() {
++    assert(!parent && ro.empty() && !f.cache->ep_l2_descriptor_count_used());
++    assert(f.cache->ro_drained() && !f.cache->ep_l2_payload_pending_operations());
++    f.sp->ro_end_epoch();f.finish();
++  }
++};
++
++void split128(char **a,const char *command) {
++  reviewed_fixture g(a,command);auto &f=g.f;auto &ram=f.cache->ep_l2_payload_for_test();
++  f.memory[ro_base]={{ro_base+11,ro_base+22,ro_base+33,ro_base+44}};
++  active_mask_t active;active.set(0);mem_access_byte_mask_t bytes;bytes.set();
++  mem_access_sector_mask_t sectors;sectors.set();
++  g.parent=f.alloc->alloc(ro_base,GLOBAL_ACC_R,active,bytes,sectors,128,false,f.gpu->gpu_sim_cycle,0,0,0,nullptr,0);
++  g.parent_uid=g.parent->get_request_uid();g.parent_reference=f.memory.at(ro_base);f.send(g.parent);
++  g.await_lower(4);g.frontend_empty_if_needed();const H h=g.tag(ro_base);assert(h.valid());
++  assert(f.cache->ep_l2_descriptor_count_used()==4 && ram.inspect(h).pending_sector_mask.to_ulong()==15);
++  auto repeat=f.make(ro_base,false);const auto uid=repeat->get_request_uid();f.send(repeat);g.frontend_empty();
++  assert(g.ro_packets==4 && f.cache->ep_l2_descriptor_count_used()==5 && g.tag(ro_base)==h);
++  for(unsigned s:{3u,1u,2u}) {
++    g.queue(h,s);
++    for(unsigned k=0;k<20000 && !(g.child_sectors&(1u<<s));++k)g.step();
++    assert(g.child_sectors&(1u<<s));assert(!f.replies.count(uid));
++  }
++  assert(g.child_sectors==14 && f.cache->ep_l2_descriptor_count_used()==2);
++  g.queue(h,0);g.wait(uid);
++  for(unsigned k=0;k<20000 && g.child_sectors!=15;++k)g.step();
++  assert(g.child_sectors==15 && g.child_uids.size()==4 && f.replies.size()==5 && !g.parent);
++  assert(!f.replies.count(g.parent_uid) && !g.child_uids.count(uid));
++  assert(f.lower_read_packets==4 && f.lower_read_bytes==128 && !f.lower_wb);
++  g.finish();puts("VRW_REVIEW|case=split128_merge_identity|status=PASS");
++}
++
++void joint32(char **a,const char *command) {
++  reviewed_fixture g(a,command);auto &f=g.f;auto &ram=f.cache->ep_l2_payload_for_test();auto dir=f.cache->tvd_for_test();
++  f.memory[ro_base]={{ro_base+11,ro_base+22,ro_base+33,ro_base+44}};
++  active_mask_t active;active.set(0);mem_access_byte_mask_t bytes;for(unsigned i=0;i<32;++i)bytes.set(i);
++  auto p=f.alloc->alloc(ro_base,TEXTURE_ACC_R,active,bytes,mem_access_sector_mask_t(1),32,false,f.gpu->gpu_sim_cycle,0,0,0,nullptr,0);
++  const auto initial=p->get_request_uid();f.expected[initial]=f.memory.at(ro_base);f.send(p);
++  for(unsigned k=0;k<20000 && !f.replies.count(initial);++k){g.step();f.return_all_reads_reverse();}
++  assert(f.replies.count(initial) && !g.ro_packets);
++  for(unsigned i=0;i<17;++i)f.write(i*stride);
++  const auto clean=dir->find(ro_base);assert(dir->live(clean));const H clean_h=dir->at(clean.index).payload;
++  auto hit=f.make(ro_base,false);const auto hit_uid=hit->get_request_uid();f.send(hit);g.wait(hit_uid);
++  assert(!g.ro_packets && f.lower_read_packets==1);
++  for(unsigned i=17;i<144;++i)f.write(i*stride);
++  assert(dir->mandatory()==128 && dir->occupied()==128 && !ram.handle_live(clean_h));
++  H handles[17];
++  for(unsigned i=0;i<17;++i){g.done((32+i)*stride);handles[i]=g.submit(i);}
++  unsigned detached=17;
++  for(unsigned i=0;i<17;++i)if(ram.handle_live(handles[i]) &&
++      ram.inspect(handles[i]).status==P::RO_FILL_DETACHED && g.tag(ro_base+i*stride)!=handles[i]){detached=i;break;}
++  assert(detached<17);const H old=handles[detached];const H newer=g.submit(detached);
++  assert(newer!=old && ram.handle_live(old) && ram.handle_live(newer));
++  printf("VRW_REVIEW|detached_line=%u|old_id=%u|old_generation=%llu|new_id=%u|new_generation=%llu\n",
++      detached,old.payload_id,(unsigned long long)old.generation,newer.payload_id,(unsigned long long)newer.generation);
++  assert(g.ro_packets==18 && f.lower_read_packets==19 && f.lower_read_bytes==608);
++  assert(f.cache->ep_l2_descriptor_count_used()==18);
++  const auto offset=f.sp->ft_memcpy_offset_for_test();
++  assert(!f.sp->ft_try_force_l2_tag_update(ro_base+detached*stride,f.gpu->gpu_sim_cycle,mem_access_sector_mask_t(1)));
++  assert(f.sp->ft_memcpy_offset_for_test()==offset && ram.handle_live(old) && ram.handle_live(newer));
++  new_addr_type victim=0;bool found=false;
++  for(unsigned i=0;i<32 && !found;++i)if(i!=4) {
++    const auto t=dir->find(i*stride);
++    if(dir->live(t) && dir->at(t.index).status==l2_cache::tvd_directory::WB_INFLIGHT &&
++       dir->at(t.index).payload.payload_id%4!=old.payload_id%4){victim=i*stride;found=true;}
++  }
++  assert(found);const auto t=dir->find(victim);const H v=dir->at(t.index).payload;
++  auto read=f.make(victim,false);const auto read_uid=read->get_request_uid();f.send(read);
++  for(unsigned k=0;k<1000 && !f.cache->tvd_lookup_started_for_test(read);++k)g.step();
++  assert(f.cache->tvd_lookup_started_for_test(read));H contender;
++  for(unsigned i=0;i<dir->capacity();++i) {
++    const auto &e=dir->at(i);
++    if(e.payload.valid() && e.payload!=v && e.payload.payload_id%4==v.payload_id%4 &&
++       !ram.inspect(e.payload).pins){contender=e.payload;break;}
++  }
++  assert(contender.valid());g.paid_contender(contender);g.queue(old,0);g.step(false);
++  assert(ram.inspect(v).pins==1 && dir->at(t.index).readers==1);
++  g.step(false);assert(f.sp->ep_l2_l2icnt_occupancy()==1 && !ram.handle_live(old));
++  assert(ram.handle_live(newer) && ram.inspect(newer).pending_sector_mask.to_ulong()==1);
++  g.done(victim,false);
++  for(unsigned k=0;k<4;++k){g.step(false);assert(ram.inspect(v).pins==1 && dir->at(t.index).readers==1);}
++  assert(dir->at(t.index).status==l2_cache::tvd_directory::WB_COMPLETE);g.collect();g.wait(read_uid);
++  assert(ram.inspect(v).status==P::TVD_VALID && !ram.inspect(v).pins);
++  const new_addr_type writer_line=4*stride;const auto wt=dir->find(writer_line);assert(dir->live(wt) && dir->at(wt.index).mandatory());
++  const H wh=dir->at(wt.index).payload;const auto saved=ram.inspect(wh).versions;
++  auto writer=f.make(writer_line,true);const auto wuid=writer->get_request_uid();f.send(writer);
++  for(unsigned k=0;k<8;++k)g.step();
++  assert(!f.replies.count(wuid) && ram.inspect(wh).versions==saved);
++  g.done(writer_line);f.memory[writer_line][0]=(unsigned long long)wuid+1;
++  while(!g.ro.empty()) {
++    auto q=g.ro.back();const H h(q->get_ep_l2_payload_id(),q->get_ep_l2_payload_generation());
++    g.queue(h,0);g.step();
++  }
++  for(unsigned k=0;k<20000 && f.replies.size()!=f.expected.size();++k)g.step();
++  assert(f.replies.size()==f.expected.size() && f.replies.count(wuid));
++  while(!f.wb.empty())g.done(f.wb.front()->get_addr());
++  assert(f.lower_read_packets==19 && f.lower_read_bytes==608);f.read(writer_line);g.finish();
++  puts("VRW_REVIEW|case=joint32_detach_pin_WB_ICNT|status=PASS");
++}
++} // namespace
++
++int main(int argc,char **argv) {
++  // base.cfg binding.cfg commandlist 16 0 0 1 {split128|joint32}
++  assert(argc==9);char *a[]={argv[0],argv[1],argv[2],const_cast<char*>("2"),argv[4],argv[5],argv[6],argv[7]};
++  if(!strcmp(argv[8],"split128"))split128(a,argv[3]);
++  else if(!strcmp(argv[8],"joint32"))joint32(a,argv[3]);else assert(false);
++}

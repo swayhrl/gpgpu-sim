@@ -1,3 +1,8 @@
+Latest scientific review: [Core27 V/R/W reachability r2](vrw_reachability_review_r2/REVIEW.md).
+Old22/704 and descriptor18 assumptions are invalid for the128B split fixture.
+Test-only replacement inputs prepared; final C++ syntax passes, native runs by B0.
+Previous mechanism candidates and frozen input/source evidence remain intact.
+
 Current continuation: [full-system V2 r1](full_system_v2_r1/README.md).
 Exact A645 last-unpin delta + one B/C actual-path input prepared; C review and
 A/E native qualification pending. Previous r1-r4 packs remain frozen below.

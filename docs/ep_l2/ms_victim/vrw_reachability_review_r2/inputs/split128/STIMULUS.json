@@ -1,0 +1,22 @@
+{
+  "case": "split128",
+  "frozen_policy": "reuse_seen remains permanent; no false full-parent detach assumption",
+  "host_attempt": null,
+  "independent_C_scope_review": "PENDING",
+  "operations": [
+    "One128B GLOBAL parent A0 enters actual sector frontend",
+    "Observe4actual RO lower packets,4shared requester descriptors",
+    "One32B duplicate A0 sector0 merges; expect5descriptors and no new lower",
+    "Return actual lower sectors3,1,2,0; check four childUID/original-parent pointers and one ordinary duplicate UID",
+    "Check no parentUID response, descriptor/pin/token/epoch drain; reclaim external parent after its4children"
+  ],
+  "readonly_lines": [
+    "0000000000400000"
+  ],
+  "repeated_write_line": null,
+  "schema": "B_VRW_CORE27_REACHABLE_STIMULUS_V2",
+  "scope": "ENTIRE_FINITE_SYNTHETIC_FIXTURE_EPOCH_NOT_CAPTURED_APPLICATION",
+  "source_path": "tests/ep_l2/ms_victim/test_vrw_reachable.cc",
+  "source_sha256": "d32f2a779de00836b608b1948fc504bbb57110b767dfcb7ff656ea89568997fe",
+  "write_lines": []
+}

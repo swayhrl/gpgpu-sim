@@ -1,0 +1,14 @@
+{
+  "address_domain": "CANONICAL_GPU_GLOBAL_VA_NO_TRANSLATION_ALIAS",
+  "artifacts": {
+    "certified_ranges.csv": "9764cf5937eb763bed684f83cc7016b03549d64969140225c3d4b36ea418c8c6"
+  },
+  "commandlist_sha256": "5085bac67360b642e1ef81fabb789658f8f012ed4d72def2c1d942969b9389a9",
+  "epoch": "whole_commandlist",
+  "schema": "EP_L2_RO_ORACLE_V1",
+  "scientific_qualification": "NONE_PENDING_C_REVIEW_A_EXECUTION_E_ACCEPTANCE",
+  "scope": "TRACE_MODEL_CLOSED_WORLD",
+  "status": "SYNTHETIC_DIRECTED_FIXTURE",
+  "synthetic_stimulus_sha256": "9047657ea59ba4bf208e376157f97426a7303f4f5b072668fea7bbceaf1be7b0",
+  "unresolved_opcodes": {}
+}

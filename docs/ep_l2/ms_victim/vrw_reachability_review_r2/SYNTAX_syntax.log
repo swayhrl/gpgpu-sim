@@ -1,0 +1,51 @@
+In file included from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../../../libcuda/../src/cuda-sim/../gpgpu-sim/shader.h:54,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../../../libcuda/../src/cuda-sim/cuda-sim.h:37,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../../../libcuda/gpgpu_context.h:3,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../potential_fixture.h:9,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/native_fixture.h:6,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/test_vrw_reachable.cc:3:
+/workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../../../libcuda/../src/cuda-sim/../gpgpu-sim/gpu-cache.h: In member function ‘unsigned int ep_l2_payload_store::pending_sector_count() const’:
+/workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../../../libcuda/../src/cuda-sim/../gpgpu-sim/gpu-cache.h:2472:5: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+ 2472 |     for (const slot &s : m_slots) n += s.pending_sector_mask.count(); return n; }
+      |     ^~~
+/workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../../../libcuda/../src/cuda-sim/../gpgpu-sim/gpu-cache.h:2472:71: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+ 2472 |     for (const slot &s : m_slots) n += s.pending_sector_mask.count(); return n; }
+      |                                                                       ^~~~~~
+In file included from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../../../libcuda/../src/cuda-sim/../gpgpu-sim/shader.h:54,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../../../libcuda/../src/cuda-sim/cuda-sim.h:37,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../../../libcuda/gpgpu_context.h:3,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../potential_fixture.h:9,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/native_fixture.h:6,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/test_vrw_reachable.cc:3:
+/workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../../../libcuda/../src/cuda-sim/../gpgpu-sim/gpu-cache.h: In member function ‘bool l2_cache::ep_l2_tag_payload_consistent() const’:
+/workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../../../libcuda/../src/cuda-sim/../gpgpu-sim/gpu-cache.h:2996:45: warning: suggest parentheses around ‘&&’ within ‘||’ [-Wparentheses]
+ 2995 |           m_ep_l2_payload.resident(handle.payload_id).allocation_role !=
+      |           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 2996 |               ep_l2_payload_store::RESIDENT &&
+      |               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~
+ 2997 |           !(m_ep_l2_payload.resident(handle.payload_id).allocation_role==ep_l2_payload_store::RO && m_ep_l2_payload.resident(handle.payload_id).status==ep_l2_payload_store::RO_FILL_ATTACHED))
+      |           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../../../libcuda/../src/cuda-sim/../gpgpu-sim/shader.h:57,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../../../libcuda/../src/cuda-sim/cuda-sim.h:37,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../../../libcuda/gpgpu_context.h:3,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../potential_fixture.h:9,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/native_fixture.h:6,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/test_vrw_reachable.cc:3:
+/workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../../../libcuda/../src/cuda-sim/../gpgpu-sim/scoreboard.h: At global scope:
+/workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../../../libcuda/../src/cuda-sim/../gpgpu-sim/scoreboard.h:51:3: warning: type qualifiers ignored on function return type [-Wignored-qualifiers]
+   51 |   const bool islongop(unsigned warp_id, unsigned regnum);
+      |   ^~~~~
+In file included from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../../../libcuda/../src/cuda-sim/ptx_parser.h:33,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../../../libcuda/gpgpu_context.h:7,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../potential_fixture.h:9,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/native_fixture.h:6,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/test_vrw_reachable.cc:3:
+/workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../../../libcuda/../src/cuda-sim/ptx_ir.h:1354:11: warning: type qualifiers ignored on function return type [-Wignored-qualifiers]
+ 1354 |   virtual const void set_kernel_info(const struct gpgpu_ptx_sim_info &info) {
+      |           ^~~~~
+In file included from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/native_fixture.h:6,
+                 from /workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/test_vrw_reachable.cc:3:
+/workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../potential_fixture.h: In destructor ‘fixture::~fixture()’:
+/workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r2_final/source_view/tests/ep_l2/ms_victim/../potential_fixture.h:53:14: warning: deleting object of polymorphic class type ‘partition_mf_allocator’ which has non-virtual destructor might cause undefined behavior [-Wdelete-non-virtual-dtor]
+   53 |   ~fixture(){delete alloc;delete part;delete stats;delete gpu;}
+      |              ^~~~~~~~~~~~

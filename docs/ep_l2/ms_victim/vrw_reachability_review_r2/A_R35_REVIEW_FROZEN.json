@@ -1,0 +1,329 @@
+{
+  "schema": "A_B_C_SHARED_VRW_REACHABILITY_REVIEW_R35",
+  "UTC": "2026-10-19T19:40:23.913653+00:00",
+  "status": "EXTRA_CONTROLLED_SCENARIO_UNQUALIFIED_PRODUCTION773_FROZEN_PENDING_E",
+  "production_source_identity": {
+    "core_source_commit": "27ec10bda848e4929181c60a7cbb40d6b007945c",
+    "framework_source_commit": "9dd1ee57a83d83b56b7874bc7c716185ab52c8f7",
+    "vendor_pybind11_commit": "f90c430c3a1ce8f08c09942a5a1c3a797bb2295b",
+    "binary_sha256": "773271ac70f009dddcd4c522f66dcd37967e4f57ce1e5082d3fc5aea61f2f9f5"
+  },
+  "fixture_source_core": "8027ec558b9704d41cb8268131e7e6aca3ae7775",
+  "fixture_source_branch": "hrl/ep-l2-ms20261020-a-vrw-fixture-r32-v1",
+  "fixture_binary": "/workspace/build/ep-l2-ms20261020-a-vrw-joint-r32/ep_l2_ms_vrw_interleave",
+  "fixture_binary_sha256": "265cfe127802cd7575d3bf016ba3f97b6ce0cfe6e1a2dff5f9a0368aa4cb4a67",
+  "source_typing_fix": "Split one constauto declaration into two; unchangedtypes/operations. Synthetic sourcehash/manifest/config checksums rebound;17readonly/144write footprints and operation order unchanged.",
+  "actual_attempts": {
+    "A_SHARED_VRW_CONTROLLED_r31": {
+      "path": "/workspace/ep_l2_ms20261019_e_results/A_SHARED_VRW_CONTROLLED_r31/RECEIPT.json",
+      "sha256": "b6ca5832ed469157b62b1d8ebd9d444a740ae39f0c612037dd192351625c4f50",
+      "status": "STOPPED_OR_FAILED_REPAIR_NOT_RELEASED",
+      "lease_id": "6851f836dbb64fcd9e0158314bbc741e",
+      "commands": [
+        {
+          "command": [
+            "/usr/bin/c++",
+            "-DCUDART_VERSION=11080",
+            "-DDEBUG=0",
+            "-DTRACING_ON=1",
+            "-I/usr/local/cuda-11.8/targets/x86_64-linux/include",
+            "-I/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-r25-ro-origin-v1/libcuda",
+            "-I/workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/libcuda",
+            "-I/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-r25-ro-origin-v1/src/gpgpu-sim",
+            "-I/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-r25-ro-origin-v1/src/intersim2",
+            "-I/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-r25-ro-origin-v1/src/intersim2/allocators",
+            "-I/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-r25-ro-origin-v1/src/intersim2/arbiters",
+            "-I/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-r25-ro-origin-v1/src/intersim2/networks",
+            "-I/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-r25-ro-origin-v1/src/intersim2/power",
+            "-I/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-r25-ro-origin-v1/src/intersim2/routers",
+            "-I/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-r25-ro-origin-v1/src",
+            "-Wall",
+            "-O3",
+            "-g3",
+            "-fPIC",
+            "-std=gnu++17",
+            "-c",
+            "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-r25-ro-origin-v1/tests/ep_l2/ms_victim/test_vrw_interleave.cc",
+            "-o",
+            "/workspace/build/ep-l2-ms20261020-a-vrw-joint-r31/joint_fixture.o"
+          ],
+          "log": "/workspace/ep_l2_ms20261019_e_results/A_SHARED_VRW_CONTROLLED_r31/joint_fixture_compile.log",
+          "process": {
+            "pid": 1211907,
+            "start_ticks": 918951114,
+            "boot_id": "59e1e1a4-84b6-431f-ac2d-03e340207019"
+          },
+          "error": "RuntimeError('joint_fixture_compile exited 1')",
+          "exit_code": 1,
+          "log_sha256": "4e83c05555224171b1ecf1338ac8be743d6294dca77cdbbf948a282c1fed78fd",
+          "wall_seconds": 4.2000906597822905
+        }
+      ]
+    },
+    "A_SHARED_VRW_CONTROLLED_r32": {
+      "path": "/workspace/ep_l2_ms20261019_e_results/A_SHARED_VRW_CONTROLLED_r32/RECEIPT.json",
+      "sha256": "0cdc0a796d34e5f83faa8a2c82a4faf1a058a44b1afd76f8e922368ff2c7bb47",
+      "status": "STOPPED_OR_FAILED_REPAIR_NOT_RELEASED",
+      "lease_id": "9d777798cd574ae8ab069b71d6619cad",
+      "commands": [
+        {
+          "command": [
+            "/usr/bin/c++",
+            "-DCUDART_VERSION=11080",
+            "-DDEBUG=0",
+            "-DTRACING_ON=1",
+            "-I/usr/local/cuda-11.8/targets/x86_64-linux/include",
+            "-I/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/libcuda",
+            "-I/workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/libcuda",
+            "-I/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/src/gpgpu-sim",
+            "-I/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/src/intersim2",
+            "-I/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/src/intersim2/allocators",
+            "-I/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/src/intersim2/arbiters",
+            "-I/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/src/intersim2/networks",
+            "-I/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/src/intersim2/power",
+            "-I/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/src/intersim2/routers",
+            "-I/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/src",
+            "-Wall",
+            "-O3",
+            "-g3",
+            "-fPIC",
+            "-std=gnu++17",
+            "-c",
+            "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/tests/ep_l2/ms_victim/test_vrw_interleave.cc",
+            "-o",
+            "/workspace/build/ep-l2-ms20261020-a-vrw-joint-r32/joint_fixture.o"
+          ],
+          "log": "/workspace/ep_l2_ms20261019_e_results/A_SHARED_VRW_CONTROLLED_r32/joint_fixture_compile.log",
+          "process": {
+            "pid": 1214303,
+            "start_ticks": 918973103,
+            "boot_id": "59e1e1a4-84b6-431f-ac2d-03e340207019"
+          },
+          "exit_code": 0,
+          "log_sha256": "b7fb94f0e0fea60cf32dee557cd9a760f0367d43fd80823b48a7fdb60ce5782c",
+          "wall_seconds": 10.567753145471215
+        },
+        {
+          "command": [
+            "/usr/bin/c++",
+            "-Wall",
+            "-O3",
+            "-g3",
+            "-fPIC",
+            "-Wl,--version-script=/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-a-r3-victim-full-v1/linux-so-version.txt",
+            "-lm",
+            "-lz",
+            "-lGL",
+            "-pthread",
+            "/workspace/build/ep-l2-ms20261020-a-vrw-joint-r32/joint_fixture.o",
+            "-o",
+            "/workspace/build/ep-l2-ms20261020-a-vrw-joint-r32/ep_l2_ms_vrw_interleave",
+            "-Wl,--start-group",
+            "/workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/libentrypoint.a",
+            "/workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/libcuda/libcuda.a",
+            "/workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/src/cuda-sim/libptxsim.a",
+            "/workspace/build/ep-l2-ms20261020-a-ro-origin-r26/libgpgpusim.a",
+            "/workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/src/intersim2/libintersim.a",
+            "/workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/src/accelwattch/libaccelwattch.a",
+            "-Wl,--end-group",
+            "/usr/lib/x86_64-linux-gnu/libz.so",
+            "-ldl",
+            "-lpthread",
+            "/usr/lib/x86_64-linux-gnu/libGLX.so",
+            "/usr/lib/x86_64-linux-gnu/libOpenGL.so"
+          ],
+          "log": "/workspace/ep_l2_ms20261019_e_results/A_SHARED_VRW_CONTROLLED_r32/joint_fixture_link.log",
+          "process": {
+            "pid": 1214328,
+            "start_ticks": 918974161,
+            "boot_id": "59e1e1a4-84b6-431f-ac2d-03e340207019"
+          },
+          "exit_code": 0,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "wall_seconds": 3.426509724929929
+        },
+        {
+          "command": [
+            "/scratch/root/oss-eda/oss-cad-suite/bin/tabbypy3",
+            "/workspace/worktrees/accel-sim-ep-l2-ms20261019-a-core-v1/util/ep_l2/mechanism_study/check_native_case.py",
+            "--expected-exit",
+            "0",
+            "--required-terminal",
+            "priority_reclaim_RO_duplicate_late_fill_pin_WB_done_write_order_drain=PASS",
+            "--receipt",
+            "/workspace/ep_l2_ms20261019_e_results/A_SHARED_VRW_CONTROLLED_r32/shared_vrw_typing_fixed_B_fixture.native.json",
+            "--",
+            "/workspace/build/ep-l2-ms20261020-a-vrw-joint-r32/ep_l2_ms_vrw_interleave",
+            "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+            "/workspace/worktrees/accel-sim-ep-l2-ms20261019-a-core-v1/docs/ep_l2/codex_handoff/mechanism_study_2026_10_19_v1/a/full_system_v2/VRW_BINDINGS_r32/combined_absolute.config",
+            "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/docs/ep_l2/ms_victim/full_system_v2_r1/vrw_input/kernelslist.g",
+            "16",
+            "0",
+            "0",
+            "1"
+          ],
+          "log": "/workspace/ep_l2_ms20261019_e_results/A_SHARED_VRW_CONTROLLED_r32/shared_vrw_typing_fixed_B_fixture.log",
+          "process": {
+            "pid": 1214460,
+            "start_ticks": 918974504,
+            "boot_id": "59e1e1a4-84b6-431f-ac2d-03e340207019"
+          },
+          "error": "RuntimeError('shared_vrw_typing_fixed_B_fixture exited 1')",
+          "exit_code": 1,
+          "log_sha256": "4505a009cfc6aa0e5babb32ea0ae92f3011ad40507ac0420aca806a23de3c900",
+          "wall_seconds": 1.5743197426199913
+        }
+      ]
+    },
+    "A_SHARED_VRW_GDB_r33": {
+      "path": "/workspace/ep_l2_ms20261019_e_results/A_SHARED_VRW_GDB_r33/RECEIPT.json",
+      "sha256": "d47ddb7f1ab6e16c65c83584bd2204f64ca086ed8e0cbac383b5d6075c6a8d6e",
+      "status": "STOPPED_OR_FAILED_REPAIR_NOT_RELEASED",
+      "lease_id": "875a63fb6ac24ccc9ed3522493e53dc2",
+      "commands": [
+        {
+          "command": [
+            "/usr/bin/gdb",
+            "-q",
+            "-nx",
+            "-batch",
+            "-x",
+            "/workspace/worktrees/accel-sim-ep-l2-ms20261019-a-core-v1/util/ep_l2/mechanism_study/capture_vrw_abort.gdb",
+            "--args",
+            "/workspace/build/ep-l2-ms20261020-a-vrw-joint-r32/ep_l2_ms_vrw_interleave",
+            "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+            "/workspace/worktrees/accel-sim-ep-l2-ms20261019-a-core-v1/docs/ep_l2/codex_handoff/mechanism_study_2026_10_19_v1/a/full_system_v2/VRW_BINDINGS_r32/combined_absolute.config",
+            "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/docs/ep_l2/ms_victim/full_system_v2_r1/vrw_input/kernelslist.g",
+            "16",
+            "0",
+            "0",
+            "1"
+          ],
+          "log": "/workspace/ep_l2_ms20261019_e_results/A_SHARED_VRW_GDB_r33/failed_fixture_gdb.log",
+          "process": {
+            "pid": 1220109,
+            "start_ticks": 919023004,
+            "boot_id": "59e1e1a4-84b6-431f-ac2d-03e340207019"
+          },
+          "error": "RuntimeError('failed_fixture_gdb exited 1')",
+          "exit_code": 1,
+          "log_sha256": "9f19f9e0a2afcca9882dad3cb8bb84bbcd797c31d53c5a59e75f1bd8f2f9146b",
+          "wall_seconds": 0.10120317339897156
+        }
+      ]
+    },
+    "A_SHARED_VRW_GDB_r34": {
+      "path": "/workspace/ep_l2_ms20261019_e_results/A_SHARED_VRW_GDB_r34/RECEIPT.json",
+      "sha256": "71f188cb18bee015bd647e3410871baa4932bb525c8d6083f1027b4fa43457fa",
+      "status": "FAILED_CONTROLLED_FIXTURE_GDB_CAPTURED_NO_PASS",
+      "lease_id": "92f41aca086544e9897bb46aafb53e09",
+      "commands": [
+        {
+          "command": [
+            "/usr/bin/gdb",
+            "-q",
+            "-nx",
+            "-batch",
+            "-x",
+            "/workspace/worktrees/accel-sim-ep-l2-ms20261019-a-core-v1/util/ep_l2/mechanism_study/capture_vrw_abort.gdb",
+            "--args",
+            "/workspace/build/ep-l2-ms20261020-a-vrw-joint-r32/ep_l2_ms_vrw_interleave",
+            "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+            "/workspace/worktrees/accel-sim-ep-l2-ms20261019-a-core-v1/docs/ep_l2/codex_handoff/mechanism_study_2026_10_19_v1/a/full_system_v2/VRW_BINDINGS_r32/combined_absolute.config",
+            "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-vrw-fixture-r32-v1/docs/ep_l2/ms_victim/full_system_v2_r1/vrw_input/kernelslist.g",
+            "16",
+            "0",
+            "0",
+            "1"
+          ],
+          "log": "/workspace/ep_l2_ms20261019_e_results/A_SHARED_VRW_GDB_r34/failed_fixture_gdb.log",
+          "process": {
+            "pid": 1222239,
+            "start_ticks": 919038580,
+            "boot_id": "59e1e1a4-84b6-431f-ac2d-03e340207019"
+          },
+          "exit_code": 0,
+          "log_sha256": "b8a3befea35c3b73adb9cd5df851bb312cfd55d93cf1fbec8465641da635a19f",
+          "wall_seconds": 2.9422812163829803
+        }
+      ]
+    }
+  },
+  "actual_native_exit": -6,
+  "actual_native_assertion": "test_vrw_interleave.cc:86 submit_ro(0) frommain:134",
+  "actual_gdb_lines": [
+    "VRW_FRAME|function=(anonymous namespace)::vrw_fixture::submit_ro|line=86",
+    "VRW_LOCAL|line=0",
+    "VRW_LOCAL|full=<optimized out>",
+    "VRW_LOCAL|before=<optimized out>",
+    "VRW_STATE|ro_packets=20",
+    "VRW_STATE|ro_bytes=640",
+    "VRW_STATE|full_uid=275",
+    "VRW_A0|slot=146|attached=1|reuse_seen=1|required=15|issued=15|ready=0|waiters=5",
+    "VRW_FRAME|function=(anonymous namespace)::vrw_fixture::submit_ro|line=73",
+    "VRW_LOCAL|line=0",
+    "VRW_LOCAL|full=<optimized out>",
+    "VRW_LOCAL|before=20",
+    "VRW_STATE|ro_packets=20",
+    "VRW_STATE|ro_bytes=640",
+    "VRW_STATE|full_uid=275",
+    "VRW_A0|slot=146|attached=1|reuse_seen=1|required=15|issued=15|ready=0|waiters=5",
+    "VRW_FRAME|function=main|line=134",
+    "VRW_LOCAL_UNAVAILABLE|line|Variable 'line' not found.",
+    "VRW_LOCAL_UNAVAILABLE|full|Variable 'full' not found.",
+    "VRW_LOCAL|before=<optimized out>"
+  ],
+  "observed_partial_RO_packets": 20,
+  "observed_partial_RO_bytes": 640,
+  "original_expected22_packets_704_bytes": "NOT_OBSERVED_AS_COMPLETED_RESULT; noPASS or benefitclaim",
+  "source_chain": [
+    {
+      "path": "src/gpgpu-sim/l2cache.cc",
+      "line": 2570,
+      "fact": "128B fullrequest is broken into four32B child mem_fetch requests by real memory_sub_partition frontend."
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-ro-transactions.h",
+      "line": 186,
+      "fact": "Every observed merge sets reuse_seen=true and allocates its own shared descriptor."
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-ro-transactions.h",
+      "line": 195,
+      "fact": "can_detach/detach require !reuse_seen; protection persists aftermergedwaiter retires."
+    },
+    {
+      "path": "tests/ep_l2/ms_victim/test_vrw_interleave.cc",
+      "line": 134,
+      "fact": "Fixture expects a duplicate A0 to issue anotherlower packet/newhandle, but A0 remainsattached: existingtransaction merges, requiredsectors alreadyissued, no newpacket. The harnesswithholdsreturns thenwaitsfor an unneededlower packet untilassertion."
+    },
+    {
+      "path": "src/gpgpu-sim/l2cache.cc",
+      "line": 2662,
+      "fact": "pop returns native sectorchild rather than assembling original128B parent; originalfixture parentUID reference and18descriptor expectation needreview. These later assertions were not reached, so this is source-level followup, not an additional observedfailure."
+    }
+  ],
+  "source_inference": "FiveA0waiters are consistentwith fourinitialsectors plusduplicate; GDBbefore=20/current=20 confirmsno duplicate lowerissue. Existingreuse_seen rule explains outcome; no missingmemory credit inferred.",
+  "scope": "Controlled C++cache/partition using external symbolicversions andconstructedcontention, NOT nativeDRAM/SASS/fullapplication correctness.",
+  "production_code_or_policy_changed": false,
+  "prod_cpp_or_main_rebuilt": false,
+  "prior24_newproducer_native_passes_retained": true,
+  "science_qualification_granted_by_A": false,
+  "independent_C_review": "PENDING_NOT_WAIVED",
+  "independent_E_review": "PENDING_NOT_WAIVED",
+  "B_C_request": [
+    "Review exact sectorchild/parent UID and descriptor accounting on productionCore27; no extra payload/descriptors/lookuporacle.",
+    "Provide a reachable shared scenario preserving all requested invariantcoverage under frozen reuse_seen policy, or identify the precise scientific policy change for review. Keep originalfailedcase and24passingproducercases intact.",
+    "A alone integrates publicCode. Supply an incrementaltest/input delta on exactpreimage27 and rebind complete syntheticfootprint identities; do not reapply oldruntime patches that would restore invalidlowerpacket IDs."
+  ],
+  "E_request": [
+    "Independently review producer773 via existingr30replay plus this failure classification. A doesnot waive a requiredgate or clear holds.",
+    "Retain E002 oldS without restart; formalapplications and acceptance remain Eonly under sameT0/cumulative40/32+8. No crossbinaryanchors.",
+    "After deciding qualification scope, continue legitimate newbinaryS/F at existingcontroller safeboundary; this extra unqualifiedcontrol mustnot be relabeled as a measured production result."
+  ],
+  "full_application_starts_snapshot": 3,
+  "A_full_applications": 0,
+  "own_leases_released": true,
+  "own_VRW_inferiors_live_at_seal": [],
+  "gdb_inferior_identity_limit": "ExactELF/command and GDBroot PID/start/boot are retained; inferiorPID was not persisted. This is diagnostic evidence, not accepted application/qualification."
+}

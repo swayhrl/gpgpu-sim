@@ -1,0 +1,73 @@
+{
+  "exact_A35_review_hash": true,
+  "Core27_fixture_patch_index_applicability": true,
+  "full_footprints_disjoint": true,
+  "old_GDB_expected_markers_verified": true,
+  "selected_existing_raw_receipt_hashes_verified": 5,
+  "source_facts": [
+    {
+      "path": "src/gpgpu-sim/mem_fetch.cc",
+      "line": 45,
+      "fact": "Every parent, sector child, ROlower and WB mem_fetch gets a distinct existing global UID; no copied UID or narrowed generation"
+    },
+    {
+      "path": "src/gpgpu-sim/l2cache.cc",
+      "line": 2564,
+      "fact": "128B parent -> four actual32B requesters, each original_mf points at parent; m_request_tracker tracks children"
+    },
+    {
+      "path": "src/gpgpu-sim/l2cache.cc",
+      "line": 2662,
+      "fact": "Partition pops actual requester child, no parent aggregation here; external fixture keeps parent until4children consumed"
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-ro-mshr.inc",
+      "line": 18,
+      "fact": "One common D512 descriptor for every actual requester pointer, generation checked; parent is not additional descriptor"
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-ro-transactions.h",
+      "line": 189,
+      "fact": "All merges set permanent reuse_seen, including siblings generated from same128Bparent; no future reuse oracle"
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-ro-transactions.h",
+      "line": 195,
+      "fact": "Detach requires !reuse_seen and unresolved required sector; fullparent sibling merges prevent detaching A0"
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-ro-transactions.h",
+      "line": 212,
+      "fact": "Only required minus issued-or-ready may issue; merged A0 duplicate has no new missing sector"
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-ro-runtime.inc",
+      "line": 275,
+      "fact": "Actual ROlower uses NULL origin, own UID, explicit RO marker and landing handle/generation; no requester descriptor of its own"
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-ft-cache.inc",
+      "line": 551,
+      "fact": "WB packet existing UID binds directory row/incarnation via m_ft_pending; no parent/RO UID substitution"
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-ft-cache.inc",
+      "line": 620,
+      "fact": "Paid WB readout precedes actual loweraccept; retained WB->TVD_INFLIGHT only without pins; independent packet preserves snapshot"
+    },
+    {
+      "path": "src/gpgpu-sim/gpu-cache.cc",
+      "line": 2644,
+      "fact": "Costed one completion CAM/physical cycle matches WB UID first; set WB_COMPLETE; defer role/state transition if pinned"
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-tvd-cache.inc",
+      "line": 138,
+      "fact": "After actual bank grant+ICNT enqueue, decrement reader/unpin; both WB and TVD roles finalize TVD_VALID on done"
+    }
+  ],
+  "syntax_source_sha256": "d32f2a779de00836b608b1948fc504bbb57110b767dfcb7ff656ea89568997fe",
+  "syntax_only_exit": 0,
+  "syntax_only_invocations": 2,
+  "native_executions_by_B": 0
+}
