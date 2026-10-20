@@ -91,6 +91,13 @@ struct reviewed_fixture {
     }
     return H();
   }
+  void unchanged_landing(H h,const P::slot &saved) {
+    const auto &s=f.cache->ep_l2_payload_for_test().inspect(h);
+    assert(s.owner==saved.owner && s.generation==saved.generation &&
+      s.allocation_role==saved.allocation_role && s.status==saved.status && s.pins==saved.pins &&
+      s.versions==saved.versions && s.ready_sector_mask==saved.ready_sector_mask &&
+      s.pending_sector_mask==saved.pending_sector_mask);
+  }
   void await_lower(unsigned n) {
     for(unsigned k=0;k<20000 && ro_packets<n;++k)step();
     assert(ro_packets==n);
@@ -148,7 +155,31 @@ void split128(char **a,const char *command) {
   assert(f.cache->ep_l2_descriptor_count_used()==4 && ram.inspect(h).pending_sector_mask.to_ulong()==15);
   auto repeat=f.make(ro_base,false);const auto uid=repeat->get_request_uid();f.send(repeat);g.frontend_empty();
   assert(g.ro_packets==4 && f.cache->ep_l2_descriptor_count_used()==5 && g.tag(ro_base)==h);
-  for(unsigned s:{3u,1u,2u}) {
+  // Observe a stable no-extra-issue interval after actual duplicate admission.
+  for(unsigned k=0;k<8;++k){g.step();assert(g.ro_packets==4 && f.cache->ep_l2_descriptor_count_used()==5);}
+  g.queue(h,3);
+  for(unsigned k=0;k<20000 && ram.inspect(h).pending_sector_mask.test(3);++k)g.step(false);
+  assert(ram.inspect(h).ready_sector_mask.test(3) && !f.sp->ep_l2_l2icnt_occupancy());
+  // One explicit, paid component read of the ready landing denies the real
+  // child3 RESPONSE. It creates no requester, lower packet or response buffer.
+  g.paid_contender(h);g.step(false);
+  assert(ram.pending_operations()==1 && ram.inspect(h).pins==1);
+  assert(f.cache->ep_l2_descriptor_count_used()==5 && !f.sp->ep_l2_l2icnt_occupancy());
+  for(unsigned k=0;k<20000 && !f.sp->ep_l2_l2icnt_occupancy();++k)g.step(false);
+  assert(f.sp->ep_l2_l2icnt_occupancy()==1 && !ram.pending_operations());
+  // Enqueue released one descriptor even though the external parent owner has
+  // consumed no child yet. The next fill must not retire behind full ICNT.
+  assert(f.cache->ep_l2_descriptor_count_used()==4 && !g.child_sectors && g.parent);
+  g.queue(h,1);
+  for(unsigned k=0;k<20000 && ram.inspect(h).pending_sector_mask.test(1);++k)g.step(false);
+  for(unsigned k=0;k<4;++k) {
+    g.step(false);assert(f.sp->ep_l2_l2icnt_occupancy()==1 && ram.inspect(h).pins==1);
+    assert(f.cache->ep_l2_descriptor_count_used()==4 && !g.child_sectors);
+  }
+  g.collect();assert(g.child_sectors==8);
+  for(unsigned k=0;k<20000 && !(g.child_sectors&2);++k)g.step();
+  assert((g.child_sectors&2) && !f.replies.count(uid));
+  for(unsigned s:{2u}) {
     g.queue(h,s);
     for(unsigned k=0;k<20000 && !(g.child_sectors&(1u<<s));++k)g.step();
     assert(g.child_sectors&(1u<<s));assert(!f.replies.count(uid));
@@ -187,9 +218,13 @@ void joint32(char **a,const char *command) {
       detached,old.payload_id,(unsigned long long)old.generation,newer.payload_id,(unsigned long long)newer.generation);
   assert(g.ro_packets==18 && f.lower_read_packets==19 && f.lower_read_bytes==608);
   assert(f.cache->ep_l2_descriptor_count_used()==18);
+  const auto old_saved=ram.inspect(old);const auto newer_saved=ram.inspect(newer);
+  const H bound_newer=g.tag(ro_base+detached*stride);assert(bound_newer==newer);
   const auto offset=f.sp->ft_memcpy_offset_for_test();
   assert(!f.sp->ft_try_force_l2_tag_update(ro_base+detached*stride,f.gpu->gpu_sim_cycle,mem_access_sector_mask_t(1)));
   assert(f.sp->ft_memcpy_offset_for_test()==offset && ram.handle_live(old) && ram.handle_live(newer));
+  g.unchanged_landing(old,old_saved);g.unchanged_landing(newer,newer_saved);
+  assert(g.tag(ro_base+detached*stride)==bound_newer && !f.cache->ro_drained());
   new_addr_type victim=0;bool found=false;
   for(unsigned i=0;i<32 && !found;++i)if(i!=4) {
     const auto t=dir->find(i*stride);
@@ -197,22 +232,33 @@ void joint32(char **a,const char *command) {
        dir->at(t.index).payload.payload_id%4!=old.payload_id%4){victim=i*stride;found=true;}
   }
   assert(found);const auto t=dir->find(victim);const H v=dir->at(t.index).payload;
+  const auto victim_saved=ram.inspect(v).versions;const auto wb_uid=dir->at(t.index).wb_request_uid;
+  assert(ram.inspect(v).allocation_role==P::TVD && ram.inspect(v).status==P::TVD_INFLIGHT);
   auto read=f.make(victim,false);const auto read_uid=read->get_request_uid();f.send(read);
   for(unsigned k=0;k<1000 && !f.cache->tvd_lookup_started_for_test(read);++k)g.step();
-  assert(f.cache->tvd_lookup_started_for_test(read));H contender;
+  assert(f.cache->tvd_lookup_started_for_test(read) && !f.sp->ep_l2_l2icnt_occupancy());H contender;
   for(unsigned i=0;i<dir->capacity();++i) {
     const auto &e=dir->at(i);
     if(e.payload.valid() && e.payload!=v && e.payload.payload_id%4==v.payload_id%4 &&
        !ram.inspect(e.payload).pins){contender=e.payload;break;}
   }
   assert(contender.valid());g.paid_contender(contender);g.queue(old,0);g.step(false);
-  assert(ram.inspect(v).pins==1 && dir->at(t.index).readers==1);
-  g.step(false);assert(f.sp->ep_l2_l2icnt_occupancy()==1 && !ram.handle_live(old));
+  assert(ram.inspect(v).pins==1 && dir->at(t.index).readers==1 && ram.pending_operations()==1);
+  for(unsigned k=0;k<20000 && !f.sp->ep_l2_l2icnt_occupancy();++k) {
+    g.step(false);assert(ram.inspect(v).pins==1 && dir->at(t.index).readers==1);
+  }
+  assert(f.sp->ep_l2_l2icnt_occupancy()==1 && !ram.handle_live(old));
   assert(ram.handle_live(newer) && ram.inspect(newer).pending_sector_mask.to_ulong()==1);
+  g.unchanged_landing(newer,newer_saved);assert(g.tag(ro_base+detached*stride)==bound_newer);
   g.done(victim,false);
-  for(unsigned k=0;k<4;++k){g.step(false);assert(ram.inspect(v).pins==1 && dir->at(t.index).readers==1);}
+  for(unsigned k=0;k<4;++k) {
+    g.step(false);assert(ram.inspect(v).pins==1 && dir->at(t.index).readers==1 && ram.pending_operations()==1);
+    assert(dir->live(t) && dir->at(t.index).payload==v && dir->writeback_matches(t,victim,wb_uid));
+    assert(ram.inspect(v).versions==victim_saved && !f.replies.count(read_uid));
+  }
   assert(dir->at(t.index).status==l2_cache::tvd_directory::WB_COMPLETE);g.collect();g.wait(read_uid);
-  assert(ram.inspect(v).status==P::TVD_VALID && !ram.inspect(v).pins);
+  assert(ram.inspect(v).status==P::TVD_VALID && !ram.inspect(v).pins && !dir->at(t.index).readers);
+  assert(ram.inspect(v).versions==victim_saved && dir->writeback_matches(t,victim,wb_uid));
   const new_addr_type writer_line=4*stride;const auto wt=dir->find(writer_line);assert(dir->live(wt) && dir->at(wt.index).mandatory());
   const H wh=dir->at(wt.index).payload;const auto saved=ram.inspect(wh).versions;
   auto writer=f.make(writer_line,true);const auto wuid=writer->get_request_uid();f.send(writer);
@@ -226,7 +272,11 @@ void joint32(char **a,const char *command) {
   for(unsigned k=0;k<20000 && f.replies.size()!=f.expected.size();++k)g.step();
   assert(f.replies.size()==f.expected.size() && f.replies.count(wuid));
   while(!f.wb.empty())g.done(f.wb.front()->get_addr());
-  assert(f.lower_read_packets==19 && f.lower_read_bytes==608);f.read(writer_line);g.finish();
+  assert(f.lower_read_packets==19 && f.lower_read_bytes==608);
+  const auto before_hit_packets=f.lower_read_packets;const auto before_hit_bytes=f.lower_read_bytes;
+  f.read(writer_line);
+  assert(f.lower_read_packets==before_hit_packets && f.lower_read_bytes==before_hit_bytes);
+  g.finish();
   puts("VRW_REVIEW|case=joint32_detach_pin_WB_ICNT|status=PASS");
 }
 } // namespace

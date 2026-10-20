@@ -17,6 +17,7 @@ def emit(p, value):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--revision', choices=['r2', 'r3'], default='r3')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[3]
     out = args.output.resolve()
@@ -27,7 +28,10 @@ def main():
             operations=['One128B GLOBAL parent A0 enters actual sector frontend',
                         'Observe4actual RO lower packets,4shared requester descriptors',
                         'One32B duplicate A0 sector0 merges; expect5descriptors and no new lower',
-                        'Return actual lower sectors3,1,2,0; check four childUID/original-parent pointers and one ordinary duplicate UID',
+                        'Observe8stable cycles after admission with no extra lower issue',
+                        'Return sector3; one paid public-arbiter ready-landing read denies its real RESPONSE; verify pin/D5/pendingtoken, then actual enqueue D4 before child consumption',
+                        'Hold actualcapacity1ICNT full while real sector1 returns; require D4/pin persistence until consumer; then finish actual lower order3,1,2,0',
+                        'Check four childUID/original-parent pointers and one ordinary duplicate UID',
                         'Check no parentUID response, descriptor/pin/token/epoch drain; reclaim external parent after its4children'],
             expected=dict(RO_lower_packets=4, RO_lower_bytes=128, total_lower_read_packets=4,
                           total_lower_read_bytes=128, shared_requester_descriptors=5,
@@ -40,13 +44,13 @@ def main():
                         'For i=0..16: complete actual WB B(32+i), submit32B RO Ai, hold lower',
                         'Select smallest i whose actual original handle is RO_FILL_DETACHED and no longer bound to Tag',
                         'Repeat that Ai sector0; new handle and one actual paid duplicate lower',
-                        'Covered host update attempt must refuse before mutation',
+                        'Covered host update attempt refuses; compare old/new owner/generation/role/status/pin/ready/pending/versions and actual new Tag binding plus memcpy offset',
                         'Choose retained inflight WB B0..31 excluding B4 on different bank from selected oldRO',
                         'Submit victim read; one explicit charged public-arbiter contender denies read bank at oldRO fill cycle',
-                        'Old RO final return at N; its real enqueue at N+1 fills capacity1ICNT ahead of victim retry',
-                        'WB done while victim reader pinned; preserve token/pin4cycles; consume ICNT, last-unpin TVD_VALID',
+                        'Old RO final return; bounded wait for actual enqueue filling capacity1ICNT ahead of victim retry; compare newlanding full snapshot and Tag binding unchanged',
+                        'WB done while victim reader pinned; preserve token/pin/snapshot/rowincarnation/WBUID4holdcycles; consume ICNT, last-unpin TVD_VALID',
                         'Write B4 waits real priorWB completion and native Tag promotion; return remaining RO packets',
-                        'Finish all WB one per cycle; check updated B4, exact-once replies and shared drain'],
+                        'Finish all WB one per cycle; read updated B4 and explicitly assert finalhit lower delta0; exact-once replies and shared drain'],
             expected=dict(RO_lower_packets=18, RO_lower_bytes=576, native_lower_read_packets=1,
                           total_lower_read_packets=19, total_lower_read_bytes=608,
                           shared_requester_descriptors=18, mandatory_rows_before_RO=128,
@@ -56,6 +60,7 @@ def main():
         folder.mkdir()
         assert set(data['readonly']).isdisjoint(data['writes'])
         stimulus = dict(schema='B_VRW_CORE27_REACHABLE_STIMULUS_V2', case=name,
+            review_revision=args.revision,
             source_path=str(source.relative_to(root)), source_sha256=sha(source),
             scope='ENTIRE_FINITE_SYNTHETIC_FIXTURE_EPOCH_NOT_CAPTURED_APPLICATION',
             readonly_lines=[f'{x:016x}' for x in data['readonly']],
@@ -65,7 +70,7 @@ def main():
             frozen_policy='reuse_seen remains permanent; no false full-parent detach assumption',
             independent_C_scope_review='PENDING')
         emit(folder / 'STIMULUS.json', stimulus)
-        (folder / 'kernelslist.g').write_text(f'B-VRW-review-v2-{name}-whole-synthetic-epoch.fixture\n')
+        (folder / 'kernelslist.g').write_text(f'B-VRW-review-{args.revision}-{name}-whole-synthetic-epoch.fixture\n')
         (folder / 'ranges.csv').write_text('first_line,last_line_inclusive\n' +
             ''.join(f'{x:016x},{x:016x}\n' for x in data['readonly']))
         manifest = dict(schema='EP_L2_RO_ORACLE_V1', status='SYNTHETIC_DIRECTED_FIXTURE',
@@ -86,6 +91,9 @@ def main():
                    '-gpgpu_ep_l2_ro_scope TRACE_MODEL_CLOSED_WORLD\n')
         (folder / 'combined.config').write_text(config)
         plan = dict(schema='B_VRW_CORE27_REACHABLE_NATIVE_PLAN_V2', case=name,
+            review_revision=args.revision,
+            C_design_review='6b706370b1873cf261a114364facf05db84e4570',
+            C_approval_scope='Conditional independent source/count/design agreement; final source bytes and native execution not accepted',
             A_Framework_review='156adbbb5ddcd49e8adb96939837372936ac451e',
             production_Core_preimage='27ec10bda848e4929181c60a7cbb40d6b007945c',
             production_main_sha256='773271ac70f009dddcd4c522f66dcd37967e4f57ce1e5082d3fc5aea61f2f9f5',

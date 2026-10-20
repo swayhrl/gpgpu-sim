@@ -1,0 +1,93 @@
+{
+  "schema": "B_C_VRW_REVIEW_CONSUMPTION_AND_ASSERTION_FOLLOWUP_R3",
+  "at": "2026-10-20T00:50:12.792530+00:00",
+  "previous_B_Core": "34a933687319a76f088887798f9663c964d267d3",
+  "previous_B_Framework": "ce0ee6992f7734c0fedb93bde00f397fa0151e5b",
+  "C_Framework": "6b706370b1873cf261a114364facf05db84e4570",
+  "C_frozen_assets": {
+    "REVIEW.md": "684ed6e04b35817708bab156d7a1e843e1f03a8047473e114c7eacfad98f7a03",
+    "NEXT_CONTROL_SPEC.json": "527b30c0671bc026908989811aa92ed14766b0ef61704a76977b20ff194f9826",
+    "RECEIPT.json": "133b521898b8417bc8ab7d35637dc4dd88475036c35e33ad9b4b59e16db31c54"
+  },
+  "C_agreement": "INDEPENDENT_CONDITIONAL_SOURCE_COUNT_AND_DESIGN_AGREEMENT",
+  "C_final_B_source_bytes_accepted": false,
+  "C_or_E_native_qualification": false,
+  "C_request_consumed": true,
+  "source_path": "tests/ep_l2/ms_victim/test_vrw_reachable.cc",
+  "source_sha256": "ba9cba3b9505f78f889e6146efe887931aa9885846b4e00589232ef927a1a542",
+  "production_Core_preimage": "27ec10bda848e4929181c60a7cbb40d6b007945c",
+  "production_main_sha256": "773271ac70f009dddcd4c522f66dcd37967e4f57ce1e5082d3fc5aea61f2f9f5",
+  "production_changed": false,
+  "common_budget_changed": false,
+  "patch_adds_only_one_test_file": true,
+  "r3_replaces_unrun_r2_fixture_delta_not_production": true,
+  "r2_pack_and_old_failures_preserved": true,
+  "coverage": [
+    {
+      "C_requirement": "Stable no-new-lower interval after split-parent duplicate admission",
+      "B_r3": "8 bounded actual cache cycles assert ROlower4/D5; no manufactured packet"
+    },
+    {
+      "C_requirement": "RO response bank refusal and real enqueue, not parent pop",
+      "B_r3": "Sector3 real return; one explicitly charged component same-landing read denies RESPONSE; D5/pin/token held, actual enqueue D4 while parent child_sectors remains0"
+    },
+    {
+      "C_requirement": "Partial fill under actual ICNT backpressure",
+      "B_r3": "Sector1 real ReturnQ packet while child3 fills capacity1ICNT; D4/pin hold until consumer then child UID response; order3,1,2,0 preserved"
+    },
+    {
+      "C_requirement": "Observe actual detached singleton and count paid duplicate",
+      "B_r3": "17same-set32B requesters; select actual detached pending handle, not assumed A0; repeat and verify18RO/19total608B/D18; missing witness fails case"
+    },
+    {
+      "C_requirement": "Host refusal has no hidden mutation",
+      "B_r3": "Compare owner/generation/allocation role/status/pins/ready/pending/versions for old/new; compare actual Tag binding and memcpy offset; epoch closure checked through existing API"
+    },
+    {
+      "C_requirement": "Old return leaves new Tag/landing untouched",
+      "B_r3": "Snapshot new landing before host/old return and after actual old-response enqueue; full field and Tag binding equality"
+    },
+    {
+      "C_requirement": "Pin before ICNT full and retain WB identity/snapshot",
+      "B_r3": "Assert initial ICNT empty, paid contender on actual Vbank, pin/readers/token; bounded wait for actual RO enqueue; WBdone while held, row/ticket/WBUID/snapshot stable across4 intentional hold cycles"
+    },
+    {
+      "C_requirement": "Last-unpin is actual response commit and fixed final hit",
+      "B_r3": "TVD_VALID+pin/readers0 and same WBUID/snapshot after response; final writer read explicitly requires lower packet/byte delta0"
+    },
+    {
+      "C_requirement": "Keep full original coverage and failures",
+      "B_r3": "Both128parent and32joint cases retained; oldr1/r2 source/inputs/nativeabort immutable; existing sharedD512/pendingWB producer cases remain required separately"
+    }
+  ],
+  "counts_unchanged": {
+    "split128": {
+      "lower_packets": 4,
+      "lower_bytes": 128,
+      "descriptors": 5
+    },
+    "joint32": {
+      "RO_lower_packets": 18,
+      "total_lower_packets": 19,
+      "total_bytes": 608,
+      "descriptors": 18
+    }
+  },
+  "source_only_case_NOT_native_PASS": true,
+  "new_linked_objects": 0,
+  "new_ELFs": 0,
+  "new_native_runs_by_B": 0,
+  "new_full_applications_by_B": 0,
+  "new_syntax_only_invocations": 1,
+  "cumulative_syntax_only_invocations": 3,
+  "syntax_receipt": "/workspace/ep_l2_ms20261019_e_results/B_VRW_REACHABILITY_SYNTAX_r3/RECEIPT.json",
+  "syntax_exit": 0,
+  "E_lease_id": "32fed076bc9c4fe5bc5eac2753ca369a",
+  "E_lease_released": true,
+  "remaining": [
+    "A single integration of r3 test-only delta against Core27, not both r2 andr3 addition patches",
+    "A/E admitted native link/run with exact frozen archive/ELF/config/whole-synthetic bindings; capture actually reached gates and first failure unchanged",
+    "C/E review final bytes and independently accept native evidence; conditional count agreement is not runtime correctness",
+    "Original broader B objective remains incomplete until actual accepted hit/value/lower/nativeDRAM evidence at requested scope; no new fake performance evidence"
+  ]
+}

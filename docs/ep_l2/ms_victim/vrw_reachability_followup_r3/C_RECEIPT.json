@@ -1,0 +1,94 @@
+{
+  "schema": "C_VRW_REACHABILITY_INDEPENDENT_AUDIT_RECEIPT_V1",
+  "owner": "C",
+  "UTC": "2026-10-20T00:45:14.628211+00:00",
+  "authority": "b2e5328aca825d6e9ebfe09e46fa208957834636",
+  "campaign_id": "EPL2_MECHANISM_STUDY_20261019_V1",
+  "branch": "hrl/ep-l2-ms20261019-c-ro-v1",
+  "same_original_goal": true,
+  "goal_reset": false,
+  "goal_complete": false,
+  "previous_C_Framework": "547cc5d204e84ae725d4d36e293079630779d1dc",
+  "preserved_C_Core": "ead4441680e56b5c7a669598ba1cbd5abf89e94f",
+  "A_Framework": "156adbbb5ddcd49e8adb96939837372936ac451e",
+  "official_production_identity": {
+    "core_source_commit": "27ec10bda848e4929181c60a7cbb40d6b007945c",
+    "framework_source_commit": "9dd1ee57a83d83b56b7874bc7c716185ab52c8f7",
+    "vendor_pybind11_commit": "f90c430c3a1ce8f08c09942a5a1c3a797bb2295b",
+    "binary_sha256": "773271ac70f009dddcd4c522f66dcd37967e4f57ce1e5082d3fc5aea61f2f9f5"
+  },
+  "failed_test_Core": "8027ec558b9704d41cb8268131e7e6aca3ae7775",
+  "failed_test_ELF": "/workspace/build/ep-l2-ms20261020-a-vrw-joint-r32/ep_l2_ms_vrw_interleave",
+  "failed_test_ELF_sha256": "265cfe127802cd7575d3bf016ba3f97b6ce0cfe6e1a2dff5f9a0368aa4cb4a67",
+  "binary_identity_scope": "Existing A release/diagnostic receipts; C did not rehash large ELF or rebuild/reexecute it",
+  "failed_binding_sha256": "9e50d19d117edd0c2f66de22e41547364de76757e41e3e9948de08ffd880c472",
+  "failed_native_receipt_sha256": "40b4b8b4fe01216af3db3d980071c40d036c19ad40e5ed991a3e9fb28279db7a",
+  "findings": [
+    {
+      "id": "C1",
+      "status": "PASS",
+      "scope": "SOURCE_REVIEW",
+      "finding": "attached protected RO duplicate merges correctly and has no missing lower issue"
+    },
+    {
+      "id": "C2",
+      "status": "PASS",
+      "scope": "SOURCE_REVIEW",
+      "finding": "sticky reuse_seen policy implemented; sibling merging really limits detach conservatively"
+    },
+    {
+      "id": "C3",
+      "status": "FAIL",
+      "scope": "ORIGINAL_TEST_EXPECTATION",
+      "finding": "wait for extra lower/new A0 handle unreachable at captured no-return prefix"
+    },
+    {
+      "id": "C4",
+      "status": "FAIL",
+      "scope": "UNREACHED_SOURCE_EXPECTATIONS",
+      "finding": "18descriptor and parent UID accounting incorrect, not a second observed runtime failure"
+    },
+    {
+      "id": "C5",
+      "status": "PASS",
+      "scope": "SOURCE_IDENTITY_REVIEW",
+      "finding": "child requester / new lower packet / landing generation identities distinct"
+    },
+    {
+      "id": "C6",
+      "status": "UNRESOLVED",
+      "scope": "NEW_NATIVE_CASES",
+      "finding": "two replacement control cases not compiled or run"
+    },
+    {
+      "id": "C7",
+      "status": "UNRESOLVED_E_ONLY",
+      "scope": "SCIENCE_QUALIFICATION",
+      "finding": "no scope extension or automatic revocation; preserve affected24 and holds, E004 OFF COMPLETE_VALID and controller STOPPED at snapshot"
+    }
+  ],
+  "C_new_source_log_consistency_checks": 34,
+  "C_new_simulator_builds": 0,
+  "C_new_native_executions": 0,
+  "C_new_full_applications": 0,
+  "production_code_changed": false,
+  "old_input_changed": false,
+  "reuse_seen_or_completion_policy_changed": false,
+  "old_review_packs_preserved": true,
+  "Conv_certificate_and_generator_unchanged": true,
+  "zero_coverage_fallback_unchanged": true,
+  "B_crosscheck": {
+    "request_sha256": "dd4edee581c85d09dd009eb7dd4e4fbede3dc98d0d5789afce26711b534ffa45",
+    "status": "C_INDEPENDENT_REVIEW_AGREES_COUNTS_WITH_EXPLICIT_SCHEDULING_AND_IDENTITY_CONDITIONS",
+    "peer_acknowledgement": "NOT_ASSUMED"
+  },
+  "resource_snapshot": "LIVE_SNAPSHOT.json",
+  "checks": "CONTROL_CHECKS.json",
+  "next_controls": "NEXT_CONTROL_SPEC.json",
+  "review": "REVIEW.md",
+  "artifact_path": "docs/ep_l2/codex_handoff/mechanism_study_2026_10_19_v1/c/vrw_reachability_r1",
+  "publication_SHA": "Recorded by exact post-push remote readback; not a self-referential Git field",
+  "failed_input_identities": "FAILED_INPUT_IDENTITIES.json",
+  "current_off_control_readback": "POST_SNAPSHOT_OFF_RESULT_READBACK.json",
+  "review_pack": "docs/ep_l2/review_packs/MS20261020_C_VRW_REACHABILITY_r1"
+}

@@ -1,0 +1,74 @@
+{
+  "schema": "C_REVIEW_OF_B_TWO_REPLACEMENT_VRW_CONTROLS_V1",
+  "exact_public_preimage": "27ec10bda848e4929181c60a7cbb40d6b007945c",
+  "original_failed_fixture": "8027ec558b9704d41cb8268131e7e6aca3ae7775",
+  "public_integrator": "A",
+  "runtime_admission_and_scientific_acceptance": "E",
+  "C_scope": "Independent source/count/reachability review; no executable publication or admission",
+  "production_patch_required": false,
+  "original_input_and_failure_immutable": true,
+  "cases": [
+    {
+      "name": "split128_merge_identity",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "requests": [
+        "one certified128B parent with4native sector children",
+        "one distinct32B sector0 same-line requester before any RO return"
+      ],
+      "expected": {
+        "landings": 1,
+        "RO_descriptors_peak": 5,
+        "RO_lower_packets": 4,
+        "RO_lower_bytes": 128,
+        "requester_responses": 5,
+        "parent_responses": 0,
+        "reuse_seen": true,
+        "tag_detach": false
+      },
+      "checks": [
+        "actual child UIDs/masks/original_mf to retained parent, no parent expected response",
+        "admission observed without waiting for new lower",
+        "return sectors3,1,2,0; per-child values and exact-once",
+        "held response UID across bank/ICNT denial; descriptor release only at enqueue",
+        "complete epoch/pins/descriptors drain; parent fixture-only freed after all child consumption"
+      ]
+    },
+    {
+      "name": "joint32_detach_pin_WB_ICNT",
+      "status": "NOT_COMPILED_NOT_RUN",
+      "footprint": {
+        "certified_readonly_lines": 17,
+        "written_lines": 144,
+        "disjoint": true,
+        "host_update": "attempt certified line only; refusal before mutation"
+      },
+      "expected": {
+        "RO_descriptors_before_returns": 18,
+        "RO_lower_packets": 18,
+        "RO_lower_bytes": 576,
+        "all_lower_read_packets_before_final_hit_read": 19,
+        "all_lower_read_bytes_before_final_hit_read": 608,
+        "concurrent_duplicate_sector_cost": 1
+      },
+      "detach_selection": "observe actual detached pending singleton from retained handles; Tag-index scan order cannot be replaced by submission-order A0 assumption",
+      "checks": [
+        "V-before-R warm hit; WB preempts optional clean victim",
+        "old/new same-line distinct live H; retained old lower packet",
+        "paid V read bank denied while queue has space establishes real reader pin",
+        "different-bank RO final fill; next eligible response enqueue fills capacity1 ICNT",
+        "real WB done while V pin persists; snapshot unchanged; actual later V enqueue unpins",
+        "old fill/response cannot modify new Tag/landing generation/pending/versions",
+        "same-address B4 writer blocks until WB done then correct version",
+        "all genuine RO/WB packets and exact requester UIDs drain; no unexpected final-hit lower traffic"
+      ]
+    }
+  ],
+  "required_new_bindings": [
+    "versioned new test source and all included fixture sources",
+    "complete synthetic operations/readonly and write sets with op order",
+    "whole_commandlist command/body identity, manifest, ranges and runtime config hashes",
+    "exact Core27 production archive and test-only ELF hashes; valid origin identifiers",
+    "E current published entry and CLIENT hash plus unique engineering lease before compile/run"
+  ],
+  "native_scope": "controlled symboliccache/partition; not fullapplication numerical output or performance"
+}

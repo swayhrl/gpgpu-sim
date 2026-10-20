@@ -1,3 +1,6 @@
+Latest peer-review continuation: [C conditions bound into r3 fixture](vrw_reachability_followup_r3/FOLLOWUP.md).
+Conditional C design/count agreement consumed; syntax-only PASS; native evidence pending.
+
 Latest scientific review: [Core27 V/R/W reachability r2](vrw_reachability_review_r2/REVIEW.md).
 Old22/704 and descriptor18 assumptions are invalid for the128B split fixture.
 Test-only replacement inputs prepared; final C++ syntax passes, native runs by B0.
