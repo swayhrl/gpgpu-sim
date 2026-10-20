@@ -600,6 +600,9 @@ int main(int argc,char **argv) {
     if (negative=="--candidate62-gates") {
       candidate62_try_prefill_tvd(argv[1],argv[2]);return 0;
     }
+    if (negative=="--r39-pending-warm") {
+      dirty_wad_full(argv[1],argv[2],4096); return 0;
+    }
     if (negative=="--repair-gates") {
       warm_sectors_then_tvd(argv[1],argv[2],16);
       warm_sectors_then_tvd(argv[1],argv[2],8);

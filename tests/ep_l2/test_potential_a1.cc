@@ -7,7 +7,8 @@ struct credit_fault : cache_config {
 };
 int main(int argc,char **argv) {
   assert(argc==8 || argc==9);
-  const bool rollback=argc==9 && std::string(argv[8])=="rollback";
+  const bool no_quota_rollback=argc==9 && std::string(argv[8])=="rollback-no-quota";
+  const bool rollback=argc==9 && (std::string(argv[8])=="rollback" || no_quota_rollback);
   const unsigned extra=argc==9 && !rollback?15:0;setvbuf(stdout,NULL,_IOLBF,0);fixture f(argv);
   unsigned mode=std::stoul(argv[3]),c=std::stoul(argv[4]);
   const new_addr_type stride=64*128, victim=13*stride, incoming=16*stride, other=128;
@@ -60,7 +61,7 @@ int main(int argc,char **argv) {
   printf("A1 armed mode=%u C=%u native16way=1 reserved=15 pending=2 phase=%u victim_id=%u generation=%u\n",
       mode,c,f.cache->ft_pending_phase_for_test(),held.payload_id,held.generation);
   if(rollback) {
-    assert(mode==2 && std::stoul(argv[6])==16);
+    assert(mode==2 && std::stoul(argv[6])==(no_quota_rollback?0u:16u));
     auto &cc=const_cast<memory_config *>(f.gpu->getMemoryConfig())->m_L2_config;
     unsigned old=credit_fault::capacity(cc);credit_fault::capacity(cc)=0;
     // Skip the subpartition's predictive pre-admission for this injected loss:
@@ -69,7 +70,7 @@ int main(int argc,char **argv) {
     auto status=f.cache->access(request->get_addr(),request,900001,events);
     credit_fault::capacity(cc)=old;
     assert(status==RESERVATION_FAIL && !f.cache->ft_reservation_active());
-    assert(f.cache->ft_wb_quota_rollbacks()==1 && !f.cache->ft_wb_quota_reserved() && !f.cache->ft_wb_quota_live());
+    assert(f.cache->ft_wb_quota_rollbacks()==(no_quota_rollback?0u:1u) && !f.cache->ft_wb_quota_reserved() && !f.cache->ft_wb_quota_live());
     assert(f.cache->ep_l2_tag_payload_handle_for_test(2)==held && !f.cache->ep_l2_wad_contains(victim));
     assert(f.cache->ep_l2_payload_for_test().inspect(held).versions==f.memory.at(victim));
     f.block_lower=false;f.drain_lower();
@@ -81,7 +82,8 @@ int main(int argc,char **argv) {
     for(unsigned n=0;n<1000 && f.part->busy();++n)f.step();
     assert(!f.part->busy() && f.sp->l2_char_no_resource_leak() && f.cache->ft_drained() && !f.cache->ep_l2_payload_pending_operations() && !f.cache->ep_l2_wad_occupancy());
     assert(f.replies.size()==f.expected.size());f.cache->ft_print(stdout,0);
-    puts("U_CAP16 injected native-credit failure: real rollback/release once/victim restore/retry/exact-once/drain PASS");
+    puts(no_quota_rollback?"TVD pending-WAD injected native-credit failure: real rollback/row release/victim restore/retry/exact-once/drain PASS":
+        "U_CAP16 injected native-credit failure: real rollback/release once/victim restore/retry/exact-once/drain PASS");
     return 0;
   }
   // This real old read enters the native ReturnQ after phase0/denial and
