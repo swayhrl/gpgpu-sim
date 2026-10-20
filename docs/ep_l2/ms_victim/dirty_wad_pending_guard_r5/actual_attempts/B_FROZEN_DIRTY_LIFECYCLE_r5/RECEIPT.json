@@ -1,0 +1,81 @@
+{
+  "schema": "B_FROZEN_A_NATIVE_DIRTY_LIFECYCLE_R5",
+  "at": "2026-10-20T01:03:22.849495+00:00",
+  "scope": "BOUNDED_REAL_PARTITION_SIMPLE_DRAM_FUNCTIONAL_NOT_CORE27_MAIN773_OR_FULL_APPLICATION_QUALIFICATION",
+  "A_parent_receipt": "/workspace/ep_l2_ms20261019_e_results/A_COMMON_R14_FAST_REPAIR_r1/RECEIPT.json",
+  "A_parent_receipt_sha256": "2814a0979bd202d26ca30f64f009fcc3b8d580bb526be6c2007b27894161f353",
+  "runtime_producer_Core": "c994c893e69a1214ee1a96a045d02cdc54eaebcf",
+  "fixture_Core": "0e4fd51e62a3e295f3c7f97b92828f243aa71d51",
+  "current_Core27_not_executed": "27ec10bda848e4929181c60a7cbb40d6b007945c",
+  "current_main773_not_executed": true,
+  "source_difference_only": "RO_RUNTIME_IMPLEMENTATION_DISABLED_IN_THIS_CLEAN_CASE",
+  "fixture_source_identical_old_to_Core27": true,
+  "framework": "9dd1ee57a83d83b56b7874bc7c716185ab52c8f7",
+  "vendor": "f90c430c3a1ce8f08c09942a5a1c3a797bb2295b",
+  "binary": "/workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/ep_l2_ms_victim_production",
+  "binary_sha256": "cadf8d519abd1590f338b8cede0e8cf459b81cf16c0ec2bc81ef99b73caaa64b",
+  "command": [
+    "/workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/ep_l2_ms_victim_production",
+    "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-a-r3-victim-full-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+    "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-a-r3-victim-full-v1/tests/ep_l2/ft_wbuf.config",
+    "--study-dirty-inflight"
+  ],
+  "base_config_sha256": "8ccad878b6abfec8254ecd6c7e0efee2714908dc3a04f611ff8787000e277bd3",
+  "overlay_sha256": "b8748fe67aafc617eacb11e04f296990f1c88e5b51bdd24295466ab85c9e9372",
+  "assertion_flags_sha256": "bd2a8ed622787b8d1f91207c05c8f6b7f9b7d899d7e31689fa0dd270fab00aab",
+  "E_source": "a1a68b8ed1155950c0e81645133f7229667a1cab",
+  "E_lease": {
+    "lease_id": "4a579f232e6c4789ab3ef065533889f8",
+    "host": "huangrulin-174",
+    "owner": "mechanism_B",
+    "role": "B",
+    "kind": "MECHANISM_TEST",
+    "execution_host_identity": {
+      "hostname": "huangrulin-174",
+      "boot_id": "59e1e1a4-84b6-431f-ac2d-03e340207019"
+    },
+    "central_dispatcher_host": "huangrulin-174",
+    "execution_environment": "original174",
+    "source_authority_commit": "b2e5328aca825d6e9ebfe09e46fa208957834636",
+    "build_owner": null,
+    "executor_role": "B",
+    "experiment_id": "EPL2_MECHANISM_STUDY_20261019_V1",
+    "cpu_units": 1,
+    "memory_bytes": 4294967296,
+    "disk_growth_bytes": 16777216,
+    "result_growth_bytes": 16777216,
+    "status": "RESERVED",
+    "created_at": 1792458202.7760427,
+    "owner_process": {
+      "pid": 1426656,
+      "start_ticks": 921017331,
+      "boot_id": "59e1e1a4-84b6-431f-ac2d-03e340207019"
+    },
+    "output_directory": "/workspace/ep_l2_ms20261019_e_results/B_FROZEN_DIRTY_LIFECYCLE_r5",
+    "policy_id": "E_USER_WORKSPACE_5G_20261020_V1",
+    "disk_floor_bytes": 5368709120,
+    "monitor_reserve_bytes": 2147483648,
+    "monitor_interval_seconds": 0.2,
+    "termination_grace_seconds": 3
+  },
+  "builds_or_links": 0,
+  "full_applications_by_B": 0,
+  "E_qualification_reset": false,
+  "process": {
+    "pid": 1426690,
+    "start_ticks": 921017432,
+    "boot_id": "59e1e1a4-84b6-431f-ac2d-03e340207019"
+  },
+  "actual_exit": -6,
+  "wall_seconds": 1.0026763882488012,
+  "terminal_checks": {
+    "PASS production_dirty_forward_before_wad_write_wait_then_same_handle_promote": true,
+    "PASS production_dirty_forward_before_wad_atomic_wait_then_same_handle_promote": true,
+    "PASS production_dirty_missing_sector_wait_completion_then_real_lower_fallback": true,
+    "PASS production_WAD128_lower_full_no_partial_mutation_then_set_done_epoch_drain": false
+  },
+  "raw_log_sha256": "b826b5c80f32c50ea8b225e1ba98504008f1dc9183241c67aa1ad0fd6ee6067e",
+  "status": "FAILED_NATIVE_RETAINED_NO_PRODUCTION_CHANGE",
+  "atomic_scope": "CONSERVATIVE_NATIVE_PROMOTION_PROTOCOL_ONLY_NOT_ARITHMETIC_OR_APPLICATION_QUALIFICATION",
+  "lease_released": true
+}

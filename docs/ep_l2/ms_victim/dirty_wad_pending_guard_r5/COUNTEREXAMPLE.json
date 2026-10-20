@@ -1,0 +1,164 @@
+{
+  "schema": "B_REAL_NATIVE_OWN_PENDING_WAD_PREVIEW_COUNTEREXAMPLE_R5",
+  "at": "2026-10-20T01:07:15.396716+00:00",
+  "same_original_Goal": true,
+  "goal_complete": false,
+  "scope": "ACTUAL_FROZEN_RO_OFF_NATIVE_FAILURE_SOURCE_SHARED_WITH_CORE27_NOT_A_CURRENT_APP_REPLAY",
+  "actual_runtime_Core": "c994c893e69a1214ee1a96a045d02cdc54eaebcf",
+  "actual_fixture_Core": "0e4fd51e62a3e295f3c7f97b92828f243aa71d51",
+  "actual_test_ELF_sha256": "cadf8d519abd1590f338b8cede0e8cf459b81cf16c0ec2bc81ef99b73caaa64b",
+  "runtime_Framework": "9dd1ee57a83d83b56b7874bc7c716185ab52c8f7",
+  "vendor": "f90c430c3a1ce8f08c09942a5a1c3a797bb2295b",
+  "direct_actual_exit": -6,
+  "direct_passed_subcases": [
+    "PASS production_dirty_forward_before_wad_write_wait_then_same_handle_promote",
+    "PASS production_dirty_forward_before_wad_atomic_wait_then_same_handle_promote",
+    "PASS production_dirty_missing_sector_wait_completion_then_real_lower_fallback"
+  ],
+  "failed_subcase": "dirty_wad_full duringdrain afterreleasedhold; WAD128capacityand16stableblockedcycle asserts already passed",
+  "actual_GDB_state": {
+    "boot_id": "59e1e1a4-84b6-431f-ac2d-03e340207019",
+    "captured_sigabrt": true,
+    "current_mf": 99202968734544,
+    "current_uid": 149,
+    "frames": [
+      {
+        "line": 44,
+        "name": "__pthread_kill_implementation"
+      },
+      {
+        "line": 78,
+        "name": "__pthread_kill_internal"
+      },
+      {
+        "line": 89,
+        "name": "__GI___pthread_kill"
+      },
+      {
+        "line": 26,
+        "name": "__GI_raise"
+      },
+      {
+        "line": 79,
+        "name": "__GI_abort"
+      },
+      {
+        "line": 94,
+        "name": "__assert_fail_base"
+      },
+      {
+        "line": 103,
+        "name": "__GI___assert_fail"
+      },
+      {
+        "directory_error": "value has been optimized out",
+        "line": 157,
+        "name": "ep_l2_tvd_directory<ep_l2::PayloadHandle>::preview_install"
+      },
+      {
+        "line": 2754,
+        "name": "l2_cache::preview_access"
+      },
+      {
+        "line": 835,
+        "name": "memory_sub_partition::cache_cycle"
+      },
+      {
+        "line": 591,
+        "name": "memory_partition_unit::cache_cycle"
+      },
+      {
+        "line": 136,
+        "name": "scenario::step"
+      },
+      {
+        "line": 159,
+        "name": "scenario::drain"
+      },
+      {
+        "line": 382,
+        "name": "dirty_wad_full"
+      },
+      {
+        "line": 577,
+        "name": "main"
+      }
+    ],
+    "inferior_pid": 1428366,
+    "pending": {
+      "bound": 0,
+      "dirty": 1,
+      "request": 99202968734544,
+      "same_request": true,
+      "tag_index": 0,
+      "uid": 149,
+      "victim": {
+        "generation": 1,
+        "payload_id": 512
+      },
+      "victim_address": 16384,
+      "wad": 1,
+      "wad_ticket": {
+        "incarnation": 2,
+        "index": 0
+      }
+    },
+    "scope": "READ_ONLY_FAILED_NATIVE_STATE_NO_INFERIOR_FUNCTION_CALLS",
+    "start_ticks": 921029404
+  },
+  "common_sources_byte_identical_to_Core27": [
+    {
+      "path": "src/gpgpu-sim/gpu-cache.cc",
+      "sha256": "49d0f465c98f45caaf15bf0cd35f3adea4ec56cc2abbfabcd4e44d0846632d12"
+    },
+    {
+      "path": "src/gpgpu-sim/gpu-cache.h",
+      "sha256": "3e80f3a70854b165e5c1ad4b924097b6e5f9507fb039291390703393874bd2ff"
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-ft-cache.inc",
+      "sha256": "6d1c905b8c1a00db2a4f055a03678f5b3794a53a30ccb0d4983fc63011896333"
+    },
+    {
+      "path": "src/gpgpu-sim/ep-l2-tvd-directory.h",
+      "sha256": "335e4968649ebdd1da15c12cf55b6da88cb76ae270d0916b7d031b56ea2bd738"
+    },
+    {
+      "path": "src/gpgpu-sim/l2cache.cc",
+      "sha256": "471bfeff076f93e6ff48058804fe996c91147881bb3af6e79d332f618d1ffcff"
+    }
+  ],
+  "source_root_cause": "Own pending guard comes AFTER preview_install. Existing pending has reserved row while oldTag visible; boolnative_owner_proven_unique assertion is inapplicable on its retry. CapturedsameUID/pendingwad proves wrong precondition evaluation.",
+  "data_corruption_proven": false,
+  "current_Core27_main773_executed_by_B": false,
+  "production_protocol_or_budget_change_proposed": false,
+  "common_patch": "A_CORE27_OWN_PENDING_GUARD_ORDER_PROPOSAL.patch",
+  "patch_preimage": "27ec10bda848e4929181c60a7cbb40d6b007945c",
+  "patch_scope": "ONLY short-circuitorder of existing ownpending guard before newrow capacity/uniqueness check; no new state,lookup,pool,port,packet or source-side change byB",
+  "patch_index_applicability": true,
+  "patch_applied_to_A_or_B_public_source": false,
+  "postfix_native_execution": false,
+  "fix_qualified": false,
+  "required_regression": "Same exact --study-dirty-inflight mustreach finalWAD128drainPASS underA-fixedsource; alsoaffected defaultOFF/newrequest-full/rollback/bankretry/UID/grant/ROmux gates with existingquota",
+  "source_inference_limit": "Template this optimized out, so exactrowfields not observed; headerassert provesrowexists, pendingwad_ticket0:2 is observed; no fabricatedrow dump",
+  "native_invocations_this_r5": 2,
+  "direct_native_aborts": 1,
+  "GDB_failed_inferior_replays": 1,
+  "GDB_root_exit0_is_not_native_PASS": true,
+  "cumulative_B_native_invocations": 4,
+  "cumulative_successful_clean_invocations": 2,
+  "cumulative_failed_dirty_invocations": 2,
+  "failed_GDB_startups_without_inferior": 2,
+  "CPP_builds_links_new_ELFs": 0,
+  "new_full_applications_by_B": 0,
+  "all_own_test_leases_released": true,
+  "old_results_and_scientific_holds_preserved": true,
+  "E_qualification_reset": false,
+  "affected_task_pause": "No further dirtyWAD/model repair or app replay byB; concrete public delta goes toA. C/Edecide independent acceptance/scope.",
+  "remaining": [
+    "A review/integrate minimal public fix or provide counterevidence on exactCore27; B mustnot merge publicCore",
+    "A/E exactnewsource native red->green with originalfailedrawpreserved and samefrontend/metadata budgets",
+    "Retain first3positive dirtysubcases but do not label complete4casegroupPASS",
+    "r3 currentW/V/T/M joint cases remain unrun; fixeddirtyRO unsupported; fullGoal incomplete"
+  ]
+}

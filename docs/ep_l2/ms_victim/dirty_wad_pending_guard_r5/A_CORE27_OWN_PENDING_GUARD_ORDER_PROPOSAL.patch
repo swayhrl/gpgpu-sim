@@ -1,0 +1,17 @@
+--- a/src/gpgpu-sim/gpu-cache.cc
++++ b/src/gpgpu-sim/gpu-cache.cc
+@@ -2751,8 +2751,12 @@
+     plan.victim_valid = m_tag_array->block_is_valid(cache_index);
+     plan.victim_dirty = m_tag_array->block_is_modified(cache_index);
+     if (plan.victim_dirty && ep_l2_wad_enabled() &&
+-        (m_tvd ? m_tvd->preview_install(m_tag_array->get_block(cache_index)->m_block_addr,true,true).status != tvd_directory::OK : m_ep_l2_wad_entries_live.size() >= m_config.m_ep_l2_wad_entries) &&
+-        !(ft_enabled() && m_ft_pending.request == mf && m_ft_pending.wad)) {
++        // The serialized retry already owns its pre-reserved WAD row. Test
++        // that token BEFORE a new-owner uniqueness/capacity preview: its old
++        // Tag stays visible until actual commit/rollback, so it is not a new
++        // directory-disjoint native victim at this point.
++        !(ft_enabled() && m_ft_pending.request == mf && m_ft_pending.wad) &&
++        (m_tvd ? m_tvd->preview_install(m_tag_array->get_block(cache_index)->m_block_addr,true,true).status != tvd_directory::OK : m_ep_l2_wad_entries_live.size() >= m_config.m_ep_l2_wad_entries)) {
+       // The required WAD must be allocated before data_cache::access()
+       // destructively replaces this victim.
+       plan.probe_status = RESERVATION_FAIL;

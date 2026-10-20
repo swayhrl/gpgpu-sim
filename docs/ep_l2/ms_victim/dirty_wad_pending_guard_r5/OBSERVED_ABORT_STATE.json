@@ -1,0 +1,90 @@
+{
+  "boot_id": "59e1e1a4-84b6-431f-ac2d-03e340207019",
+  "captured_sigabrt": true,
+  "current_mf": 99202968734544,
+  "current_uid": 149,
+  "frames": [
+    {
+      "line": 44,
+      "name": "__pthread_kill_implementation"
+    },
+    {
+      "line": 78,
+      "name": "__pthread_kill_internal"
+    },
+    {
+      "line": 89,
+      "name": "__GI___pthread_kill"
+    },
+    {
+      "line": 26,
+      "name": "__GI_raise"
+    },
+    {
+      "line": 79,
+      "name": "__GI_abort"
+    },
+    {
+      "line": 94,
+      "name": "__assert_fail_base"
+    },
+    {
+      "line": 103,
+      "name": "__GI___assert_fail"
+    },
+    {
+      "directory_error": "value has been optimized out",
+      "line": 157,
+      "name": "ep_l2_tvd_directory<ep_l2::PayloadHandle>::preview_install"
+    },
+    {
+      "line": 2754,
+      "name": "l2_cache::preview_access"
+    },
+    {
+      "line": 835,
+      "name": "memory_sub_partition::cache_cycle"
+    },
+    {
+      "line": 591,
+      "name": "memory_partition_unit::cache_cycle"
+    },
+    {
+      "line": 136,
+      "name": "scenario::step"
+    },
+    {
+      "line": 159,
+      "name": "scenario::drain"
+    },
+    {
+      "line": 382,
+      "name": "dirty_wad_full"
+    },
+    {
+      "line": 577,
+      "name": "main"
+    }
+  ],
+  "inferior_pid": 1428366,
+  "pending": {
+    "bound": 0,
+    "dirty": 1,
+    "request": 99202968734544,
+    "same_request": true,
+    "tag_index": 0,
+    "uid": 149,
+    "victim": {
+      "generation": 1,
+      "payload_id": 512
+    },
+    "victim_address": 16384,
+    "wad": 1,
+    "wad_ticket": {
+      "incarnation": 2,
+      "index": 0
+    }
+  },
+  "scope": "READ_ONLY_FAILED_NATIVE_STATE_NO_INFERIOR_FUNCTION_CALLS",
+  "start_ticks": 921029404
+}

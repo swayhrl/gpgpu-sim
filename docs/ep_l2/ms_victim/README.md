@@ -1,3 +1,6 @@
+New actual failure: [dirty WAD own-pending preview r5](dirty_wad_pending_guard_r5/README.md).
+First3 dirtysubcases pass, fourthabort retained; exactpublicdelta forA only, no post-fixPASS.
+
 Latest actual finite execution: [frozen clean native/counter audit r4](clean_native_functional_r4/README.md).
 Two native invocations (direct+GDB), real FIFO reads2->1; legacyRO-OFF scope only, not main773 qualification.
 

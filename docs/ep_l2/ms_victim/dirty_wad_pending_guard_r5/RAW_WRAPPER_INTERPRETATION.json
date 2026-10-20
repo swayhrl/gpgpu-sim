@@ -1,0 +1,14 @@
+{
+  "schema": "B_R5_RAW_WRAPPER_INTERPRETATION_ONLY",
+  "raw_receipts_modified": false,
+  "direct_selector": "--study-dirty-inflight",
+  "actual_direct_native_exit": -6,
+  "GDB_root_exit": 0,
+  "GDB_native_outcome": "SIGABRT_CAUGHT_THEN_OWNED_INFERIOR_TERMINATED_BY_GDB_QUIT_NOT_A_NATIVE_PASS",
+  "inherited_wrapper_labels": [
+    "source_difference_only text says THIS_CLEAN_CASE because wrapper derives fromr4; actual source/input proves RO_OFF dirty mode, not clean mode",
+    "diagnostic wrapper terminal_checks still lists clean markers; these are not used as R5native acceptance. Explicit SIGABRT state/frames and originaldirectfailure define diagnostic outcome"
+  ],
+  "actual_protocol_mode": "RO_OFF; TVD_clean=1,TVD_dirty=1 set by frozen scenario(...,dirty=true); no globalconfig rewrite",
+  "scientific_qualification": "NONE_GRANTED_OR_REVOKED_BY_B"
+}
