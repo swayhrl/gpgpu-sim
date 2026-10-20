@@ -1,0 +1,84 @@
+{
+  "A_manifest_Framework": "156adbbb5ddcd49e8adb96939837372936ac451e",
+  "existing_producer_evidence_not_rerun": [
+    {
+      "case": "native_cycle",
+      "suite": "main",
+      "evidence_origin": "REUSED_UNCHANGED_SOURCE_DISJOINT_FROM_RO_ISSUE",
+      "receipt": "/workspace/ep_l2_ms20261019_e_results/A_COMMON_AFFECTED_NATIVE_r2/native_cycle.native.json",
+      "receipt_SHA256": "b0c056d511118c85dbeda8058e8e7d44866c7cd92ef3dcaf4a40ec7c9a076a39",
+      "native_binary": "/workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/ep_l2_ms_victim_native",
+      "native_binary_SHA256": "386496c75207d2b4ad14d972b2dbc50c09814e51fb7f48abcd954008cad6e7f7",
+      "native_command": [
+        "/workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/ep_l2_ms_victim_native",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-a-r3-victim-full-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-a-r3-victim-full-v1/docs/ep_l2/ms_victim/test_plan_r2/off.config",
+        "2",
+        "16",
+        "0",
+        "0",
+        "1",
+        "cycle"
+      ],
+      "actual_exit": 0,
+      "required_terminal": "NATIVE_VICTIM|case=cycle17_in_16way_set|enabled=0|response_version_checks=51|actual_lower_read_packets=51|actual_lower_read_bytes=1632",
+      "raw_log": "/workspace/ep_l2_ms20261019_e_results/A_COMMON_AFFECTED_NATIVE_r2/native_cycle.native.native.log",
+      "raw_SHA256": "027d5706a14d8a7337bc1ccf045e088834b259789769c7cbbd0515d0d1bd59d4",
+      "expectation_verified": true,
+      "not_executed_on_new_archive": true
+    },
+    {
+      "case": "full_victim_cycle",
+      "suite": "main",
+      "evidence_origin": "REUSED_UNCHANGED_SOURCE_DISJOINT_FROM_RO_ISSUE",
+      "receipt": "/workspace/ep_l2_ms20261019_e_results/A_COMMON_AFFECTED_NATIVE_r2/full_victim_cycle.native.json",
+      "receipt_SHA256": "fc967d161c3293a1f39aa1fc2111de78eeb5b256af9b31ffd1e3502402b40224",
+      "native_binary": "/workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/ep_l2_ms_victim_native",
+      "native_binary_SHA256": "386496c75207d2b4ad14d972b2dbc50c09814e51fb7f48abcd954008cad6e7f7",
+      "native_command": [
+        "/workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/ep_l2_ms_victim_native",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-a-r3-victim-full-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-a-r3-victim-full-v1/docs/ep_l2/ms_victim/test_plan_r2/dirty_full.config",
+        "2",
+        "16",
+        "0",
+        "0",
+        "1",
+        "cycle"
+      ],
+      "actual_exit": 0,
+      "required_terminal": "NATIVE_VICTIM|case=cycle17_in_16way_set|enabled=1|response_version_checks=51|actual_lower_read_packets=17|actual_lower_read_bytes=544",
+      "raw_log": "/workspace/ep_l2_ms20261019_e_results/A_COMMON_AFFECTED_NATIVE_r2/full_victim_cycle.native.native.log",
+      "raw_SHA256": "36085ac19b60cea81a92a34d11bcbb125409af533d4fdea69bade37b5164047a",
+      "expectation_verified": true,
+      "not_executed_on_new_archive": true
+    },
+    {
+      "case": "full_victim_stream",
+      "suite": "main",
+      "evidence_origin": "REUSED_UNCHANGED_SOURCE_DISJOINT_FROM_RO_ISSUE",
+      "receipt": "/workspace/ep_l2_ms20261019_e_results/A_COMMON_AFFECTED_NATIVE_r2/full_victim_stream.native.json",
+      "receipt_SHA256": "8e764b696cb916e205c6aaaf8775a6965f0ee2b6b8b93a557737a6b10a06085c",
+      "native_binary": "/workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/ep_l2_ms_victim_native",
+      "native_binary_SHA256": "386496c75207d2b4ad14d972b2dbc50c09814e51fb7f48abcd954008cad6e7f7",
+      "native_command": [
+        "/workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/ep_l2_ms_victim_native",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-a-r3-victim-full-v1/configs/tested-cfgs/SM7_QV100/gpgpusim.config",
+        "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-a-r3-victim-full-v1/docs/ep_l2/ms_victim/test_plan_r2/dirty_full.config",
+        "2",
+        "16",
+        "0",
+        "0",
+        "1",
+        "stream"
+      ],
+      "actual_exit": 0,
+      "required_terminal": "NATIVE_VICTIM|case=stream17_no_reuse|enabled=1|response_version_checks=17|actual_lower_read_packets=17|actual_lower_read_bytes=544",
+      "raw_log": "/workspace/ep_l2_ms20261019_e_results/A_COMMON_AFFECTED_NATIVE_r2/full_victim_stream.native.native.log",
+      "raw_SHA256": "1dbecb38786e4dd3442e2494659ec0d0c505c1c91f678515dbbf89ab481e8fa6",
+      "expectation_verified": true,
+      "not_executed_on_new_archive": true
+    }
+  ],
+  "scope": "Nonzero sector-version reference on real cache/partition with external memory; lower packets, NOT native DRAM accepts"
+}

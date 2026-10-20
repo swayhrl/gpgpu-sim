@@ -1,0 +1,53 @@
+{
+  "schema": "B_FROZEN_NATIVE_DRAM_ACCEPT_PARSE_R4",
+  "status": "OBSERVED_2_TO_1_FINITE_FROZEN_ELF_NOT_E_ACCEPTANCE",
+  "raw_log": "/workspace/worktrees/gpgpu-sim-ep-l2-ms20261019-b-victim-v1/docs/ep_l2/ms_victim/clean_native_functional_r4/actual_attempts/B_FROZEN_CLEAN_SIMPLE_DRAM_GDB_SINGLE_WORKER_r4/native.log",
+  "raw_sha256": "df9006e37b6b28fd40d0d86c201f5437953cdbaf2bd5ee5810f6e392bdf39635",
+  "observations": [
+    {
+      "actual_simple_DRAM_read_accepts": 2,
+      "all_read_UIDs_exactly_once": true,
+      "boot_id": "59e1e1a4-84b6-431f-ac2d-03e340207019",
+      "inferior_pid": 1421891,
+      "iteration_order": 0,
+      "on": 0,
+      "proc_start_ticks": 920981740,
+      "read_uid_issue_counts": [
+        [
+          17,
+          1
+        ],
+        [
+          19,
+          1
+        ]
+      ],
+      "scope": "READ_ONLY_EXISTING_FIXTURE_FIFO_REMOVAL_MAP",
+      "status": "OBSERVED"
+    },
+    {
+      "actual_simple_DRAM_read_accepts": 1,
+      "all_read_UIDs_exactly_once": true,
+      "boot_id": "59e1e1a4-84b6-431f-ac2d-03e340207019",
+      "inferior_pid": 1421891,
+      "iteration_order": 1,
+      "on": 1,
+      "proc_start_ticks": 920981740,
+      "read_uid_issue_counts": [
+        [
+          21,
+          1
+        ]
+      ],
+      "scope": "READ_ONLY_EXISTING_FIXTURE_FIFO_REMOVAL_MAP",
+      "status": "OBSERVED"
+    }
+  ],
+  "native_exit": {
+    "exit_code": 0,
+    "capture_hits": 2
+  },
+  "scope": "Actual fixed-latency simpleDRAM FIFO read acceptances; not detailed DRAM/HW or app performance",
+  "no_new_native_run": true,
+  "no_qualification_mutation": true
+}

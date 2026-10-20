@@ -1,0 +1,34 @@
+--- a/tests/ep_l2/test_tvd_production.cc
++++ b/tests/ep_l2/test_tvd_production.cc
+@@ -313,19 +313,27 @@
+ }
+
+ static void matched_actual_lower(const char *base,const char *overlay) {
+-  unsigned long long packets[2], bytes[2], dram_issues[2];
++  unsigned long long packets[2], bytes[2], memport_issues[2], dram_accepts[2];
+   for (unsigned on=0;on<2;++on) {
+     scenario f(base,overlay,false,on);
+     auto a=f.push(0);f.await(a);auto b=f.push(128,true);f.await(b);
+     auto read=f.push(0);f.await(read);assert(f.responses.at(read)==0);f.drain();
+     packets[on]=f.cache()->tvd_actual_lower_read_packets();
+     bytes[on]=f.cache()->tvd_actual_lower_read_bytes();
+-    dram_issues[on]=f.sp->ep_l2_lower_read_issue_count();
++    memport_issues[on]=f.sp->ep_l2_lower_read_issue_count();
++    // Existing fixture-only map observes real simpleDRAM lower FIFO removals.
++    // It supplies no functional data, modeled lookup, pool or request credit.
++    dram_accepts[on]=0;
++    for (const auto &issued:f.issued_lower_reads) {
++      assert(issued.second==1);dram_accepts[on]+=issued.second;
++    }
+     f.sp->flushL2();
+   }
+   assert(packets[0]==2 && packets[1]==1 && bytes[0]==64 && bytes[1]==32);
+-  assert(dram_issues[0]==2 && dram_issues[1]==1);
+-  printf("NATIVE_DRAM_ISSUE_MATCHED|off=%llu|clean=%llu|status=PASS\n",dram_issues[0],dram_issues[1]);
++  assert(memport_issues[0]==2 && memport_issues[1]==1);
++  assert(dram_accepts[0]==2 && dram_accepts[1]==1);
++  printf("CACHE_MEMPORT_READ_ISSUE_MATCHED|off=%llu|clean=%llu|status=PASS\n",memport_issues[0],memport_issues[1]);
++  printf("SIMPLE_DRAM_ACCEPT_MATCHED|off=%llu|clean=%llu|measurement=ACTUAL_LOWER_FIFO_REMOVAL|status=PASS\n",dram_accepts[0],dram_accepts[1]);
+   printf("MATCHED_LOWER|off_packets=%llu|on_packets=%llu|off_bytes=%llu|on_bytes=%llu\n",
+       packets[0],packets[1],bytes[0],bytes[1]);
+   puts("PASS production_matched_off_on_actual_lower_packets_bytes_NOT_DRAM_saved");

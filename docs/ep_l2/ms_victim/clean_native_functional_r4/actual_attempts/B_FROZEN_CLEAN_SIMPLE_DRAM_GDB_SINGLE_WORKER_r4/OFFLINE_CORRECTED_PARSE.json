@@ -1,0 +1,65 @@
+{
+  "schema": "B_NATIVE_DRAM_ACCEPT_OFFLINE_CORRECTED_PARSE_R4",
+  "status": "ACTUAL_SIMPLE_DRAM_ACCEPTS_OBSERVED_2_TO_1_FROZEN_SOURCE_FUNCTIONAL_ONLY",
+  "raw_log": "/workspace/ep_l2_ms20261019_e_results/B_FROZEN_CLEAN_SIMPLE_DRAM_GDB_SINGLE_WORKER_r4/native.log",
+  "raw_log_sha256": "df9006e37b6b28fd40d0d86c201f5437953cdbaf2bd5ee5810f6e392bdf39635",
+  "initial_receipt": "/workspace/ep_l2_ms20261019_e_results/B_FROZEN_CLEAN_SIMPLE_DRAM_GDB_SINGLE_WORKER_r4/RECEIPT.json",
+  "initial_receipt_sha256": "66fcf9902bfd037dbb141ff56816d90205ed0e2e1d4cb5f249cf937963eb1a46",
+  "classification": "WRAPPER_START_OF_LINE_ASSUMPTION_FAILED_OBSERVATION_RECORDS_VALID_WITH_NATIVE_STDOUT_PREFIX",
+  "reexecuted": false,
+  "original_raw_and_receipt_preserved": true,
+  "actual_observations": [
+    {
+      "actual_simple_DRAM_read_accepts": 2,
+      "all_read_UIDs_exactly_once": true,
+      "boot_id": "59e1e1a4-84b6-431f-ac2d-03e340207019",
+      "inferior_pid": 1421891,
+      "iteration_order": 0,
+      "on": 0,
+      "proc_start_ticks": 920981740,
+      "read_uid_issue_counts": [
+        [
+          17,
+          1
+        ],
+        [
+          19,
+          1
+        ]
+      ],
+      "scope": "READ_ONLY_EXISTING_FIXTURE_FIFO_REMOVAL_MAP",
+      "status": "OBSERVED"
+    },
+    {
+      "actual_simple_DRAM_read_accepts": 1,
+      "all_read_UIDs_exactly_once": true,
+      "boot_id": "59e1e1a4-84b6-431f-ac2d-03e340207019",
+      "inferior_pid": 1421891,
+      "iteration_order": 1,
+      "on": 1,
+      "proc_start_ticks": 920981740,
+      "read_uid_issue_counts": [
+        [
+          21,
+          1
+        ]
+      ],
+      "scope": "READ_ONLY_EXISTING_FIXTURE_FIFO_REMOVAL_MAP",
+      "status": "OBSERVED"
+    }
+  ],
+  "native_exit": {
+    "exit_code": 0,
+    "capture_hits": 2
+  },
+  "counter_semantics": "scenario existing per-UID map increments only upon actual simple_dram_model_cycle removal of prior read head; separate from cache memport issue counter",
+  "actual_source_Core": "c994c893e69a1214ee1a96a045d02cdc54eaebcf",
+  "actual_fixture_Core": "0e4fd51e62a3e295f3c7f97b92828f243aa71d51",
+  "ELF_sha256": "cadf8d519abd1590f338b8cede0e8cf459b81cf16c0ec2bc81ef99b73caaa64b",
+  "read_bytes_derived_from_source_32B_packets": {
+    "OFF": 64,
+    "CLEAN": 32
+  },
+  "not_direct_hardware_or_detailed_DRAM_timing_measurement": true,
+  "not_Core27_main773_requalification": true
+}

@@ -1,3 +1,6 @@
+Latest actual finite execution: [frozen clean native/counter audit r4](clean_native_functional_r4/README.md).
+Two native invocations (direct+GDB), real FIFO reads2->1; legacyRO-OFF scope only, not main773 qualification.
+
 Latest peer-review continuation: [C conditions bound into r3 fixture](vrw_reachability_followup_r3/FOLLOWUP.md).
 Conditional C design/count agreement consumed; syntax-only PASS; native evidence pending.
 

@@ -1,0 +1,26 @@
+Python path configuration:
+  PYTHONHOME = '/scratch/root/oss-eda/oss-cad-suite'
+  PYTHONPATH = (not set)
+  program name = '/usr/bin/python'
+  isolated = 0
+  environment = 1
+  user site = 0
+  import site = 1
+  sys._base_executable = '/usr/bin/python'
+  sys.base_prefix = '/scratch/root/oss-eda/oss-cad-suite'
+  sys.base_exec_prefix = '/scratch/root/oss-eda/oss-cad-suite'
+  sys.platlibdir = 'lib'
+  sys.executable = '/usr/bin/python'
+  sys.prefix = '/scratch/root/oss-eda/oss-cad-suite'
+  sys.exec_prefix = '/scratch/root/oss-eda/oss-cad-suite'
+  sys.path = [
+    '/scratch/root/oss-eda/oss-cad-suite/lib/python310.zip',
+    '/scratch/root/oss-eda/oss-cad-suite/lib/python3.10',
+    '/scratch/root/oss-eda/oss-cad-suite/lib/python3.10/lib-dynload',
+  ]
+Fatal Python error: init_fs_encoding: failed to get the Python codec of the filesystem encoding
+Python runtime state: core initialized
+ModuleNotFoundError: No module named 'encodings'
+
+Current thread 0x00007a7461f10180 (most recent call first):
+  <no Python frame>

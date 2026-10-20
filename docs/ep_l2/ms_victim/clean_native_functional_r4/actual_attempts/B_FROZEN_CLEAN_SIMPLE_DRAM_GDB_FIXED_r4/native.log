@@ -1,0 +1,38 @@
+/build/gdb-Dh0pdX/gdb-12.1/gdb/utils.c:712: internal-error: virtual memory exhausted: can't allocate 9152 bytes.
+A problem internal to GDB has been detected,
+further debugging may prove unreliable.
+----- Backtrace -----
+0x6430f1d26ff7 ???
+0x6430f208ba44 ???
+0x6430f208bc80 ???
+0x6430f21db0f4 ???
+0x6430f20870c2 ???
+0x6430f1cc42cf ???
+0x6430f1f1cb21 ???
+0x6430f1e20949 ???
+0x6430f1e21969 ???
+0x6430f200a8f2 ???
+0x6430f2009bfa ???
+0x6430f200bd2b ???
+0x6430f200c02a ???
+0x6430f1ee6985 ???
+0x6430f1ee8e7c ???
+0x6430f1ee8fde ???
+0x6430f1c7f10f ???
+0x757ef1f58d8f ???
+0x757ef1f58e3f ???
+0x6430f1c84ba4 ???
+0xffffffffffffffff ???
+---------------------
+/build/gdb-Dh0pdX/gdb-12.1/gdb/utils.c:712: internal-error: virtual memory exhausted: can't allocate 9152 bytes.
+A problem internal to GDB has been detected,
+further debugging may prove unreliable.
+Quit this debugging session? (y or n) [answered Y; input not from terminal]
+
+This is a bug, please report it.  For instructions, see:
+<https://www.gnu.org/software/gdb/bugs/>.
+
+/build/gdb-Dh0pdX/gdb-12.1/gdb/utils.c:712: internal-error: virtual memory exhausted: can't allocate 9152 bytes.
+A problem internal to GDB has been detected,
+further debugging may prove unreliable.
+Unable to dump core, use `ulimit -c unlimited' before executing GDB next time.

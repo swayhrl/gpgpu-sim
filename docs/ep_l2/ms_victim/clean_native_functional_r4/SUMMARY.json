@@ -1,0 +1,117 @@
+{
+  "schema": "B_ACTUAL_FROZEN_CLEAN_NATIVE_AND_COUNTER_AUDIT_R4",
+  "at": "2026-10-20T00:59:51.317382+00:00",
+  "same_original_Goal": true,
+  "goal_reset": false,
+  "goal_complete": false,
+  "previous_B_Core": "d79a544abaf660bd3094e26a5903002c7b7b4dd1",
+  "runtime_producer_Core": "c994c893e69a1214ee1a96a045d02cdc54eaebcf",
+  "fixture_Core": "0e4fd51e62a3e295f3c7f97b92828f243aa71d51",
+  "runtime_Framework": "9dd1ee57a83d83b56b7874bc7c716185ab52c8f7",
+  "vendor": "f90c430c3a1ce8f08c09942a5a1c3a797bb2295b",
+  "test_ELF_sha256": "cadf8d519abd1590f338b8cede0e8cf459b81cf16c0ec2bc81ef99b73caaa64b",
+  "actual_test_source_identical_to_Core27": true,
+  "only_runtime_src_difference_to_Core27": "ep-l2-ro-runtime.inc_RO_OFF_IN_THIS_CASE",
+  "actual_Core27_main773_runs_by_B": 0,
+  "r3_VRW_native_runs_by_B": 0,
+  "actual_frozen_ELF_native_invocations_by_B": 2,
+  "direct_native_invocations": 1,
+  "GDB_inferior_replays": 1,
+  "GDB_failed_startups_without_inferior": 2,
+  "new_builds_links_main_ELFs": 0,
+  "new_full_applications_by_B": 0,
+  "E_qualification_reset": false,
+  "observed_clean_hit": {
+    "read_responses": 1,
+    "served_sector_bytes": 32,
+    "bank_wait_cycles": 1,
+    "icnt_wait_cycles": 6
+  },
+  "observed_matched_lower": {
+    "OFF_packets": 2,
+    "CLEAN_packets": 1,
+    "OFF_bytes": 64,
+    "CLEAN_bytes": 32
+  },
+  "observed_independent_simpleDRAM_accepts": [
+    {
+      "actual_simple_DRAM_read_accepts": 2,
+      "all_read_UIDs_exactly_once": true,
+      "boot_id": "59e1e1a4-84b6-431f-ac2d-03e340207019",
+      "inferior_pid": 1421891,
+      "iteration_order": 0,
+      "on": 0,
+      "proc_start_ticks": 920981740,
+      "read_uid_issue_counts": [
+        [
+          17,
+          1
+        ],
+        [
+          19,
+          1
+        ]
+      ],
+      "scope": "READ_ONLY_EXISTING_FIXTURE_FIFO_REMOVAL_MAP",
+      "status": "OBSERVED"
+    },
+    {
+      "actual_simple_DRAM_read_accepts": 1,
+      "all_read_UIDs_exactly_once": true,
+      "boot_id": "59e1e1a4-84b6-431f-ac2d-03e340207019",
+      "inferior_pid": 1421891,
+      "iteration_order": 1,
+      "on": 1,
+      "proc_start_ticks": 920981740,
+      "read_uid_issue_counts": [
+        [
+          21,
+          1
+        ]
+      ],
+      "scope": "READ_ONLY_EXISTING_FIXTURE_FIFO_REMOVAL_MAP",
+      "status": "OBSERVED"
+    }
+  ],
+  "counter_label_defect": "NATIVE_DRAM_ISSUE_MATCHED in frozen fixture is cache-memport issue counter; actual FIFO acceptance now independently read from existing perUID map via read-only GDB",
+  "source_counter_sites": [
+    {
+      "path": "src/gpgpu-sim/l2cache.h",
+      "line": 683,
+      "fact": "Increment point is L2 cache memory interface push, before DRAM admission"
+    },
+    {
+      "path": "src/gpgpu-sim/l2cache.cc",
+      "line": 1077,
+      "fact": "Counter increments descriptor-mode nonwrite packets, not real DRAM acceptance"
+    },
+    {
+      "path": "src/gpgpu-sim/l2cache.cc",
+      "line": 644,
+      "fact": "Real simpleDRAM accepted read removes lower FIFO head after return credit and scheduler gates"
+    },
+    {
+      "path": "tests/ep_l2/test_tvd_production.cc",
+      "line": 144,
+      "fact": "Existing test-only perUID map independently increments only after real lower read head removal"
+    },
+    {
+      "path": "tests/ep_l2/test_tvd_production.cc",
+      "line": 315,
+      "fact": "Old misleading DRAM marker printed cache memport counter; no production policy defect"
+    }
+  ],
+  "parser_repair": "GDB records can follow a native partial stdout prefix. Original false wrapper status/raw retained, corrected parse separately proves two records and exit0 without replay.",
+  "actual_return_data_scope": "Symbolic complete-sector labels; matched read version0 explicitly backed; promotion checks native UID+1; not SASS or full-byte arithmetic proof",
+  "matched_geometry": "S:1:128:1 focused pair; separate64sets16ways real native topology subcase PASS; no fullapp performance claim",
+  "production_code_or_A_worktree_modified": false,
+  "optional_A_test_only_patch": "A_CORE27_TEST_COUNTER_LABEL_ONLY.patch",
+  "optional_patch_actual_execution": false,
+  "current_native_scope": "FROZEN_RO_OFF_FUNCTIONAL_ONLY_NOT_MAIN773_OR_E_ACCEPTED_PERFORMANCE",
+  "remaining": [
+    "A integrate latest r3 test-only delta; E admit and independently validate current Core27 W/V/T/M joint paths",
+    "A/E optionally consume precise test-observer label patch without changing frozen raw or producer main",
+    "Full dirty/current source and fixed64+dirty/RO status remains as published; no new qualified profile or scope waiver",
+    "Original broad Goal still incomplete; finite legacy functional evidence is not whole-app or current production qualification"
+  ]
+}
