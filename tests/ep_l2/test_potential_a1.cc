@@ -53,7 +53,18 @@ int main(int argc,char **argv) {
   if(mode==2) { f.return_read(other+stride);f.step();assert(f.cache->access_ready()); }
   // push has a one-cycle ROP-to-frontend boundary. For U ensure the ready
   // response is consumed on the actual admission cycle by pre-queueing request.
-  for(unsigned n=0;n<8 && !f.cache->ft_reservation_active();++n) f.step();
+  for(unsigned n=0;n<(no_quota_rollback?64u:8u) && !f.cache->ft_reservation_active();++n) {
+    if(no_quota_rollback) {
+      // Finite fault injection only: TVD's paid lookup delays admission past
+      // the earlier real-response collision. Charge a read of the existing
+      // victim through the PUBLIC bank arbiter before the partition cycle.
+      // No Tag, row, credit, payload data or arbitration state is edited.
+      f.cache->ep_l2_payload_for_test().request(held,false,f.gpu->gpu_sim_cycle,
+          (unsigned long long)-1,ep_l2_payload_store::RESIDENT_HIT_READ,
+          ep_l2_payload_store::RESPONSE,request_uid);
+    }
+    f.step();
+  }
   assert(f.cache->ft_reservation_active() && f.cache->ft_pending_index_for_test()==2);
   assert(mode==2 || f.cache->ft_pending_phase_for_test()==1);
   assert(f.cache->ep_l2_wad_contains(victim));
