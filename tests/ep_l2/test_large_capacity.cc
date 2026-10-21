@@ -52,16 +52,21 @@ int main(int argc,char **argv) {
 #endif
   auto &pool=f.cache->ep_l2_payload_for_test();
   assert(pool.physical_slots()==(on?74752:1168));
-  auto r0=f.make(0x123400,false),r1=f.make(0x123420,false);
+  auto local=[&](new_addr_type a) {
+    for(;;a+=128){addrdec_t raw;f.gpu->getMemoryConfig()->m_address_mapping.addrdec_tlx(a,&raw);if(raw.sub_partition==0)return a;}
+  };
+  const auto cold=local(0x123400);
+  auto r0=f.make(cold,false),r1=f.make(cold+32,false);
   auto id0=r0->get_request_uid(),id1=r1->get_request_uid();
   f.send(r0);f.step();f.send(r1);
   for(unsigned n=0;f.reads.size()!=2;++n){assert(n<1000);f.step();}
-  f.return_read(0x123420);f.step();f.return_read(0x123400);
+  f.return_read(cold+32);f.step();f.return_read(cold);
   for(unsigned n=0;!f.replies.count(id0)||!f.replies.count(id1);++n){assert(n<1000);f.step();}
   // Force real set conflicts independent of the selected legal index function.
   std::vector<new_addr_type> lines;
   unsigned set=(unsigned)-1;
-  for(new_addr_type a=128;a<128ull*2000000 && lines.size()<18;a+=128) {
+  for(new_addr_type a=128;a<128ull*16000000 && lines.size()<18;a+=128) {
+    addrdec_t raw;f.gpu->getMemoryConfig()->m_address_mapping.addrdec_tlx(a,&raw);if(raw.sub_partition!=0)continue;
     unsigned s=f.gpu->getMemoryConfig()->m_L2_config.set_index(a);
     if(set==(unsigned)-1)set=s;
     if(s==set)lines.push_back(a);
@@ -99,8 +104,11 @@ int main(int argc,char **argv) {
     // Production capacity extension: >old128 native line records and >old512
     // response descriptors, held until the actual reversed lower returns.
     std::vector<unsigned> pending;std::vector<new_addr_type> addresses;
+    std::set<unsigned> occupied_sets={set,f.gpu->getMemoryConfig()->m_L2_config.set_index(cold)};
+    auto candidate=local(0x20000000ull);
     for(unsigned i=0;i<600;++i) {
-      auto r=f.make(0x20000000ull+128*i,false);pending.push_back(r->get_request_uid());
+      while(!occupied_sets.insert(f.gpu->getMemoryConfig()->m_L2_config.set_index(candidate)).second)candidate=local(candidate+128);
+      auto r=f.make(candidate,false);assert(r->get_sub_partition_id()==0);candidate=local(candidate+128);pending.push_back(r->get_request_uid());
       addresses.push_back(r->get_addr());f.send(r);f.step();
     }
     for(unsigned n=0;f.reads.size()!=600;++n){assert(n<2000);f.step();}
@@ -108,10 +116,12 @@ int main(int argc,char **argv) {
     for(auto it=addresses.rbegin();it!=addresses.rend();++it)f.return_read(*it);
     for(unsigned n=0;;++n){assert(n<4000);bool done=true;for(auto id:pending)done&=f.replies.count(id);if(done)break;f.step();}
     pending.clear();
-    for(unsigned i=0;i<64;++i){auto r=f.make(0x30000000ull,false);pending.push_back(r->get_request_uid());f.send(r);f.step();}
+    auto merged=local(0x30000000ull);
+    while(occupied_sets.count(f.gpu->getMemoryConfig()->m_L2_config.set_index(merged)))merged=local(merged+128);
+    for(unsigned i=0;i<64;++i){auto r=f.make(merged,false);assert(r->get_sub_partition_id()==0);pending.push_back(r->get_request_uid());f.send(r);f.step();}
     f.until_frontend_empty();
     assert(f.reads.size()==1 && f.cache->ep_l2_descriptor_count_used()==64 && f.cache->mshr_max_targets_on_one_entry()==64);
-    f.return_read(0x30000000ull);
+    f.return_read(merged);
     for(unsigned n=0;;++n){assert(n<1000);bool done=true;for(auto id:pending)done&=f.replies.count(id);if(done)break;f.step();}
     puts("LARGE_CAPACITY_EXPANSION_NATIVE_PASS|held_line_MSHR=600|held_descriptors=600|per_address=64|reversed_real_returns=600|exact_once=1");
   }
