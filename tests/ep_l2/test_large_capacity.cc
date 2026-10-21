@@ -77,6 +77,7 @@ int main(int argc,char **argv) {
   bool saw_latch=false;f.send(w);for(unsigned n=0;!f.replies.count(uid);++n){assert(n<1000);f.step();if(f.cache->ft_reservation_active()&&f.cache->ft_pending_phase_for_test()==1)saw_latch=true;}
   assert(saw_latch);
   f.memory[lines[16]]=f.expected.at(uid);
+  for(unsigned n=0;f.wb.empty();++n){assert(n<1000);f.step();}
   assert(f.cache->ft_copy_lines()==1 && f.wb.size()==1 && f.cache->ep_l2_wad_occupancy()==1);
   auto packet=f.wb.back();assert(packet->has_ft_wb_data());
   assert(packet->get_ft_wb_data()==f.memory.at(packet->get_addr()));

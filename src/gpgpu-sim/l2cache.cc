@@ -2443,7 +2443,7 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
       fifo_pipeline<mem_fetch> *qs[]={m_icnt_L2_queue,m_L2_dram_queue,m_dram_L2_queue,m_L2_icnt_queue};
       const char *names[]={"ICNT_L2","L2_DRAM","DRAM_L2","L2_ICNT"};
       for(unsigned q=0;q<4;++q)fprintf(fp,"EPL2LARGEV1|RESOURCE|slice=%u|name=%s|capacity=%u|highwater=%u|capacity_denial_checks=%llu|coverage=FIFO_EVENTS|near_nonbinding=%u\n",m_id,names[q],qs[q]->get_max_len(),qs[q]->highwater(),qs[q]->capacity_denial_checks(),!qs[q]->capacity_denial_checks()&&2ull*qs[q]->highwater()<=qs[q]->get_max_len());
-      fprintf(fp,"EPL2LARGEV1|UNCHANGED|slice=%u|ROP_storage=NATIVE_DYNAMIC|ROP_fixed_latency=%u|copy_latch_capacity=1|DRAM_ICNT_timing=UNCHANGED\n",m_id,m_config->rop_latency);
+      fprintf(fp,"EPL2LARGEV1|UNCHANGED|slice=%u|ROP_storage=NATIVE_DYNAMIC|ROP_fixed_latency=%u|ROP_highwater=%llu|ROP_capacity_denial_checks=0|copy_latch_capacity=1|DRAM_ICNT_timing=UNCHANGED\n",m_id,m_config->rop_latency,m_l2_char_stats.rop_max);
     }
     m_L2cache->ro_print(fp, m_id);
     fprintf(fp, "EPL2FTV1|TERMINAL|slice=%u|unique_requesters=%llu|responses=%llu|"
@@ -2659,6 +2659,7 @@ void memory_sub_partition::push(mem_fetch *m_req, unsigned long long cycle) {
         r.req = req;
         r.ready_cycle = cycle + m_config->rop_latency;
         m_rop.push(r);
+        if(m_config->m_L2_config.ep_l2_large_enabled())m_l2_char_stats.rop_max=std::max(m_l2_char_stats.rop_max,(unsigned long long)m_rop.size());
         req->set_status(IN_PARTITION_ROP_DELAY,
                         m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
       }

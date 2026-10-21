@@ -160,7 +160,8 @@ class fifo_pipeline {
   unsigned long long capacity_denial_checks() const { return m_full_checks; }
   bool full() const { bool f=(m_max_len && m_length >= m_max_len); if(f)++m_full_checks;return f; }
   bool is_avilable_size(unsigned size) const {
-    return (m_max_len && m_length + size - 1 >= m_max_len);
+    bool denied=(m_max_len && m_length + size - 1 >= m_max_len);
+    if(denied)++m_full_checks;return denied;
   }
   bool empty() const { return m_head == NULL; }
   unsigned get_n_element() const { return m_n_element; }
