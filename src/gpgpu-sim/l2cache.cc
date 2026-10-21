@@ -2029,12 +2029,13 @@ memory_sub_partition::ep_l2_m0a_accum::delta(
   // deliberately carries exact sums/samples; downstream computes its
   // distribution across complete physical-slice windows.
   d.resident_occupied_max = 0;
-  d.resident_free_min = m_L2cache->ep_l2_payload_for_test().resident_capacity();
+  d.resident_free_min = resident_samples ? (resident_occupied_sum+resident_free_sum)/resident_samples : 1024;
   return d;
 }
 
 void memory_sub_partition::ep_l2_m0a_accum::sample_resident(
     unsigned occupied, unsigned capacity) {
+  if(!resident_samples)resident_free_min=capacity;
   ++resident_samples;
   resident_occupied_sum += occupied;
   resident_free_sum += capacity - occupied;

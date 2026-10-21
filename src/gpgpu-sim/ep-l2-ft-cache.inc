@@ -545,6 +545,8 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   }
   if (m_tag_array->block_is_modified(index)) slot.status = ep_l2_payload_store::RESIDENT_DIRTY;
   else if (slot.pending_sector_mask.none() && slot.allocation_role!=ep_l2_payload_store::RO) slot.status = ep_l2_payload_store::RESIDENT_VALID;
+  if(m_config.ep_l2_large_enabled() && slot.pending_sector_mask.none() && slot.allocation_role==ep_l2_payload_store::RESIDENT)
+    m_ep_l2_payload.complete_resident_no_fill(handle.payload_id,owner,handle.generation,slot.status==ep_l2_payload_store::RESIDENT_DIRTY);
   if (!mf->get_is_write()) mf->set_ft_wb_data(slot.versions);
   if (replacement) m_ft_pending = ft_replacement();
   if (m_tvd_lookup==mf) m_tvd_lookup=NULL;
