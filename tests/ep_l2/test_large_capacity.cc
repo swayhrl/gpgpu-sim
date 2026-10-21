@@ -90,12 +90,37 @@ int main(int argc,char **argv) {
   auto address=f.reads.begin()->first;f.return_read(address);
   for(unsigned i=0;!f.replies.count(uid);++i){assert(i<1000);f.step();}
   for(unsigned i=0;i<8;++i)f.step();
+  // Reloading the evicted line itself evicts a second dirty producer. Finish
+  // that actual lower WB too; a RESPONSE is not a hardware-drain receipt.
+  for(auto packet:f.wb){f.sp->set_done(packet);++f.completed_wb;delete packet;}
+  f.wb.clear();for(unsigned i=0;i<8;++i)f.step();
+  assert(f.lower_wb==2 && f.completed_wb==2 && f.cache->ft_copy_lines()==2);
+  if(on) {
+    // Production capacity extension: >old128 native line records and >old512
+    // response descriptors, held until the actual reversed lower returns.
+    std::vector<unsigned> pending;std::vector<new_addr_type> addresses;
+    for(unsigned i=0;i<600;++i) {
+      auto r=f.make(0x20000000ull+128*i,false);pending.push_back(r->get_request_uid());
+      addresses.push_back(r->get_addr());f.send(r);f.step();
+    }
+    for(unsigned n=0;f.reads.size()!=600;++n){assert(n<2000);f.step();}
+    assert(f.cache->mshr_entries_used()==600 && f.cache->ep_l2_descriptor_count_used()==600);
+    for(auto it=addresses.rbegin();it!=addresses.rend();++it)f.return_read(*it);
+    for(unsigned n=0;;++n){assert(n<4000);bool done=true;for(auto id:pending)done&=f.replies.count(id);if(done)break;f.step();}
+    pending.clear();
+    for(unsigned i=0;i<64;++i){auto r=f.make(0x30000000ull,false);pending.push_back(r->get_request_uid());f.send(r);f.step();}
+    f.until_frontend_empty();
+    assert(f.reads.size()==1 && f.cache->ep_l2_descriptor_count_used()==64 && f.cache->mshr_max_targets_on_one_entry()==64);
+    f.return_read(0x30000000ull);
+    for(unsigned n=0;;++n){assert(n<1000);bool done=true;for(auto id:pending)done&=f.replies.count(id);if(done)break;f.step();}
+    puts("LARGE_CAPACITY_EXPANSION_NATIVE_PASS|held_line_MSHR=600|held_descriptors=600|per_address=64|reversed_real_returns=600|exact_once=1");
+  }
   assert(f.cache->ft_drained() && !f.cache->ep_l2_wad_occupancy() && !pool.pending_sector_count());
   assert(f.cache->mshr_entries_used()==0 && f.cache->ep_l2_descriptor_count_used()==0 && pool.ownership_consistent());
-  if(on){assert(pool.bank_grants()==0);assert(pool.diagnostic_services(ep_l2_payload_store::COPY_READ)==1 && pool.diagnostic_services(ep_l2_payload_store::COPY_WRITE)==1);}
+  if(on){assert(pool.bank_grants()==0);assert(pool.diagnostic_services(ep_l2_payload_store::COPY_READ)==2 && pool.diagnostic_services(ep_l2_payload_store::COPY_WRITE)==2);}
   else assert(pool.bank_grants()>0);
   f.cache->ft_print(stdout,0);f.sp->print(stdout);
-  printf("EPL2MS_TEST|SEMANTIC|master=%u|requesters=20|responses=%zu|copy=1|lower_accept=1|wb_complete=1|data=PASS|drain=PASS|cycle=%llu\n",on,f.replies.size(),f.gpu->gpu_sim_cycle);
+  printf("EPL2MS_TEST|SEMANTIC|master=%u|requesters=%u|responses=%zu|copy=2|lower_accept=2|wb_complete=2|data=PASS|drain=PASS|cycle=%llu\n",on,on?684:20,f.replies.size(),f.gpu->gpu_sim_cycle);
   rusage usage{};getrusage(RUSAGE_SELF,&usage);
-  printf("LARGE_PRODUCTION_NATIVE_PASS|master=%u|requests=%u|replies=%zu|copy=1|lower_WB=1|completed=1|reference_versions=PASS|same_address_order=PASS|drain=PASS|cycle=%llu|maxrss_kib=%ld|sizeof_slot=%zu\n",on,20u,f.replies.size(),f.gpu->gpu_sim_cycle,usage.ru_maxrss,sizeof(ep_l2_payload_store::slot));
+  printf("LARGE_PRODUCTION_NATIVE_PASS|master=%u|requests=%u|replies=%zu|copy=2|lower_WB=2|completed=2|reference_versions=PASS|same_address_order=PASS|drain=PASS|cycle=%llu|maxrss_kib=%ld|sizeof_slot=%zu\n",on,on?684u:20u,f.replies.size(),f.gpu->gpu_sim_cycle,usage.ru_maxrss,sizeof(ep_l2_payload_store::slot));
 }

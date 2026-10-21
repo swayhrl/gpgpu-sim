@@ -3107,6 +3107,7 @@ class l2_cache : public data_cache {
   void ft_print(FILE *fp, unsigned slice) const;
   void large_capacity_print(FILE *fp,unsigned slice) const;
   unsigned large_wad_peak=0;
+  unsigned long long large_clean_victims=0,large_dirty_victims=0;
   unsigned resident_owner_index(new_addr_type owner) const { return m_ep_l2_payload.large_owner_index(owner); }
   void ms_sample();
   unsigned long long ms_frontend_blockers(mem_fetch *mf,
