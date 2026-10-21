@@ -180,7 +180,8 @@ void l2_cache::cycle() {
 void l2_cache::ms_sample() {
   if (!m_ms_observer.enabled) return;
   unsigned bound = 0;
-  for (unsigned t = 0; t < m_config.get_num_lines(); ++t) {
+  if(m_config.ep_l2_large_enabled()) bound=m_ep_l2_payload.resident_used();
+  else for (unsigned t = 0; t < m_config.get_num_lines(); ++t) {
     const ep_l2::PayloadHandle h = tag_payload_handle(t);
     bound += !m_tag_array->get_block(t)->is_invalid_line() &&
         m_ep_l2_payload.handle_live(h);
@@ -334,7 +335,11 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   if (probe == MISS && !m_ft_pending.request) {
     // Retire completed invalidated tag identities (e.g. a kernel flush), never
     // a pinned response or a live pending sector. No address-wide RO cleanup.
-    for (unsigned t = 0; t < m_config.get_num_lines(); ++t) {
+    const unsigned alias=m_config.ep_l2_large_enabled()?resident_owner_index(owner):(unsigned)-1;
+    const unsigned limit=m_config.ep_l2_large_enabled()?2:m_config.get_num_lines();
+    for (unsigned j=0;j<limit;++j) {
+      const unsigned t=m_config.ep_l2_large_enabled()?(j?alias:index):j;
+      if(t==(unsigned)-1 || (j && m_config.ep_l2_large_enabled() && t==index))continue;
       const ep_l2::PayloadHandle h = tag_payload_handle(t);
       if (!m_ep_l2_payload.handle_live(h)) continue;
       const ep_l2_payload_store::slot &s = m_ep_l2_payload.inspect(h);
@@ -430,6 +435,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
             retain?ready_mask:dirty_mask,dirty_mask,true,physical_cycle,&p.wad_ticket));
       } else assert(m_ep_l2_wad_entries_live.insert(p.victim_address).second);
       assert(m_ep_l2_wad_birth_cycle.insert(std::make_pair(p.victim_address, physical_cycle)).second);
+      large_wad_peak=std::max(large_wad_peak,ep_l2_wad_occupancy());
       p.wad = true;
       if (m_config.m_ep_l2_ft_mode == 1)
         p.staging = m_ep_l2_payload.reserve(staging.payload_id,
@@ -489,8 +495,8 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     if (p.dirty && m_config.m_ep_l2_ft_mode == 2) {
       p.born = physical_cycle; // in-place WB role starts at actual producer commit
       m_ep_l2_payload.transfer(p.victim, ep_l2_payload_store::WB, ep_l2_payload_store::WB_STAGED);
-      if (p.victim.payload_id < 1024) ++m_ft_stats.borrow_resident;
-      else if (p.victim.payload_id < 1152) ++m_ft_stats.borrow_bypass;
+      if (p.victim.payload_id < m_ep_l2_payload.resident_capacity()) ++m_ft_stats.borrow_resident;
+      else if (p.victim.payload_id < m_ep_l2_payload.wb_begin()) ++m_ft_stats.borrow_bypass;
     }
     if (!p.landing_reserved) {
       const unsigned id = p.landing_id;
@@ -656,6 +662,8 @@ void l2_cache::lower_accepted(mem_fetch *mf, unsigned long long cycle) {
 void l2_cache::ft_print(FILE *fp, unsigned slice) const {
   if (!ft_enabled()) return;
   ft_assert_quota();
+  assert(m_ep_l2_payload.ownership_consistent_deep());
+  large_capacity_print(fp,slice);
   m_ms_observer.print(fp, slice);
   fprintf(fp, "EPL2MSV1|LOCAL_DIAGNOSTIC|slice=%u|copy_free=%u|l2_data_free=%u|logical_copy_reads=%llu|logical_copy_writes=%llu|exempt_response=%llu|exempt_fill=%llu|exempt_lower_wb=%llu|exempt_frontend=%llu|exempt_copy_read=%llu|exempt_copy_write=%llu|physical_grants=%llu|hardware_P1_throughput_eligible=%u\n",
       slice, m_config.m_ep_l2_diag_copy_free, m_config.m_ep_l2_diag_l2_data_free,
@@ -678,10 +686,10 @@ void l2_cache::ft_print(FILE *fp, unsigned slice) const {
       m_ft_quota.reserved_peak, m_ft_quota.live_peak, m_ft_quota.total_peak,
       m_ft_quota.refusals, m_ft_quota.retries, m_ft_quota.rollbacks, m_ft_quota.lower_accept);
   fprintf(fp, "EPL2STRUCTV1|CONFIG|slice=%u|static_s64=%u|physical_slots=%u|"
-      "resident_nominal=1024|bypass_capacity=%u|wb_begin=%u|static_wb_capacity=%u|"
+      "resident_nominal=%u|bypass_capacity=%u|wb_begin=%u|static_wb_capacity=%u|"
       "legacy_wbuf=%u|bank_count=4|bank_ops_per_physical_cycle=%u|copy_latch_bytes=128\n",
       slice, m_config.m_ep_l2_static_s64 ? 1 : 0, m_ep_l2_payload.physical_slots(),
-      m_ep_l2_payload.bypass_capacity(), m_ep_l2_payload.wb_begin(),
+      m_ep_l2_payload.resident_capacity(), m_ep_l2_payload.bypass_capacity(), m_ep_l2_payload.wb_begin(),
       m_ep_l2_payload.static_wb_capacity(), m_config.m_ep_l2_wbuf_entries, m_ep_l2_payload.bank_service_limit());
   fprintf(fp, "EPL2FTV1|SUMMARY|slice=%u|mode=%u|wbuf=%u|physical_slots=%u|"
       "accepted=%llu|wb_created=%llu|wb_completed=%llu|wb_lower_accept=%llu|wbuf_full=%llu|pool_full=%llu|pin_block=%llu|"
@@ -703,4 +711,36 @@ void l2_cache::ft_print(FILE *fp, unsigned slice) const {
       m_ep_l2_payload.ownership_consistent() ? 1 : 0, m_ft_stats.observed_cycles,
       m_ft_stats.staging_occupancy_sum, m_ft_stats.descriptor_responses);
   if (m_tvd) const_cast<l2_cache *>(this)->tvd_print(fp,slice);
+}
+
+// Actual capacities and event-based highwaters for the opt-in diagnostic.
+// Tag occupancy uses a conservative resident-identity bound, including lazy
+// invalidated Tags; it must not be called exact valid-Tag occupancy.
+void l2_cache::large_capacity_print(FILE *fp,unsigned slice) const {
+  const bool on=m_config.ep_l2_large_enabled();
+  fprintf(fp,"EPL2LARGEV1|CONFIG|slice=%u|switch_requested=%u|switch_effective=%u|diagnostic_profile=%s|capacity_scale=%u|hardware_P1_throughput_eligible=%u|sets=%u|ways=%u|max_tag_storage=%u|line_bytes=%u|payload=%u|resident=%u|bypass=%u|wb=%u|wad=%u|line_mshr=%u|descriptor=%u|per_address=%u|missq=%u|result_fifo_field=%u|result_fifo_used_by_L2=0|ready_response_bound=%u|index_function=%u|index_extension=%s|data_free=%u|copy_free=%u|copy_latch_cycles=1|bank_count=4|bank_ops=1\n",
+    slice,on,on,on?"S_L2_DATA_FREE_LARGE_CAPACITY":"MASTER_OFF",on?64:1,
+    !(m_config.m_ep_l2_diag_copy_free||m_config.m_ep_l2_diag_l2_data_free),
+    m_config.get_nset(),m_config.get_assoc(),m_config.get_max_num_lines(),m_config.get_line_sz(),
+    m_ep_l2_payload.physical_slots(),m_ep_l2_payload.resident_capacity(),m_ep_l2_payload.bypass_capacity(),m_ep_l2_payload.static_wb_capacity(),
+    ep_l2_wad_capacity(),mshr_entry_capacity(),ep_l2_descriptor_pool_capacity(),m_config.m_ep_l2_descriptor_per_line_cap,
+    miss_queue_capacity(),m_config.m_result_fifo_entries,ep_l2_descriptor_pool_capacity(),
+    m_config.m_set_index_function,on&&m_config.m_set_index_function==HASH_IPOLY_FUNCTION?"IPOLY64_LOW_X_LINEAR64_HIGH":"NATIVE",
+    m_config.m_ep_l2_diag_l2_data_free,m_config.m_ep_l2_diag_copy_free);
+  if(!on)return;
+  auto row=[&](const char *name,unsigned cap,unsigned peak,unsigned long long refusal,const char *coverage) {
+    fprintf(fp,"EPL2LARGEV1|RESOURCE|slice=%u|name=%s|capacity=%u|highwater=%u|capacity_denial_checks=%llu|coverage=%s|near_nonbinding=%u\n",slice,name,cap,peak,refusal,coverage,!refusal&&2ull*peak<=cap);
+  };
+  using P=ep_l2_payload_store;
+  row("Tag",m_config.get_num_lines(),m_ep_l2_payload.role_highwater(P::RESIDENT),m_tag_array->large_tag_denials,"CONSERVATIVE_RESIDENT_IDENTITY_BOUND");
+  row("resident",m_ep_l2_payload.resident_capacity(),m_ep_l2_payload.role_highwater(P::RESIDENT),m_tag_array->large_tag_denials,"ALLOCATION_EVENTS");
+  row("bypass",m_ep_l2_payload.bypass_capacity(),m_ep_l2_payload.role_highwater(P::BYPASS),0,"S_NATIVE_NO_BYPASS_ALLOCATION");
+  row("WB",m_ep_l2_payload.static_wb_capacity(),m_ep_l2_payload.role_highwater(P::WB),m_ft_stats.wbuf_full,"ALLOCATION_EVENTS");
+  row("payload",m_ep_l2_payload.physical_slots(),m_ep_l2_payload.role_highwater(P::RESIDENT)+m_ep_l2_payload.role_highwater(P::WB),m_ft_stats.wbuf_full+m_ft_stats.pool_full,"SUM_OF_ROLE_EVENT_PEAK_UPPER_BOUND");
+  row("WAD",ep_l2_wad_capacity(),large_wad_peak,m_ep_l2_wad_full_block_count,"ALLOCATION_EVENTS");
+  row("line_MSHR",mshr_entry_capacity(),m_mshrs.large_line_peak,m_mshrs.large_denials[mshr_table::EP_L2_BLOCK_LINE_MSHR_FULL],"ALLOCATION_EVENTS");
+  row("descriptor",ep_l2_descriptor_pool_capacity(),m_mshrs.large_descriptor_peak,m_mshrs.large_denials[mshr_table::EP_L2_BLOCK_DESCRIPTOR_POOL_FULL],"ALLOCATION_EVENTS");
+  row("per_address",m_config.m_ep_l2_descriptor_per_line_cap,m_mshrs.large_address_peak,m_mshrs.large_denials[mshr_table::EP_L2_BLOCK_PER_ADDRESS_CAP],"ALLOCATION_EVENTS");
+  row("MissQ",miss_queue_capacity(),large_missq_peak,large_missq_denials,"ENQUEUE_EVENTS_AND_CAPACITY_CHECKS");
+  row("ready_responses",ep_l2_descriptor_pool_capacity(),m_mshrs.large_descriptor_peak,0,"ALL_LIVE_DESCRIPTORS_CONSERVATIVE_BOUND");
 }

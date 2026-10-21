@@ -323,3 +323,27 @@ endif()
 add_executable(ep_l2_ro_tvd_combined EXCLUDE_FROM_ALL tests/ep_l2/ms_ro_combined/test_combined.cc)
 target_include_directories(ep_l2_ro_tvd_combined PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
 target_link_libraries(ep_l2_ro_tvd_combined PRIVATE -Wl,--start-group entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
+
+# Explicitly requested capacity diagnostic production test, never normal build.
+add_executable(ep_l2_large_capacity EXCLUDE_FROM_ALL tests/ep_l2/test_large_capacity.cc)
+target_include_directories(ep_l2_large_capacity PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+target_link_libraries(ep_l2_large_capacity PRIVATE -Wl,--start-group
+    entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
+    ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
+
+# Exact d010/main61 archive reference: new bounded stimulus, old headers/libs.
+# Never rebuild or overwrite any retained production object/archive/main.
+add_executable(ep_l2_large_off_reference EXCLUDE_FROM_ALL tests/ep_l2/test_large_capacity.cc)
+target_compile_definitions(ep_l2_large_off_reference PRIVATE A2_OFF_REFERENCE=1)
+target_include_directories(ep_l2_large_off_reference BEFORE PRIVATE
+    /workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-r39-own-pending-v1/src
+    /workspace/worktrees/gpgpu-sim-ep-l2-ms20261020-a-r39-own-pending-v1/libcuda
+    ${CUDAToolkit_INCLUDE_DIRS})
+target_link_libraries(ep_l2_large_off_reference PRIVATE -Wl,--start-group
+    /workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/libentrypoint.a
+    /workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/libcuda/libcuda.a
+    /workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/src/cuda-sim/libptxsim.a
+    /workspace/build/ep-l2-ms20261020-a-wad-pending-r40/libgpgpusim.a
+    /workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/src/intersim2/libintersim.a
+    /workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/src/accelwattch/libaccelwattch.a
+    -Wl,--end-group ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)

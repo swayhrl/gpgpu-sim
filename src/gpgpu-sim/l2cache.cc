@@ -2029,7 +2029,7 @@ memory_sub_partition::ep_l2_m0a_accum::delta(
   // deliberately carries exact sums/samples; downstream computes its
   // distribution across complete physical-slice windows.
   d.resident_occupied_max = 0;
-  d.resident_free_min = 1024;
+  d.resident_free_min = m_L2cache->ep_l2_payload_for_test().resident_capacity();
   return d;
 }
 
@@ -2124,7 +2124,7 @@ void memory_sub_partition::ep_l2_m0a_sample(unsigned long long cycle) {
   // This is the same frozen B0 sampling boundary: all prior drains/fills are
   // visible, while the current frontend head is still uncommitted.
   m_ep_l2_m0a_accum.sample_resident(
-      m_L2cache->ep_l2_resident_payload_occupancy(), 1024);
+      m_L2cache->ep_l2_resident_payload_occupancy(), m_L2cache->ep_l2_payload_for_test().resident_capacity());
   if (!m_ep_l2_m0a_window_started) {
     m_ep_l2_m0a_window_start = m_ep_l2_m0a_accum;
     m_ep_l2_m0a_window_start_cycle = cycle;
@@ -2438,6 +2438,12 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
           uid == (unsigned long long)-1 ? 1 : 0);
   if (uid == (unsigned long long)-1 && m_L2cache->ft_enabled()) {
     m_L2cache->ft_print(fp, m_id);
+    if(m_config->m_L2_config.ep_l2_large_enabled()) {
+      fifo_pipeline<mem_fetch> *qs[]={m_icnt_L2_queue,m_L2_dram_queue,m_dram_L2_queue,m_L2_icnt_queue};
+      const char *names[]={"ICNT_L2","L2_DRAM","DRAM_L2","L2_ICNT"};
+      for(unsigned q=0;q<4;++q)fprintf(fp,"EPL2LARGEV1|RESOURCE|slice=%u|name=%s|capacity=%u|highwater=%u|capacity_denial_checks=%llu|coverage=FIFO_EVENTS|near_nonbinding=%u\n",m_id,names[q],qs[q]->get_max_len(),qs[q]->highwater(),qs[q]->capacity_denial_checks(),!qs[q]->capacity_denial_checks()&&2ull*qs[q]->highwater()<=qs[q]->get_max_len());
+      fprintf(fp,"EPL2LARGEV1|UNCHANGED|slice=%u|ROP_storage=NATIVE_DYNAMIC|ROP_fixed_latency=%u|copy_latch_capacity=1|DRAM_ICNT_timing=UNCHANGED\n",m_id,m_config->rop_latency);
+    }
     m_L2cache->ro_print(fp, m_id);
     fprintf(fp, "EPL2FTV1|TERMINAL|slice=%u|unique_requesters=%llu|responses=%llu|"
         "absorbed_writebacks=%llu|requester_live=%u|requester_exact_once=%u|"
@@ -2452,7 +2458,7 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
           "EPL2B0V1|INVARIANT|slice=%u|kernel_uid=%llu|line_mshr_used=%u|"
           "line_mshr_capacity=%u|descriptor_used=%u|descriptor_free=%u|"
           "descriptor_capacity=%u|wad_live=%u|wad_capacity=%u|resident_live=%u|"
-          "resident_capacity=1024|resident_pending=%u|bypass_live=%u|bypass_capacity=%u|bank_pending=%u|"
+          "resident_capacity=%u|resident_pending=%u|bypass_live=%u|bypass_capacity=%u|bank_pending=%u|"
           "resident_tag_payload_consistent=%u|payload_double_owner=%u|terminal_clean=%u\n",
           m_id, uid, m_L2cache->mshr_entries_used(),
           m_L2cache->mshr_entry_capacity(), m_L2cache->ep_l2_descriptor_count_used(),
@@ -2460,7 +2466,7 @@ void memory_sub_partition::print_ep_l2_b0_snapshot(FILE *fp,
           m_L2cache->ep_l2_descriptor_pool_capacity(),
           m_L2cache->ep_l2_wad_occupancy(), m_L2cache->ep_l2_wad_capacity(),
           m_L2cache->ep_l2_resident_payload_occupancy(),
-          m_L2cache->ep_l2_resident_pending(),
+          m_L2cache->ep_l2_payload_for_test().resident_capacity(), m_L2cache->ep_l2_resident_pending(),
           m_L2cache->ep_l2_bypass_payload_occupancy(),
           m_L2cache->ep_l2_payload_for_test().bypass_capacity(),
           m_L2cache->ep_l2_payload_pending_operations(),

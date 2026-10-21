@@ -1,3 +1,4 @@
+#include <algorithm>
 // Copyright (c) 2009-2011, Wilson W.L. Fung, Tor M. Aamodt
 // The University of British Columbia
 // All rights reserved.
@@ -50,6 +51,7 @@ class fifo_pipeline {
     m_name = nm;
     m_min_len = minlen;
     m_max_len = maxlen;
+    m_peak=0; m_full_checks=0;
     m_length = 0;
     m_n_element = 0;
     m_head = NULL;
@@ -81,6 +83,7 @@ class fifo_pipeline {
     }
     m_tail->m_next = NULL;
     m_tail->m_data = data;
+    m_peak=std::max(m_peak,m_length);
   }
 
   T* pop() {
@@ -153,7 +156,9 @@ class fifo_pipeline {
     }
   }
 
-  bool full() const { return (m_max_len && m_length >= m_max_len); }
+  unsigned highwater() const { return m_peak; }
+  unsigned long long capacity_denial_checks() const { return m_full_checks; }
+  bool full() const { bool f=(m_max_len && m_length >= m_max_len); if(f)++m_full_checks;return f; }
   bool is_avilable_size(unsigned size) const {
     return (m_max_len && m_length + size - 1 >= m_max_len);
   }
@@ -175,6 +180,7 @@ class fifo_pipeline {
  private:
   const char* m_name;
 
+  unsigned m_peak; mutable unsigned long long m_full_checks;
   unsigned int m_min_len;
   unsigned int m_max_len;
   unsigned int m_length;

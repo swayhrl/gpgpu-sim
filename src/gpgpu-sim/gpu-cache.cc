@@ -140,6 +140,15 @@ unsigned cache_config::hash_function(new_addr_type addr, unsigned m_nset,
       break;
     }
     case HASH_IPOLY_FUNCTION: {
+      if(m_ep_l2_diag_l2_large_capacity) {
+        // Retain the exact original 64-set hash as the low six bits; the
+        // next six partition-address line bits select one of 64 larger groups.
+        // The historical IPOLY helper has no 4096-set polynomial.
+        unsigned low=(addr >> m_line_sz_log2)&63;
+        new_addr_type high=addr >> (m_line_sz_log2+6);
+        set_index=((high&63)<<6)|ipoly_hash_function(high,low,64);
+        break;
+      }
       new_addr_type higher_bits = addr >> (m_line_sz_log2 + m_nset_log2);
       unsigned index = (addr >> m_line_sz_log2) & (m_nset - 1);
       set_index = ipoly_hash_function(higher_bits, index, m_nset);
@@ -171,6 +180,28 @@ unsigned cache_config::hash_function(new_addr_type addr, unsigned m_nset,
 
 void l2_cache_config::init(linear_to_raw_address_translation *address_mapping) {
   cache_config::init(m_config_string, FuncCachePreferNone);
+  if(m_ep_l2_diag_l2_large_capacity>1)throw std::invalid_argument("L2_LARGE_CAPACITY expects 0 or 1");
+  if (m_ep_l2_diag_l2_large_capacity) {
+    if (m_disabled || m_cache_type!=SECTOR || m_line_sz!=128 ||
+        m_write_policy!=WRITE_BACK || m_write_alloc_policy!=LAZY_FETCH_ON_READ ||
+        m_alloc_policy!=ON_MISS || (m_set_index_function!=HASH_IPOLY_FUNCTION && m_set_index_function!=LINEAR_SET_FUNCTION) || m_ep_l2_ft_mode!=1 || m_ep_l2_wbuf_entries!=16 ||
+        m_ep_l2_payload_mode!=2 || m_ep_l2_bank_ops!=1 ||
+        m_ep_l2_static_s64 || m_ep_l2_wb_local_cap || m_ep_l2_mq2 || m_ep_l2_rg1 ||
+        m_ep_l2_diag_copy_free || m_ep_l2_ideal_meta || m_ep_l2_ideal_read_hit ||
+        m_ep_l2_ideal_wb || m_ep_l2_tvd_clean || m_ep_l2_tvd_dirty ||
+        m_ep_l2_tvd_fixed_entries || ro_requested() || m_ep_l2_payload_policy ||
+        m_ep_l2_feature_unified_payload || m_ep_l2_feature_ro_pending_state ||
+        m_ep_l2_feature_tvd || m_ep_l2_feature_adaptive_policy)
+      throw std::invalid_argument("L2_LARGE_CAPACITY requires traditional S; contradictory mechanism/ideal flags");
+    m_nset=ep_l2_large::sets; m_nset_log2=LOGB2(m_nset);
+    m_assoc=original_m_assoc=ep_l2_large::ways;
+    m_mshr_entries=ep_l2_large::lines; m_mshr_max_merge=ep_l2_large::per_address;
+    m_ep_l2_descriptor_pool_size=ep_l2_large::descriptors;
+    m_ep_l2_descriptor_per_line_cap=ep_l2_large::per_address;
+    m_ep_l2_wad_entries=ep_l2_large::wad; m_ep_l2_wbuf_entries=ep_l2_large::wb;
+    m_miss_queue_size=ep_l2_large::missq; m_result_fifo_entries=ep_l2_large::resultq;
+    m_ep_l2_diag_l2_data_free=true;
+  }
   m_address_mapping = address_mapping;
 }
 
@@ -420,6 +451,7 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
     }
   }
   if (all_reserved) {
+    if(m_config.ep_l2_large_enabled())++large_tag_denials;
     assert(m_config.m_alloc_policy == ON_MISS);
     return RESERVATION_FAIL;  // miss and not enough space in cache to allocate
                               // on miss
@@ -686,18 +718,18 @@ mshr_table::ep_l2_block_reason mshr_table::full_reason(
   // RAW/WAR/atomic handling and response retirement remain the ordinary path.
   if (m_ideal_meta) return EP_L2_BLOCK_NONE;
   table::const_iterator i = m_data.find(block_addr);
-  if (m_descriptor_pool_size && ro_targets_on_line(block_addr)+(i==m_data.end()?0:i->second.m_list.size())>=m_descriptor_per_line_cap) return EP_L2_BLOCK_PER_ADDRESS_CAP;
+  if (m_descriptor_pool_size && ro_targets_on_line(block_addr)+(i==m_data.end()?0:i->second.m_list.size())>=m_descriptor_per_line_cap) return note_capacity_reason(EP_L2_BLOCK_PER_ADDRESS_CAP);
   if (i != m_data.end()) {
     const unsigned per_line_limit =
         m_descriptor_pool_size ? m_descriptor_per_line_cap : m_max_merged;
     if (i->second.m_list.size() >= per_line_limit)
-      return m_descriptor_pool_size ? EP_L2_BLOCK_PER_ADDRESS_CAP
-                                    : EP_L2_BLOCK_LINE_MSHR_FULL;
+      return note_capacity_reason(m_descriptor_pool_size ? EP_L2_BLOCK_PER_ADDRESS_CAP
+                                    : EP_L2_BLOCK_LINE_MSHR_FULL);
   } else if (m_data.size() >= m_num_entries) {
-    return EP_L2_BLOCK_LINE_MSHR_FULL;
+    return note_capacity_reason(EP_L2_BLOCK_LINE_MSHR_FULL);
   }
   if (m_descriptor_pool_size && m_free_descriptor_ids.empty())
-    return EP_L2_BLOCK_DESCRIPTOR_POOL_FULL;
+    return note_capacity_reason(EP_L2_BLOCK_DESCRIPTOR_POOL_FULL);
   return EP_L2_BLOCK_NONE;
 }
 
@@ -742,6 +774,9 @@ void mshr_table::add(new_addr_type block_addr, mem_fetch *mf) {
   assert(m_ideal_meta || m_data.size() <= m_num_entries);
   assert(m_ideal_meta || entry.m_list.size() <=
          (m_descriptor_pool_size ? m_descriptor_per_line_cap : m_max_merged));
+  large_line_peak=std::max(large_line_peak,(unsigned)m_data.size());
+  large_descriptor_peak=std::max(large_descriptor_peak,descriptor_count_used());
+  large_address_peak=std::max(large_address_peak,(unsigned)entry.m_list.size());
   // indicate that this MSHR entry contains an atomic operation
   if (mf->isatomic()) {
     entry.m_has_atomic = true;
@@ -1798,7 +1833,7 @@ void baseline_cache::send_read_request(new_addr_type addr,
       // transaction remains a 32-byte sector request.
       if (!m_config.ep_l2_descriptor_mode()) mf->set_addr(mshr_addr);
       lower_read_enqueued(mf, cache_index);
-      m_miss_queue.push_back(mf);
+      m_miss_queue.push_back(mf); large_missq_peak=std::max(large_missq_peak,(unsigned)m_miss_queue.size());
       mf->set_status(m_miss_queue_status, time);
       if (!wa) events.push_back(cache_event(READ_REQUEST_SENT));
     }
@@ -1818,7 +1853,7 @@ void baseline_cache::send_read_request(new_addr_type addr,
     mf->set_data_size(m_config.get_atom_sz());
     if (!m_config.ep_l2_descriptor_mode()) mf->set_addr(mshr_addr);
     lower_read_enqueued(mf, cache_index);
-    m_miss_queue.push_back(mf);
+    m_miss_queue.push_back(mf); large_missq_peak=std::max(large_missq_peak,(unsigned)m_miss_queue.size());
     mf->set_status(m_miss_queue_status, time);
     if (!wa) events.push_back(cache_event(READ_REQUEST_SENT));
 
@@ -1842,7 +1877,7 @@ void data_cache::send_write_request(mem_fetch *mf, cache_event request,
                                     unsigned time,
                                     std::list<cache_event> &events) {
   events.push_back(request);
-  m_miss_queue.push_back(mf);
+  m_miss_queue.push_back(mf); large_missq_peak=std::max(large_missq_peak,(unsigned)m_miss_queue.size());
   mf->set_status(m_miss_queue_status, time);
 }
 

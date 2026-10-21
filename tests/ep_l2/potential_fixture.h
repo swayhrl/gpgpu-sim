@@ -45,7 +45,7 @@ struct fixture {
     option_parser_cmdline(p,15,args);cfg.init();option_parser_destroy(p);
     gpu=new exec_gpgpu_sim(cfg,&ctx);gpu->gpu_sim_cycle=1;
     auto mc=gpu->getMemoryConfig();
-    assert(mc->m_L2_config.get_num_lines()==1024 && mc->m_L2_config.get_assoc()==16);
+    assert(mc->m_L2_config.get_num_lines()==(mc->m_L2_config.ep_l2_large_enabled()?ep_l2_large::resident:1024) && mc->m_L2_config.get_assoc()==16);
     stats=new memory_stats_t(cfg.num_shader(),gpu->getShaderCoreConfig(),mc,gpu);
     part=new memory_partition_unit(0,mc,stats,gpu);sp=part->get_sub_partition(0);
     cache=sp->ft_cache_for_test();alloc=new partition_mf_allocator(mc);
@@ -82,7 +82,7 @@ struct fixture {
       }
       delete r;
     }
-    for(unsigned t=0;t<1024;++t) {
+    for(unsigned t=0;t<gpu->getMemoryConfig()->m_L2_config.get_num_lines();++t) {
       auto h=cache->ep_l2_tag_payload_handle_for_test(t);
       if(h.valid() && cache->ep_l2_payload_for_test().handle_live(h)) {
         auto &slot=cache->ep_l2_payload_for_test().inspect(h);

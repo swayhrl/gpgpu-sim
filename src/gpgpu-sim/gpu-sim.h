@@ -305,7 +305,11 @@ class memory_config {
             m_n_mem_sub_partition);
 
     m_address_mapping.init(m_n_mem, m_n_sub_partition_per_memory_channel);
+    if (m_L2_config.ep_l2_large_enabled() && (l2_ideal || simple_dram_model || m_L2_texure_only))
+      throw std::invalid_argument("L2_LARGE_CAPACITY rejects forced-hit/simple-DRAM/texture-only");
     m_L2_config.init(&m_address_mapping);
+    if (m_L2_config.ep_l2_large_enabled())
+      gpgpu_L2_queue_config = const_cast<char *>("4096:8192:4096:4096");
 
     m_valid = true;
 

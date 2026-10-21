@@ -321,6 +321,9 @@ void memory_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_ep_l2_diag_copy_free", OPT_BOOL,
                          &m_L2_config.m_ep_l2_diag_copy_free,
                          "L2-local S copy-service diagnostic; preserve copy values/placement, charge lower WB read", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_diag_l2_large_capacity", OPT_UINT32,
+                         &m_L2_config.m_ep_l2_diag_l2_large_capacity,
+                         "Traditional-S diagnostic: frozen large L2 capacities and free payload bank service", "0");
   option_parser_register(opp, "-gpgpu_ep_l2_diag_l2_data_free", OPT_BOOL,
                          &m_L2_config.m_ep_l2_diag_l2_data_free,
                          "L2 payload services without bank contention; preserve fixed pipelines, capacity and lower memory", "0");
