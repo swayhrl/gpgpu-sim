@@ -134,7 +134,10 @@ int main(int argc,char **argv) {
     for(new_addr_type a=local(0x50000000ull);preload.size()!=17;a=local(a+128)) {
       const unsigned s=f.gpu->getMemoryConfig()->m_L2_config.set_index(a);
       if(s==set || s==f.gpu->getMemoryConfig()->m_L2_config.set_index(cold))continue;
-      if(chosen==(unsigned)-1)chosen=s;
+      if(chosen==(unsigned)-1) {
+        bool occupied=false;for(unsigned way=0;way<16;++way)occupied|=pool.handle_live(f.cache->ep_l2_tag_payload_handle_for_test(s*16+way));
+        if(occupied)continue;chosen=s;
+      }
       if(s==chosen)preload.push_back(a);
     }
     mem_access_sector_mask_t mask;mask.set(0);
