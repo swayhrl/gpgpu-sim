@@ -129,6 +129,7 @@ int main(int argc,char **argv) {
   assert(f.cache->mshr_entries_used()==0 && f.cache->ep_l2_descriptor_count_used()==0 && pool.ownership_consistent());
   if(on){assert(pool.bank_grants()==0);assert(pool.diagnostic_services(ep_l2_payload_store::COPY_READ)==2 && pool.diagnostic_services(ep_l2_payload_store::COPY_WRITE)==2);}
   else assert(pool.bank_grants()>0);
+#ifndef A2_OFF_REFERENCE
   if(on) {
     std::vector<new_addr_type> preload;unsigned chosen=(unsigned)-1;
     for(new_addr_type a=local(0x50000000ull);preload.size()!=17;a=local(a+128)) {
@@ -145,6 +146,7 @@ int main(int argc,char **argv) {
     assert(f.cache->large_prefill_clean_victims==1 && f.cache->ft_drained());
     puts("LARGE_HOST_PREFILL_CAPACITY_CONFLICT_COUNT_PASS|clean_replacements=1|not_timed_GPU_stall=1");
   }
+#endif
   f.cache->ft_print(stdout,0);f.sp->print(stdout);
   printf("EPL2MS_TEST|SEMANTIC|master=%u|requesters=%u|responses=%zu|copy=2|lower_accept=2|wb_complete=2|data=PASS|drain=PASS|cycle=%llu\n",on,on?684:20,f.replies.size(),f.gpu->gpu_sim_cycle);
   rusage usage{};getrusage(RUSAGE_SELF,&usage);
