@@ -88,6 +88,8 @@ bool l2_cache::ft_try_force_tag_access(new_addr_type addr, unsigned time,
     return false;
   }
   // Commit starts here: every resource and refusal has been previewed above.
+  if(m_config.ep_l2_large_enabled() && status==MISS && !m_tag_array->get_block(index)->is_invalid_line())
+    ++large_prefill_clean_victims;
   if (has_alias) {
     ep_l2::PayloadHandle released;
     assert(m_tvd->reclaim(alias, released, ft_physical_cycle()) == tvd_directory::OK);
@@ -736,9 +738,9 @@ void l2_cache::large_capacity_print(FILE *fp,unsigned slice) const {
   auto row=[&](const char *name,unsigned cap,unsigned peak,unsigned long long refusal,const char *coverage,unsigned long long replacements=0) {
     fprintf(fp,"EPL2LARGEV1|RESOURCE|slice=%u|name=%s|capacity=%u|highwater=%u|capacity_denial_checks=%llu|coverage=%s|valid_victim_replacements=%llu|near_nonbinding=%u\n",slice,name,cap,peak,refusal,coverage,replacements,!refusal&&!replacements&&2ull*peak<=cap);
   };
-  fprintf(fp,"EPL2LARGEV1|TAG_REPLACEMENTS|slice=%u|clean=%llu|dirty=%llu|scope=SUCCESSFUL_NATIVE_VALID_VICTIM_REPLACEMENTS\n",slice,large_clean_victims,large_dirty_victims);
+  fprintf(fp,"EPL2LARGEV1|TAG_REPLACEMENTS|slice=%u|timed_clean=%llu|timed_dirty=%llu|host_prefill_clean=%llu|scope=SUCCESSFUL_VALID_VICTIM_REPLACEMENTS\n",slice,large_clean_victims,large_dirty_victims,large_prefill_clean_victims);
   using P=ep_l2_payload_store;
-  row("Tag",m_config.get_num_lines(),m_ep_l2_payload.role_highwater(P::RESIDENT),m_tag_array->large_tag_denials,"CONSERVATIVE_RESIDENT_IDENTITY_BOUND",large_clean_victims+large_dirty_victims);
+  row("Tag",m_config.get_num_lines(),m_ep_l2_payload.role_highwater(P::RESIDENT),m_tag_array->large_tag_denials,"CONSERVATIVE_RESIDENT_IDENTITY_BOUND",large_clean_victims+large_dirty_victims+large_prefill_clean_victims);
   row("resident",m_ep_l2_payload.resident_capacity(),m_ep_l2_payload.role_highwater(P::RESIDENT),m_tag_array->large_tag_denials,"ALLOCATION_EVENTS");
   row("bypass",m_ep_l2_payload.bypass_capacity(),m_ep_l2_payload.role_highwater(P::BYPASS),0,"S_NATIVE_NO_BYPASS_ALLOCATION");
   row("WB",m_ep_l2_payload.static_wb_capacity(),m_ep_l2_payload.role_highwater(P::WB),m_ft_stats.wbuf_full,"ALLOCATION_EVENTS");
