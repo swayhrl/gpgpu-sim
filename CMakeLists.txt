@@ -339,3 +339,7 @@ target_link_libraries(ep_l2_detach_reference PRIVATE -Wl,--start-group
     /workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/src/intersim2/libintersim.a
     /workspace/build/ep-l2-ms20261019-a-common-native-r1/gpgpu-sim/src/accelwattch/libaccelwattch.a
     -Wl,--end-group ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
+
+# r5 passive metadata-only bounded controls; candidate header/archive stay consistent.
+add_executable(ep_l2_tagpressure_metadata EXCLUDE_FROM_ALL tests/ep_l2/test_tagpressure_metadata.cc)
+target_compile_options(ep_l2_tagpressure_metadata PRIVATE -UNDEBUG)

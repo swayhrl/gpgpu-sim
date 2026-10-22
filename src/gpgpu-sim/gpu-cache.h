@@ -222,6 +222,8 @@ struct line_cache_block : public cache_block_t {
 
     m_fill_time = time;
   }
+  // Nonvirtual passive getter: no vtable/instance-layout change.
+  cache_block_state diagnostic_sector_state(unsigned) const { return m_status; }
   virtual bool is_invalid_line() { return m_status == INVALID; }
   virtual bool is_valid_line() { return m_status == VALID; }
   virtual bool is_reserved_line() { return m_status == RESERVED; }
@@ -394,6 +396,8 @@ struct sector_cache_block : public cache_block_t {
     m_sector_fill_time[sidx] = time;
     m_line_fill_time = time;
   }
+  // Nonvirtual passive getter; caller validates sector<4.
+  cache_block_state diagnostic_sector_state(unsigned sector) const { return m_status[sector]; }
   virtual bool is_invalid_line() {
     // all the sectors should be invalid
     for (unsigned i = 0; i < SECTOR_CHUNCK_SIZE; ++i) {
@@ -1088,6 +1092,19 @@ class tag_array {
 
   unsigned size() const { return m_config.get_num_lines(); }
   cache_block_t *get_block(unsigned idx) { return m_lines[idx]; }
+  // Pure target-set observer read. Concrete type follows the same frozen
+  // cache-type dispatch used by tag_array construction; no virtual ABI change.
+  unsigned diagnostic_way_class(unsigned idx) const {
+    assert(idx < m_config.get_num_lines());
+    const cache_block_t *b=m_lines[idx];bool reserved=false,invalid=true,dirty=false;
+    for(unsigned sector=0;sector<4;++sector) {
+      const cache_block_state state=m_config.m_cache_type==SECTOR?
+        static_cast<const sector_cache_block*>(b)->diagnostic_sector_state(sector):
+        static_cast<const line_cache_block*>(b)->diagnostic_sector_state(sector);
+      reserved|=state==RESERVED;invalid&=state==INVALID;dirty|=state==MODIFIED;
+    }
+    return reserved?0:invalid?1:dirty?3:2;
+  }
   // Read-only inspection helpers used by L2 admission planning.  Keep the
   // cache-block implementation private so planning cannot mutate tag state.
   bool block_is_modified(unsigned idx) const {

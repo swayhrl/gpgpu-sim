@@ -371,10 +371,11 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
 };
 void l2_cache::ro_init() {
   ep_l2_detach_diag::state.add(this);
+  ep_l2_tagpressure::state.add(this,ep_l2_detach_diag::state.enabled);
   m_ro=NULL;
   if(m_config.m_ro_tag_detach||m_config.m_ro_line_mshr_bypass)m_ro=new ep_l2_ro_runtime(*this);
 }
-l2_cache::~l2_cache(){ep_l2_detach_diag::state.erase(this);delete m_ro;}
+l2_cache::~l2_cache(){ep_l2_tagpressure::state.erase(this);ep_l2_detach_diag::state.erase(this);delete m_ro;}
 void l2_cache::ro_begin_epoch(){if(m_ro){
   if(!m_ro->command_bound||m_ro->ever_open||!ft_drained()||m_mshrs.descriptor_count_used()||!m_miss_queue.empty()||ep_l2_wad_occupancy())
     throw std::logic_error("RO epoch activation requires complete prior drain");
@@ -399,7 +400,22 @@ bool l2_cache::ro_return(mem_fetch *m,unsigned long long cycle) {
 void l2_cache::ro_print(FILE *f,unsigned slice) const {
   if(auto*d=ep_l2_detach_diag::get(this)){d->slice=slice;d->ro_runtime=bool(m_ro);d->T=m_config.m_ro_tag_detach;d->M=m_config.m_ro_line_mshr_bypass;if(!m_ro)d->closed=true;
     if(m_ro && d->total[ep_l2_detach_diag::detach_success]!=m_ro->tx->stats.detached)d->add(ep_l2_detach_diag::closure_errors);
-    ep_l2_detach_diag::state.print(f,*d,ft_physical_cycle());}
+    ep_l2_detach_diag::state.print(f,*d,ft_physical_cycle());
+    if(ep_l2_tagpressure::state.find(this)) {
+      ep_l2_tagpressure::legacy_view v;v.valid=true;v.slice=slice;
+      v.kernel_count=d->kernel_count;v.kernel_uid=d->kernel_uid;
+      v.closed=d->closed;v.T=d->T;v.M=d->M;v.runtime=d->ro_runtime;
+      auto bridge=[](const std::array<uint64_t,ep_l2_detach_diag::FIELD_COUNT>&src,ep_l2_tagpressure::legacy_counts&dst){
+        using namespace ep_l2_detach_diag;dst.observed=src[observed_heads];dst.absent=src[head_absent_cycles];
+        for(unsigned i=0;i<4;++i)dst.skips[i]=src[skip_tvd+i];
+        for(unsigned i=0;i<8;++i)dst.raw[i]=src[raw_hit+i];
+        // Old order candidate/nonro/runtimeoff matches r5 requester labels.
+        for(unsigned i=0;i<3;++i)dst.requester[i]=src[requester_ro_candidate+i];
+      };
+      bridge(d->total,v.total);for(unsigned p=0;p<ep_l2_tagpressure::PHASES;++p)bridge(d->phases[p],v.phase[p]);
+      ep_l2_tagpressure::state.print(f,this,v,ft_physical_cycle());
+    }
+  }
   if(m_ro){
   const auto &s=m_ro->tx->stats;
   fprintf(f,"EPL2ROV1|SUMMARY|slice=%u|detach=%u|bypass=%u|accepted_global_reads=%llu|accepted_oracle_candidates=%llu|accepted_ro=%llu|transactions=%llu|merges=%llu|detached=%llu|lower_sectors=%llu|concurrent_duplicate_sectors=%llu|responses=%llu|ro_bank_fill_ops=%llu|ro_bank_response_ops=%llu|live=%u|manifest=%s|scope=%s\n",

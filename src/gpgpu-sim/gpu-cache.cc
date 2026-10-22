@@ -1,5 +1,6 @@
 #include "ep-l2-detach-diag.h"
 ep_l2_detach_diag::registry ep_l2_detach_diag::state;
+ep_l2_tagpressure::registry ep_l2_tagpressure::state;
 // Copyright (c) 2009-2021, Tor M. Aamodt, Tayler Hetherington,
 // Vijay Kandiah, Nikos Hardavellas, Mahmoud Khairy, Junrui Pan,
 // Timothy G. Rogers
@@ -2972,7 +2973,7 @@ void tex_cache::display_state(FILE *fp) const {
 #include "ep-l2-ft-cache.inc"
 #include "ep-l2-tvd-cache.inc"
 
-void l2_cache::detach_diag_bind_slice(unsigned slice){if(auto*d=ep_l2_detach_diag::get(this))d->slice=slice;}
+void l2_cache::detach_diag_bind_slice(unsigned slice){if(auto*d=ep_l2_detach_diag::get(this))d->slice=slice;ep_l2_tagpressure::state.bind(this,slice);}
 void l2_cache::detach_diag_kernel(bool begin,unsigned long long uid){if(auto*d=ep_l2_detach_diag::get(this)){if(begin)d->begin(uid);else d->end(uid);}}
 void l2_cache::detach_diag_snapshot(mem_fetch*m,ep_l2_detach_diag::preview&o) const {
   if(!ep_l2_detach_diag::get(this))return;
@@ -2982,6 +2983,28 @@ void l2_cache::detach_diag_snapshot(mem_fetch*m,ep_l2_detach_diag::preview&o) co
   o.raw=m_tag_array->probe(m_config.block_addr(m->get_addr()),index,
       m->get_access_sector_mask(),m->is_write(),true,nullptr);
   o.set=m_config.set_index(m->get_addr());
+  // r5 capture only. Repeated preview/snapshot performs ZERO ledger writes.
+  // Reinitialize every time, including runtime-off/nonlive/generation changes.
+  o.tagpressure=ep_l2_tagpressure::snapshot();
+  if(ep_l2_tagpressure::state.find(this)) {
+    auto &s=o.tagpressure;const auto *d=ep_l2_detach_diag::get(this);
+    s.cache_identity=this;s.slice=d->slice;s.physical_cycle=ft_physical_cycle();
+    s.request_uid=m->get_request_uid();s.assoc=m_config.get_assoc();
+    s.raw=s.raw_r4=o.raw>=0&&o.raw<=WRITE_ALLOCATED?unsigned(o.raw):ep_l2_tagpressure::RAW-1;
+    s.ro_runtime=o.runtime;s.T=o.T;
+    s.requester=!o.runtime?ep_l2_tagpressure::RUNTIME_OFF:o.candidate?
+      ep_l2_tagpressure::CERTIFIED_RO_CANDIDATE:ep_l2_tagpressure::NONRO_NATIVE_PATH;
+    if(s.assoc==16)for(unsigned way=0;way<16;++way) {
+      const unsigned index=o.set*s.assoc+way;auto &w=s.ways[way];
+      w.kind=static_cast<ep_l2_tagpressure::way_kind>(m_tag_array->diagnostic_way_class(index));
+      w.live=false;w.attached=false;w.reuse=false;w.required=0;w.ready=0;
+      if(m_ro) {
+        const auto h=tag_payload_handle(index);w.live=m_ro->tx->live(h);
+        if(w.live) {const auto p=m_ro->tx->diagnostic_state(h);
+          w.attached=p.attached;w.reuse=p.reuse;w.required=p.required;w.ready=p.ready;}
+      }
+    }
+  }
   if(o.raw!=RESERVATION_FAIL||!o.T)return;
   const unsigned base=o.set*m_config.get_assoc();
   for(unsigned i=base;i<base+m_config.get_assoc();++i){++o.ways;auto h=tag_payload_handle(i);
@@ -2991,9 +3014,19 @@ void l2_cache::detach_diag_snapshot(mem_fetch*m,ep_l2_detach_diag::preview&o) co
   }
 }
 void l2_cache::detach_diag_skip(mem_fetch*m,unsigned long long cycle,unsigned reason){using namespace ep_l2_detach_diag;if(auto*d=get(this)){
- if(!m){d->add(head_absent_cycles);return;}if(!d->once(cycle,m->get_request_uid()))return;d->add(observed_heads);d->add(probe_skipped);d->add(reason==1?skip_tvd:reason==2?skip_ideal:reason==3?skip_disabled:skip_other);
+ if(!m){d->add(head_absent_cycles);ep_l2_tagpressure::state.skip(this,d->phase(),true,reason);return;}if(!d->once(cycle,m->get_request_uid()))return;d->add(observed_heads);d->add(probe_skipped);d->add(reason==1?skip_tvd:reason==2?skip_ideal:reason==3?skip_disabled:skip_other);ep_l2_tagpressure::state.skip(this,d->phase(),false,reason);
 }}
 void l2_cache::detach_diag_frontend(mem_fetch*m,unsigned long long cycle,const ep_l2_detach_diag::preview&o,const l2_access_plan&p,bool admit,bool missq,bool response){using namespace ep_l2_detach_diag;auto*d=get(this);if(!d||!d->once(cycle,m->get_request_uid()))return;
+ // Only this actual once-admitted frontend callback records r5. All gates
+ // below continue their original execution; r5 invalidity never supplies a plan.
+ unsigned tp_route=ep_l2_tagpressure::ROUTE_OTHER;
+ if(!o.production_reached)tp_route=ep_l2_tagpressure::PROD_NOT_REACHED;
+ else if(o.existing&&o.intermediate==HIT_RESERVED)tp_route=ep_l2_tagpressure::EXISTING_HIT_RESERVED;
+ else if(!o.consulted)tp_route=ep_l2_tagpressure::NOT_CONSULTED;
+ else if(o.intermediate==MISS)tp_route=ep_l2_tagpressure::CONSULTED_MISS;
+ else if(o.intermediate==RESERVATION_FAIL)tp_route=ep_l2_tagpressure::CONSULTED_FAIL;
+ ep_l2_tagpressure::state.frontend(this,d->phase(),cycle,m->get_request_uid(),o.tagpressure,
+    o.raw>=0&&o.raw<=WRITE_ALLOCATED?unsigned(o.raw):ep_l2_tagpressure::RAW-1,tp_route,admit,o.early);
  if(o.production_reached&&o.production_raw!=o.raw)d->add(closure_errors);
  d->add(observed_heads);d->add(o.raw>=0&&o.raw<=WRITE_ALLOCATED?field(raw_hit+o.raw):raw_unknown);
  d->add(!o.runtime?requester_ro_runtime_off:o.candidate?requester_ro_candidate:requester_nonro);

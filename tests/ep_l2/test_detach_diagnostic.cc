@@ -219,9 +219,31 @@ int main(int argc,char**argv){assert(argc==10);const char*which=argv[9];
  require_observer(f,ep_l2_detach_diag::pressure_relief_not_consulted,1);require_observer(f,ep_l2_detach_diag::pressure_eligible,1);
 #endif
  auto direct=f.make(0x800000+stride,false);std::list<cache_event>events;auto s=f.cache->access(direct->get_addr(),direct,f.gpu->gpu_sim_cycle,events);assert(s==RESERVATION_FAIL);assert(!f.tag_for(0).valid());f.send(direct);puts("CONTROL_SCOPE|native_frontend=DENIED_NOT_CONSULTED|direct_access=REAL_RELIEVE_THEN_DIRECTORY_DENIAL");}
+ else if(!std::strcmp(which,"TAGPRESSURE_CAPTURE_JOINT")){fill(f,16);
+#ifndef EP_L2_DIAG_REFERENCE
+ auto*r5=ep_l2_tagpressure::state.find(f.cache);assert(r5);
+ uint64_t before=0;for(const auto&c:r5->phases)if(c)before+=c->covered;
+ auto matching=f.make(0,false);auto incoming=f.make(16*stride,false);
+ ep_l2_detach_diag::preview context;
+ f.cache->detach_diag_snapshot(matching,context);
+ assert(context.raw==HIT_RESERVED);unsigned reserved=0,eligible=0;
+ for(const auto&w:context.tagpressure.ways){reserved+=w.kind==ep_l2_tagpressure::RESERVED_WAY;eligible+=w.live&&w.attached&&!w.reuse&&(w.required&~w.ready);}
+ assert(reserved==16&&eligible==16);
+ for(unsigned i=0;i<32;++i){f.cache->detach_diag_snapshot(incoming,context);assert(context.raw==RESERVATION_FAIL);}
+ uint64_t after=0;for(const auto&c:r5->phases)if(c)after+=c->covered;
+ assert(after==before);f.send(matching);f.await_frontend();
+ f.send(incoming);f.await_lower(17);
+ puts("TAGPRESSURE_CAPTURE_JOINT|real16pending|sameLineHIT_RESERVED|newTagFAIL|preview32zero_increment|PASS");
+#else
+ assert(false&&"r5 capture fixture is candidate-only, never mixed with old archive");
+#endif
+ }
  else if(!std::strcmp(which,"PREVIEW_REPEAT")){fill(f,16);auto mf=f.make(16*stride,false);f.send(mf);tick(f,1);
 #ifndef EP_L2_DIAG_REFERENCE
  auto*d=ledger(f);std::array<uint64_t,ep_l2_detach_diag::FIELD_COUNT>before{};if(d)before=d->total;
+ auto*r5=ep_l2_tagpressure::state.find(f.cache);uint64_t r5before=0;unsigned r5rows=0;
+ if(r5){for(const auto&c:r5->phases)if(c)r5before+=c->covered;
+   r5rows=ep_l2_tagpressure::state.joint->rows;}
 #endif
  for(unsigned i=0;i<32;++i){l2_access_plan p;f.cache->preview_access(mf->get_addr(),mf,p);
 #ifndef EP_L2_DIAG_REFERENCE
@@ -230,6 +252,8 @@ int main(int argc,char**argv){assert(argc==10);const char*which=argv[9];
  }
 #ifndef EP_L2_DIAG_REFERENCE
  if(d)assert(d->total==before);
+ if(r5){uint64_t after=0;for(const auto&c:r5->phases)if(c)after+=c->covered;
+  assert(after==r5before&&ep_l2_tagpressure::state.joint->rows==r5rows);}
 #endif
  f.await_lower(17);}
  else if(!std::strcmp(which,"DETACH_THEN_LATER_DENIAL")){fill(f,16);for(unsigned i=0;i<496;++i){auto a=((i%63)+1)*128+(i/63)*stride;f.send(f.make(a,false));f.await_lower(17+i);}assert(f.cache->ep_l2_descriptor_count_used()==512);auto mf=f.make(17*stride,false);f.send(mf);tick(f,16);auto h=f.tag_for(0);preview_context(f,mf,0,-1,-1);std::list<cache_event>events;auto s=f.cache->access(mf->get_addr(),mf,f.gpu->gpu_sim_cycle,events);assert(s==RESERVATION_FAIL&&!f.tag_for(0).valid()&&f.cache->ep_l2_payload_for_test().handle_live(h));
