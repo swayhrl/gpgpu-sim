@@ -42,13 +42,18 @@ int main(int argc,char**argv){assert(argc==10);const char*which=argv[9];
  require_observer(f,ep_l2_detach_diag::reuse_seen_first_transition,16);require_observer(f,ep_l2_detach_diag::way_reuse_seen,1);assert(!ledger(f)||ledger(f)->total[ep_l2_detach_diag::detach_success]==0);
 #endif
  }
- else if(ready){fill(f,2);f.return_one(0);tick(f,32,false);assert(f.sp->ep_l2_l2icnt_occupancy()==1);auto h=f.tag_for(stride);f.return_one(0);tick(f,32,false);assert(f.cache->ep_l2_payload_for_test().inspect(h).ready_sector_mask.test(0));assert(f.cache->ep_l2_payload_for_test().inspect(h).pins==1);
+ else if(!std::strcmp(which,"PRESSURE_NO_MISSING")){fill(f,2);f.return_one(0);tick(f,32,false);assert(f.sp->ep_l2_l2icnt_occupancy()==1);auto h=f.tag_for(stride);f.return_one(0);tick(f,32,false);assert(f.cache->ep_l2_payload_for_test().inspect(h).ready_sector_mask.test(0));assert(f.cache->ep_l2_payload_for_test().inspect(h).pins==1);
 #ifndef EP_L2_DIAG_REFERENCE
  if(auto*d=ledger(f)){auto p=f.cache->detach_diag_predicate_for_test(h);assert(p.attached&&!p.reuse&&(p.required&~p.ready)==0);assert(!f.cache->detach_diag_can_detach_for_test(h));}
 #endif
  puts("CONTROL_SCOPE|ready_predicate=REAL_READY_PINNED_TRANSACTION|raw_all_reserved_pressure=NOT_ASSERTED|reason=ready_Tag_can_be_replacement_candidate_but_pinned_commit_stalls");
  }
- else if(!std::strcmp(which,"PRESSURE_ELIGIBLE")){fill(f,16);auto h=f.tag_for(0);f.send(f.make(16*stride,false));f.await_lower(17);assert(!f.tag_for(0).valid()&&f.cache->ep_l2_payload_for_test().handle_live(h));f.send(f.make(0,false));f.await_lower(18);auto n=f.tag_for(0);assert(n.valid()&&n!=h);for(unsigned i=0;i<f.pending_reads.size();++i)if(f.pending_reads[i]->get_ep_l2_payload_id()==h.payload_id){f.return_one(i);break;}tick(f,32);assert(f.tag_for(0)==n);
+ else if(!std::strcmp(which,"RESPONSE_BACKPRESSURE")){fill(f,16);auto old=f.tag_for(0);f.send(f.make(16*stride,false));f.await_lower(17);assert(!f.tag_for(0).valid());unsigned pick=~0U;for(unsigned i=0;i<f.pending_reads.size();++i)if(f.pending_reads[i]->get_ep_l2_payload_id()!=old.payload_id){pick=i;break;}assert(pick!=~0U);f.return_one(pick);tick(f,32,false);assert(f.sp->ep_l2_l2icnt_occupancy()==1);pick=~0U;for(unsigned i=0;i<f.pending_reads.size();++i)if(f.pending_reads[i]->get_ep_l2_payload_id()==old.payload_id){pick=i;break;}assert(pick!=~0U);f.return_one(pick);tick(f,32,false);assert(f.cache->ep_l2_payload_for_test().handle_live(old));assert(f.cache->ep_l2_payload_for_test().inspect(old).pins==1);assert(f.cache->ep_l2_payload_for_test().inspect(old).ready_sector_mask.test(0));puts("CONTROL_SCOPE|detached_ready_payload=REAL_PINNED|ICNT_FULL=1|drain_after_actual_consumer=REQUIRED");
+#ifndef EP_L2_DIAG_REFERENCE
+ require_observer(f,ep_l2_detach_diag::detach_success,1);require_observer(f,ep_l2_detach_diag::detached_return_packets,1);
+#endif
+ }
+ else if(!std::strcmp(which,"PRESSURE_ELIGIBLE")){fill(f,16);auto h=f.tag_for(0);f.send(f.make(16*stride,false));f.await_lower(17);assert(!f.tag_for(0).valid()&&f.cache->ep_l2_payload_for_test().handle_live(h));f.send(f.make(0,false));f.await_lower(18);auto n=f.tag_for(0);assert(n.valid()&&n!=h);for(unsigned i=0;i<f.pending_reads.size();++i)if(f.pending_reads[i]->get_ep_l2_payload_id()==h.payload_id){f.return_one(i);break;}tick(f,32);assert(f.tag_for(0)==n);assert(f.cache->ep_l2_payload_for_test().inspect(n).pending_sector_mask.any()&&!f.cache->ep_l2_payload_for_test().inspect(n).ready_sector_mask.test(0));
 #ifndef EP_L2_DIAG_REFERENCE
  require_observer(f,ep_l2_detach_diag::pressure_rewrite_miss,1);require_observer(f,ep_l2_detach_diag::detach_success,1);
 #endif
