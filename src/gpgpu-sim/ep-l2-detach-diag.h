@@ -184,11 +184,52 @@ transition_joint_5,
 transition_joint_6,
 transition_joint_7,
 ro_fill_packets,
+ro_capacity_population,
+ro_capacity_consulted,
+ro_capacity_not_consulted,
+ro_line_na_M_or_existing,
+ro_descriptor_checked,
+ro_descriptor_pass,
+ro_descriptor_fail,
+ro_descriptor_unobserved,
+ro_address_checked,
+ro_address_pass,
+ro_address_fail,
+ro_address_unobserved,
+ro_line_probe_checked,
+ro_line_probe_pass,
+ro_line_probe_fail,
+ro_line_probe_unobserved,
+ro_line_slots_checked,
+ro_line_slots_pass,
+ro_line_slots_fail,
+ro_line_slots_unobserved,
+eligible_frontend_admitted,
+eligible_frontend_denied,
+eligible_prod_probe_reached,
+eligible_prod_probe_not_reached,
+eligible_rewrite_miss,
+eligible_rewrite_hit_reserved,
+eligible_kept_fail,
+eligible_relief_not_consulted,
+eligible_intermediate_other,
+eligible_capacity_consulted,
+eligible_capacity_not_consulted,
+eligible_descriptor_fail,
+eligible_address_fail,
+eligible_line_probe_fail,
+eligible_line_slots_fail,
+eligible_early_owner,
+eligible_early_directory,
+eligible_early_query,
+eligible_early_wad,
+eligible_early_tvd,
 FIELD_COUNT
 };
-static const char *const names[]={"observed_heads","probe_skipped","skip_tvd","skip_ideal","skip_disabled","skip_other","head_absent_cycles","raw_hit","raw_hit_reserved","raw_miss","raw_reservation_fail","raw_sector_miss","raw_mshr_hit","raw_write_allocated","raw_unknown","requester_ro_candidate","requester_nonro","requester_ro_runtime_off","certified_resident_hits","candidate_deferred_or_native","pressure_T_disabled","pressure_T_enabled","pressure_no_live_ro","pressure_live_ro_no_eligible","pressure_eligible","ways_examined","way_no_live_ro","way_not_attached","way_reuse_seen","way_no_missing","way_eligible","pressure_prod_probe_reached","pressure_prod_probe_not_reached","pressure_rewrite_miss","pressure_rewrite_hit_reserved","pressure_kept_fail","pressure_relief_not_consulted","pressure_intermediate_other","pressure_frontend_admitted","pressure_frontend_denied","rewritten_final_admitted","rewritten_final_denied","rewritten_final_unknown","preview_early_owner","preview_early_directory","preview_early_query","preview_early_wad","preview_early_tvd","preview_other","primary_owner","primary_directory","primary_query","primary_wad","primary_descriptor","primary_address","primary_line","primary_missq","primary_data","primary_response","primary_unknown","primary_none","mask_descriptor","mask_address","mask_line","mask_missq","mask_data","mask_response","mask_wad","mask_owner","mask_directory","mask_query","ft_access_attempts","commit_native_owner","commit_merge","commit_directory","commit_promotion","commit_raw_probe_reached","raw_tag_fail_commit","relieve_calls","relieve_T_disabled","relieve_no_eligible","relieve_eligible_selected","detach_calls","detach_success","detach_false","detach_false_T_disabled","detach_false_not_attached","detach_false_reuse","detach_false_ready","detach_exception","selected_identity_mismatch","post_relief_hit","post_relief_hit_reserved","post_relief_miss","post_relief_fail","post_relief_sector_miss","post_relief_mshr_hit","post_relief_write_allocated","post_relief_unknown","commit_accepted","commit_denied","commit_exception","trigger_accepted_after_detach","trigger_denied_after_detach","trigger_exception_after_detach","denied_owner","denied_directory","denied_query","denied_promotion","denied_tag","denied_capacity","denied_held","denied_wad","denied_pin","denied_mshr","denied_missq","denied_wad_full","denied_wb","denied_landing","denied_quota","denied_copy","denied_bank","denied_baseline","denied_other","ro_admits","ro_merges","reuse_seen_first_transition","ro_responses","ro_retired","detached_return_packets","detached_return_sectors","detached_responses","detached_retired","response_backpressure","closure_errors","samples_seen","samples_stored","samples_dropped","eligible_hist_0","eligible_hist_1","eligible_hist_2","eligible_hist_3","eligible_hist_4","eligible_hist_5","eligible_hist_6","eligible_hist_7","eligible_hist_8","eligible_hist_9","eligible_hist_10","eligible_hist_11","eligible_hist_12","eligible_hist_13","eligible_hist_14","eligible_hist_15","eligible_hist_16","predicate_hist_0","predicate_hist_1","predicate_hist_2","predicate_hist_3","predicate_hist_4","predicate_hist_5","predicate_hist_6","predicate_hist_7","transition_joint_0","transition_joint_1","transition_joint_2","transition_joint_3","transition_joint_4","transition_joint_5","transition_joint_6","transition_joint_7","ro_fill_packets"};
+static const char *const names[]={"observed_heads","probe_skipped","skip_tvd","skip_ideal","skip_disabled","skip_other","head_absent_cycles","raw_hit","raw_hit_reserved","raw_miss","raw_reservation_fail","raw_sector_miss","raw_mshr_hit","raw_write_allocated","raw_unknown","requester_ro_candidate","requester_nonro","requester_ro_runtime_off","certified_resident_hits","candidate_deferred_or_native","pressure_T_disabled","pressure_T_enabled","pressure_no_live_ro","pressure_live_ro_no_eligible","pressure_eligible","ways_examined","way_no_live_ro","way_not_attached","way_reuse_seen","way_no_missing","way_eligible","pressure_prod_probe_reached","pressure_prod_probe_not_reached","pressure_rewrite_miss","pressure_rewrite_hit_reserved","pressure_kept_fail","pressure_relief_not_consulted","pressure_intermediate_other","pressure_frontend_admitted","pressure_frontend_denied","rewritten_final_admitted","rewritten_final_denied","rewritten_final_unknown","preview_early_owner","preview_early_directory","preview_early_query","preview_early_wad","preview_early_tvd","preview_other","primary_owner","primary_directory","primary_query","primary_wad","primary_descriptor","primary_address","primary_line","primary_missq","primary_data","primary_response","primary_unknown","primary_none","mask_descriptor","mask_address","mask_line","mask_missq","mask_data","mask_response","mask_wad","mask_owner","mask_directory","mask_query","ft_access_attempts","commit_native_owner","commit_merge","commit_directory","commit_promotion","commit_raw_probe_reached","raw_tag_fail_commit","relieve_calls","relieve_T_disabled","relieve_no_eligible","relieve_eligible_selected","detach_calls","detach_success","detach_false","detach_false_T_disabled","detach_false_not_attached","detach_false_reuse","detach_false_ready","detach_exception","selected_identity_mismatch","post_relief_hit","post_relief_hit_reserved","post_relief_miss","post_relief_fail","post_relief_sector_miss","post_relief_mshr_hit","post_relief_write_allocated","post_relief_unknown","commit_accepted","commit_denied","commit_exception","trigger_accepted_after_detach","trigger_denied_after_detach","trigger_exception_after_detach","denied_owner","denied_directory","denied_query","denied_promotion","denied_tag","denied_capacity","denied_held","denied_wad","denied_pin","denied_mshr","denied_missq","denied_wad_full","denied_wb","denied_landing","denied_quota","denied_copy","denied_bank","denied_baseline","denied_other","ro_admits","ro_merges","reuse_seen_first_transition","ro_responses","ro_retired","detached_return_packets","detached_return_sectors","detached_responses","detached_retired","response_backpressure","closure_errors","samples_seen","samples_stored","samples_dropped","eligible_hist_0","eligible_hist_1","eligible_hist_2","eligible_hist_3","eligible_hist_4","eligible_hist_5","eligible_hist_6","eligible_hist_7","eligible_hist_8","eligible_hist_9","eligible_hist_10","eligible_hist_11","eligible_hist_12","eligible_hist_13","eligible_hist_14","eligible_hist_15","eligible_hist_16","predicate_hist_0","predicate_hist_1","predicate_hist_2","predicate_hist_3","predicate_hist_4","predicate_hist_5","predicate_hist_6","predicate_hist_7","transition_joint_0","transition_joint_1","transition_joint_2","transition_joint_3","transition_joint_4","transition_joint_5","transition_joint_6","transition_joint_7","ro_fill_packets","ro_capacity_population","ro_capacity_consulted","ro_capacity_not_consulted","ro_line_na_M_or_existing","ro_descriptor_checked","ro_descriptor_pass","ro_descriptor_fail","ro_descriptor_unobserved","ro_address_checked","ro_address_pass","ro_address_fail","ro_address_unobserved","ro_line_probe_checked","ro_line_probe_pass","ro_line_probe_fail","ro_line_probe_unobserved","ro_line_slots_checked","ro_line_slots_pass","ro_line_slots_fail","ro_line_slots_unobserved","eligible_frontend_admitted","eligible_frontend_denied","eligible_prod_probe_reached","eligible_prod_probe_not_reached","eligible_rewrite_miss","eligible_rewrite_hit_reserved","eligible_kept_fail","eligible_relief_not_consulted","eligible_intermediate_other","eligible_capacity_consulted","eligible_capacity_not_consulted","eligible_descriptor_fail","eligible_address_fail","eligible_line_probe_fail","eligible_line_slots_fail","eligible_early_owner","eligible_early_directory","eligible_early_query","eligible_early_wad","eligible_early_tvd"};
 struct predicate { bool live=false,attached=false,reuse=false;unsigned required=0,issued=0,ready=0,waiters=0; };
 struct preview {
+ bool capacity_consulted=false,line_na=false;int descriptor_check=-1,address_check=-1,line_probe_check=-1,line_slots_check=-1;
  int raw=-1,production_raw=-1,intermediate=-1,final_status=-1,early=0;
  uint64_t victim_payload=~uint64_t(0),victim_generation=0; predicate victim;
  bool production_reached=false,consulted=false,existing=false,T=false,candidate=false,runtime=false;
@@ -220,6 +261,12 @@ struct ledger {
   if(total[detach_calls]!=total[detach_success]+total[detach_false]+total[detach_exception])return false;
   if(total[ft_access_attempts]!=total[commit_accepted]+total[commit_denied]+total[commit_exception])return false;
   if(total[detach_success]<total[detached_retired])return false;
+  if(total[ro_capacity_population]!=total[ro_capacity_consulted]+total[ro_capacity_not_consulted])return false;
+  for(unsigned f=ro_descriptor_checked;f<=ro_line_slots_checked;f+=4){if(total[f]!=total[f+1]+total[f+2]||total[ro_capacity_population]!=total[f]+total[f+3])return false;}
+  if(total[pressure_eligible]!=total[eligible_frontend_admitted]+total[eligible_frontend_denied])return false;
+  if(total[pressure_eligible]!=total[eligible_prod_probe_reached]+total[eligible_prod_probe_not_reached])return false;
+  if(total[eligible_prod_probe_reached]!=total[eligible_rewrite_miss]+total[eligible_rewrite_hit_reserved]+total[eligible_kept_fail]+total[eligible_relief_not_consulted]+total[eligible_intermediate_other])return false;
+  if(total[pressure_eligible]!=total[eligible_capacity_consulted]+total[eligible_capacity_not_consulted])return false;
   uint64_t h=0;for(unsigned i=eligible_hist_0;i<=eligible_hist_16;++i)h+=total[i];if(h!=total[pressure_T_enabled])return false;
   h=0;for(unsigned i=predicate_hist_0;i<=predicate_hist_7;++i)h+=total[i];if(h!=total[ways_examined]-total[way_no_live_ro])return false;
   h=0;for(unsigned i=transition_joint_0;i<=transition_joint_7;++i)h+=total[i];if(h!=total[ro_admits]+total[ro_merges]+total[ro_fill_packets])return false;

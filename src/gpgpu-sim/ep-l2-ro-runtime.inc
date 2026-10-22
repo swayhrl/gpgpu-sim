@@ -212,11 +212,22 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     const unsigned mask=m->get_access_sector_mask().to_ulong();
     return mask&~tx->scheduled(h);
   }
-  bool capacity(mem_fetch *m,bool existing) const {
+  bool capacity(mem_fetch *m,bool existing,ep_l2_detach_diag::preview *o=nullptr) const {
     const auto line=c.m_config.block_addr(m->get_addr());
-    return c.m_mshrs.descriptor_count_used()<512 && c.m_mshrs.targets_on_line(line)<32 &&
-      (existing || c.m_config.m_ro_line_mshr_bypass ||
-       (!c.m_mshrs.probe(line) && c.m_mshrs.num_entries_used()<128));
+    // Capture only actually evaluated original short-circuit operands.
+    const bool descriptor=c.m_mshrs.descriptor_count_used()<512;
+    if(o){o->capacity_consulted=true;o->descriptor_check=descriptor;}
+    if(!descriptor)return false;
+    const bool address=c.m_mshrs.targets_on_line(line)<32;
+    if(o)o->address_check=address;
+    if(!address)return false;
+    if(existing||c.m_config.m_ro_line_mshr_bypass){if(o)o->line_na=true;return true;}
+    const bool line_absent=!c.m_mshrs.probe(line);
+    if(o)o->line_probe_check=line_absent;
+    if(!line_absent)return false;
+    const bool line_room=c.m_mshrs.num_entries_used()<128;
+    if(o)o->line_slots_check=line_room;
+    return line_room;
   }
   bool detachable(new_addr_type addr,unsigned &index) const {
     if(!c.m_config.m_ro_tag_detach)return false;
@@ -277,7 +288,7 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     p.needs_new_mshr=!existing && !c.m_config.m_ro_line_mshr_bypass;
     p.needs_mshr_merge=existing && !c.m_config.m_ro_line_mshr_bypass;
     p.mshr_hit=existing && !c.m_config.m_ro_line_mshr_bypass;
-    p.mshr_entry_available=p.mshr_merge_available=capacity(m,existing);
+    p.mshr_entry_available=p.mshr_merge_available=capacity(m,existing,o);
     // Shared descriptor/per-address bounds still block an M-mode request,
     // without misreporting that it needs a traditional line-MSHR.
     if(!capacity(m,existing)) p.probe_status=RESERVATION_FAIL;
@@ -299,12 +310,13 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
       events.push_back(cache_event(READ_REQUEST_SENT));
     }
   }
-  bool merge_existing(mem_fetch *m,unsigned time,std::list<cache_event>&events,cache_request_status &r) {
+  bool merge_existing(mem_fetch *m,unsigned time,std::list<cache_event>&events,cache_request_status &r,ep_l2_detach_diag::field *observed_denial=nullptr) {
     handle h;if(!candidate(m)||!target(m,h))return false;
     unsigned mask=m->get_access_sector_mask().to_ulong(),missing=needed(m,h);
     r=RESERVATION_FAIL;
-    if(!capacity(m,true)||!c.miss_queue_has_slots(__builtin_popcount(missing)))return true;
-    if(tx->merge(h,m,mask,1,true,ep_l2_ro::GLOBAL_DEMAND_READ)!=ep_l2_ro::ACCEPTED)return true;
+    if(!capacity(m,true)){if(observed_denial)*observed_denial=ep_l2_detach_diag::denied_capacity;return true;}
+    if(!c.miss_queue_has_slots(__builtin_popcount(missing))){if(observed_denial)*observed_denial=ep_l2_detach_diag::denied_missq;return true;}
+    if(tx->merge(h,m,mask,1,true,ep_l2_ro::GLOBAL_DEMAND_READ)!=ep_l2_ro::ACCEPTED){if(observed_denial)*observed_denial=ep_l2_detach_diag::denied_other;return true;}
     if(tx->attached(h)) {
       unsigned i=~0U;bool wb=false;evicted_block_info ev;
       c.m_tag_array->access(c.m_config.block_addr(m->get_addr()),time,i,wb,ev,m);assert(!wb);

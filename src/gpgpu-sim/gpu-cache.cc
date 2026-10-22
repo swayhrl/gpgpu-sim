@@ -2977,8 +2977,10 @@ void l2_cache::detach_diag_kernel(bool begin,unsigned long long uid){if(auto*d=e
 void l2_cache::detach_diag_snapshot(mem_fetch*m,ep_l2_detach_diag::preview&o) const {
   if(!ep_l2_detach_diag::get(this))return;
   o.runtime=bool(m_ro);o.T=m_config.m_ro_tag_detach;o.candidate=m_ro&&m_ro->candidate(m);
-  unsigned index=~0U;const bool ro_new=m_ro&&m_ro->new_request(m);
-  o.raw=m_tag_array->probe(m_config.block_addr(m->get_addr()),index,m,ro_new?false:m->is_write(),true);
+  unsigned index=~0U;
+  // Status-only observer probe: never update held-request identity telemetry.
+  o.raw=m_tag_array->probe(m_config.block_addr(m->get_addr()),index,
+      m->get_access_sector_mask(),m->is_write(),true,nullptr);
   o.set=m_config.set_index(m->get_addr());
   if(o.raw!=RESERVATION_FAIL||!o.T)return;
   const unsigned base=o.set*m_config.get_assoc();
@@ -3002,9 +3004,22 @@ void l2_cache::detach_diag_frontend(mem_fetch*m,unsigned long long cycle,const e
  if(o.early==3){d->add(preview_early_query);d->add(mask_query);primary=primary_query;}
  if(o.early==4||p.ep_l2_wad_full||p.ep_l2_wad_same_address_hazard){d->add(mask_wad);if(!primary)primary=primary_wad;}
  if(o.early==5)d->add(preview_early_tvd);
- if((p.needs_new_mshr||p.needs_mshr_merge)&&m_mshrs.descriptor_count_used()>=512){d->add(mask_descriptor);if(!primary)primary=primary_descriptor;}
- if((p.needs_new_mshr||p.needs_mshr_merge)&&m_mshrs.targets_on_line(m_config.block_addr(m->get_addr()))>=32){d->add(mask_address);if(!primary)primary=primary_address;}
- if(!m_config.m_ro_line_mshr_bypass&&p.needs_new_mshr&&m_mshrs.num_entries_used()>=128){d->add(mask_line);if(!primary)primary=primary_line;}
+ if(o.runtime&&o.candidate){
+   d->add(ro_capacity_population);d->add(o.capacity_consulted?ro_capacity_consulted:ro_capacity_not_consulted);
+   const int outcomes[]={o.descriptor_check,o.address_check,o.line_probe_check,o.line_slots_check};
+   for(unsigned i=0;i<4;++i){field first=field(ro_descriptor_checked+4*i);if(outcomes[i]<0)d->add(field(first+3));else{d->add(first);d->add(field(first+(outcomes[i]?1:2)));}}
+   if(o.line_na)d->add(ro_line_na_M_or_existing);
+ }
+ // Actual RO predicate captures are distinct from full-state native snapshots.
+ if(o.capacity_consulted){
+   if(o.descriptor_check==0){d->add(mask_descriptor);if(!primary)primary=primary_descriptor;}
+   if(o.address_check==0){d->add(mask_address);if(!primary)primary=primary_address;}
+   if(o.line_probe_check==0||o.line_slots_check==0){d->add(mask_line);if(!primary)primary=primary_line;}
+ }else{
+   if((p.needs_new_mshr||p.needs_mshr_merge)&&m_mshrs.descriptor_count_used()>=512){d->add(mask_descriptor);if(!primary)primary=primary_descriptor;}
+   if((p.needs_new_mshr||p.needs_mshr_merge)&&m_mshrs.targets_on_line(m_config.block_addr(m->get_addr()))>=32){d->add(mask_address);if(!primary)primary=primary_address;}
+   if(p.needs_new_mshr&&m_mshrs.num_entries_used()>=128){d->add(mask_line);if(!primary)primary=primary_line;}
+ }
  if(!missq&&p.new_missq_entries){d->add(mask_missq);if(!primary)primary=primary_missq;}
  if(p.needs_data_port&&!data_port_free()){d->add(mask_data);if(!primary)primary=primary_data;}
  if(p.needs_immediate_response_slot&&!response){d->add(mask_response);if(!primary)primary=primary_response;}
@@ -3016,6 +3031,15 @@ void l2_cache::detach_diag_frontend(mem_fetch*m,unsigned long long cycle,const e
  if(!o.production_reached)d->add(pressure_prod_probe_not_reached);
  else {d->add(pressure_prod_probe_reached);if(o.existing&&o.intermediate==HIT_RESERVED)d->add(pressure_rewrite_hit_reserved);else if(!o.consulted)d->add(pressure_relief_not_consulted);else if(o.intermediate==MISS)d->add(pressure_rewrite_miss);else if(o.intermediate==RESERVATION_FAIL)d->add(pressure_kept_fail);else d->add(pressure_intermediate_other);}
  d->add(admit?pressure_frontend_admitted:pressure_frontend_denied);
+ if(o.T&&o.eligible){
+   d->add(admit?eligible_frontend_admitted:eligible_frontend_denied);
+   d->add(o.capacity_consulted?eligible_capacity_consulted:eligible_capacity_not_consulted);
+   if(!o.production_reached)d->add(eligible_prod_probe_not_reached);
+   else{d->add(eligible_prod_probe_reached);if(o.existing&&o.intermediate==HIT_RESERVED)d->add(eligible_rewrite_hit_reserved);else if(!o.consulted)d->add(eligible_relief_not_consulted);else if(o.intermediate==MISS)d->add(eligible_rewrite_miss);else if(o.intermediate==RESERVATION_FAIL)d->add(eligible_kept_fail);else d->add(eligible_intermediate_other);}
+   if(o.descriptor_check==0)d->add(eligible_descriptor_fail);if(o.address_check==0)d->add(eligible_address_fail);if(o.line_probe_check==0)d->add(eligible_line_probe_fail);if(o.line_slots_check==0)d->add(eligible_line_slots_fail);
+   if(o.early>=1&&o.early<=5)d->add(field(eligible_early_owner+o.early-1));
+ }
+
  if(o.production_reached&&o.consulted&&o.intermediate==MISS)d->add(admit?rewritten_final_admitted:rewritten_final_denied);
  state.sample_pressure(*d,o,cycle,m->get_request_uid());
 }

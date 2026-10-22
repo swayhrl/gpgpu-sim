@@ -310,12 +310,13 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   if(m_ro) {
     if(m_ro->native_owner_conflict(mf)){if(diagnostic.d)diagnostic.d->add(commit_native_owner);return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_owner));}
     cache_request_status merged;
-    if(m_ro->merge_existing(mf,time,events,merged)){
+    ep_l2_detach_diag::field observed_merge_denial=ep_l2_detach_diag::denied_other;
+    if(m_ro->merge_existing(mf,time,events,merged,diagnostic.d?&observed_merge_denial:nullptr)){
       if(merged!=RESERVATION_FAIL){++m_ft_stats.accepted;
         m_stats.inc_stats(mf->get_access_type(),MSHR_HIT,mf->get_streamID());
         m_stats.inc_stats_pw(mf->get_access_type(),MSHR_HIT,mf->get_streamID());
       }
-      if(diagnostic.d)diagnostic.d->add(commit_merge);return cache_request_status(diagnostic.finish(merged,merged!=RESERVATION_FAIL,denied_capacity));
+      if(diagnostic.d)diagnostic.d->add(commit_merge);return cache_request_status(diagnostic.finish(merged,merged!=RESERVATION_FAIL,observed_merge_denial));
     }
   }
   const bool ro_new=m_ro && m_ro->new_request(mf);
