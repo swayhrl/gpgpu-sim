@@ -1,3 +1,4 @@
+#include "ep-l2-detach-diag.h"
 // Copyright (c) 2009-2021, Tor M. Aamodt, Vijay Kandiah, Nikos Hardavellas,
 // Mahmoud Khairy, Junrui Pan, Timothy G. Rogers
 // The University of British Columbia, Northwestern University, Purdue
@@ -979,6 +980,7 @@ memory_sub_partition::memory_sub_partition(unsigned sub_partition_id,
                              m_L2interface, m_mf_allocator,
                              IN_PARTITION_L2_MISS_QUEUE, gpu, L2_GPU_CACHE);
 
+  if(!m_config->m_L2_config.disabled())m_L2cache->detach_diag_bind_slice(m_id);
   unsigned int icnt_L2;
   unsigned int L2_dram;
   unsigned int dram_L2;
@@ -1314,6 +1316,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
     const bool eligible=!m_config->m_L2_texure_only || mf->istexture();
     const auto result=eligible?m_L2cache->tvd_frontend(mf,now,!m_L2_icnt_queue->full()):l2_cache::TVD_NORMAL;
     tvd_frontend_handled=result!=l2_cache::TVD_NORMAL;
+    if(tvd_frontend_handled)m_L2cache->detach_diag_skip(mf,now,1);
     if (result==l2_cache::TVD_RESPONSE) {
       mf->set_reply(); mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE,now);
       ft_record_admission(mf); ep_l2_m0a_record_response_enqueue(); ft_record_response(mf);
@@ -1321,6 +1324,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
     }
   }
 
+  if(!m_config->m_L2_config.disabled() && !tvd_frontend_handled && m_icnt_L2_queue->empty())
+    m_L2cache->detach_diag_skip(nullptr,m_gpu->gpu_sim_cycle+m_gpu->gpu_tot_sim_cycle,0);
   // New L2 texture accesses and/or non-texture accesses.  A full L2-to-DRAM
   // FIFO is not a frontend prerequisite: hits, MSHR merges, and locally
   // absorbed writes must only wait for resources they actually consume.
@@ -1334,7 +1339,9 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       if (!ep_l2_ideal_serve_read(
               mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle)) {
       l2_access_plan plan;
-      m_L2cache->preview_access(mf->get_addr(), mf, plan);
+      ep_l2_detach_diag::preview diagnostic_preview;
+      m_L2cache->detach_diag_snapshot(mf,diagnostic_preview);
+      m_L2cache->preview_access(mf->get_addr(), mf, plan,&diagnostic_preview);
       unsigned long long ms_known = 0;
       const unsigned long long ms_blockers = m_L2cache->ms_frontend_blockers(
           mf, plan, m_L2_icnt_queue->full(), ms_known);
@@ -1446,6 +1453,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         admit = !m_L2_dram_queue->full() && !m_L2_icnt_queue->full() &&
                 m_L2cache->data_port_free();
       }
+      m_L2cache->detach_diag_frontend(mf,m_gpu->gpu_sim_cycle+m_gpu->gpu_tot_sim_cycle,diagnostic_preview,plan,admit,
+          m_L2cache->miss_queue_has_slots(plan.new_missq_entries),!m_L2_icnt_queue->full());
       // An exact preview that is not admissible is a real controller stall,
       // even though access() is intentionally not called.  Record it here so
       // blocker accounting describes the production admission decision rather
@@ -1674,7 +1683,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
           // L2 cache lock-up: will try again next cycle.
         }
       }
-      }
+      } else {m_L2cache->detach_diag_skip(mf,m_gpu->gpu_sim_cycle+m_gpu->gpu_tot_sim_cycle,2);}
     } else if (!m_L2_dram_queue->full()) {
       // L2 is disabled or non-texture access to texture-only L2. This route
       // actually pushes the lower FIFO; its head must survive a full queue.
@@ -2242,6 +2251,7 @@ memory_sub_partition::ep_l2_b0_bank_snapshot() const {
 }
 
 void memory_sub_partition::begin_ep_l2_b0_kernel(unsigned long long uid) {
+  if(!m_config->m_L2_config.disabled())m_L2cache->detach_diag_kernel(true,uid);
   const bool overlap = !m_ep_l2_b0_kernel_start.empty();
   if (overlap)
     for (std::map<unsigned long long, bool>::iterator it =
@@ -2259,6 +2269,7 @@ void memory_sub_partition::begin_ep_l2_b0_kernel(unsigned long long uid) {
 void memory_sub_partition::end_ep_l2_b0_kernel(FILE *fp,
                                                 unsigned long long uid) {
   print_ep_l2_b0_snapshot(fp, uid);
+  if(!m_config->m_L2_config.disabled())m_L2cache->detach_diag_kernel(false,uid);
   m_ep_l2_b0_kernel_start.erase(uid);
   m_ep_l2_b0_kernel_bank_start.erase(uid);
   m_ep_l2_b0_kernel_start_cycle.erase(uid);

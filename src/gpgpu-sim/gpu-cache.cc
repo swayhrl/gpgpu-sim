@@ -1,3 +1,5 @@
+#include "ep-l2-detach-diag.h"
+ep_l2_detach_diag::registry ep_l2_detach_diag::state;
 // Copyright (c) 2009-2021, Tor M. Aamodt, Tayler Hetherington,
 // Vijay Kandiah, Nikos Hardavellas, Mahmoud Khairy, Junrui Pan,
 // Timothy G. Rogers
@@ -2719,8 +2721,11 @@ void l2_cache::fill(mem_fetch *mf, unsigned time) {
 
 void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
                               l2_access_plan &plan) const {
+  preview_access(addr,mf,plan,nullptr);
+}
+void l2_cache::preview_access(new_addr_type addr,mem_fetch *mf,l2_access_plan &plan,ep_l2_detach_diag::preview *o) const {
   plan = l2_access_plan();
-  if(m_ro && m_ro->preview(mf,plan))return;
+  if(m_ro && m_ro->preview(mf,plan,o))return;
   if (!exact_l2_admission()) return;
 
   plan.exact = true;
@@ -2729,19 +2734,20 @@ void l2_cache::preview_access(new_addr_type addr, mem_fetch *mf,
   plan.l1_writeback_absorbed = mf->get_access_type() == L1_WRBK_ACC;
 
   new_addr_type block_addr = m_config.block_addr(addr);
-  if (tvd_write_candidate(mf)) { plan.ep_l2_tvd_candidate=true; plan.exact=false; return; }
+  if (tvd_write_candidate(mf)) { plan.ep_l2_tvd_candidate=true; plan.exact=false; if(o)o->early=5;return; }
   if (ep_l2_wad_enabled() && plan.is_read &&
       (m_tvd ? tvd_cached_wad_contains(mf,block_addr) : ep_l2_wad_contains(block_addr))) {
     // A WAD owns this old line until real writeback completion.  Treat the
     // frontend request as non-admissible before it can reach tag mutation.
     plan.probe_status = RESERVATION_FAIL;
     plan.ep_l2_wad_same_address_hazard = true;
-    return;
+    if(o)o->early=4;return;
   }
   unsigned cache_index = (unsigned)-1;
   plan.probe_status =
       m_tag_array->probe(block_addr, cache_index, mf, mf->is_write(), true);
   plan.cache_index = cache_index;
+  if(o){o->production_reached=true;o->production_raw=plan.probe_status;o->intermediate=plan.probe_status;}
   if (plan.probe_status == RESERVATION_FAIL) {
     plan.ep_l2_tag_set_all_reserved = true;
     return;
@@ -2965,3 +2971,54 @@ void tex_cache::display_state(FILE *fp) const {
 
 #include "ep-l2-ft-cache.inc"
 #include "ep-l2-tvd-cache.inc"
+
+void l2_cache::detach_diag_bind_slice(unsigned slice){if(auto*d=ep_l2_detach_diag::get(this))d->slice=slice;}
+void l2_cache::detach_diag_kernel(bool begin,unsigned long long uid){if(auto*d=ep_l2_detach_diag::get(this)){if(begin)d->begin(uid);else d->end(uid);}}
+void l2_cache::detach_diag_snapshot(mem_fetch*m,ep_l2_detach_diag::preview&o) const {
+  if(!ep_l2_detach_diag::get(this))return;
+  o.runtime=bool(m_ro);o.T=m_config.m_ro_tag_detach;o.candidate=m_ro&&m_ro->candidate(m);
+  unsigned index=~0U;const bool ro_new=m_ro&&m_ro->new_request(m);
+  o.raw=m_tag_array->probe(m_config.block_addr(m->get_addr()),index,m,ro_new?false:m->is_write(),true);
+  o.set=m_config.set_index(m->get_addr());
+  if(o.raw!=RESERVATION_FAIL||!o.T)return;
+  const unsigned base=o.set*m_config.get_assoc();
+  for(unsigned i=base;i<base+m_config.get_assoc();++i){++o.ways;auto h=tag_payload_handle(i);
+    if(!m_ro||!m_ro->tx->live(h)){++o.reasons[0];continue;}
+    const auto p=m_ro->tx->diagnostic_state(h);unsigned mask=(p.attached?1:0)|(p.reuse?2:0)|((p.required&~p.ready)?4:0);++o.masks[mask];
+    if(!p.attached)++o.reasons[1];else if(p.reuse)++o.reasons[2];else if(!(p.required&~p.ready))++o.reasons[3];else {++o.reasons[4];++o.eligible;if(o.first==~0U){o.first=i;o.victim=p;o.victim_payload=h.payload_id;o.victim_generation=h.generation;}}
+  }
+}
+void l2_cache::detach_diag_skip(mem_fetch*m,unsigned long long cycle,unsigned reason){using namespace ep_l2_detach_diag;if(auto*d=get(this)){
+ if(!m){d->add(head_absent_cycles);return;}if(!d->once(cycle,m->get_request_uid()))return;d->add(observed_heads);d->add(probe_skipped);d->add(reason==1?skip_tvd:reason==2?skip_ideal:reason==3?skip_disabled:skip_other);
+}}
+void l2_cache::detach_diag_frontend(mem_fetch*m,unsigned long long cycle,const ep_l2_detach_diag::preview&o,const l2_access_plan&p,bool admit,bool missq,bool response){using namespace ep_l2_detach_diag;auto*d=get(this);if(!d||!d->once(cycle,m->get_request_uid()))return;
+ if(o.production_reached&&o.production_raw!=o.raw)d->add(closure_errors);
+ d->add(observed_heads);d->add(o.raw>=0&&o.raw<=WRITE_ALLOCATED?field(raw_hit+o.raw):raw_unknown);
+ d->add(!o.runtime?requester_ro_runtime_off:o.candidate?requester_ro_candidate:requester_nonro);
+ if(o.candidate&&o.raw==HIT)d->add(certified_resident_hits);else if(o.candidate)d->add(candidate_deferred_or_native);
+ unsigned primary=0;
+ if(o.early==1){d->add(preview_early_owner);d->add(mask_owner);primary=primary_owner;}
+ if(o.early==2){d->add(preview_early_directory);d->add(mask_directory);primary=primary_directory;}
+ if(o.early==3){d->add(preview_early_query);d->add(mask_query);primary=primary_query;}
+ if(o.early==4||p.ep_l2_wad_full||p.ep_l2_wad_same_address_hazard){d->add(mask_wad);if(!primary)primary=primary_wad;}
+ if(o.early==5)d->add(preview_early_tvd);
+ if((p.needs_new_mshr||p.needs_mshr_merge)&&m_mshrs.descriptor_count_used()>=512){d->add(mask_descriptor);if(!primary)primary=primary_descriptor;}
+ if((p.needs_new_mshr||p.needs_mshr_merge)&&m_mshrs.targets_on_line(m_config.block_addr(m->get_addr()))>=32){d->add(mask_address);if(!primary)primary=primary_address;}
+ if(!m_config.m_ro_line_mshr_bypass&&p.needs_new_mshr&&m_mshrs.num_entries_used()>=128){d->add(mask_line);if(!primary)primary=primary_line;}
+ if(!missq&&p.new_missq_entries){d->add(mask_missq);if(!primary)primary=primary_missq;}
+ if(p.needs_data_port&&!data_port_free()){d->add(mask_data);if(!primary)primary=primary_data;}
+ if(p.needs_immediate_response_slot&&!response){d->add(mask_response);if(!primary)primary=primary_response;}
+ d->add(admit?primary_none:primary?field(primary):primary_unknown);
+ if(o.raw!=RESERVATION_FAIL)return;
+ d->add(o.T?pressure_T_enabled:pressure_T_disabled);
+ if(o.T){unsigned live=o.ways-o.reasons[0];d->add(!live?pressure_no_live_ro:o.eligible?pressure_eligible:pressure_live_ro_no_eligible);
+ d->add(ways_examined,o.ways);for(unsigned i=0;i<5;++i)d->add(field(way_no_live_ro+i),o.reasons[i]);d->add(field(eligible_hist_0+std::min(o.eligible,16U)));for(unsigned i=0;i<8;++i)d->add(field(predicate_hist_0+i),o.masks[i]);}
+ if(!o.production_reached)d->add(pressure_prod_probe_not_reached);
+ else {d->add(pressure_prod_probe_reached);if(o.existing&&o.intermediate==HIT_RESERVED)d->add(pressure_rewrite_hit_reserved);else if(!o.consulted)d->add(pressure_relief_not_consulted);else if(o.intermediate==MISS)d->add(pressure_rewrite_miss);else if(o.intermediate==RESERVATION_FAIL)d->add(pressure_kept_fail);else d->add(pressure_intermediate_other);}
+ d->add(admit?pressure_frontend_admitted:pressure_frontend_denied);
+ if(o.production_reached&&o.consulted&&o.intermediate==MISS)d->add(admit?rewritten_final_admitted:rewritten_final_denied);
+ state.sample_pressure(*d,o,cycle,m->get_request_uid());
+}
+
+ep_l2_detach_diag::predicate l2_cache::detach_diag_predicate_for_test(ep_l2::PayloadHandle h) const {return m_ro->tx->diagnostic_state(h);}
+bool l2_cache::detach_diag_can_detach_for_test(ep_l2::PayloadHandle h) const {return m_ro->tx->can_detach(h);}

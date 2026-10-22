@@ -298,6 +298,8 @@ void l2_cache::ft_rollback() {
 
 enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     unsigned time, std::list<cache_event> &events) {
+  ep_l2_detach_diag::commit_scope diagnostic(this,mf->get_request_uid(),ft_physical_cycle());
+  using namespace ep_l2_detach_diag;
   // memcpy offset orders native Tag timestamps; it is not elapsed hardware
   // time and must never reset the payload bank arbiter or WB/WAD lifetimes.
   ft_assert_quota();
@@ -306,29 +308,30 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   m_ep_l2_last_payload_request_result = ep_l2_payload_store::GRANTED;
   const new_addr_type owner = m_config.block_addr(addr);
   if(m_ro) {
-    if(m_ro->native_owner_conflict(mf))return RESERVATION_FAIL;
+    if(m_ro->native_owner_conflict(mf)){if(diagnostic.d)diagnostic.d->add(commit_native_owner);return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_owner));}
     cache_request_status merged;
     if(m_ro->merge_existing(mf,time,events,merged)){
       if(merged!=RESERVATION_FAIL){++m_ft_stats.accepted;
         m_stats.inc_stats(mf->get_access_type(),MSHR_HIT,mf->get_streamID());
         m_stats.inc_stats_pw(mf->get_access_type(),MSHR_HIT,mf->get_streamID());
       }
-      return merged;
+      if(diagnostic.d)diagnostic.d->add(commit_merge);return cache_request_status(diagnostic.finish(merged,merged!=RESERVATION_FAIL,denied_capacity));
     }
   }
   const bool ro_new=m_ro && m_ro->new_request(mf);
-  if(ro_new && !m_ro->directory_ready(mf))return RESERVATION_FAIL;
-  if (tvd_write_candidate(mf) && !tvd_promote(mf,time,events)) return RESERVATION_FAIL;
+  if(ro_new && !m_ro->directory_ready(mf)){if(diagnostic.d)diagnostic.d->add(commit_directory);return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_directory));}
+  if (tvd_write_candidate(mf) && !tvd_promote(mf,time,events)) {if(diagnostic.d)diagnostic.d->add(commit_promotion);return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_promotion));}
   unsigned index = (unsigned)-1;
   cache_request_status probe = m_tag_array->probe(owner, index, mf, mf->is_write(), true);
-  if(probe==RESERVATION_FAIL && m_ro){m_ro->relieve(addr);probe=m_tag_array->probe(owner,index,mf,mf->is_write(),true);}
-  if (probe == RESERVATION_FAIL) return RESERVATION_FAIL;
+  if(diagnostic.d){diagnostic.d->add(commit_raw_probe_reached);if(probe==RESERVATION_FAIL)diagnostic.d->add(raw_tag_fail_commit);}
+  if(probe==RESERVATION_FAIL && m_ro){m_ro->relieve(addr);probe=m_tag_array->probe(owner,index,mf,mf->is_write(),true);if(diagnostic.d)diagnostic.d->add(probe>=0&&probe<=WRITE_ALLOCATED?field(post_relief_hit+probe):post_relief_unknown);}
+  if (probe == RESERVATION_FAIL) return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_tag));
   if (m_tvd && probe == MISS &&
-      !(m_tvd_lookup == mf && m_tvd_lookup_done)) return RESERVATION_FAIL;
-  if(ro_new && (!m_ro->capacity(mf,false) || !miss_queue_has_slots(mf->get_access_sector_mask().count()+(probe==MISS && m_tag_array->block_is_modified(index)))))return RESERVATION_FAIL;
-  if (m_ft_pending.request && m_ft_pending.request != mf) return RESERVATION_FAIL;
+      !(m_tvd_lookup == mf && m_tvd_lookup_done)) return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_directory));
+  if(ro_new && (!m_ro->capacity(mf,false) || !miss_queue_has_slots(mf->get_access_sector_mask().count()+(probe==MISS && m_tag_array->block_is_modified(index)))))return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_directory));
+  if (m_ft_pending.request && m_ft_pending.request != mf) return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_directory));
   if (m_tvd ? tvd_cached_wad_contains(mf,owner) : ep_l2_wad_contains(owner)) {
-    ++m_ep_l2_wad_same_address_wait_count; return RESERVATION_FAIL;
+    ++m_ep_l2_wad_same_address_wait_count; return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_wad));
   }
 
   if (probe == MISS && !m_ft_pending.request) {
@@ -348,7 +351,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     const bool dirty = m_tag_array->block_is_modified(index);
     if (live && (m_ep_l2_payload.inspect(victim).pins ||
                  m_ep_l2_payload.inspect(victim).pending_sector_mask.any())) {
-      ++m_ft_stats.pin_block; return RESERVATION_FAIL;
+      ++m_ft_stats.pin_block; return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_pin));
     }
     assert(!dirty || live);
     // Compute the actual target policy's issue needs before acquiring anything.
@@ -357,24 +360,24 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     unsigned slots = dirty ? 1 : 0;
     if(ro_new) {slots+=mf->get_access_sector_mask().count();}
     else if (read) {
-      if (m_mshrs.full(key)) return RESERVATION_FAIL;
+      if (m_mshrs.full(key)) return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_mshr));
       if (m_mshrs.needs_lower_read(key, mf->get_access_sector_mask())) ++slots;
     } else if (m_config.m_write_alloc_policy == WRITE_ALLOCATE) {
-      if (m_mshrs.full(key)) return RESERVATION_FAIL;
+      if (m_mshrs.full(key)) return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_mshr));
       slots += 2;
     } else if (m_config.m_write_alloc_policy == FETCH_ON_WRITE &&
                mf->get_access_byte_mask().count() != m_config.get_atom_sz()) {
-      if (m_mshrs.full(key)) return RESERVATION_FAIL;
+      if (m_mshrs.full(key)) return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_mshr));
       ++slots;
     }
-    if (!miss_queue_has_slots(slots)) { ++m_ft_stats.issue_block; return RESERVATION_FAIL; }
+    if (!miss_queue_has_slots(slots)) { ++m_ft_stats.issue_block; return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_missq)); }
     if (dirty && (m_tvd ? m_tvd->preview_install(m_tag_array->get_block(index)->m_block_addr,true,true).status != tvd_directory::OK : m_ep_l2_wad_entries_live.size() >= m_config.m_ep_l2_wad_entries)) {
-      ++m_ep_l2_wad_full_block_count; return RESERVATION_FAIL;
+      ++m_ep_l2_wad_full_block_count; return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_wad_full));
     }
     ep_l2::PayloadHandle staging, landing;
     if (dirty && m_config.m_ep_l2_ft_mode == 1) {
       staging = m_ep_l2_payload.preview_free(ep_l2_payload_store::WB);
-      if (!staging.valid()) { ++m_ft_stats.wbuf_full; return RESERVATION_FAIL; }
+      if (!staging.valid()) { ++m_ft_stats.wbuf_full; return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_wb)); }
     }
     bool retain_clean = false;
     if (m_tvd && m_config.m_ep_l2_tvd_clean && live && !dirty &&
@@ -397,14 +400,14 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
       landing = m_ep_l2_payload.preview_free(ep_l2_payload_store::RESIDENT, index % 4);
       if (!landing.valid() && m_tvd && tvd_reclaim_one(index%4,physical_cycle))
         landing=m_ep_l2_payload.preview_free(ep_l2_payload_store::RESIDENT,index%4);
-      if (!landing.valid()) { ++m_ft_stats.pool_full; return RESERVATION_FAIL; }
+      if (!landing.valid()) { ++m_ft_stats.pool_full; return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_landing)); }
       if (dirty) staging = victim;
     }
     // All issue/WAD/staging/landing prechecks passed. Reserve quota before
     // exposing any cross-cycle transaction; retries keep this one token.
     if (dirty && m_config.m_ep_l2_wb_local_cap &&
         m_ft_quota.reserved + m_ft_quota.live >= m_config.m_ep_l2_wb_local_cap) {
-      ++m_ft_quota.refusals; return RESERVATION_FAIL;
+      ++m_ft_quota.refusals; return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_quota));
     }
     // The only producer is the serialized frontend head. While this token is
     // live no other frontend request can steal its prechecked issue slots;
@@ -454,7 +457,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
         m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(p.victim,
             false, physical_cycle, (unsigned long long)-1, ep_l2_payload_store::WB_READOUT,ep_l2_payload_store::COPY_READ,mf->get_request_uid());
         if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
-          ++m_ft_stats.bank_block; return RESERVATION_FAIL;
+          ++m_ft_stats.bank_block; return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_bank));
         }
         p.born = physical_cycle; // actual source readout starts data-staging lifetime
         p.copy_versions = m_ep_l2_payload.inspect(p.victim).versions;
@@ -462,13 +465,13 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
         // COPY_FREE explicitly removes copy service and its staging delay.
         // DATA_FREE removes port contention but retains this fixed one-cycle
         // copy-latch transfer, even when source and target banks differ.
-        if (!m_config.m_ep_l2_diag_copy_free) return RESERVATION_FAIL;
+        if (!m_config.m_ep_l2_diag_copy_free) return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_copy));
       }
       if (p.phase == 1) {
         m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(p.staging,
             true, physical_cycle, (unsigned long long)-1, ep_l2_payload_store::RESIDENT_WRITE,ep_l2_payload_store::COPY_WRITE,mf->get_request_uid());
         if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
-          ++m_ft_stats.bank_block; return RESERVATION_FAIL;
+          ++m_ft_stats.bank_block; return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_bank));
         }
         m_ep_l2_payload.inspect_mutable(p.staging).versions = p.copy_versions;
         m_ep_l2_payload.transfer(p.staging, ep_l2_payload_store::WB, ep_l2_payload_store::WB_STAGED);
@@ -483,7 +486,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
           ep_l2_payload_store::RESIDENT, p.landing_id, true, physical_cycle,
           (unsigned long long)-1, ep_l2_payload_store::RESIDENT_WRITE,ep_l2_payload_store::FRONTEND,mf->get_request_uid());
       if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
-        ++m_ft_stats.bank_block; return RESERVATION_FAIL;
+        ++m_ft_stats.bank_block; return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_bank));
       }
     }
     if (p.dirty && m_config.m_ep_l2_ft_mode == 2) {
@@ -504,7 +507,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
     const ep_l2::PayloadHandle h = tag_payload_handle(index);
     assert(m_ep_l2_payload.handle_owner_matches(h, owner));
     if ((mf->get_is_write() || mf->isatomic()) && m_ep_l2_payload.inspect(h).pins) {
-      ++m_ft_stats.pin_block; return RESERVATION_FAIL;
+      ++m_ft_stats.pin_block; return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_pin));
     }
     if (probe == HIT || mf->get_is_write()) {
       m_ep_l2_last_payload_request_result = m_ep_l2_payload.request(h,
@@ -512,7 +515,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
           mf->get_is_write() || mf->isatomic() ? ep_l2_payload_store::RESIDENT_WRITE : ep_l2_payload_store::RESIDENT_HIT_READ,
           ep_l2_payload_store::FRONTEND,mf->get_request_uid());
       if (m_ep_l2_last_payload_request_result != ep_l2_payload_store::GRANTED) {
-        ++m_ft_stats.bank_block; return RESERVATION_FAIL;
+        ++m_ft_stats.bank_block; return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_bank));
       }
     }
   }
@@ -521,7 +524,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   const cache_request_status result = ro_new ? m_ro->accept_new(mf,index,probe,time,events) : data_cache::access(addr, mf, time, events);
   if (result == RESERVATION_FAIL) {
     if (replacement) ft_rollback();
-    return result;
+    return cache_request_status(diagnostic.finish(result,false,denied_baseline));
   }
   if (replacement && m_ft_pending.dirty) assert(m_ft_pending.bound);
   if (replacement && m_ft_pending.retain_clean) {
@@ -545,7 +548,7 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   ++m_ft_stats.accepted;
   m_tag_array->l2_char_tracking_refresh_line(index);
   assert(m_ep_l2_payload.ownership_consistent());
-  return result;
+  return cache_request_status(diagnostic.finish(result,true,denied_other));
 }
 
 void l2_cache::send_write_request(mem_fetch *mf, cache_event event, unsigned time,

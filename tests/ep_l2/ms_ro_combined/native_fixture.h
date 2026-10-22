@@ -25,6 +25,7 @@ struct combined_fixture : victim_fixture {
   void take_lower() {
     while(!sp->L2_dram_queue_empty()) {
       auto packet=sp->L2_dram_queue_top();sp->L2_dram_queue_pop();
+      diag_test_witness(1,gpu->gpu_sim_cycle,packet);
       if(packet->get_access_type()==L2_WRBK_ACC) {
         assert(packet->has_ft_wb_data());
         for(unsigned s=0;s<4;++s)if(packet->get_access_sector_mask().test(s))
@@ -36,11 +37,11 @@ struct combined_fixture : victim_fixture {
   void return_one(unsigned index) {
     assert(index<pending_reads.size() && !sp->dram_L2_queue_full());
     auto packet=pending_reads[index];pending_reads.erase(pending_reads.begin()+index);
-    packet->set_ft_wb_data(memory.at(packet->get_addr()&~127ull));packet->set_reply();sp->dram_L2_queue_push(packet);
+    packet->set_ft_wb_data(memory.at(packet->get_addr()&~127ull));diag_test_witness(2,gpu->gpu_sim_cycle,packet);packet->set_reply();sp->dram_L2_queue_push(packet);
   }
   void complete_one() {
     if(wb.empty())return;
-    auto packet=wb.front();wb.erase(wb.begin());sp->set_done(packet);delete packet;++completed_wb;
+    auto packet=wb.front();wb.erase(wb.begin());sp->set_done(packet);diag_test_witness(4,gpu->gpu_sim_cycle,packet);delete packet;++completed_wb;
   }
   void await_lower(unsigned count) {
     for(unsigned n=0;n<20000 && pending_reads.size()<count;++n)step();

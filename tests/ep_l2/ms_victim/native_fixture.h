@@ -4,6 +4,9 @@
 // versions through real lower/ReturnQ packets; actual cache responses are read
 // and checked independently. This fixture does NOT model DRAM timing or bytes.
 #include "../potential_fixture.h"
+#ifndef DIAG_TEST_WITNESS_ACTIVE
+inline void diag_test_witness(unsigned,unsigned long long,mem_fetch*){}
+#endif
 
 struct victim_fixture : fixture {
   unsigned long long lower_read_packets = 0, lower_read_bytes = 0;
@@ -40,6 +43,7 @@ struct victim_fixture : fixture {
   }
   void collect() {
     while(auto r=sp->pop()) {
+      diag_test_witness(3,gpu->gpu_sim_cycle,r);
       const unsigned uid=r->get_request_uid();
       assert(expected.count(uid) && replies.insert(uid).second);
       if(!r->get_is_write()) {

@@ -2858,6 +2858,7 @@ class ep_l2_payload_store {
 /// Models second level shared cache with global write-back
 /// and write-allocate policies
 class ep_l2_ro_runtime;
+namespace ep_l2_detach_diag { struct preview; struct predicate; }
 class l2_cache : public data_cache {
   friend class ep_l2_ro_runtime;
  public:
@@ -3027,6 +3028,14 @@ class l2_cache : public data_cache {
   bool ro_drained() const;
   bool ro_return(mem_fetch *,unsigned long long);
   void ro_print(FILE *,unsigned) const;
+  ep_l2_detach_diag::predicate detach_diag_predicate_for_test(ep_l2::PayloadHandle) const;
+  bool detach_diag_can_detach_for_test(ep_l2::PayloadHandle) const;
+  void detach_diag_bind_slice(unsigned);
+  void detach_diag_kernel(bool,unsigned long long);
+  void detach_diag_snapshot(mem_fetch *,ep_l2_detach_diag::preview &) const;
+  void detach_diag_frontend(mem_fetch *,unsigned long long,const ep_l2_detach_diag::preview &,const l2_access_plan &,bool,bool,bool);
+  void detach_diag_skip(mem_fetch *,unsigned long long,unsigned);
+  void preview_access(new_addr_type,mem_fetch *,l2_access_plan &,ep_l2_detach_diag::preview *) const;
   bool ft_enabled() const { return m_config.m_ep_l2_ft_mode != 0; }
   void commit_next_access();
   mem_fetch *peek_next_access() const;

@@ -9,6 +9,7 @@
 #include <vector>
 #include "gpu-cache.h"
 #include "ep-l2-ro-oracle.h"
+#include "ep-l2-detach-diag.h"
 
 // Mechanism-study C source candidate, restored from historical Lane3.
 // Current A integration/native qualification is pending. There is no allocator
@@ -86,6 +87,12 @@ class transactions {
       throw std::invalid_argument("RO requires shared D512 and exact1168 payload budget");
   }
 
+  ep_l2_detach_diag::ledger *diagnostic_observer=nullptr;
+  ep_l2_detach_diag::predicate diagnostic_state(identity h) const {
+    const auto &e=get(h);ep_l2_detach_diag::predicate p;
+    p.live=e.live;p.attached=e.attached;p.reuse=e.reuse_seen;
+    p.required=e.required;p.issued=e.issued;p.ready=e.ready;p.waiters=e.waiters.size();return p;
+  }
   // The binding layer must have verified every input and oracle artifact hash.
   // This is a closed-world experimental oracle, not an inferred hardware bit.
   void begin_epoch(uint64_t epoch, const std::string &verified_manifest_sha256) {
@@ -145,6 +152,7 @@ class transactions {
     e.waiters.push_back(waiter(d, mf, mask));
     if(!m_features.line_mshr_bypass)m_shared.bind_ro_line(line,h);
     ++stats.admits;
+    if(diagnostic_observer){diagnostic_observer->add(ep_l2_detach_diag::ro_admits);diagnostic_observer->joint(diagnostic_state(h));}
     if (m_features.line_mshr_bypass) ++stats.avoided_line_allocations;
     else ++stats.normal_line_allocations;
     observe_peaks();
@@ -186,7 +194,9 @@ class transactions {
     if (!m_shared.reserve_ro_descriptor(e.line, mf, sector_mask(mask), d))
       return DESCRIPTOR_OR_ADDRESS_FULL;
     e.waiters.push_back(waiter(d, mf, mask));
+    if(diagnostic_observer && !e.reuse_seen)diagnostic_observer->add(ep_l2_detach_diag::reuse_seen_first_transition);
     e.required |= mask; e.reuse_seen = true;
+    if(diagnostic_observer){diagnostic_observer->add(ep_l2_detach_diag::ro_merges);diagnostic_observer->joint(diagnostic_state(h));}
     ++stats.merges;
     observe_peaks();
     return ACCEPTED;
@@ -197,15 +207,19 @@ class transactions {
     return m_features.tag_detach && e.attached && !e.reuse_seen && (e.required&~e.ready);
   }
   bool detach(identity h) {
+    ep_l2_detach_diag::detach_scope diagnostic(diagnostic_observer);
     entry &e = get(h);
     // Conservative waiter-aware protection persists after a merged waiter
     // retires. No future reuse oracle is consumed by this policy.
     if (!m_features.tag_detach || !e.attached || e.reuse_seen ||
-        !(e.required & ~e.ready)) return false;
+        !(e.required & ~e.ready)) {
+      diagnostic.refused(!m_features.tag_detach?ep_l2_detach_diag::detach_false_T_disabled:!e.attached?ep_l2_detach_diag::detach_false_not_attached:e.reuse_seen?ep_l2_detach_diag::detach_false_reuse:ep_l2_detach_diag::detach_false_ready);return false;
+    }
     if (!m_port.tag_matches(e.tag, h, e.line))
       throw std::logic_error("tag reuse without detach handshake");
     m_port.tag_detach(e.tag, h); e.attached = false;
     ++stats.detached;
+    diagnostic.success();
     return true;
   }
 
@@ -240,6 +254,7 @@ class transactions {
       throw std::logic_error("stale attached fill tag generation");
     if (!m_port.fill_write(h, mask, cycle)) return false;
     e.ready |= mask;
+    if(diagnostic_observer){diagnostic_observer->add(ep_l2_detach_diag::ro_fill_packets);diagnostic_observer->joint(diagnostic_state(h));if(!e.attached){diagnostic_observer->add(ep_l2_detach_diag::detached_return_packets);diagnostic_observer->add(ep_l2_detach_diag::detached_return_sectors,__builtin_popcount(mask));}}
     if (!m_features.line_mshr_bypass)
       m_shared.ro_line_ready(e.line, sector_mask(mask));
     if (e.attached) {
@@ -279,8 +294,9 @@ class transactions {
     if (fifo_accepted && e.prepared_cycle != cycle)
       throw std::logic_error("response enqueue outside granted read cycle");
     if (!fifo_accepted) {
-      ++stats.response_backpressure; e.prepared = false; return;
+      ++stats.response_backpressure; if(diagnostic_observer)diagnostic_observer->add(ep_l2_detach_diag::response_backpressure); e.prepared = false; return;
     }
+    if(diagnostic_observer){diagnostic_observer->add(ep_l2_detach_diag::ro_responses);if(!e.attached)diagnostic_observer->add(ep_l2_detach_diag::detached_responses);}
     m_shared.release_ro_descriptor(e.waiters[e.prepared_index].descriptor);
     e.waiters.erase(e.waiters.begin() + e.prepared_index);
     e.prepared = e.response_chosen = false; ++stats.responses;
@@ -356,6 +372,7 @@ class transactions {
   void retire_if_done(entry &e) {
     if (!e.waiters.empty() || e.prepared || (e.required & ~e.ready) ||
         (e.issued & ~e.ready)) return;
+    if(diagnostic_observer){diagnostic_observer->add(ep_l2_detach_diag::ro_retired);if(!e.attached)diagnostic_observer->add(ep_l2_detach_diag::detached_retired);}
     m_port.unpin(e.h);
     if (!e.attached) m_port.release(e.h);
     if (!m_features.line_mshr_bypass) m_shared.release_ro_line(e.line);

@@ -69,6 +69,7 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     if(fallback && cert->range_count())throw std::invalid_argument("fallback cannot enable any RO line");
     tx.reset(new ep_l2_ro::transactions(c.m_mshrs,port,c.m_ep_l2_payload.physical_slots(),*cert,
       ep_l2_ro::switches(cfg.m_ro_tag_detach,cfg.m_ro_line_mshr_bypass)));
+    tx->diagnostic_observer=ep_l2_detach_diag::get(&c);
   }
   uint64_t physical_cycle() const {
     return c.ft_physical_cycle();
@@ -227,26 +228,38 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     return false;
   }
   void relieve(new_addr_type addr) {
-    unsigned i=~0U;if(detachable(addr,i))tx->detach(c.tag_payload_handle(i));
+    unsigned i=~0U;const bool found=detachable(addr,i);
+    if(auto*d=ep_l2_detach_diag::get(&c)){d->add(ep_l2_detach_diag::relieve_calls);d->add(!c.m_config.m_ro_tag_detach?ep_l2_detach_diag::relieve_T_disabled:found?ep_l2_detach_diag::relieve_eligible_selected:ep_l2_detach_diag::relieve_no_eligible);}
+    if(auto*d=ep_l2_detach_diag::get(&c)){
+      unsigned first=~0U;const unsigned base=c.m_config.set_index(addr)*c.m_config.get_assoc();
+      if(c.m_config.m_ro_tag_detach)for(unsigned t=base;t<base+c.m_config.get_assoc();++t){auto h=c.tag_payload_handle(t);if(!tx->live(h))continue;const auto p=tx->diagnostic_state(h);if(p.attached&&!p.reuse&&(p.required&~p.ready)){first=t;break;}}
+      if((found&&i!=first)||(!found&&first!=~0U))d->add(ep_l2_detach_diag::selected_identity_mismatch);
+    }
+    if(found)tx->detach(c.tag_payload_handle(i));
   }
-  bool preview(mem_fetch *m,l2_access_plan &p) const {
+  bool preview(mem_fetch *m,l2_access_plan &p,ep_l2_detach_diag::preview *o=nullptr) const {
     if(native_owner_conflict(m)) {
       p.exact=true;p.is_read=!m->get_is_write();p.is_write=m->get_is_write();
-      p.probe_status=RESERVATION_FAIL;return true;
+      p.probe_status=RESERVATION_FAIL;if(o)o->early=1;return true;
     }
     if(!new_request(m))return false;
     p.exact=true;p.is_read=true;
     // Read the existing paid frontend ticket; never issue a second/free TVD
     // address CAM from observational RO preview. TVD hits complete on its own
     // native frontend/ICNT path; RO owns only the resulting real cache miss.
-    if(!directory_ready(m)) {p.probe_status=RESERVATION_FAIL;p.ep_l2_ro_lookup_wait=true;return true;}
-    if (!query_admissible(m)) {p.probe_status=RESERVATION_FAIL;p.ep_l2_ro_lookup_wait=true;return true;}
+    if(!directory_ready(m)) {p.probe_status=RESERVATION_FAIL;p.ep_l2_ro_lookup_wait=true;if(o)o->early=2;return true;}
+    if (!query_admissible(m)) {p.probe_status=RESERVATION_FAIL;p.ep_l2_ro_lookup_wait=true;if(o)o->early=3;return true;}
     handle h;bool existing=target(m,h);
     unsigned i=~0U;
     p.probe_status=c.m_tag_array->probe(c.m_config.block_addr(m->get_addr()),i,m,false,true);
+    if(o){o->production_reached=true;o->production_raw=p.probe_status;o->existing=existing;o->intermediate=p.probe_status;}
     if(existing) {
       p.probe_status=HIT_RESERVED;
-    } else if(p.probe_status==RESERVATION_FAIL && detachable(m->get_addr(),i))p.probe_status=MISS;
+    } else if(p.probe_status==RESERVATION_FAIL) {
+      if(o)o->consulted=true;
+      if(detachable(m->get_addr(),i))p.probe_status=MISS;
+    }
+    if(o)o->intermediate=p.probe_status;
     p.cache_index=i;
     if(p.probe_status==RESERVATION_FAIL){p.ep_l2_tag_set_all_reserved=true;return true;}
     const unsigned mask=m->get_access_sector_mask().to_ulong();
@@ -345,10 +358,11 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
   }
 };
 void l2_cache::ro_init() {
+  ep_l2_detach_diag::state.add(this);
   m_ro=NULL;
   if(m_config.m_ro_tag_detach||m_config.m_ro_line_mshr_bypass)m_ro=new ep_l2_ro_runtime(*this);
 }
-l2_cache::~l2_cache(){delete m_ro;}
+l2_cache::~l2_cache(){ep_l2_detach_diag::state.erase(this);delete m_ro;}
 void l2_cache::ro_begin_epoch(){if(m_ro){
   if(!m_ro->command_bound||m_ro->ever_open||!ft_drained()||m_mshrs.descriptor_count_used()||!m_miss_queue.empty()||ep_l2_wad_occupancy())
     throw std::logic_error("RO epoch activation requires complete prior drain");
@@ -359,6 +373,7 @@ void l2_cache::ro_end_epoch(){if(m_ro){
   if(!m_ro->open||!ft_drained()||m_mshrs.descriptor_count_used()||!m_miss_queue.empty()||!m_ro->tx->end_epoch())
     throw std::logic_error("RO whole-commandlist end is not drained");
   m_ro->epoch_end_cycle=m_ro->physical_cycle();m_ro->open=false;
+  if(auto*d=ep_l2_detach_diag::get(this))d->closed=true;
 }}
 bool l2_cache::ro_drained() const {return !m_ro||m_ro->tx->drained();}
 bool l2_cache::access_ready() const {return (m_ro&&m_ro->has_response())||baseline_cache::access_ready();}
@@ -369,7 +384,11 @@ bool l2_cache::ro_return(mem_fetch *m,unsigned long long cycle) {
   return m_ro->port.accept_return(*m_ro->tx,ep_l2::PayloadHandle(m->get_ep_l2_payload_id(),m->get_ep_l2_payload_generation()),
     m->get_access_sector_mask().to_ulong(),cycle,m->get_ft_wb_data(),m->get_request_uid());
 }
-void l2_cache::ro_print(FILE *f,unsigned slice) const {if(m_ro){
+void l2_cache::ro_print(FILE *f,unsigned slice) const {
+  if(auto*d=ep_l2_detach_diag::get(this)){d->slice=slice;d->ro_runtime=bool(m_ro);d->T=m_config.m_ro_tag_detach;d->M=m_config.m_ro_line_mshr_bypass;if(!m_ro)d->closed=true;
+    if(m_ro && d->total[ep_l2_detach_diag::detach_success]!=m_ro->tx->stats.detached)d->add(ep_l2_detach_diag::closure_errors);
+    ep_l2_detach_diag::state.print(f,*d,ft_physical_cycle());}
+  if(m_ro){
   const auto &s=m_ro->tx->stats;
   fprintf(f,"EPL2ROV1|SUMMARY|slice=%u|detach=%u|bypass=%u|accepted_global_reads=%llu|accepted_oracle_candidates=%llu|accepted_ro=%llu|transactions=%llu|merges=%llu|detached=%llu|lower_sectors=%llu|concurrent_duplicate_sectors=%llu|responses=%llu|ro_bank_fill_ops=%llu|ro_bank_response_ops=%llu|live=%u|manifest=%s|scope=%s\n",
     slice,m_config.m_ro_tag_detach,m_config.m_ro_line_mshr_bypass,
