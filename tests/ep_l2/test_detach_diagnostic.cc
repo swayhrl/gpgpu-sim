@@ -73,7 +73,7 @@ int main(int argc,char**argv){assert(argc==10);const char*which=argv[9];
  f.await_lower(17);}
  else if(!std::strcmp(which,"DETACH_THEN_LATER_DENIAL")){fill(f,16);for(unsigned i=0;i<496;++i){auto a=((i%63)+1)*128+(i/63)*stride;f.send(f.make(a,false));f.await_lower(17+i);}assert(f.cache->ep_l2_descriptor_count_used()==512);auto mf=f.make(17*stride,false);f.send(mf);tick(f,16);auto h=f.tag_for(0);std::list<cache_event>events;auto s=f.cache->access(mf->get_addr(),mf,f.gpu->gpu_sim_cycle,events);assert(s==RESERVATION_FAIL&&!f.tag_for(0).valid()&&f.cache->ep_l2_payload_for_test().handle_live(h));
 #ifndef EP_L2_DIAG_REFERENCE
- require_observer(f,ep_l2_detach_diag::trigger_denied_after_detach,1);
+ require_observer(f,ep_l2_detach_diag::trigger_denied_after_detach,1);require_observer(f,ep_l2_detach_diag::denied_capacity,1);
 #endif
  }
  else if(!std::strcmp(which,"ROLLUP_RESIDUAL")){

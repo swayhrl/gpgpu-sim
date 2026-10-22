@@ -328,8 +328,10 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   if (probe == RESERVATION_FAIL) return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_tag));
   if (m_tvd && probe == MISS &&
       !(m_tvd_lookup == mf && m_tvd_lookup_done)) return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_directory));
-  if(ro_new && (!m_ro->capacity(mf,false) || !miss_queue_has_slots(mf->get_access_sector_mask().count()+(probe==MISS && m_tag_array->block_is_modified(index)))))return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_directory));
-  if (m_ft_pending.request && m_ft_pending.request != mf) return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_directory));
+  // Capture each original short-circuit result without extra modeled checks.
+  bool diagnostic_capacity_ok=false;
+  if(ro_new && (!(diagnostic_capacity_ok=m_ro->capacity(mf,false)) || !miss_queue_has_slots(mf->get_access_sector_mask().count()+(probe==MISS && m_tag_array->block_is_modified(index)))))return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,diagnostic_capacity_ok?denied_missq:denied_capacity));
+  if (m_ft_pending.request && m_ft_pending.request != mf) return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_held));
   if (m_tvd ? tvd_cached_wad_contains(mf,owner) : ep_l2_wad_contains(owner)) {
     ++m_ep_l2_wad_same_address_wait_count; return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_wad));
   }
