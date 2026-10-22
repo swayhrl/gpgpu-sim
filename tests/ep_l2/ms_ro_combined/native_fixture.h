@@ -48,8 +48,14 @@ struct combined_fixture : victim_fixture {
     assert(pending_reads.size()==count);
   }
   void await_frontend() {
-    for(unsigned n=0;n<20000 && sp->ep_l2_icntl2_occupancy();++n)step();
-    assert(!sp->ep_l2_icntl2_occupancy());
+    // push() first enters the real ROP queue, so ICNT occupancy can be
+    // zero before the request has even reached the frontend. Step first,
+    // then consume the zero-latency ROP transfer and actual frontend turn.
+    for(unsigned n=0;n<20000;++n) {
+      step();
+      if(!sp->ep_l2_icntl2_occupancy()) {step();return;}
+    }
+    assert(false && "frontend did not consume request");
   }
   void wait(unsigned uid,bool return_memory=true) {
     for(unsigned n=0;n<20000 && !replies.count(uid);++n) {
