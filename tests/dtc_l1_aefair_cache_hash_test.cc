@@ -29,7 +29,7 @@ int main(int argc,char**argv) {
   char lintext[]="N:32:128:24,L:T:m:L:L,A:512:8,16:0,32";
   char hashtext[]="N:32:128:24,L:T:m:L:B,A:512:8,16:0,32";
   auto lin=make_config(lintext);
-  assert(lin.get_nset()==32 && lin.get_assoc()==24 && lin.get_total_size_inKB()==96);
+  assert(lin.get_nset()==32 && lin.get_num_lines()/lin.get_nset()==24 && lin.get_total_size_inKB()==96);
   assert(lin.get_mshr_entries()==512 && lin.get_line_sz()==128);
   uint64_t digest=1469598103934665603ULL;
   for(uint64_t line=0;line<(1ULL<<18);++line) {
@@ -43,7 +43,7 @@ int main(int argc,char**argv) {
   std::printf("LINEAR observations=1048576 digest=%llu geometry=32x24 data=98304 mshr=512\n",(unsigned long long)digest);
   if(linear_only)return 0;
   auto hashed=make_config(hashtext);
-  assert(hashed.get_nset()==lin.get_nset() && hashed.get_assoc()==lin.get_assoc());
+  assert(hashed.get_nset()==lin.get_nset() && hashed.get_num_lines()==lin.get_num_lines());
   assert(hashed.get_total_size_inKB()==lin.get_total_size_inKB());
   assert(hashed.get_mshr_entries()==lin.get_mshr_entries());
   unsigned moved=0,collisions_separated=0;
