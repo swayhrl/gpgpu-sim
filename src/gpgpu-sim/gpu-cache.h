@@ -549,7 +549,8 @@ enum set_index_function {
   BITWISE_XORING_FUNCTION,
   HASH_IPOLY_FUNCTION,
   FERMI_HASH_SET_FUNCTION,
-  CUSTOM_SET_FUNCTION
+  CUSTOM_SET_FUNCTION,
+  BANK_PRESERVING_XOR_SET_FUNCTION
 };
 
 enum cache_type { NORMAL = 0, SECTOR };
@@ -771,6 +772,12 @@ class cache_config {
       case 'X':
         m_set_index_function = BITWISE_XORING_FUNCTION;
         break;
+      case 'B':
+        // AE fair control: fixed bank-preserving row XOR, no geometry change.
+        assert(m_cache_type == NORMAL && m_line_sz == 128 && m_nset >= 4 &&
+               !(m_nset & (m_nset - 1)) && m_nset % 4 == 0);
+        m_set_index_function = BANK_PRESERVING_XOR_SET_FUNCTION;
+        break;
       default:
         exit_parse_error();
     }
@@ -925,6 +932,8 @@ class l1d_cache_config : public cache_config {
     l1_banks_byte_interleaving_log2 = LOGB2(l1_banks_byte_interleaving);
     l1_banks_log2 = LOGB2(l1_banks);
     cache_config::init(config, status);
+    if (m_set_index_function == BANK_PRESERVING_XOR_SET_FUNCTION)
+      assert(l1_banks == 4);
   }
   unsigned l1_latency;
   unsigned l1_banks;

@@ -76,6 +76,10 @@ add_subdirectory(libopencl)
 
 if(GPGPUSIM_BUILD_DTC_L1_TESTS)
     enable_testing()
+    add_executable(dtc_l1_aefair_cache_hash_test tests/dtc_l1_aefair_cache_hash_test.cc)
+    target_link_libraries(dtc_l1_aefair_cache_hash_test PRIVATE cudart)
+    target_include_directories(dtc_l1_aefair_cache_hash_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim ${CUDAToolkit_INCLUDE_DIRS})
+    add_test(NAME dtc_l1_aefair_cache_hash_test COMMAND dtc_l1_aefair_cache_hash_test)
     add_executable(dtc_l1_m1_common_test tests/dtc_l1_m1_common_test.cc)
     target_include_directories(dtc_l1_m1_common_test PRIVATE
                                ${CMAKE_CURRENT_SOURCE_DIR}/src/gpgpu-sim)

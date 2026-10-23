@@ -35,6 +35,7 @@
 #include <cstdint>
 #include "gpu-sim.h"
 #include "hashing.h"
+#include "dtc-l1-tag-index.h"
 #include "stat-tool.h"
 
 // used to allocate memory that is large enough to adapt the changes in cache
@@ -128,6 +129,12 @@ unsigned cache_config::hash_function(new_addr_type addr, unsigned m_nset,
       new_addr_type higher_bits = addr >> (m_line_sz_log2 + m_nset_log2);
       unsigned index = (addr >> m_line_sz_log2) & (m_nset - 1);
       set_index = ipoly_hash_function(higher_bits, index, m_nset);
+      break;
+    }
+    case BANK_PRESERVING_XOR_SET_FUNCTION: {
+      assert(m_line_sz_log2 == 7 && m_nset >= 4 &&
+             !(m_nset & (m_nset - 1)) && m_nset % 4 == 0);
+      set_index = dtc_l1::logical_tag_set(addr, m_nset, true);
       break;
     }
     case CUSTOM_SET_FUNCTION: {
