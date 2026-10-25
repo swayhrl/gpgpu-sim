@@ -155,6 +155,19 @@ if(GPGPUSIM_BUILD_DTC_L1_TESTS)
         ${ad_cpu_config})
     set_tests_properties(dtc_l1_progressive_ldst_test PROPERTIES
         ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cudart>;CUDA_VISIBLE_DEVICES=")
+    add_executable(dtc_l1_m4_atomic_completion_test tests/dtc_l1_m4_atomic_completion_test.cc)
+    target_include_directories(dtc_l1_m4_atomic_completion_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/libcuda
+        ${CUDAToolkit_INCLUDE_DIRS})
+    target_compile_options(dtc_l1_m4_atomic_completion_test PRIVATE -fno-access-control -UNDEBUG)
+    target_link_libraries(dtc_l1_m4_atomic_completion_test PRIVATE cudart)
+    foreach(m4_variant IN ITEMS 0_0 1_0 2_0 3_0 3_1 4_0)
+        string(REPLACE "_" ";" m4_args "${m4_variant}")
+        add_test(NAME dtc_l1_m4_atomic_completion_${m4_variant}
+            COMMAND dtc_l1_m4_atomic_completion_test ${ad_cpu_config} ${m4_args})
+        set_tests_properties(dtc_l1_m4_atomic_completion_${m4_variant} PROPERTIES
+            ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cudart>;CUDA_VISIBLE_DEVICES=" TIMEOUT 30)
+    endforeach()
     # Pinned, read-only X2 header for same-build OFF differential CPU traces.
     file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/ad_x2_header")
     execute_process(COMMAND git show e32afdcf44be3374ff36d22568ed01a075459b6f:src/gpgpu-sim/dtc-l1-common.h

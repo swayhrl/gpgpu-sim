@@ -1022,6 +1022,7 @@ kernel_info_t *gpgpu_sim::select_kernel() {
 }
 
 unsigned gpgpu_sim::finished_kernel() {
+  dtc_l1_drain_completed_kernels();
   if (m_finished_kernel.empty()) {
     last_streamID = -1;
     return 0;
@@ -1031,8 +1032,26 @@ unsigned gpgpu_sim::finished_kernel() {
   return result;
 }
 
+void gpgpu_sim::dtc_l1_drain_completed_kernels() {
+  for (auto it = m_dtc_draining_kernels.begin(); it != m_dtc_draining_kernels.end();) {
+    kernel_info_t *kernel = *it;
+    bool pending = false;
+    for (unsigned i = 0; i < m_shader_config->n_simt_clusters; ++i)
+      pending |= m_cluster[i]->dtc_l1_pending_work(kernel->get_uid());
+    if (pending) { ++it; continue; }
+    it = m_dtc_draining_kernels.erase(it);
+    set_kernel_done(kernel);
+  }
+}
+
 void gpgpu_sim::set_kernel_done(kernel_info_t *kernel) {
   unsigned uid = kernel->get_uid();
+  for (unsigned i = 0; i < m_shader_config->n_simt_clusters; ++i) {
+    if (!m_cluster[i]->dtc_l1_pending_work(uid)) continue;
+    if (std::find(m_dtc_draining_kernels.begin(), m_dtc_draining_kernels.end(), kernel)
+        == m_dtc_draining_kernels.end()) m_dtc_draining_kernels.push_back(kernel);
+    return;
+  }
   last_uid = uid;
   unsigned long long streamID = kernel->get_streamID();
   last_streamID = streamID;
@@ -1473,13 +1492,14 @@ bool gpgpu_sim::active() {
     return false;
   if (m_config.gpu_deadlock_detect && gpu_deadlock) return false;
   for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++)
-    if (m_cluster[i]->get_not_completed() > 0) return true;
+    if (m_cluster[i]->get_not_completed() > 0 ||
+        m_cluster[i]->dtc_l1_pending_work()) return true;
   ;
   for (unsigned i = 0; i < m_memory_config->m_n_mem; i++)
     if (m_memory_partition_unit[i]->busy() > 0) return true;
   ;
   if (icnt_busy()) return true;
-  if (get_more_cta_left()) return true;
+  if (get_more_cta_left() || !m_dtc_draining_kernels.empty()) return true;
   return false;
 }
 
@@ -1498,8 +1518,9 @@ bool sst_gpgpu_sim::active() {
     return false;
   if (m_config.gpu_deadlock_detect && gpu_deadlock) return false;
   for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++)
-    if (m_cluster[i]->get_not_completed() > 0) return true;
-  if (get_more_cta_left()) return true;
+    if (m_cluster[i]->get_not_completed() > 0 ||
+        m_cluster[i]->dtc_l1_pending_work()) return true;
+  if (get_more_cta_left() || !m_dtc_draining_kernels.empty()) return true;
   return false;
 }
 
@@ -2475,7 +2496,8 @@ void gpgpu_sim::cycle() {
     // L1 cache + shader core pipeline stages
     m_power_stats->pwr_mem_stat->core_cache_stats[CURRENT_STAT_IDX].clear();
     for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++) {
-      if (m_cluster[i]->get_not_completed() || get_more_cta_left()) {
+      if (m_cluster[i]->get_not_completed() || get_more_cta_left() ||
+          m_cluster[i]->dtc_l1_pending_work()) {
         m_cluster[i]->core_cycle();
         *active_sms += m_cluster[i]->get_n_active_sms();
       }
@@ -2834,7 +2856,8 @@ void sst_gpgpu_sim::SST_cycle() {
   // L1 cache + shader core pipeline stages
   m_power_stats->pwr_mem_stat->core_cache_stats[CURRENT_STAT_IDX].clear();
   for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++) {
-    if (m_cluster[i]->get_not_completed() || get_more_cta_left()) {
+    if (m_cluster[i]->get_not_completed() || get_more_cta_left() ||
+          m_cluster[i]->dtc_l1_pending_work()) {
       m_cluster[i]->core_cycle();
       *active_sms += m_cluster[i]->get_n_active_sms();
     }

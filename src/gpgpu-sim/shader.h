@@ -1991,6 +1991,8 @@ class ldst_unit : public pipelined_simd_unit {
   virtual void active_lanes_in_pipeline();
   virtual bool stallable() const { return true; }
   bool response_buffer_full() const;
+  // Outstanding lifecycle work, excluding reusable valid Ref0 cache lines.
+  bool dtc_l1_pending_work(unsigned kernel_uid = 0) const;
   void print(FILE *fout) const;
   void print_cache_stats(FILE *fp, unsigned &dl1_accesses,
                          unsigned &dl1_misses);
@@ -2119,6 +2121,9 @@ class ldst_unit : public pipelined_simd_unit {
   bool dtc_l1_m4_observe_admit(warp_inst_t &inst,
                                dtc_l1_m4_operation operation);
   void dtc_l1_m4_observe_complete(const warp_inst_t &inst);
+  void dtc_l1_m4_atomic_response(const warp_inst_t &inst,
+                                  const active_mask_t &returned_lanes);
+  unsigned dtc_l1_owner_kernel_uid() const;
   bool dtc_l1_oo_select_ready(uint64_t *uid) const;
   bool dtc_l1_finite_service_active() const;
   bool dtc_l1_service_collect(dtc_l1::service_entry &service,
@@ -2206,6 +2211,8 @@ class ldst_unit : public pipelined_simd_unit {
     dtc_l1_m4_operation operation = dtc_l1_m4_operation::CACHEABLE_LOAD;
     bool source_completed = false;
     dtc_l1::service_entry service;
+    active_mask_t pending_atomic_lanes;
+    unsigned owner_kernel_uid = 0;
   };
   struct dtc_l1_io_lower_candidate {
     unsigned inst_uid = 0;
@@ -2286,6 +2293,8 @@ class ldst_unit : public pipelined_simd_unit {
     dtc_l1_m4_operation operation = dtc_l1_m4_operation::CACHEABLE_LOAD;
     bool source_completed = false;
     dtc_l1::service_entry service;
+    active_mask_t pending_atomic_lanes;
+    unsigned owner_kernel_uid = 0;
   };
   struct dtc_l1_oo_lower_candidate {
     unsigned inst_uid = 0;
@@ -3016,6 +3025,9 @@ class shader_core_ctx : public core_t {
   simt_core_cluster *get_simt_core_cluster() const { return m_cluster; }
 
   unsigned get_not_completed() const { return m_not_completed; }
+  bool dtc_l1_pending_work(unsigned kernel_uid = 0) const {
+    return m_ldst_unit->dtc_l1_pending_work(kernel_uid);
+  }
   unsigned get_n_active_cta() const { return m_n_active_cta; }
   unsigned isactive() const {
     if (m_n_active_cta > 0)
@@ -3589,6 +3601,7 @@ class simt_core_cluster {
                                unsigned *rpc) const;
   unsigned max_cta(const kernel_info_t &kernel);
   unsigned get_not_completed() const;
+  bool dtc_l1_pending_work(unsigned kernel_uid = 0) const;
   void print_not_completed(FILE *fp) const;
   unsigned get_n_active_cta() const;
   unsigned get_n_active_sms() const;

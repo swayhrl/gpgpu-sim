@@ -611,6 +611,7 @@ class gpgpu_sim : public gpgpu_t {
   bool can_start_kernel();
   unsigned finished_kernel();
   void set_kernel_done(kernel_info_t *kernel);
+  void dtc_l1_drain_completed_kernels();
   void stop_all_running_kernels();
 
   void init();
@@ -768,6 +769,7 @@ class gpgpu_sim : public gpgpu_t {
   unsigned m_last_issued_kernel;
 
   std::list<unsigned> m_finished_kernel;
+  std::list<kernel_info_t *> m_dtc_draining_kernels;
   // m_total_cta_launched == per-kernel count. gpu_tot_issued_cta == global
   // count.
   unsigned long long m_total_cta_launched;

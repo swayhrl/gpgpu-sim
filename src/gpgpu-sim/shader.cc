@@ -2621,12 +2621,20 @@ ldst_unit::dtc_l1_io_pib_entry *ldst_unit::dtc_l1_io_find_entry(
 bool ldst_unit::dtc_l1_m4_observe_admit(
     warp_inst_t &inst, dtc_l1_m4_operation operation) {
   if (!dtc_l1_paper_io_active() && !dtc_l1_paper_oo_active()) return true;
+  if (inst.active_count() == 0) return true;
+  if (operation == dtc_l1_m4_operation::ATOMIC &&
+      (!inst.isatomic() || inst.space.get_type() != global_space)) return true;
   const unsigned uid = inst.get_uid();
+  const unsigned owner = dtc_l1_owner_kernel_uid();
   if (dtc_l1_paper_io_active()) {
     if (dtc_l1_io_find_entry(uid)) return true;
     if (!m_dtc_l1_io_frontend->admit(uid)) return false;
     m_dtc_l1_io_frontend->add_external_dependency(uid);
     m_dtc_l1_io_pib.push_back({inst, {}, 0, operation, false});
+    auto &entry = m_dtc_l1_io_pib.back();
+    entry.owner_kernel_uid = owner;
+    if (operation == dtc_l1_m4_operation::ATOMIC)
+      entry.pending_atomic_lanes = inst.get_active_mask();
     m_dtc_l1_io_pib_peak = std::max(
         m_dtc_l1_io_pib_peak, static_cast<uint64_t>(m_dtc_l1_io_pib.size()));
   } else {
@@ -2640,6 +2648,10 @@ bool ldst_unit::dtc_l1_m4_observe_admit(
     else
       m_dtc_l1_oo_frontend->add_external_dependency(uid);
     m_dtc_l1_oo_pib.push_back({inst, {}, 0, operation, false});
+    auto &entry = m_dtc_l1_oo_pib.back();
+    entry.owner_kernel_uid = owner;
+    if (operation == dtc_l1_m4_operation::ATOMIC)
+      entry.pending_atomic_lanes = inst.get_active_mask();
   }
   switch (operation) {
     case dtc_l1_m4_operation::STORE: ++m_dtc_l1_m4_store_admits; break;
@@ -2662,6 +2674,8 @@ void ldst_unit::dtc_l1_m4_observe_complete(const warp_inst_t &inst) {
     if (!entry || entry->operation == dtc_l1_m4_operation::CACHEABLE_LOAD)
       return;
     assert(!entry->source_completed);
+    assert(entry->operation != dtc_l1_m4_operation::ATOMIC ||
+           entry->pending_atomic_lanes.none());
     entry->source_completed = true;
     m_dtc_l1_io_frontend->complete_external_dependency(uid);
   } else if (dtc_l1_paper_oo_active()) {
@@ -2669,6 +2683,8 @@ void ldst_unit::dtc_l1_m4_observe_complete(const warp_inst_t &inst) {
     if (!entry || entry->operation == dtc_l1_m4_operation::CACHEABLE_LOAD)
       return;
     assert(!entry->source_completed);
+    assert(entry->operation != dtc_l1_m4_operation::ATOMIC ||
+           entry->pending_atomic_lanes.none());
     entry->source_completed = true;
     if (dtc_l1_sector_oo_active())
       m_dtc_l1_sector_frontend->complete_external_dependency(uid);
@@ -2678,6 +2694,52 @@ void ldst_unit::dtc_l1_m4_observe_complete(const warp_inst_t &inst) {
     return;
   }
   ++m_dtc_l1_m4_source_completions;
+}
+
+unsigned ldst_unit::dtc_l1_owner_kernel_uid() const {
+  auto *kernel = m_core->get_kernel_info();
+  return kernel ? kernel->get_uid() : 0;  // zero only for CPU component fixtures
+}
+
+void ldst_unit::dtc_l1_m4_atomic_response(
+    const warp_inst_t &inst, const active_mask_t &returned_lanes) {
+  if ((!dtc_l1_paper_io_active() && !dtc_l1_paper_oo_active()) ||
+      !inst.isatomic() || inst.space.get_type() != global_space) return;
+  // The source atomic coalescer assigns each active lane to exactly one
+  // transaction (and asserts that its access fits one segment). Aggregate
+  // the same returned lane masks used by architectural atomic-count release.
+  // This covers no-destination RED/ATOMG as well as returning atomics without
+  // coupling sidecar completion to register writeback or changing side effects.
+  auto consume = [&](auto *entry) {
+    assert(entry && entry->operation == dtc_l1_m4_operation::ATOMIC);
+    assert(!entry->source_completed && returned_lanes.any());
+    assert((entry->pending_atomic_lanes & returned_lanes) == returned_lanes);
+    entry->pending_atomic_lanes &= ~returned_lanes;
+    if (entry->pending_atomic_lanes.none()) dtc_l1_m4_observe_complete(inst);
+  };
+  if (dtc_l1_paper_io_active())
+    consume(dtc_l1_io_find_entry(inst.get_uid()));
+  else
+    consume(dtc_l1_oo_find_entry(inst.get_uid()));
+}
+
+bool ldst_unit::dtc_l1_pending_work(unsigned kernel_uid) const {
+  if (kernel_uid) {
+    for (const auto &entry : m_dtc_l1_io_pib)
+      if (entry.owner_kernel_uid == kernel_uid) return true;
+    for (const auto &entry : m_dtc_l1_oo_pib)
+      if (entry.owner_kernel_uid == kernel_uid) return true;
+    return false;
+  }
+  if (!m_dtc_l1_live_instruction_uids.empty() ||
+      !m_dtc_l1_io_pib.empty() || !m_dtc_l1_io_lower_create_queue.empty() ||
+      !m_dtc_l1_io_lower_issue_queue.empty() || !m_dtc_l1_io_inflight.empty() ||
+      !m_dtc_l1_oo_pib.empty() || !m_dtc_l1_oo_lower_create_queue.empty() ||
+      !m_dtc_l1_oo_lower_issue_queue.empty() || !m_dtc_l1_oo_inflight.empty())
+    return true;
+  if (!dtc_l1_paper_base_active() && !dtc_l1_paper_io_active() &&
+      !dtc_l1_paper_oo_active()) return false;
+  return !m_response_fifo.empty() || !m_next_global.empty() || !m_next_wb.empty();
 }
 
 bool ldst_unit::dtc_l1_oo_select_ready(uint64_t *uid) const {
@@ -3007,6 +3069,7 @@ bool ldst_unit::dtc_l1_io_memory_cycle(
     }
     m_dtc_l1_io_pib.push_back(
         {inst, dtc_l1_io_line_references(inst), 0});
+    m_dtc_l1_io_pib.back().owner_kernel_uid = dtc_l1_owner_kernel_uid();
     m_dtc_l1_io_pib_peak =
         std::max(m_dtc_l1_io_pib_peak,
                  static_cast<uint64_t>(m_dtc_l1_io_pib.size()));
@@ -3298,6 +3361,7 @@ bool ldst_unit::dtc_l1_oo_memory_cycle(
       return false;
     }
     m_dtc_l1_oo_pib.push_back({inst, dtc_l1_io_line_references(inst), 0});
+    m_dtc_l1_oo_pib.back().owner_kernel_uid = dtc_l1_owner_kernel_uid();
     entry = &m_dtc_l1_oo_pib.back();
     assert(!entry->references.empty());
     dtc_l1_r4c0_record_pib(entry->inst, entry->references, "OO");
@@ -4685,7 +4749,10 @@ void ldst_unit::writeback() {
             }
 
             const bool completed = writeback_complete(m_next_wb);
-            if (completed) dtc_l1_m4_observe_complete(m_next_wb);
+            if (mf->isatomic())
+              dtc_l1_m4_atomic_response(m_next_wb, mf->get_access_warp_mask());
+            else if (completed)
+              dtc_l1_m4_observe_complete(m_next_wb);
 
             LDST_DPRINTF(
                 "Core %u 0x%llx from warp %d writeback after %lld cycles\n",
@@ -6655,7 +6722,7 @@ void shader_core_config::set_pipeline_latency() {
 }
 
 void shader_core_ctx::cycle() {
-  if (!isactive() && get_not_completed() == 0) return;
+  if (!isactive() && get_not_completed() == 0 && !dtc_l1_pending_work()) return;
 
   m_stats->shader_cycles[m_sid]++;
   writeback();
@@ -7598,6 +7665,12 @@ void simt_core_cluster::reinit() {
 
 unsigned simt_core_cluster::max_cta(const kernel_info_t &kernel) {
   return m_config->n_simt_cores_per_cluster * m_config->max_cta(kernel);
+}
+
+bool simt_core_cluster::dtc_l1_pending_work(unsigned kernel_uid) const {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i)
+    if (m_core[i]->dtc_l1_pending_work(kernel_uid)) return true;
+  return false;
 }
 
 unsigned simt_core_cluster::get_not_completed() const {
