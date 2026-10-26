@@ -310,6 +310,7 @@ class memory_sub_partition {
   void ro_end_epoch() { if (m_config->m_L2_config.ro_requested()) m_L2cache->ro_end_epoch(); }
   l2_cache *ro_cache_for_test() const { return m_L2cache; }
 
+  void lifetime_prepare_tick(uint64_t gpu);
   void cache_cycle(unsigned cycle);
 
   bool full() const;

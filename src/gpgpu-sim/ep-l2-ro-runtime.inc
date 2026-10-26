@@ -165,12 +165,13 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
   void ready(ep_l2_ro::tag_binding t,handle h,new_addr_type line,unsigned mask,bool) override {
     if(!matches(t,h,line))throw std::logic_error("RO late fill into reused Tag");
     for(unsigned n=0;n<4;++n)if(mask>>n&1)
-      c.m_tag_array->get_block(t.index)->set_status(VALID,mem_access_sector_mask_t(1<<n));
+      c.m_tag_array->lifetime_set_status(t.index,VALID,mem_access_sector_mask_t(1<<n));
     c.m_tag_array->l2_char_tracking_refresh_line(t.index);
   }
   void detach(ep_l2_ro::tag_binding t,handle h) override {
+    ep_l2_life::reason_scope lifetime_reason(c.m_tag_array->lifetime(),ep_l2_life::DETACH);
     if(!matches(t,h,c.m_ep_l2_payload.inspect(h).owner))throw std::logic_error("RO detach stale Tag");
-    for(unsigned n=0;n<4;++n)c.m_tag_array->get_block(t.index)->set_status(INVALID,mem_access_sector_mask_t(1<<n));
+    for(unsigned n=0;n<4;++n)c.m_tag_array->lifetime_set_status(t.index,INVALID,mem_access_sector_mask_t(1<<n));
     c.set_tag_payload_handle(t.index,handle());++generations[t.index];
     c.m_tag_array->l2_char_tracking_refresh_line(t.index);
   }
@@ -376,6 +377,10 @@ void l2_cache::ro_init() {
   if(m_config.m_ro_tag_detach||m_config.m_ro_line_mshr_bypass)m_ro=new ep_l2_ro_runtime(*this);
 }
 l2_cache::~l2_cache(){ep_l2_tagpressure::state.erase(this);ep_l2_detach_diag::state.erase(this);delete m_ro;}
+void l2_cache::lifetime_tick_begin(unsigned slice,uint64_t gpu) {
+  m_tag_array->lifetime_tick_begin(slice,gpu);
+  if(m_ro)m_ro->tx->lifetime_observer=m_tag_array->lifetime();
+}
 void l2_cache::ro_begin_epoch(){if(m_ro){
   if(!m_ro->command_bound||m_ro->ever_open||!ft_drained()||m_mshrs.descriptor_count_used()||!m_miss_queue.empty()||ep_l2_wad_occupancy())
     throw std::logic_error("RO epoch activation requires complete prior drain");
@@ -387,6 +392,7 @@ void l2_cache::ro_end_epoch(){if(m_ro){
     throw std::logic_error("RO whole-commandlist end is not drained");
   m_ro->epoch_end_cycle=m_ro->physical_cycle();m_ro->open=false;
   if(auto*d=ep_l2_detach_diag::get(this))d->closed=true;
+  if(auto *o=m_tag_array->lifetime())o->finish(ft_physical_cycle());
 }}
 bool l2_cache::ro_drained() const {return !m_ro||m_ro->tx->drained();}
 bool l2_cache::access_ready() const {return (m_ro&&m_ro->has_response())||baseline_cache::access_ready();}
@@ -398,6 +404,7 @@ bool l2_cache::ro_return(mem_fetch *m,unsigned long long cycle) {
     m->get_access_sector_mask().to_ulong(),cycle,m->get_ft_wb_data(),m->get_request_uid());
 }
 void l2_cache::ro_print(FILE *f,unsigned slice) const {
+  if(auto *o=m_tag_array->lifetime())if(o->closed)o->print(f);
   if(auto*d=ep_l2_detach_diag::get(this)){d->slice=slice;d->ro_runtime=bool(m_ro);d->T=m_config.m_ro_tag_detach;d->M=m_config.m_ro_line_mshr_bypass;if(!m_ro)d->closed=true;
     if(m_ro && d->total[ep_l2_detach_diag::detach_success]!=m_ro->tx->stats.detached)d->add(ep_l2_detach_diag::closure_errors);
     ep_l2_detach_diag::state.print(f,*d,ft_physical_cycle());

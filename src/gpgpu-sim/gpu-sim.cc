@@ -2137,6 +2137,10 @@ unsigned long long g_single_step =
 
 void gpgpu_sim::cycle() {
   int clock_mask = next_clock_domain();
+  // Observer clock only: establish the same L2 interval before all co-timed domains.
+  if(clock_mask & L2)for(unsigned i=0;i<m_memory_config->m_n_mem_sub_partition;++i)
+    m_memory_sub_partition[i]->lifetime_prepare_tick(gpu_sim_cycle+gpu_tot_sim_cycle);
+
 
   if (clock_mask & CORE) {
     if (m_shader_config->ep_l2_mem_all_data)

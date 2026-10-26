@@ -183,6 +183,31 @@ int main(int argc,char**argv){assert(argc==10);const char*which=argv[9];
  combined_fixture f(argv,!no_runtime,ready?"1024:16:64:1":"1024:16:64:64");
  if(!std::strcmp(which,"T_OFF")||!std::strcmp(which,"EMPTY_CERT")){fill(f,16,false);f.send(f.make(0x800000+16*stride,false));tick(f);assert(f.pending_reads.size()==16);}
  else if(!std::strcmp(which,"NO_PRESSURE_POSITIVE_RO")||!std::strcmp(which,"OBSERVER_NONINTERFERENCE")){f.read(0);f.read(32);f.read(0);}
+ else if(!std::strcmp(which,"LIFETIME_SECTOR_REENTRY")){
+  f.send(f.make(0,false));f.await_lower(1);
+  f.send(f.make(32,false));f.await_lower(2);
+  auto *o=f.cache->lifetime();unsigned index=~0U;
+  if(o){for(unsigned i=0;i<1024;++i)if(o->way[i].incarnation&&o->way[i].address==0)index=i;
+    assert(index!=~0U);assert(o->set[0].c[ep_l2_life::ALLOC]==1);
+    assert(o->set[0].c[ep_l2_life::ENTER]==1);assert(o->way[index].reserved==3);}
+  f.return_one(0);tick(f,16);
+  if(o){assert(o->way[index].reserved==2);assert(o->set[0].c[ep_l2_life::EXIT]==0);}
+  f.return_one(0);tick(f,16);
+  uint64_t generation=o?o->way[index].generation:0;
+  if(o){assert(o->set[0].c[ep_l2_life::EXIT]==1);assert(!o->way[index].reserved);}
+  f.send(f.make(64,false));f.await_lower(1);
+  if(o){assert(o->way[index].generation==generation);
+    assert(o->set[0].c[ep_l2_life::ALLOC]==1);
+    assert(o->set[0].c[ep_l2_life::ENTER]==2);
+    assert(o->set[0].c[ep_l2_life::REENTER]==1);
+    assert(o->set[0].c[ep_l2_life::REQUESTER]==3);
+    assert(o->set[0].c[ep_l2_life::MERGE]==1);
+    assert(o->way[index].request_mask==7);}
+  f.return_one(0);tick(f,16);
+  if(o){assert(!o->invalid);assert(o->set[0].c[ep_l2_life::EXIT]==2);
+    assert(o->set[0].c[ep_l2_life::RO_ADMIT]==2);
+    assert(o->set[0].c[ep_l2_life::RO_READY_ADD]==3);}
+ }
  else if(!std::strcmp(which,"PRESSURE_NO_LIVE_RO")||!std::strcmp(which,"PREVIEW_BLOCKS_COMMIT")){fill(f,16,false);f.send(f.make(0,false));tick(f);assert(f.pending_reads.size()==16);
 #ifndef EP_L2_DIAG_REFERENCE
  require_observer(f,ep_l2_detach_diag::pressure_no_live_ro,1);
@@ -229,9 +254,13 @@ int main(int argc,char**argv){assert(argc==10);const char*which=argv[9];
  assert(context.raw==HIT_RESERVED);unsigned reserved=0,eligible=0;
  for(const auto&w:context.tagpressure.ways){reserved+=w.kind==ep_l2_tagpressure::RESERVED_WAY;eligible+=w.live&&w.attached&&!w.reuse&&(w.required&~w.ready);}
  assert(reserved==16&&eligible==16);
+ std::array<unsigned char,sizeof(ep_l2_life::observer)> life_before{};
+ auto *life=f.cache->lifetime();if(life)std::memcpy(life_before.data(),life,sizeof(*life));
  for(unsigned i=0;i<32;++i){f.cache->detach_diag_snapshot(incoming,context);assert(context.raw==RESERVATION_FAIL);}
  uint64_t after=0;for(const auto&c:r5->phases)if(c)after+=c->covered;
- assert(after==before);f.send(matching);f.await_frontend();
+ assert(after==before);
+ if(life)assert(std::memcmp(life_before.data(),life,sizeof(*life))==0);
+ f.send(matching);f.await_frontend();
  f.send(incoming);f.await_lower(17);
  puts("TAGPRESSURE_CAPTURE_JOINT|real16pending|sameLineHIT_RESERVED|newTagFAIL|preview32zero_increment|PASS");
 #else

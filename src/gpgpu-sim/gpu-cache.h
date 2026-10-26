@@ -139,6 +139,7 @@ struct cache_event {
 
 const char *cache_request_status_str(enum cache_request_status status);
 
+#include "ep-l2-reservation-lifetime.h"
 struct cache_block_t {
   cache_block_t() {
     m_tag = 0;
@@ -187,6 +188,10 @@ struct cache_block_t {
 };
 
 struct line_cache_block : public cache_block_t {
+  void lifetime_notify(unsigned op, bool fresh=false) {
+    if(ep_l2_life::observes(this))ep_l2_life::raw_notify(this,m_block_addr,
+      m_status==RESERVED?15:0,m_status==INVALID?0:15,op,fresh);
+  }
   line_cache_block() {
     m_alloc_time = 0;
     m_fill_time = 0;
@@ -209,6 +214,7 @@ struct line_cache_block : public cache_block_t {
     m_set_modified_on_fill = false;
     m_set_readable_on_fill = false;
     m_set_byte_mask_on_fill = false;
+    lifetime_notify(ep_l2_life::ALLOCATE,true);
   }
   virtual void fill(unsigned time, mem_access_sector_mask_t sector_mask,
                     mem_access_byte_mask_t byte_mask) {
@@ -221,6 +227,7 @@ struct line_cache_block : public cache_block_t {
     if (m_set_byte_mask_on_fill) set_byte_mask(byte_mask);
 
     m_fill_time = time;
+    lifetime_notify(ep_l2_life::FILL);
   }
   // Nonvirtual passive getter: no vtable/instance-layout change.
   cache_block_state diagnostic_sector_state(unsigned) const { return m_status; }
@@ -236,6 +243,7 @@ struct line_cache_block : public cache_block_t {
   virtual void set_status(enum cache_block_state status,
                           mem_access_sector_mask_t sector_mask) {
     m_status = status;
+    lifetime_notify(ep_l2_life::STATUS_WRITE);
   }
   virtual void set_byte_mask(mem_fetch *mf) {
     m_dirty_byte_mask = m_dirty_byte_mask | mf->get_access_byte_mask();
@@ -302,6 +310,13 @@ struct line_cache_block : public cache_block_t {
 };
 
 struct sector_cache_block : public cache_block_t {
+  void lifetime_notify(unsigned op, bool fresh=false) {
+    if(!ep_l2_life::observes(this))return;
+    unsigned reserved=0,valid=0;
+    for(unsigned n=0;n<4;++n){if(m_status[n]==RESERVED)reserved|=1u<<n;
+      if(m_status[n]!=INVALID)valid|=1u<<n;}
+    ep_l2_life::raw_notify(this,m_block_addr,reserved,valid,op,fresh);
+  }
   sector_cache_block() { init(); }
 
   void init() {
@@ -319,6 +334,7 @@ struct sector_cache_block : public cache_block_t {
     m_line_last_access_time = 0;
     m_line_fill_time = 0;
     m_dirty_byte_mask.reset();
+    lifetime_notify(ep_l2_life::RESET);
   }
 
   virtual void allocate(new_addr_type tag, new_addr_type block_addr,
@@ -350,6 +366,7 @@ struct sector_cache_block : public cache_block_t {
     m_line_alloc_time = time;  // only set this for the first allocated sector
     m_line_last_access_time = time;
     m_line_fill_time = 0;
+    lifetime_notify(ep_l2_life::ALLOCATE,true);
   }
 
   void allocate_sector(unsigned time, mem_access_sector_mask_t sector_mask) {
@@ -377,6 +394,7 @@ struct sector_cache_block : public cache_block_t {
     // set line stats
     m_line_last_access_time = time;
     m_line_fill_time = 0;
+    lifetime_notify(ep_l2_life::SECTOR_ALLOCATE);
   }
 
   virtual void fill(unsigned time, mem_access_sector_mask_t sector_mask,
@@ -395,6 +413,7 @@ struct sector_cache_block : public cache_block_t {
 
     m_sector_fill_time[sidx] = time;
     m_line_fill_time = time;
+    lifetime_notify(ep_l2_life::FILL);
   }
   // Nonvirtual passive getter; caller validates sector<4.
   cache_block_state diagnostic_sector_state(unsigned sector) const { return m_status[sector]; }
@@ -432,6 +451,7 @@ struct sector_cache_block : public cache_block_t {
                           mem_access_sector_mask_t sector_mask) {
     unsigned sidx = get_sector_index(sector_mask);
     m_status[sidx] = status;
+    lifetime_notify(ep_l2_life::STATUS_WRITE);
   }
 
   virtual void set_byte_mask(mem_fetch *mf) {
@@ -1059,6 +1079,30 @@ class l2_cache_config : public cache_config {
 
 class tag_array {
  public:
+  ep_l2_life::observer *m_lifetime = nullptr;
+  bool m_lifetime_attempted = false;
+  ep_l2_life::observer *lifetime() const { return m_lifetime; }
+  void lifetime_tick_begin(unsigned slice, uint64_t gpu);
+  void lifetime_touch(unsigned index, bool merge=false, unsigned sector_mask=0);
+  void lifetime_tick_end() { if(m_lifetime)m_lifetime->tick_end(); }
+  void lifetime_allocate(unsigned index,new_addr_type tag,new_addr_type address,unsigned time,
+                         mem_access_sector_mask_t mask) {
+    ep_l2_life::mutation_scope hook(m_lifetime,m_lines[index],index);
+    m_lines[index]->allocate(tag,address,time,mask);
+  }
+  void lifetime_allocate_sector(unsigned index,unsigned time,mem_access_sector_mask_t mask) {
+    ep_l2_life::mutation_scope hook(m_lifetime,m_lines[index],index);
+    static_cast<sector_cache_block*>(m_lines[index])->allocate_sector(time,mask);
+  }
+  void lifetime_fill(unsigned index,unsigned time,mem_access_sector_mask_t mask,mem_access_byte_mask_t bytes) {
+    ep_l2_life::mutation_scope hook(m_lifetime,m_lines[index],index);
+    m_lines[index]->fill(time,mask,bytes);
+  }
+  void lifetime_set_status(unsigned index,cache_block_state status,mem_access_sector_mask_t mask) {
+    ep_l2_life::mutation_scope hook(m_lifetime,m_lines[index],index);
+    m_lines[index]->set_status(status,mask);
+  }
+
   // Use this constructor
   tag_array(cache_config &config, int core_id, int type_id);
   ~tag_array();
@@ -1145,7 +1189,9 @@ class tag_array {
   void remove_pending_line(mem_fetch *mf);
   void inc_dirty() { m_dirty++; }
   void tvd_bind(unsigned index, new_addr_type address, unsigned time, unsigned valid) {
+    ep_l2_life::reason_scope lifetime_reason(m_lifetime,ep_l2_life::TVD_BIND);
     cache_block_t *b = m_lines[index];
+    ep_l2_life::mutation_scope lifetime_hook(m_lifetime,b,index);
     assert(valid && valid < 16);
     if (b->is_modified_line()) { assert(m_dirty); --m_dirty; }
     mem_access_sector_mask_t first; first.set(__builtin_ctz(valid));
@@ -2879,6 +2925,9 @@ namespace ep_l2_detach_diag { struct preview; struct predicate; }
 class l2_cache : public data_cache {
   friend class ep_l2_ro_runtime;
  public:
+  ep_l2_life::observer *lifetime() const { return m_tag_array->lifetime(); }
+  void lifetime_tick_begin(unsigned slice,uint64_t gpu);
+  void lifetime_tick_end() { m_tag_array->lifetime_tick_end(); }
   l2_cache(const char *name, cache_config &config, int core_id, int type_id,
            mem_fetch_interface *memport, mem_fetch_allocator *mfcreator,
            enum mem_fetch_status status, class gpgpu_sim *gpu,

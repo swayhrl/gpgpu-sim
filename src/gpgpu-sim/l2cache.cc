@@ -1085,6 +1085,7 @@ void memory_sub_partition::ep_l2_record_lower_issue(mem_fetch *mf) {
 }
 
 void memory_sub_partition::l2_char_record_l2dram_pop(mem_fetch *mf) {
+  ep_l2_life::stage_record(m_id,ep_l2_life::DRAM_ACCEPT);
   if (!m_l2_char_collector) return;
   const unsigned klass = l2_char_queue_class(mf);
   assert(m_l2_char_l2dram_class[klass]);
@@ -1206,7 +1207,12 @@ bool memory_sub_partition::ep_l2_ideal_serve_read(
   return true;
 }
 
+void memory_sub_partition::lifetime_prepare_tick(uint64_t gpu) {
+  if(!m_config->m_L2_config.disabled())m_L2cache->lifetime_tick_begin(m_id,gpu);
+}
 void memory_sub_partition::cache_cycle(unsigned cycle) {
+  if(!m_config->m_L2_config.disabled())
+    m_L2cache->lifetime_tick_begin(m_id,m_gpu->gpu_sim_cycle+m_gpu->gpu_tot_sim_cycle);
   m_ep_l2_rg1_fill_suppressed=false;
   if(!m_config->m_L2_config.disabled())
     m_L2cache->ft_observe_service_cycle(m_gpu->gpu_sim_cycle+m_gpu->gpu_tot_sim_cycle);
@@ -1301,6 +1307,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       m_l2_char_collector->record_lower_drain(
           lower_eligible, lower_eligible && m_L2_dram_queue->full());
     }
+    if(!m_L2cache->miss_queue_empty() && m_L2_dram_queue->full())
+      ep_l2_life::stage_record(m_id,ep_l2_life::LOWER_QUEUE_BLOCK);
     m_L2cache->cycle();
   }
 
@@ -1316,7 +1324,10 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
     const bool eligible=!m_config->m_L2_texure_only || mf->istexture();
     const auto result=eligible?m_L2cache->tvd_frontend(mf,now,!m_L2_icnt_queue->full()):l2_cache::TVD_NORMAL;
     tvd_frontend_handled=result!=l2_cache::TVD_NORMAL;
-    if(tvd_frontend_handled)m_L2cache->detach_diag_skip(mf,now,1);
+    if(tvd_frontend_handled){
+      m_L2cache->detach_diag_skip(mf,now,1);
+      ep_l2_life::stage_record(m_id,ep_l2_life::TVD_EARLY);
+    }
     if (result==l2_cache::TVD_RESPONSE) {
       mf->set_reply(); mf->set_status(IN_PARTITION_L2_TO_ICNT_QUEUE,now);
       ft_record_admission(mf); ep_l2_m0a_record_response_enqueue(); ft_record_response(mf);
@@ -1455,6 +1466,15 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       }
       m_L2cache->detach_diag_frontend(mf,m_gpu->gpu_sim_cycle+m_gpu->gpu_tot_sim_cycle,diagnostic_preview,plan,admit,
           m_L2cache->miss_queue_has_slots(plan.new_missq_entries),!m_L2_icnt_queue->full());
+      if(auto *o=m_L2cache->lifetime()){
+        if(diagnostic_preview.raw>=HIT && diagnostic_preview.raw<=WRITE_ALLOCATED)
+          o->frontend(diagnostic_preview.set,mf->get_request_uid(),
+            diagnostic_preview.raw==MISS || diagnostic_preview.raw==RESERVATION_FAIL,
+            diagnostic_preview.raw==RESERVATION_FAIL,admit);
+        else o->invalid|=2097152;
+        if(plan.new_missq_entries && !m_L2cache->miss_queue_has_slots(plan.new_missq_entries))
+          o->record_stage(ep_l2_life::L2_MISSQ_BLOCK);
+      }
       // An exact preview that is not admissible is a real controller stall,
       // even though access() is intentionally not called.  Record it here so
       // blocker accounting describes the production admission decision rather
@@ -1570,7 +1590,14 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
                   m_L2cache->ms_failed_access_blockers(mf) : 0),
               status != RESERVATION_FAIL, ms_known);
         }
-        if (status != RESERVATION_FAIL) ft_record_admission(mf);
+        if (status != RESERVATION_FAIL) {
+          ft_record_admission(mf);
+          if(auto *o=m_L2cache->lifetime()){
+            o->record_stage(ep_l2_life::FRONTEND_COMMIT);
+            if(diagnostic_preview.raw==MISS || diagnostic_preview.raw==RESERVATION_FAIL)
+              o->commit_new(diagnostic_preview.set,mf->get_request_uid());
+          }
+        }
         // This is the commit point: preview said admissible and access did
         // mutate/accept the request.  A defensive reservation failure is not
         // an admission and is intentionally excluded.
@@ -1729,6 +1756,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
         m_L2_icnt_queue->full(), m_icnt_L2_queue->full());
     ep_l2_b0_sample(m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
     ep_l2_m0a_sample(m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+    m_L2cache->lifetime_tick_end();
   }
 }
 
@@ -1782,6 +1810,7 @@ void memory_sub_partition::l2_char_record_dram_issue(
 void memory_sub_partition::l2_char_record_dram_success(bool is_read,
                                                          bool is_wb,
                                                          unsigned bytes) {
+  ep_l2_life::stage_record(m_id,ep_l2_life::DRAM_SERVICE);
   if (!m_config->m_L2_config.ep_l2_b0_stats_enabled()) return;
   if (is_read) {
     ++m_ep_l2_b0_accum.c7e_dram_successful_read_issues;
@@ -1810,6 +1839,7 @@ bool memory_sub_partition::dram_L2_queue_empty() const {
 }
 
 void memory_sub_partition::dram_L2_queue_push(class mem_fetch *mf) {
+  ep_l2_life::stage_record(m_id,ep_l2_life::DRAM_RETURN);
   m_dram_L2_queue->push(mf);
 }
 
@@ -2087,6 +2117,7 @@ void memory_sub_partition::ep_l2_m0a_record_frontend(
 }
 
 void memory_sub_partition::ep_l2_m0a_record_response_enqueue() {
+  ep_l2_life::stage_record(m_id,ep_l2_life::RESPONSE_ACCEPT);
   if (m_config->m_L2_config.ep_l2_m0a_stats_enabled())
     ++m_ep_l2_m0a_accum.useful_response_enqueue;
 }
@@ -2651,6 +2682,7 @@ void memory_sub_partition::push(mem_fetch *m_req, unsigned long long cycle) {
 
     for (unsigned i = 0; i < reqs.size(); ++i) {
       mem_fetch *req = reqs[i];
+      ep_l2_life::stage_record(m_id,ep_l2_life::L2_INGRESS);
       m_request_tracker.insert(req);
       if (m_config->m_L2_config.m_ep_l2_ideal_read_hit)
         assert(m_ideal_arrivals.emplace(req, m_ideal_next_arrival++).second);

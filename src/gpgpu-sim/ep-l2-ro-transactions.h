@@ -88,6 +88,7 @@ class transactions {
   }
 
   ep_l2_detach_diag::ledger *diagnostic_observer=nullptr;
+  ep_l2_life::observer *lifetime_observer=nullptr;
   ep_l2_detach_diag::predicate diagnostic_state(identity h) const {
     const auto &e=get(h);ep_l2_detach_diag::predicate p;
     p.live=e.live;p.attached=e.attached;p.reuse=e.reuse_seen;
@@ -152,6 +153,7 @@ class transactions {
     e.waiters.push_back(waiter(d, mf, mask));
     if(!m_features.line_mshr_bypass)m_shared.bind_ro_line(line,h);
     ++stats.admits;
+    observe_lifetime(e);
     if(diagnostic_observer){diagnostic_observer->add(ep_l2_detach_diag::ro_admits);diagnostic_observer->joint(diagnostic_state(h));}
     if (m_features.line_mshr_bypass) ++stats.avoided_line_allocations;
     else ++stats.normal_line_allocations;
@@ -198,6 +200,9 @@ class transactions {
     e.required |= mask; e.reuse_seen = true;
     if(diagnostic_observer){diagnostic_observer->add(ep_l2_detach_diag::ro_merges);diagnostic_observer->joint(diagnostic_state(h));}
     ++stats.merges;
+    observe_lifetime(e);
+    if(lifetime_observer && e.attached)
+      lifetime_observer->merge_marker(e.tag.index);
     observe_peaks();
     return ACCEPTED;
   }
@@ -219,6 +224,7 @@ class transactions {
       throw std::logic_error("tag reuse without detach handshake");
     m_port.tag_detach(e.tag, h); e.attached = false;
     ++stats.detached;
+    observe_lifetime(e);
     diagnostic.success();
     return true;
   }
@@ -241,6 +247,7 @@ class transactions {
     stats.lower_sectors += bits(mask);
     m_port.lower_accepted(h, mask);
     e.issued |= mask;
+    observe_lifetime(e);
     if (!m_features.line_mshr_bypass)
       m_shared.ro_line_issue(e.line, sector_mask(mask));
     observe_lower_peaks();
@@ -254,6 +261,7 @@ class transactions {
       throw std::logic_error("stale attached fill tag generation");
     if (!m_port.fill_write(h, mask, cycle)) return false;
     e.ready |= mask;
+    observe_lifetime(e);
     if(diagnostic_observer){diagnostic_observer->add(ep_l2_detach_diag::ro_fill_packets);diagnostic_observer->joint(diagnostic_state(h));if(!e.attached){diagnostic_observer->add(ep_l2_detach_diag::detached_return_packets);diagnostic_observer->add(ep_l2_detach_diag::detached_return_sectors,__builtin_popcount(mask));}}
     if (!m_features.line_mshr_bypass)
       m_shared.ro_line_ready(e.line, sector_mask(mask));
@@ -300,6 +308,7 @@ class transactions {
     m_shared.release_ro_descriptor(e.waiters[e.prepared_index].descriptor);
     e.waiters.erase(e.waiters.begin() + e.prepared_index);
     e.prepared = e.response_chosen = false; ++stats.responses;
+    observe_lifetime(e);
     retire_if_done(e);
   }
   unsigned pending(identity h) const {
@@ -351,6 +360,12 @@ class transactions {
     entry() : live(false), attached(false), reuse_seen(false), prepared(false),response_chosen(false),
       required(0), issued(0), ready(0), prepared_index(0), line(0), epoch(0), prepared_cycle(0) {}
   };
+  void observe_lifetime(const entry &e,bool retiring=false) {
+    if(!lifetime_observer)return;
+    const bool eligible=m_features.tag_detach && e.attached && !e.reuse_seen && (e.required&~e.ready);
+    lifetime_observer->ro_update(e.h.payload_id,e.h.generation,e.tag.index/16,e.tag.index,
+      e.required,e.issued,e.ready,e.waiters.size(),e.attached,eligible,retiring);
+  }
   static void check_mask(unsigned mask) {
     if (!mask || (mask & ~15U)) throw std::invalid_argument("invalid sector mask");
   }
@@ -373,6 +388,7 @@ class transactions {
     if (!e.waiters.empty() || e.prepared || (e.required & ~e.ready) ||
         (e.issued & ~e.ready)) return;
     if(diagnostic_observer){diagnostic_observer->add(ep_l2_detach_diag::ro_retired);if(!e.attached)diagnostic_observer->add(ep_l2_detach_diag::detached_retired);}
+    observe_lifetime(e,true);
     m_port.unpin(e.h);
     if (!e.attached) m_port.release(e.h);
     if (!m_features.line_mshr_bypass) m_shared.release_ro_line(e.line);

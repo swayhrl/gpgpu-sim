@@ -189,6 +189,7 @@ unsigned l2_cache_config::set_index(new_addr_type addr) const {
 }
 
 tag_array::~tag_array() {
+  ep_l2_life::destroy(m_lifetime);
   g_l2_char_tag_states.erase(this);
   unsigned cache_lines_num = m_config.get_max_num_lines();
   for (unsigned i = 0; i < cache_lines_num; ++i) delete m_lines[i];
@@ -237,6 +238,29 @@ void tag_array::init(int core_id, int type_id) {
   m_type_id = type_id;
   is_used = false;
   m_dirty = 0;
+}
+
+void tag_array::lifetime_tick_begin(unsigned slice,uint64_t gpu) {
+  if(!m_lifetime_attempted){
+    m_lifetime_attempted=true;
+    if(ep_l2_life::enabled()){
+      if(m_config.m_nset!=64 || m_config.m_assoc!=16 || m_config.m_cache_type!=SECTOR)
+        ep_l2_life::emit(stdout,"EPL2LIFEV1|ERROR|slice=%u|code=geometry\n",slice);
+      else {
+        m_lifetime=ep_l2_life::create(slice);
+        if(m_lifetime)for(unsigned i=0;i<m_config.get_num_lines();++i){
+          auto *b=static_cast<sector_cache_block*>(m_lines[i]);unsigned reserved=0,valid=0;
+          for(unsigned n=0;n<4;++n){auto v=b->diagnostic_sector_state(n);
+            if(v==RESERVED)reserved|=1u<<n;if(v!=INVALID)valid|=1u<<n;}
+          m_lifetime->seed(i,b->m_block_addr,reserved,valid);
+        }
+      }
+    }
+  }
+  if(m_lifetime)m_lifetime->tick_begin(gpu);
+}
+void tag_array::lifetime_touch(unsigned index, bool merge, unsigned sector_mask) {
+  if(m_lifetime)m_lifetime->touch(index,sector_mask,merge);
 }
 
 void tag_array::l2_char_tracking_enable() {
@@ -489,7 +513,7 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
                            m_lines[idx]->get_dirty_sector_mask());
           m_dirty--;
         }
-        m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr),
+        lifetime_allocate(idx,m_config.tag(addr), m_config.block_addr(addr),
                                time, mf->get_access_sector_mask());
       }
       break;
@@ -499,8 +523,7 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
       shader_cache_access_log(m_core_id, m_type_id, 1);  // log cache misses
       if (m_config.m_alloc_policy == ON_MISS) {
         bool before = m_lines[idx]->is_modified_line();
-        ((sector_cache_block *)m_lines[idx])
-            ->allocate_sector(time, mf->get_access_sector_mask());
+        lifetime_allocate_sector(idx,time, mf->get_access_sector_mask());
         if (before && !m_lines[idx]->is_modified_line()) {
           m_dirty--;
         }
@@ -517,7 +540,10 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
               status);
       abort();
   }
-  if (status != RESERVATION_FAIL) l2_char_tracking_refresh_line(idx);
+  if (status != RESERVATION_FAIL) {
+    l2_char_tracking_refresh_line(idx);
+    lifetime_touch(idx,false,mf->get_access_sector_mask().to_ulong());
+  }
   return status;
 }
 
@@ -542,17 +568,17 @@ void tag_array::fill(new_addr_type addr, unsigned time,
   // assert(status==MISS||status==SECTOR_MISS); // MSHR should have prevented
   // redundant memory request
   if (status == MISS) {
-    m_lines[idx]->allocate(m_config.tag(addr), m_config.block_addr(addr), time,
+    lifetime_allocate(idx,m_config.tag(addr), m_config.block_addr(addr), time,
                            mask);
   } else if (status == SECTOR_MISS) {
     assert(m_config.m_cache_type == SECTOR);
-    ((sector_cache_block *)m_lines[idx])->allocate_sector(time, mask);
+    lifetime_allocate_sector(idx,time, mask);
   }
   if (before && !m_lines[idx]->is_modified_line()) {
     m_dirty--;
   }
   before = m_lines[idx]->is_modified_line();
-  m_lines[idx]->fill(time, mask, byte_mask);
+  lifetime_fill(idx,time, mask, byte_mask);
   if (m_lines[idx]->is_modified_line() && !before) {
     m_dirty++;
   }
@@ -562,7 +588,7 @@ void tag_array::fill(new_addr_type addr, unsigned time,
 void tag_array::fill(unsigned index, unsigned time, mem_fetch *mf) {
   assert(m_config.m_alloc_policy == ON_MISS);
   bool before = m_lines[index]->is_modified_line();
-  m_lines[index]->fill(time, mf->get_access_sector_mask(),
+  lifetime_fill(index,time, mf->get_access_sector_mask(),
                        mf->get_access_byte_mask());
   if (m_lines[index]->is_modified_line() && !before) {
     m_dirty++;
@@ -572,12 +598,13 @@ void tag_array::fill(unsigned index, unsigned time, mem_fetch *mf) {
 
 // TODO: we need write back the flushed data to the upper level
 void tag_array::flush() {
+  ep_l2_life::reason_scope lifetime_reason(m_lifetime,ep_l2_life::FLUSH);
   if (!is_used) return;
 
   for (unsigned i = 0; i < m_config.get_num_lines(); i++)
     if (m_lines[i]->is_modified_line()) {
       for (unsigned j = 0; j < SECTOR_CHUNCK_SIZE; j++) {
-        m_lines[i]->set_status(INVALID, mem_access_sector_mask_t().set(j));
+        lifetime_set_status(i,INVALID, mem_access_sector_mask_t().set(j));
       }
     }
 
@@ -588,11 +615,12 @@ void tag_array::flush() {
 }
 
 void tag_array::invalidate() {
+  ep_l2_life::reason_scope lifetime_reason(m_lifetime,ep_l2_life::INVALIDATE);
   if (!is_used) return;
 
   for (unsigned i = 0; i < m_config.get_num_lines(); i++)
     for (unsigned j = 0; j < SECTOR_CHUNCK_SIZE; j++)
-      m_lines[i]->set_status(INVALID, mem_access_sector_mask_t().set(j));
+      lifetime_set_status(i,INVALID, mem_access_sector_mask_t().set(j));
 
   m_dirty = 0;
   for (unsigned i = 0; i < m_config.get_num_lines(); ++i)
@@ -1596,9 +1624,13 @@ void baseline_cache::cycle() {
           selected = second; mf = *second; ready = true;
         }
       }
+    } else if(m_miss_queue_status==IN_L1D_MISS_QUEUE) {
+      ep_l2_life::stage_record(mf->get_sub_partition_id(),ep_l2_life::ICNT_INJECT_DENY);
     }
     if (ready) {
       m_miss_queue.erase(selected);
+      if(m_miss_queue_status==IN_L1D_MISS_QUEUE)
+        ep_l2_life::stage_record(mf->get_sub_partition_id(),ep_l2_life::L1_SEND);
       m_memport->push(mf);
       lower_accepted(mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
     }
@@ -1672,6 +1704,7 @@ void baseline_cache::fill(mem_fetch *mf, unsigned time) {
   if (has_atomic) {
     assert(m_config.m_alloc_policy == ON_MISS);
     cache_block_t *block = m_tag_array->get_block(e->second.m_cache_index);
+  ep_l2_life::mutation_scope lifetime_hook(m_tag_array->lifetime(),block,e->second.m_cache_index);
     if (!block->is_modified_line()) {
       m_tag_array->inc_dirty();
     }
@@ -1786,6 +1819,8 @@ void baseline_cache::send_read_request(new_addr_type addr,
       m_mshrs.needs_lower_read(mshr_addr, mf->get_access_sector_mask());
   bool lower_issue_slot = m_miss_queue.size() < m_config.m_miss_queue_size;
   if (mshr_hit && mshr_avail && (!needs_lower_read || lower_issue_slot)) {
+    if(m_miss_queue_status==IN_L1D_MISS_QUEUE)
+      ep_l2_life::stage_record(mf->get_sub_partition_id(),ep_l2_life::L1_MERGE);
     if (read_only)
       m_tag_array->access(block_addr, time, cache_index, mf);
     else
@@ -1851,6 +1886,7 @@ void data_cache::send_write_request(mem_fetch *mf, cache_event request,
 
 void data_cache::update_m_readable(mem_fetch *mf, unsigned cache_index) {
   cache_block_t *block = m_tag_array->get_block(cache_index);
+  ep_l2_life::mutation_scope lifetime_hook(m_tag_array->lifetime(),block,cache_index);
   for (unsigned i = 0; i < SECTOR_CHUNCK_SIZE; i++) {
     if (mf->get_access_sector_mask().test(i)) {
       bool all_set = true;
@@ -1878,6 +1914,7 @@ cache_request_status data_cache::wr_hit_wb(new_addr_type addr,
   new_addr_type block_addr = m_config.block_addr(addr);
   m_tag_array->access(block_addr, time, cache_index, mf);  // update LRU state
   cache_block_t *block = m_tag_array->get_block(cache_index);
+  ep_l2_life::mutation_scope lifetime_hook(m_tag_array->lifetime(),block,cache_index);
   if (!block->is_modified_line()) {
     m_tag_array->inc_dirty();
   }
@@ -1903,6 +1940,7 @@ cache_request_status data_cache::wr_hit_wt(new_addr_type addr,
   new_addr_type block_addr = m_config.block_addr(addr);
   m_tag_array->access(block_addr, time, cache_index, mf);  // update LRU state
   cache_block_t *block = m_tag_array->get_block(cache_index);
+  ep_l2_life::mutation_scope lifetime_hook(m_tag_array->lifetime(),block,cache_index);
   if (!block->is_modified_line()) {
     m_tag_array->inc_dirty();
   }
@@ -1931,6 +1969,7 @@ cache_request_status data_cache::wr_hit_we(new_addr_type addr,
 
   // generate a write-through/evict
   cache_block_t *block = m_tag_array->get_block(cache_index);
+  ep_l2_life::mutation_scope lifetime_hook(m_tag_array->lifetime(),block,cache_index);
   send_write_request(mf, cache_event(WRITE_REQUEST_SENT), time, events);
 
   // Invalidate block
@@ -2063,6 +2102,7 @@ enum cache_request_status data_cache::wr_miss_wa_fetch_on_write(
         m_tag_array->access(block_addr, time, cache_index, wb, evicted, mf);
     assert(status != HIT);
     cache_block_t *block = m_tag_array->get_block(cache_index);
+  ep_l2_life::mutation_scope lifetime_hook(m_tag_array->lifetime(),block,cache_index);
     if (!block->is_modified_line()) {
       m_tag_array->inc_dirty();
     }
@@ -2143,6 +2183,7 @@ enum cache_request_status data_cache::wr_miss_wa_fetch_on_write(
                       evicted, events, false, true);
 
     cache_block_t *block = m_tag_array->get_block(cache_index);
+  ep_l2_life::mutation_scope lifetime_hook(m_tag_array->lifetime(),block,cache_index);
     block->set_modified_on_fill(true, mf->get_access_sector_mask());
     block->set_byte_mask_on_fill(true);
 
@@ -2207,6 +2248,7 @@ enum cache_request_status data_cache::wr_miss_wa_lazy_fetch_on_read(
       m_tag_array->access(block_addr, time, cache_index, wb, evicted, mf);
   assert(m_status != HIT);
   cache_block_t *block = m_tag_array->get_block(cache_index);
+  ep_l2_life::mutation_scope lifetime_hook(m_tag_array->lifetime(),block,cache_index);
   if (!block->is_modified_line()) {
     m_tag_array->inc_dirty();
   }
@@ -2279,6 +2321,7 @@ enum cache_request_status data_cache::rd_hit_base(
   if (mf->isatomic()) {
     assert(mf->get_access_type() == GLOBAL_ACC_R);
     cache_block_t *block = m_tag_array->get_block(cache_index);
+  ep_l2_life::mutation_scope lifetime_hook(m_tag_array->lifetime(),block,cache_index);
     if (!block->is_modified_line()) {
       m_tag_array->inc_dirty();
     }
@@ -2468,6 +2511,8 @@ enum cache_request_status data_cache::process_tag_probe(
 enum cache_request_status data_cache::access(new_addr_type addr, mem_fetch *mf,
                                              unsigned time,
                                              std::list<cache_event> &events) {
+  const bool lifetime_l1=ep_l2_life::enabled() && m_miss_queue_status==IN_L1D_MISS_QUEUE;
+  const auto lifetime_missq_before=lifetime_l1?m_stats.total_fail_reason(MISS_QUEUE_FULL):0;
   assert(mf->get_data_size() <= m_config.get_atom_sz());
   bool wr = mf->get_is_write();
   new_addr_type block_addr = m_config.block_addr(addr);
@@ -2482,6 +2527,16 @@ enum cache_request_status data_cache::access(new_addr_type addr, mem_fetch *mf,
   m_stats.inc_stats_pw(mf->get_access_type(),
                        m_stats.select_stats_status(probe_status, access_status),
                        mf->get_streamID());
+  if(lifetime_l1){
+    auto result=m_stats.select_stats_status(probe_status,access_status);
+    if(result==HIT || result==MISS || result==SECTOR_MISS || result==HIT_RESERVED)
+      ep_l2_life::stage_record(mf->get_sub_partition_id(),ep_l2_life::L1_ACCESS);
+    if(result==MISS || result==SECTOR_MISS)
+      ep_l2_life::stage_record(mf->get_sub_partition_id(),ep_l2_life::L1_MISS);
+    auto after=m_stats.total_fail_reason(MISS_QUEUE_FULL);
+    if(after>lifetime_missq_before)
+      ep_l2_life::stage_record(mf->get_sub_partition_id(),ep_l2_life::L1_MISSQ_BLOCK,after-lifetime_missq_before);
+  }
   return access_status;
 }
 

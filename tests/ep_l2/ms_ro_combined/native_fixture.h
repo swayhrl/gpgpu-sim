@@ -9,6 +9,7 @@ struct combined_fixture : victim_fixture {
       const char *queues="1024:16:64:64"):victim_fixture(argv,queues) {
     assert(cache->tvd_enabled() && (!require_ro || cache->ro_enabled()));
     sp->ro_bind_commandlist(argv[8]);sp->ro_begin_epoch();
+    cache->lifetime_tick_begin(0,gpu->gpu_sim_cycle+gpu->gpu_tot_sim_cycle);
   }
   void step(bool consume=true) {
     unsigned long long before[4];for(unsigned b=0;b<4;++b)before[b]=cache->ep_l2_payload_bank_grants(b);
@@ -75,7 +76,9 @@ struct combined_fixture : victim_fixture {
     return ep_l2::PayloadHandle();
   }
   void finish() {
-    for(unsigned n=0;n<40000 && (part->busy() || !pending_reads.empty() || !wb.empty());++n) {
+    for(unsigned n=0;n<40000 && (part->busy() || !pending_reads.empty() || !wb.empty() ||
+        !cache->ft_drained() || cache->ep_l2_descriptor_count_used() ||
+        cache->ep_l2_payload_pending_operations());++n) {
       step();if(!pending_reads.empty() && !sp->dram_L2_queue_full())return_one(pending_reads.size()-1);
       complete_one();
     }

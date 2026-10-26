@@ -16,6 +16,7 @@ void l2_cache::force_tag_access(new_addr_type addr, unsigned time,
 
 bool l2_cache::ft_try_force_tag_access(new_addr_type addr, unsigned time,
                                       mem_access_sector_mask_t mask) {
+  ep_l2_life::untimed_scope lifetime_untimed;
   if(m_ro && !m_ro->prefill_allowed(m_config.block_addr(addr)))return false;
   // This is untimed host initialization, not a source of GPU bank grants or
   // free WB service. Fail BEFORE changing Tag, generation, owner or offset.
@@ -325,6 +326,8 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   unsigned index = (unsigned)-1;
   cache_request_status probe = m_tag_array->probe(owner, index, mf, mf->is_write(), true);
   if(diagnostic.d){diagnostic.d->add(commit_raw_probe_reached);if(probe==RESERVATION_FAIL)diagnostic.d->add(raw_tag_fail_commit);}
+  if(probe==RESERVATION_FAIL)if(auto *o=m_tag_array->lifetime())
+    o->add(o->set[m_config.set_index(addr)].c[ep_l2_life::PROD_TAGFAIL]);
   if(probe==RESERVATION_FAIL && m_ro){m_ro->relieve(addr);probe=m_tag_array->probe(owner,index,mf,mf->is_write(),true);if(diagnostic.d)diagnostic.d->add(probe>=0&&probe<=WRITE_ALLOCATED?field(post_relief_hit+probe):post_relief_unknown);}
   if (probe == RESERVATION_FAIL) return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_tag));
   if (m_tvd && probe == MISS &&

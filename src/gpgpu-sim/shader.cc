@@ -4719,6 +4719,7 @@ void simt_core_cluster::icnt_inject_request_packet(class mem_fetch *mf) {
   }
   m_stats->m_outgoing_traffic_stats->record_traffic(mf, packet_size);
   unsigned destination = mf->get_sub_partition_id();
+  ep_l2_life::stage_record(destination,ep_l2_life::ICNT_INJECT_ACCEPT);
   mf->set_status(IN_ICNT_TO_MEM,
                  m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
   if (!mf->get_is_write() && !mf->isatomic())
