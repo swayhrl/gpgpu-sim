@@ -53,10 +53,15 @@ struct capacity_fixture:combined_fixture{
  }
  template<class Predicate>void until(Predicate p,unsigned limit=20000){for(unsigned n=0;n<limit&&!p();++n)step();assert(p());}
  void ticks(unsigned n=32,bool consume=true){while(n--)step(consume);}
- void fill_pending(const std::vector<new_addr_type>&a){
-  assert(a.size()>=logical_tag_ways);
-  for(unsigned i=0;i<logical_tag_ways;++i){send(make(a[(i+1)%logical_tag_ways],false));await_lower(i+1);}
+ unsigned fill_pending(const std::vector<new_addr_type>&a){
+  assert(a.size()>=logical_tag_ways);unsigned first_uid=~0u;
+  for(unsigned i=0;i<logical_tag_ways;++i){
+   const auto address=a[(i+1)%logical_tag_ways];auto *request=make(address,false);
+   if(address==a[0])first_uid=request->get_request_uid();
+   send(request);await_lower(i+1);
+  }
   assert(cache->ft_reserved_ways_for_test(a[0])==logical_tag_ways);
+  assert(first_uid!=~0u && expected.count(first_uid)==1);return first_uid;
  }
  void finish_named(const char*name){
   finish();assert(cache->ft_drained()&&!cache->ep_l2_descriptor_count_used()&&!cache->ep_l2_wad_occupancy());
@@ -69,8 +74,10 @@ struct capacity_fixture:combined_fixture{
  }
 };
 static void pressure_identity(char**argv,const std::string&g,bool T){
- capacity_fixture f(argv,g);assert(f.cache->ro_tag_detach_enabled_for_test()==T);auto a=f.addresses(f.logical_tag_ways+2);f.fill_pending(a);
- auto old=f.tag_for(a[0]);assert(old.valid());unsigned oldidx=f.tag_index(old);auto first=f.pending_reads[f.pending(old)]->get_request_uid();
+ capacity_fixture f(argv,g);assert(f.cache->ro_tag_detach_enabled_for_test()==T);auto a=f.addresses(f.logical_tag_ways+2);const unsigned first=f.fill_pending(a);
+ auto old=f.tag_for(a[0]);assert(old.valid());unsigned oldidx=f.tag_index(old);
+ assert(f.expected.count(first)==1);
+ assert(f.pending_reads[f.pending(old)]->get_request_uid()!=first); // lower packet != original waiter
  auto matching=f.make(a[0],false),incoming=f.make(a[f.logical_tag_ways],false);unsigned idx=~0u;
  assert(f.cache->ft_raw_probe_for_test(matching,idx)==HIT_RESERVED);f.expected.erase(matching->get_request_uid());delete matching;
  assert(f.cache->ft_raw_probe_for_test(incoming,idx)==RESERVATION_FAIL);
