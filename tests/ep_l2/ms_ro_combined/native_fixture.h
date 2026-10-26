@@ -6,7 +6,8 @@ struct combined_fixture : victim_fixture {
   std::vector<mem_fetch *> pending_reads;
   unsigned peak_shared=0;
   explicit combined_fixture(char **argv,bool require_ro=true,
-      const char *queues="1024:16:64:64"):victim_fixture(argv,queues) {
+      const char *queues="1024:16:64:64",
+      const char *geometry="S:64:128:16,L:B:m:L:L,A:128:1,256:0,32"):victim_fixture(argv,queues,geometry) {
     assert(cache->tvd_enabled() && (!require_ro || cache->ro_enabled()));
     sp->ro_bind_commandlist(argv[8]);sp->ro_begin_epoch();
     cache->lifetime_tick_begin(0,gpu->gpu_sim_cycle+gpu->gpu_tot_sim_cycle);
@@ -71,7 +72,7 @@ struct combined_fixture : victim_fixture {
     memory[line][s]=expected.at(uid)[s];send(r);wait(uid,false);return uid;
   }
   ep_l2::PayloadHandle tag_for(new_addr_type line) {
-    for(unsigned i=0;i<1024;++i) {auto h=cache->ep_l2_tag_payload_handle_for_test(i);
+    for(unsigned i=0;i<logical_tag_count;++i) {auto h=cache->ep_l2_tag_payload_handle_for_test(i);
       if(cache->ep_l2_payload_for_test().handle_owner_matches(h,line))return h;}
     return ep_l2::PayloadHandle();
   }

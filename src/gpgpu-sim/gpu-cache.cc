@@ -244,10 +244,10 @@ void tag_array::lifetime_tick_begin(unsigned slice,uint64_t gpu) {
   if(!m_lifetime_attempted){
     m_lifetime_attempted=true;
     if(ep_l2_life::enabled()){
-      if(m_config.m_nset!=64 || m_config.m_assoc!=16 || m_config.m_cache_type!=SECTOR)
+      if(!ep_l2_life::supported_geometry(m_config.m_nset,m_config.m_assoc) || m_config.m_cache_type!=SECTOR)
         ep_l2_life::emit(stdout,"EPL2LIFEV1|ERROR|slice=%u|code=geometry\n",slice);
       else {
-        m_lifetime=ep_l2_life::create(slice);
+        m_lifetime=ep_l2_life::create(slice,m_config.m_nset,m_config.m_assoc);
         if(m_lifetime)for(unsigned i=0;i<m_config.get_num_lines();++i){
           auto *b=static_cast<sector_cache_block*>(m_lines[i]);unsigned reserved=0,valid=0;
           for(unsigned n=0;n<4;++n){auto v=b->diagnostic_sector_state(n);
@@ -3044,12 +3044,12 @@ void l2_cache::detach_diag_snapshot(mem_fetch*m,ep_l2_detach_diag::preview&o) co
   if(ep_l2_tagpressure::state.find(this)) {
     auto &s=o.tagpressure;const auto *d=ep_l2_detach_diag::get(this);
     s.cache_identity=this;s.slice=d->slice;s.physical_cycle=ft_physical_cycle();
-    s.request_uid=m->get_request_uid();s.assoc=m_config.get_assoc();
+    s.request_uid=m->get_request_uid();s.assoc=m_config.get_assoc();s.sets=m_config.m_nset;
     s.raw=s.raw_r4=o.raw>=0&&o.raw<=WRITE_ALLOCATED?unsigned(o.raw):ep_l2_tagpressure::RAW-1;
     s.ro_runtime=o.runtime;s.T=o.T;
     s.requester=!o.runtime?ep_l2_tagpressure::RUNTIME_OFF:o.candidate?
       ep_l2_tagpressure::CERTIFIED_RO_CANDIDATE:ep_l2_tagpressure::NONRO_NATIVE_PATH;
-    if(s.assoc==16)for(unsigned way=0;way<16;++way) {
+    if(ep_l2_life::supported_geometry(s.sets,s.assoc))for(unsigned way=0;way<s.assoc;++way) {
       const unsigned index=o.set*s.assoc+way;auto &w=s.ways[way];
       w.kind=static_cast<ep_l2_tagpressure::way_kind>(m_tag_array->diagnostic_way_class(index));
       w.live=false;w.attached=false;w.reuse=false;w.required=0;w.ready=0;

@@ -12,6 +12,10 @@
 #include <string>
 namespace ep_l2_life {
 constexpr unsigned SETS=64, WAYS=16, SECTORS=4, PAYLOADS=1168, BINS=33;
+// Maximum storage is fixed; active Tag geometry is independent of physical payloads.
+inline bool supported_geometry(unsigned sets,unsigned ways) {
+ return (sets==32 || sets==64) && (ways==8 || ways==16);
+}
 constexpr uint64_t WINDOW=8192, STATE_LIMIT=16ULL<<20, OUTPUT_LIMIT=16ULL<<20;
 enum counter {
  ENTER, EXIT, ALLOC, REENTER, SECTOR_ADD, MUTATE, TICK_PEAK, EVENT_PEAK,
@@ -95,6 +99,7 @@ template<size_t N> inline std::string array_text(const std::array<uint64_t,N>& a
 class observer {
  public:
  unsigned slice;
+ const unsigned active_sets,active_ways;
  uint64_t tick=0, gpu=0, begin_gpu=0, end_gpu=0, ticks=0, ordinal=0, invalid=0;
  uint64_t window_begin=0, window_gpu_begin=0, last_head_uid=~uint64_t(0), last_new_uid=~uint64_t(0);
  uint64_t new_first_tick=0;
@@ -108,42 +113,49 @@ class observer {
  std::array<sample,8> examples{};
  unsigned examples_count=0;
  uint64_t ro_right_count=0, ro_right_time=0, mask_events=0, observed_state_bytes=0;
- explicit observer(unsigned s):slice(s) {}
+ explicit observer(unsigned s,unsigned sets=SETS,unsigned ways=WAYS):slice(s),
+  active_sets(supported_geometry(sets,ways)?sets:SETS),
+  active_ways(supported_geometry(sets,ways)?ways:WAYS) {
+   if(!supported_geometry(sets,ways)){invalid|=16777216;active=false;}
+ }
+ unsigned active_lines() const {return active_sets*active_ways;}
+ unsigned set_of(unsigned index) const {return index/active_ways;}
  void add(uint64_t &x,uint64_t n=1) {
    if(UINT64_MAX-x<n){x=UINT64_MAX;invalid|=1;}else x+=n;
  }
  void accumulate(unsigned s,uint64_t at) {
-   if(s>=SETS){invalid|=2;return;}
+   if(s>=active_sets){invalid|=2;return;}
    auto &v=set[s];auto &w=window[s];
-   if(at<v.last || at<w.last || v.occupancy>WAYS){invalid|=4;return;}
+   if(at<v.last || at<w.last || v.occupancy>active_ways){invalid|=4;return;}
    add(v.area[v.occupancy],at-v.last);v.last=at;
    add(w.area[v.occupancy],at-w.last);w.last=at;
  }
  void seed(unsigned index,uint64_t address,unsigned reserved,unsigned valid) {
-   if(index>=way.size() || reserved>15 || valid>15 || (reserved&~valid)){invalid|=8;return;}
+   if(index>=active_lines() || reserved>15 || valid>15 || (reserved&~valid)){invalid|=8;return;}
    auto &v=way[index];v.address=address;v.valid=valid;v.reserved=reserved;
    v.incarnation=bool(valid);v.generation=valid?1:0;v.sectors_seen=reserved;
-   if(reserved){v.carry=true;v.kind=2;v.begin=0;auto &s=set[index/WAYS];
+   if(reserved){v.carry=true;v.kind=2;v.begin=0;auto &s=set[set_of(index)];
      ++s.occupancy;s.pending_sectors+=bits(reserved);add(s.c[LEFT]);
      s.c[EVENT_PEAK]=s.occupancy;}
  }
  void incarnation_close(unsigned index,bool right=false) {
-   auto &v=way[index];auto &a=set[index/WAYS].incarnation_stats;
+   auto &v=way[index];auto &a=set[set_of(index)].incarnation_stats;
    unsigned b=right?8:0;add(a[b]);if(!v.timed_incarnation)add(a[b+1]);
    add(a[b+2],v.packets);a[b+3]=std::max<uint64_t>(a[b+3],v.packets);
    add(a[b+4],v.merges);a[b+5]=std::max<uint64_t>(a[b+5],v.merges);
    add(a[b+6],bits(v.request_mask));a[b+7]=std::max<uint64_t>(a[b+7],bits(v.request_mask));
-   if(!right){add(set[index/WAYS].c[INC_END]);v.incarnation=false;}
+   if(!right){add(set[set_of(index)].c[INC_END]);v.incarnation=false;}
  }
  void touch(unsigned index,unsigned sector_mask,bool merged=false) {
-   if(!active || closed || index>=way.size() || sector_mask>15)return;
+   if(!active || closed)return;
+   if(index>=active_lines() || sector_mask>15){invalid|=64;return;}
    auto &v=way[index];
    if(v.packets==UINT32_MAX || (merged&&v.merges==UINT32_MAX))invalid|=1048576;
    else {++v.packets;if(merged)++v.merges;}
-   v.request_mask|=sector_mask;requester(index/WAYS,merged);
+   v.request_mask|=sector_mask;requester(set_of(index),merged);
  }
  void episode_close(unsigned index) {
-   auto &v=way[index];auto &s=set[index/WAYS];
+   auto &v=way[index];auto &s=set[set_of(index)];
    if(v.exits==UINT32_MAX)invalid|=262144;else ++v.exits;
    if(tick<v.begin){invalid|=16;return;}uint64_t dt=tick-v.begin;
    unsigned n=v.kind==0?CLOSED_NEW:v.kind==1?CLOSED_RE:CLOSED_LEFT;
@@ -151,14 +163,14 @@ class observer {
    unsigned mx=v.kind==0?MAX_NEW:v.kind==1?MAX_RE:MAX_LEFT;
    add(s.c[n]);add(s.c[sum],dt);s.c[mx]=std::max(s.c[mx],dt);
    if(v.kind<2)add(s.hist[v.kind][logbin(dt)]);
-   add(s.c[EXIT]);add(window[index/WAYS].c[1]);
+   add(s.c[EXIT]);add(window[set_of(index)].c[1]);
    if(!s.occupancy){invalid|=32;}else --s.occupancy;
  }
  void change(unsigned index,uint64_t address,unsigned reserved,unsigned valid,
              unsigned operation,bool new_incarnation=false) {
    if(!active || closed)return;
-   if(index>=way.size() || reserved>15 || valid>15 || (reserved&~valid)){invalid|=64;return;}
-   auto &v=way[index];unsigned si=index/WAYS;auto &s=set[si];auto &w=window[si];
+   if(index>=active_lines() || reserved>15 || valid>15 || (reserved&~valid)){invalid|=64;return;}
+   auto &v=way[index];unsigned si=set_of(index);auto &s=set[si];auto &w=window[si];
    accumulate(si,tick);add(ordinal);add(s.c[MUTATE]);
    unsigned oldmask=v.reserved;const unsigned previous_pending=oldmask;
    if(new_incarnation){
@@ -204,7 +216,7 @@ class observer {
                 unsigned required,unsigned issued,unsigned ready,unsigned waiters,
                 bool attached,bool eligible,bool retiring=false) {
    if(!active || closed)return;
-   if(slot>=ro.size() || si>=SETS || index>=way.size() ||
+   if(slot>=ro.size() || si>=active_sets || index>=active_lines() || si!=set_of(index) ||
       (required|issued|ready)>15 || waiters>512){invalid|=2048;return;}
    auto &v=ro[slot];auto &s=set[si];
    if(v.live && (v.generation!=generation || v.set!=si)){invalid|=4096;return;}
@@ -227,17 +239,18 @@ class observer {
    if(retiring){add(s.c[RO_RETIRE]);add(s.c[RO_TIME],tick-v.birth);v.live=false;}
  }
  void merge_marker(unsigned index) {
-   if(!active || closed || index>=way.size())return;
+   if(!active || closed)return;
+   if(index>=active_lines()){invalid|=64;return;}
    auto &v=way[index];if(v.merges==UINT32_MAX)invalid|=1048576;else ++v.merges;
-   add(set[index/WAYS].c[MERGE]);add(window[index/WAYS].c[7]);
+   add(set[set_of(index)].c[MERGE]);add(window[set_of(index)].c[7]);
  }
  void requester(unsigned si,bool merge) {
-   if(!active || closed || si>=SETS)return;
+   if(!active || closed || si>=active_sets)return;
    add(set[si].c[REQUESTER]);
    if(merge){add(set[si].c[MERGE]);add(window[si].c[7]);}
  }
  void frontend(unsigned si,uint64_t uid,bool new_tag,bool raw_fail,bool admitted) {
-   if(!active || closed || si>=SETS)return;
+   if(!active || closed || si>=active_sets)return;
    record_stage(FRONTEND_HEAD);
    if(last_head_uid!=uid)last_head_uid=uid; // FIFO head, never a global UID set.
    if(!admitted)record_stage(FRONTEND_DENY);
@@ -262,7 +275,7 @@ class observer {
    add(stage_total[which],n);add(stage_window[which],n);
  }
  void commit_new(unsigned si,uint64_t uid) {
-   if(!active||closed||si>=SETS)return;
+   if(!active||closed||si>=active_sets)return;
    add(set[si].c[NEW_COMMIT]);
    if(last_new_uid==uid && tick>=new_first_tick){
      auto dt=tick-new_first_tick;add(set[si].c[WAIT_COUNT]);add(set[si].c[WAIT_SUM],dt);
@@ -272,7 +285,7 @@ class observer {
  }
  void write_window(FILE *f,uint64_t end) {
    if(end<=window_begin)return;
-   for(unsigned i=0;i<SETS;++i){
+   for(unsigned i=0;i<active_sets;++i){
      accumulate(i,end);auto &w=window[i];
      emit(f,"EPL2LIFEV1|WINDOW_SET|slice=%u|set=%u|begin=%llu|end=%llu|area=%s|c=%s|invalid=%llu\n",
        slice,i,(unsigned long long)window_begin,(unsigned long long)end,
@@ -292,38 +305,40 @@ class observer {
  }
  void tick_end() {
    if(!active || closed)return;
-   for(unsigned s=0;s<SETS;++s)set[s].c[TICK_PEAK]=std::max<uint64_t>(set[s].c[TICK_PEAK],set[s].occupancy);
+   for(unsigned s=0;s<active_sets;++s)set[s].c[TICK_PEAK]=std::max<uint64_t>(set[s].c[TICK_PEAK],set[s].occupancy);
    add(ticks);
  }
  void finish(uint64_t physical_gpu,FILE *f=stdout) {
    if(closed)return;
    tick=ticks;gpu=end_gpu=physical_gpu;write_window(f,tick);
-   for(unsigned i=0;i<SETS;++i){
+   for(unsigned i=0;i<active_sets;++i){
      accumulate(i,tick);auto &s=set[i];
-     for(unsigned j=0;j<WAYS;++j){auto &v=way[i*WAYS+j];if(uint64_t(v.carry)+v.enters-v.exits!=unsigned(bool(v.reserved)))invalid|=524288;if(v.reserved){add(s.c[RIGHT]);add(s.c[SUM_RIGHT],tick-v.begin);}}
+     for(unsigned j=0;j<active_ways;++j){auto &v=way[i*active_ways+j];if(uint64_t(v.carry)+v.enters-v.exits!=unsigned(bool(v.reserved)))invalid|=524288;if(v.reserved){add(s.c[RIGHT]);add(s.c[SUM_RIGHT],tick-v.begin);}}
      uint64_t weighted=0;
-     for(unsigned k=0;k<=WAYS;++k){
+     for(unsigned k=0;k<=active_ways;++k){
        if(k && s.area[k]>UINT64_MAX/k){invalid|=65536;break;}
        add(weighted,s.area[k]*k);
      }
+     for(unsigned k=active_ways+1;k<=WAYS;++k)
+       if(s.area[k] || s.new_head_reserved[k] || s.new_unique_reserved[k])invalid|=16777216;
      uint64_t durations=0;add(durations,s.c[SUM_NEW]);add(durations,s.c[SUM_RE]);add(durations,s.c[SUM_LEFT]);add(durations,s.c[SUM_RIGHT]);
      if(weighted!=durations || s.c[LEFT]+s.c[ENTER]-s.c[EXIT]!=s.occupancy)invalid|=131072;
    }
-   for(unsigned i=0;i<way.size();++i)if(way[i].incarnation)incarnation_close(i,true);
+   for(unsigned i=0;i<active_lines();++i)if(way[i].incarnation)incarnation_close(i,true);
    for(auto &v:ro)if(v.live){close_ro_phase(v);add(ro_right_count);add(ro_right_time,tick-v.birth);}
    closed=true;
  }
  void print(FILE *f=stdout) {
    if(printed)return;printed=true;
-   emit(f,"EPL2LIFEV1|META|slice=%u|sets=64|ways=16|sectors=4|window=8192|unit=L2_tick|gpu_unit=core_cycle|begin=0|end=%llu|begin_gpu=%llu|end_gpu=%llu|closed=%u|state_bytes=%llu|bins=33|bin32=ge2pow31|scope=timed_L2_only|invalid=%llu\n",
-     slice,(unsigned long long)ticks,(unsigned long long)begin_gpu,(unsigned long long)end_gpu,unsigned(closed),
+   emit(f,"EPL2LIFEV1|META|slice=%u|sets=%u|ways=%u|sectors=4|window=8192|unit=L2_tick|gpu_unit=core_cycle|begin=0|end=%llu|begin_gpu=%llu|end_gpu=%llu|closed=%u|state_bytes=%llu|bins=33|bin32=ge2pow31|scope=timed_L2_only|invalid=%llu\n",
+     slice,active_sets,active_ways,(unsigned long long)ticks,(unsigned long long)begin_gpu,(unsigned long long)end_gpu,unsigned(closed),
      (unsigned long long)observed_state_bytes,(unsigned long long)invalid);
-   for(unsigned i=0;i<SETS;++i){const auto &s=set[i];
+   for(unsigned i=0;i<active_sets;++i){const auto &s=set[i];
      emit(f,"EPL2LIFEV1|SET|slice=%u|set=%u|area=%s|c=%s|new_hist=%s|re_hist=%s|pending=%u|eligible=%u|invalid=%llu\n",
        slice,i,array_text(s.area).c_str(),array_text(s.c).c_str(),
        array_text(s.hist[0]).c_str(),array_text(s.hist[1]).c_str(),s.pending_sectors,s.eligible,(unsigned long long)invalid);
    }
-   for(unsigned i=0;i<SETS;++i) {
+   for(unsigned i=0;i<active_sets;++i) {
      const auto &s=set[i];
      emit(f,"EPL2LIFEV1|INCARNATION|slice=%u|set=%u|stats=%s|head_reserved=%s|unique_reserved=%s|invalid=%llu\n",
        slice,i,array_text(s.incarnation_stats).c_str(),array_text(s.new_head_reserved).c_str(),
@@ -343,11 +358,16 @@ class observer {
  }
 };
 static_assert(sizeof(observer)*64+(2ULL<<20)<STATE_LIMIT,"lifetime observer fixed-state budget exceeded");
-inline observer* create(unsigned slice) {
- if(!enabled() || slice>=registry.size())return nullptr;
- if(registry[slice])return registry[slice];
+inline observer* create(unsigned slice,unsigned sets=SETS,unsigned ways=WAYS) {
+ if(!enabled() || slice>=registry.size() || !supported_geometry(sets,ways))return nullptr;
+ if(registry[slice]){
+  if(registry[slice]->active_sets!=sets || registry[slice]->active_ways!=ways){
+   registry[slice]->invalid|=16777216;return nullptr;
+  }
+  return registry[slice];
+ }
  if(allocated_bytes+sizeof(observer)+(2ULL<<20)>STATE_LIMIT)return nullptr;
- observer *p=new observer(slice);p->observed_state_bytes=sizeof(observer);
+ observer *p=new observer(slice,sets,ways);p->observed_state_bytes=sizeof(observer);
  registry[slice]=p;allocated_bytes+=sizeof(observer);return p;
 }
 inline void destroy(observer *p) {

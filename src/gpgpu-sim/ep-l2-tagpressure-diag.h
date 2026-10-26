@@ -27,7 +27,7 @@ struct way {way_kind kind=INVALID_WAY;bool live=false,attached=false,reuse=false
 struct snapshot {
  const void*cache_identity=nullptr;unsigned slice=~0U;
  uint64_t physical_cycle=~uint64_t(0),request_uid=~uint64_t(0);
- unsigned assoc=0,raw=RAW-1,raw_r4=RAW-1;
+ unsigned sets=64,assoc=0,raw=RAW-1,raw_r4=RAW-1;
  unsigned requester=RUNTIME_OFF; // copy existing r4 runtime/candidate booleans
  bool ro_runtime=false,T=false; // per slice config; never changes a decision
  std::array<way,16> ways{};
@@ -39,6 +39,7 @@ inline bool context_matches(const snapshot&s,const void*cache,unsigned slice,
 }
 enum route { PROD_NOT_REACHED, NOT_CONSULTED, CONSULTED_MISS, CONSULTED_FAIL, EXISTING_HIT_RESERVED, ROUTE_OTHER };
 struct phase_counts {
+ unsigned sets=0,assoc=0;
  // Keep PHASE counters only; SLICE/GLOBAL totals are exact reductions of these.
  uint64_t covered=0, skipped[4]={}, absent=0, ro_observed=0,ro_na=0;
  bool invalid=false;
@@ -56,7 +57,9 @@ struct phase_counts {
  }
  void add(uint64_t&v,uint64_t n=1){checked(v,n,invalid);}
  void observe(const snapshot&s,const void*cache,unsigned slice,uint64_t cycle,uint64_t uid){
-  if(!context_matches(s,cache,slice,cycle,uid)||s.assoc!=16||s.raw>=RAW||s.raw!=s.raw_r4||s.requester>RUNTIME_OFF||(!s.ro_runtime)!=(s.requester==RUNTIME_OFF)){invalid=true;return;}
+  if(!context_matches(s,cache,slice,cycle,uid)||(s.assoc!=8&&s.assoc!=16)||(s.sets!=32&&s.sets!=64)||s.raw>=RAW||s.raw!=s.raw_r4||s.requester>RUNTIME_OFF||(!s.ro_runtime)!=(s.requester==RUNTIME_OFF)){invalid=true;return;}
+  if(!assoc){sets=s.sets;assoc=s.assoc;}
+  else if(sets!=s.sets||assoc!=s.assoc){invalid=true;return;}
   unsigned r=0,ni=0,eligible=0,reasons=0;
   for(unsigned i=0;i<s.assoc;++i){
    const auto&w=s.ways[i]; if(unsigned(w.kind)>3){invalid=true;return;}
@@ -90,8 +93,8 @@ struct phase_counts {
   for(auto n:ways_raw_reserved_class)checked(cl,n,bad);
   for(auto n:heads_raw_reserved_invalid)checked(iv,n,bad);
   checked(ro,ro_observed,bad);checked(ro,ro_na,bad);
-  if(covered>std::numeric_limits<uint64_t>::max()/16)bad=true;
-  return !bad&&h==covered&&covered==ro&&e==ro_observed&&m==ro_observed&&cl==covered*16&&iv==covered;
+  if((covered&&(!assoc||(assoc!=8&&assoc!=16)||(sets!=32&&sets!=64))) || (assoc&&covered>std::numeric_limits<uint64_t>::max()/assoc))bad=true;
+  return !bad&&h==covered&&covered==ro&&e==ro_observed&&m==ro_observed&&cl==covered*assoc&&iv==covered;
  }
 };
 // One bounded, exact sparse joint shared by ALL64 slices/18 phases. This is
@@ -112,11 +115,11 @@ struct route_joint_table {
  std::array<slot,SLOTS> slots{};unsigned rows=0;bool invalid=false;
  void record(unsigned slice,unsigned phase,const void*cache,uint64_t cycle,
              uint64_t uid,const snapshot&s,unsigned production_route,bool admitted,unsigned early){
-  if(!context_matches(s,cache,slice,cycle,uid)||slice>=64||phase>=18||s.assoc!=16||s.raw>=RAW||s.raw!=s.raw_r4||
+  if(!context_matches(s,cache,slice,cycle,uid)||slice>=64||phase>=18||(s.assoc!=8&&s.assoc!=16)||(s.sets!=32&&s.sets!=64)||s.raw>=RAW||s.raw!=s.raw_r4||
      s.requester>RUNTIME_OFF||(!s.ro_runtime)!=(s.requester==RUNTIME_OFF)||
      production_route>=6||early>=6){invalid=true;return;}
   unsigned r=0;bool eligible=false;
-  for(unsigned i=0;i<16;++i){const auto&w=s.ways[i];
+  for(unsigned i=0;i<s.assoc;++i){const auto&w=s.ways[i];
    if(unsigned(w.kind)>3){invalid=true;return;}
    r+=w.kind==RESERVED_WAY;
    eligible|=w.live&&w.attached&&!w.reuse&&(w.required&~w.ready);
@@ -140,11 +143,13 @@ struct route_joint_table {
 
 constexpr unsigned SLICES=64, PHASES=18;
 constexpr uint64_t OUTPUT_CAP=64ULL*1024*1024, MARKER_RESERVE=256;
+static const char*const GEOMETRY_SCHEMA_SHA="b74215b2b08302ff251f99ebbbf786d3e2075d3d29a10f8b083ea83ba736d42e";
 static const char*const SCHEMA_SHA="cb973b3bc462ce33895a0f8cc31b428f6bf14b63f8497e8895eb314ea0894db7";
 struct legacy_counts {
  uint64_t observed=0,skips[4]={},absent=0,raw[RAW]={},requester[3]={};
 };
 struct legacy_view {
+ unsigned sets=64,assoc=16;
  unsigned slice=~0U,kernel_count=0;std::array<uint64_t,16> kernel_uid{};
  bool closed=false,T=false,M=false,runtime=false,valid=false;
  legacy_counts total;std::array<legacy_counts,PHASES> phase{};
@@ -209,6 +214,10 @@ struct registry {
  }
  static void reduce(phase_counts&dst,const phase_counts&src){
   dst.invalid|=src.invalid;
+  if(src.assoc){
+   if(!dst.assoc){dst.sets=src.sets;dst.assoc=src.assoc;}
+   else if(dst.sets!=src.sets||dst.assoc!=src.assoc)dst.invalid=true;
+  }
   dst.add(dst.covered,src.covered);dst.add(dst.absent,src.absent);
   dst.add(dst.ro_observed,src.ro_observed);dst.add(dst.ro_na,src.ro_na);
   for(unsigned i=0;i<4;++i)dst.add(dst.skipped[i],src.skipped[i]);
@@ -252,11 +261,16 @@ struct registry {
  }
  void serialize(writer&w,const char*record,unsigned slice,int p,const phase_counts&c,
                 const legacy_view&v,uint64_t cycle,uint64_t seq,bool closure,bool closed){
+  const bool legacy_geometry=v.sets==64&&v.assoc==16;
+  const char*schema_id=legacy_geometry?"EPL2_TAGPRESSURE_V1_R5":"EPL2_TAGPRESSURE_GEOMETRY_V1";
+  const char*schema_sha=legacy_geometry?SCHEMA_SHA:GEOMETRY_SCHEMA_SHA;
   const char*scope=p<0?(!std::strcmp(record,"GLOBAL")?"GLOBAL_CUMULATIVE":"SLICE_CUMULATIVE"):p==0?"UNASSIGNED":p==1?"OVERLAP_UNKNOWN":"SINGLE_ACTIVE_INTERVAL";
-  w.emit("EPL2TAGPRESSUREV1|{\"record\":\"%s\",\"schema_id\":\"EPL2_TAGPRESSURE_V1_R5\",\"schema_sha256\":\"%s\",\"source_base_core\":\"9243f769620653f2a9d4df5599e9581e9dae6067\",\"scope\":\"FRONTEND_HEAD_CYCLE_SAME_TARGET_SET\",\"slice\":%u,\"cycle\":%llu,\"snapshot_seq\":%llu,\"phase\":%d,\"kernel_scope\":\"%s\",\"kernel_uid\":",record,SCHEMA_SHA,slice,(unsigned long long)cycle,(unsigned long long)seq,p,scope);
+  w.emit("EPL2TAGPRESSUREV1|{\"record\":\"%s\",\"schema_id\":\"%s\",\"schema_sha256\":\"%s\",\"source_base_core\":\"9243f769620653f2a9d4df5599e9581e9dae6067\",\"scope\":\"FRONTEND_HEAD_CYCLE_SAME_TARGET_SET\",\"slice\":%u,\"cycle\":%llu,\"snapshot_seq\":%llu,\"phase\":%d,\"kernel_scope\":\"%s\",\"kernel_uid\":",record,schema_id,schema_sha,slice,(unsigned long long)cycle,(unsigned long long)seq,p,scope);
   if(p>=2&&unsigned(p-2)<v.kernel_count)w.emit("%llu",(unsigned long long)v.kernel_uid[p-2]);else w.emit("null");
   w.emit(",\"kernel_catalog\":[");for(unsigned i=0;i<v.kernel_count;++i)w.emit("%s%llu",i?",":"",(unsigned long long)v.kernel_uid[i]);
-  w.emit("],\"assoc\":16,\"T\":%s,\"M\":%s,\"ro_runtime\":%s,\"epoch_closed\":%s,\"overflow_invalid\":%s,\"output_invalid\":%s,\"closure_ok\":%s,\"counters\":{",v.T?"true":"false",v.M?"true":"false",v.runtime?"true":"false",closed?"true":"false",(c.invalid||invalid||(joint&&joint->invalid))?"true":"false",output_invalid?"true":"false",closure?"true":"false");
+  w.emit("],\"assoc\":%u",v.assoc);
+  if(!legacy_geometry)w.emit(",\"sets\":%u",v.sets);
+  w.emit(",\"T\":%s,\"M\":%s,\"ro_runtime\":%s,\"epoch_closed\":%s,\"overflow_invalid\":%s,\"output_invalid\":%s,\"closure_ok\":%s,\"counters\":{",v.T?"true":"false",v.M?"true":"false",v.runtime?"true":"false",closed?"true":"false",(c.invalid||invalid||(joint&&joint->invalid))?"true":"false",output_invalid?"true":"false",closure?"true":"false");
   bool bad=false;uint64_t skipped=0;for(auto n:c.skipped)phase_counts::checked(skipped,n,bad);uint64_t observed=c.covered;phase_counts::checked(observed,skipped,bad);if(bad)w.invalid=true;
   w.emit("\"observed_heads\":%llu,\"covered\":%llu,\"probe_skipped\":%llu,\"skip_tvd\":%llu,\"skip_ideal\":%llu,\"skip_disabled\":%llu,\"skip_other\":%llu,\"head_absent_cycles\":%llu,\"ro_observed\":%llu,\"ro_na\":%llu},\"histograms\":{",(unsigned long long)observed,(unsigned long long)c.covered,(unsigned long long)skipped,(unsigned long long)c.skipped[0],(unsigned long long)c.skipped[1],(unsigned long long)c.skipped[2],(unsigned long long)c.skipped[3],(unsigned long long)c.absent,(unsigned long long)c.ro_observed,(unsigned long long)c.ro_na);
   histogram(w,"heads_raw_reserved",c.heads_raw_reserved.data(),W);w.emit(",");
@@ -290,7 +304,7 @@ struct registry {
  }
  void print(FILE*f,const void*owner,const legacy_view&v,uint64_t cycle){
   auto*d=find(owner);if(!d)return;
-  if(v.kernel_count>16||v.slice>=SLICES||d->slice!=v.slice){invalid=true;invalid_marker(f,"r5_scope_mismatch");return;}
+  if(v.kernel_count>16||v.slice>=SLICES||d->slice!=v.slice||(v.sets!=32&&v.sets!=64)||(v.assoc!=8&&v.assoc!=16)){invalid=true;invalid_marker(f,"r5_scope_mismatch");return;}
   d->last=v;d->last_cycle=cycle;phase_counts cumulative;
   for(unsigned p=0;p<PHASES;++p)if(d->phases[p])reduce(cumulative,*d->phases[p]);
   bool ok=valid_counts(cumulative)&&old_matches(cumulative,v.total)&&requester_matches(cumulative,v.total,d->slice,-1);
@@ -303,7 +317,7 @@ struct registry {
   if(d->slice!=max)return;
   phase_counts global;bool closed=true,good=true;
   for(const auto&s:slices)if(s.owner){closed&=s.last.valid&&s.last.closed;
-   good&=s.seq==d->seq&&s.last_cycle==cycle&&s.slice!=~0U&&s.last.valid&&s.last.T==v.T&&s.last.M==v.M&&s.last.runtime==v.runtime&&s.last.kernel_count==v.kernel_count&&s.last.kernel_uid==v.kernel_uid;
+   good&=s.seq==d->seq&&s.last_cycle==cycle&&s.slice!=~0U&&s.last.valid&&s.last.T==v.T&&s.last.M==v.M&&s.last.runtime==v.runtime&&s.last.kernel_count==v.kernel_count&&s.last.kernel_uid==v.kernel_uid&&s.last.sets==v.sets&&s.last.assoc==v.assoc;
    for(const auto&c:s.phases)if(c)reduce(global,*c);
   }
   frame(f,"GLOBAL",n,-1,global,v,cycle,d->seq,good&&valid_counts(global),closed);

@@ -1,0 +1,22 @@
+{
+  "assoc": [
+    8,
+    16
+  ],
+  "base_schema_sha256": "cb973b3bc462ce33895a0f8cc31b428f6bf14b63f8497e8895eb314ea0894db7",
+  "baseline_64x16": "retains original R5 schema_id/SHA and exact wire field shape",
+  "histogram_reserved_extent": 17,
+  "inactive_reserved_eligible_invalid_bins": "indices above assoc must be zero",
+  "line_bytes": 128,
+  "same_raw_and_route_axes_as_base": true,
+  "sampling": "existing r4 snapshot only; no additional modeled probe/CAM",
+  "schema_id": "EPL2_TAGPRESSURE_GEOMETRY_V1",
+  "scope": "FRONTEND_HEAD_CYCLE_SAME_TARGET_SET",
+  "sets": [
+    32,
+    64
+  ],
+  "slice_count": 64,
+  "way_exposure_closure": "sum(ways_raw_reserved_class)==covered*assoc",
+  "wire_geometry_fields": "assoc then sets; phase/slice/global homogeneous geometry required"
+}

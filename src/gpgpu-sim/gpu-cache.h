@@ -2942,7 +2942,7 @@ class l2_cache : public data_cache {
                          config.m_ep_l2_wbuf_entries, config.m_ep_l2_ideal_wb,
                          config.m_ep_l2_static_s64, config.m_ep_l2_bank_ops),
         m_ep_l2_last_payload_request_result(ep_l2_payload_store::GRANTED),
-        m_ep_l2_tag_payload(ep_l2_payload_store::k_resident_slots) {
+        m_ep_l2_tag_payload(config.get_num_lines()) {
     validate_ep_l2_mode_config();
     ro_init();
     m_ep_l2_payload.set_rg1_enabled(config.m_ep_l2_rg1);
@@ -3047,18 +3047,28 @@ class l2_cache : public data_cache {
     return m_ep_l2_payload.ownership_consistent();
   }
   ep_l2_payload_store &ep_l2_payload_for_test() { return m_ep_l2_payload; }
+  // Tag bindings use dense logical Tag indices, not physical payload IDs.
+  // Unified FT2 keeps its complete fixed physical pool even at lower Tag assoc.
+  unsigned ep_l2_logical_tag_count_for_test() const {
+    return m_config.get_num_lines();
+  }
+  unsigned ep_l2_tag_payload_entries_for_test() const {
+    return m_ep_l2_tag_payload.size();
+  }
   ep_l2_payload_store::payload_handle ep_l2_tag_payload_handle_for_test(
       unsigned tag_index) const {
     assert(tag_index < m_ep_l2_tag_payload.size());
     return m_ep_l2_tag_payload[tag_index];
   }
   bool ep_l2_tag_payload_consistent() const {
+    if (m_ep_l2_tag_payload.size() != m_config.get_num_lines()) return false;
     for (unsigned i = 0; i < m_ep_l2_tag_payload.size(); ++i) {
       const ep_l2_payload_store::payload_handle &handle =
           m_ep_l2_tag_payload[i];
       if (!handle.valid()) continue;
       if ((!m_config.m_ep_l2_ft_mode && handle.payload_id != i) ||
           !m_ep_l2_payload.handle_live(handle) ||
+          handle.payload_id % 4 != i % 4 ||
           m_ep_l2_payload.resident(handle.payload_id).allocation_role !=
               ep_l2_payload_store::RESIDENT &&
           !(m_ep_l2_payload.resident(handle.payload_id).allocation_role==ep_l2_payload_store::RO && m_ep_l2_payload.resident(handle.payload_id).status==ep_l2_payload_store::RO_FILL_ATTACHED))
@@ -3430,12 +3440,19 @@ class l2_cache : public data_cache {
   }
   ep_l2_payload_store::payload_handle tag_payload_handle(
       unsigned tag_index) const {
-    assert(tag_index < m_ep_l2_tag_payload.size());
+    assert(m_ep_l2_tag_payload.size() == m_config.get_num_lines());
+    assert(tag_index < m_config.get_num_lines());
     return m_ep_l2_tag_payload[tag_index];
   }
   void set_tag_payload_handle(
       unsigned tag_index, const ep_l2_payload_store::payload_handle &handle) {
-    assert(tag_index < m_ep_l2_tag_payload.size());
+    assert(m_ep_l2_tag_payload.size() == m_config.get_num_lines());
+    assert(tag_index < m_config.get_num_lines());
+    // A logical Tag may name any live generation in the fixed physical pool,
+    // including payload IDs beyond logical_tag_count; bank colour is preserved.
+    assert(!handle.valid() ||
+           (handle.payload_id < m_ep_l2_payload.physical_slots() &&
+            handle.payload_id % 4 == tag_index % 4));
     m_ep_l2_tag_payload[tag_index] = handle;
   }
   void reconcile_tag_payload_handles() {
@@ -3457,6 +3474,7 @@ class l2_cache : public data_cache {
   std::map<unsigned long long, unsigned long long> m_ep_l2_wad_lifetime_hist;
   ep_l2_payload_store m_ep_l2_payload;
   ep_l2_payload_store::request_result m_ep_l2_last_payload_request_result;
+  // One binding per logical Tag. This must never size or truncate the RAM pool.
   std::vector<ep_l2_payload_store::payload_handle> m_ep_l2_tag_payload;
 };
 

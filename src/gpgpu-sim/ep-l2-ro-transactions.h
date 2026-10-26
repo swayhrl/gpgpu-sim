@@ -363,7 +363,7 @@ class transactions {
   void observe_lifetime(const entry &e,bool retiring=false) {
     if(!lifetime_observer)return;
     const bool eligible=m_features.tag_detach && e.attached && !e.reuse_seen && (e.required&~e.ready);
-    lifetime_observer->ro_update(e.h.payload_id,e.h.generation,e.tag.index/16,e.tag.index,
+    lifetime_observer->ro_update(e.h.payload_id,e.h.generation,lifetime_observer->set_of(e.tag.index),e.tag.index,
       e.required,e.issued,e.ready,e.waiters.size(),e.attached,eligible,retiring);
   }
   static void check_mask(unsigned mask) {

@@ -32,6 +32,7 @@ struct fixture {
   unsigned lower_wb = 0, completed_wb = 0, same_bank_copy = 0, cross_bank_copy = 0;
   std::map<new_addr_type,unsigned> source_banks;
   unsigned long long bank_max = 0;
+  unsigned logical_tag_count=0, logical_tag_sets=0, logical_tag_ways=0;
   fixture(char **argv, const char *queues="512:2:64:64",
       const char *geometry="S:64:128:16,L:B:m:L:L,A:128:1,256:0,32"):cfg(&ctx) {
     option_parser_t p=option_parser_create();
@@ -45,7 +46,15 @@ struct fixture {
     option_parser_cmdline(p,15,args);cfg.init();option_parser_destroy(p);
     gpu=new exec_gpgpu_sim(cfg,&ctx);gpu->gpu_sim_cycle=1;
     auto mc=gpu->getMemoryConfig();
-    assert(mc->m_L2_config.get_num_lines()==1024 && mc->m_L2_config.get_assoc()==16);
+    unsigned requested_sets=0,requested_line=0,requested_ways=0;
+    assert(std::sscanf(geometry,"S:%u:%u:%u",&requested_sets,&requested_line,&requested_ways)==3);
+    assert((requested_sets==32 || requested_sets==64) && requested_line==128 &&
+           (requested_ways==8 || requested_ways==16));
+    logical_tag_sets=requested_sets;logical_tag_ways=requested_ways;
+    logical_tag_count=requested_sets*requested_ways;
+    // Exact requested geometry is asserted; the historical default remains1024/16.
+    assert(mc->m_L2_config.get_num_lines()==logical_tag_count &&
+           mc->m_L2_config.get_assoc()==logical_tag_ways);
     stats=new memory_stats_t(cfg.num_shader(),gpu->getShaderCoreConfig(),mc,gpu);
     part=new memory_partition_unit(0,mc,stats,gpu);sp=part->get_sub_partition(0);
     cache=sp->ft_cache_for_test();alloc=new partition_mf_allocator(mc);
@@ -82,7 +91,7 @@ struct fixture {
       }
       delete r;
     }
-    for(unsigned t=0;t<1024;++t) {
+    for(unsigned t=0;t<logical_tag_count;++t) {
       auto h=cache->ep_l2_tag_payload_handle_for_test(t);
       if(h.valid() && cache->ep_l2_payload_for_test().handle_live(h)) {
         auto &slot=cache->ep_l2_payload_for_test().inspect(h);

@@ -409,7 +409,7 @@ void l2_cache::ro_print(FILE *f,unsigned slice) const {
     if(m_ro && d->total[ep_l2_detach_diag::detach_success]!=m_ro->tx->stats.detached)d->add(ep_l2_detach_diag::closure_errors);
     ep_l2_detach_diag::state.print(f,*d,ft_physical_cycle());
     if(ep_l2_tagpressure::state.find(this)) {
-      ep_l2_tagpressure::legacy_view v;v.valid=true;v.slice=slice;
+      ep_l2_tagpressure::legacy_view v;v.valid=true;v.slice=slice;v.sets=m_config.m_nset;v.assoc=m_config.get_assoc();
       v.kernel_count=d->kernel_count;v.kernel_uid=d->kernel_uid;
       v.closed=d->closed;v.T=d->T;v.M=d->M;v.runtime=d->ro_runtime;
       auto bridge=[](const std::array<uint64_t,ep_l2_detach_diag::FIELD_COUNT>&src,ep_l2_tagpressure::legacy_counts&dst){

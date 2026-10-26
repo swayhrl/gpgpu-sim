@@ -351,3 +351,9 @@ target_include_directories(ep_l2_reservation_lifetime PRIVATE ${CUDAToolkit_INCL
 target_link_libraries(ep_l2_reservation_lifetime PRIVATE -Wl,--start-group
   entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group
   ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
+
+# Bounded geometry CPU controls; keep assertions and link the SAME current Core.
+add_executable(ep_l2_tag_capacity_geometry EXCLUDE_FROM_ALL tests/ep_l2/test_tag_capacity_geometry.cc)
+target_compile_options(ep_l2_tag_capacity_geometry PRIVATE -UNDEBUG)
+target_include_directories(ep_l2_tag_capacity_geometry PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+target_link_libraries(ep_l2_tag_capacity_geometry PRIVATE -Wl,--start-group entrypoint cuda ptxsim gpgpusim intersim accelwattch -Wl,--end-group ZLIB::ZLIB OpenGL::GL ${CMAKE_DL_LIBS} pthread)
