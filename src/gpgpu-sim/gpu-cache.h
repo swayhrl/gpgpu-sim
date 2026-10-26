@@ -3096,6 +3096,7 @@ class l2_cache : public data_cache {
   unsigned long long tvd_lookup_queries_for_test() const { return m_tvd_lookup_queries; }
   bool tvd_lookup_started_for_test(const mem_fetch *mf) const { return m_tvd_lookup==mf; }
   bool ro_enabled() const {return m_ro!=nullptr;}
+  bool ro_tag_detach_enabled_for_test() const {return m_config.m_ro_tag_detach;}
   bool access_ready() const;
   void ro_frontend_cycle(mem_fetch *);
   void ro_bind_commandlist(const char *);

@@ -24,7 +24,7 @@ struct capacity_fixture:combined_fixture{
  capacity_fixture(char**argv,const std::string&g,bool response_small=false):combined_fixture(argv,true,response_small?"1024:16:64:1":"1024:16:64:64",g.c_str()){
   auto*mc=gpu->getMemoryConfig();auto&ram=cache->ep_l2_payload_for_test();
   assert(ram.physical_slots()==1168 && ram.k_resident_slots==1024 && ram.bypass_capacity()==128 && ram.static_wb_capacity()==16);
-  assert(mc->m_L2_config.m_mshr_entries==128 && mc->m_L2_config.m_mshr_max_merge==1);
+  assert(cache->mshr_entry_capacity()==128 && cache->mshr_merge_capacity()==1);
   assert(cache->ep_l2_descriptor_pool_capacity()==512 && cache->ep_l2_wad_capacity()==128);
   assert(cache->ep_l2_logical_tag_count_for_test()==logical_tag_count);
   assert(cache->ep_l2_tag_payload_entries_for_test()==logical_tag_count);
@@ -69,7 +69,7 @@ struct capacity_fixture:combined_fixture{
  }
 };
 static void pressure_identity(char**argv,const std::string&g,bool T){
- capacity_fixture f(argv,g);assert(f.gpu->getMemoryConfig()->m_L2_config.m_ro_tag_detach==T);auto a=f.addresses(f.logical_tag_ways+2);f.fill_pending(a);
+ capacity_fixture f(argv,g);assert(f.cache->ro_tag_detach_enabled_for_test()==T);auto a=f.addresses(f.logical_tag_ways+2);f.fill_pending(a);
  auto old=f.tag_for(a[0]);assert(old.valid());unsigned oldidx=f.tag_index(old);auto first=f.pending_reads[f.pending(old)]->get_request_uid();
  auto matching=f.make(a[0],false),incoming=f.make(a[f.logical_tag_ways],false);unsigned idx=~0u;
  assert(f.cache->ft_raw_probe_for_test(matching,idx)==HIT_RESERVED);f.expected.erase(matching->get_request_uid());delete matching;
