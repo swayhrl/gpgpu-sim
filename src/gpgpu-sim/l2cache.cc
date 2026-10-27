@@ -1,3 +1,4 @@
+#include "ep-l2-event-timeline.h"
 #include "ep-l2-detach-diag.h"
 // Copyright (c) 2009-2021, Tor M. Aamodt, Vijay Kandiah, Nikos Hardavellas,
 // Mahmoud Khairy, Junrui Pan, Timothy G. Rogers
@@ -732,6 +733,7 @@ void memory_partition_unit::simple_dram_model_cycle() {
       d.ready_cycle = m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
                       m_config->dram_latency;
       m_dram_latency_queue.push_back(d);
+      ep_et::packet(ep_et::DRAM_DELAY_ENQUEUE,ep_et::DRAM_DOMAIN,mf,d.ready_cycle);
       mf->set_status(IN_PARTITION_DRAM_LATENCY_QUEUE,
                      m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
       m_arbitration_metadata.borrow_credit(
@@ -829,6 +831,7 @@ void memory_partition_unit::dram_cycle() {
       d.ready_cycle = m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
                       m_config->dram_latency;
       m_dram_latency_queue.push_back(d);
+      ep_et::packet(ep_et::DRAM_DELAY_ENQUEUE,ep_et::DRAM_DOMAIN,mf,d.ready_cycle);
       mf->set_status(IN_PARTITION_DRAM_LATENCY_QUEUE,
                      m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
       m_arbitration_metadata.borrow_credit(
@@ -845,8 +848,10 @@ void memory_partition_unit::dram_cycle() {
        m_dram_latency_queue.front().ready_cycle) &&
       !m_dram->full(m_dram_latency_queue.front().req->is_write())) {
     mem_fetch *mf = m_dram_latency_queue.front().req;
+    const auto observed_deadline=m_dram_latency_queue.front().ready_cycle;
     m_dram_latency_queue.pop_front();
     m_dram->push(mf);
+    ep_et::packet(ep_et::DRAM_MC_PUSH,ep_et::DRAM_DOMAIN,mf,observed_deadline);
   }
 }
 
@@ -1307,8 +1312,10 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       m_l2_char_collector->record_lower_drain(
           lower_eligible, lower_eligible && m_L2_dram_queue->full());
     }
-    if(!m_L2cache->miss_queue_empty() && m_L2_dram_queue->full())
+    if(!m_L2cache->miss_queue_empty() && m_L2_dram_queue->full()) {
       ep_l2_life::stage_record(m_id,ep_l2_life::LOWER_QUEUE_BLOCK);
+      ep_et::emit(ep_et::LOWER_REJECT,ep_et::L2_DOMAIN,m_id);
+    }
     m_L2cache->cycle();
   }
 
@@ -1466,14 +1473,17 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       }
       m_L2cache->detach_diag_frontend(mf,m_gpu->gpu_sim_cycle+m_gpu->gpu_tot_sim_cycle,diagnostic_preview,plan,admit,
           m_L2cache->miss_queue_has_slots(plan.new_missq_entries),!m_L2_icnt_queue->full());
+      if(ep_et::enabled())ep_et::emit(admit?ep_et::FRONTEND_ADMIT_DECISION:ep_et::FRONTEND_WAIT,ep_et::L2_DOMAIN,m_id,diagnostic_preview.set,ep_et::U8,mf->get_access_sector_mask().to_ulong(),mf->get_request_uid(),ep_et::U64,mf->get_addr(),mf->has_ep_l2_payload_identity()?uint64_t(mf->get_ep_l2_payload_generation()):ep_et::U64,admit?uint64_t(diagnostic_preview.raw):ms_blockers);
+      if(plan.exact && plan.new_missq_entries && !admission.missq_available)ep_et::packet(ep_et::MISSQ_REJECT,ep_et::L2_DOMAIN,mf,plan.new_missq_entries);
       if(auto *o=m_L2cache->lifetime()){
         if(diagnostic_preview.raw>=HIT && diagnostic_preview.raw<=WRITE_ALLOCATED)
           o->frontend(diagnostic_preview.set,mf->get_request_uid(),
             diagnostic_preview.raw==MISS || diagnostic_preview.raw==RESERVATION_FAIL,
-            diagnostic_preview.raw==RESERVATION_FAIL,admit);
+            diagnostic_preview.raw==RESERVATION_FAIL,admit,mf->get_addr());
         else o->invalid|=2097152;
-        if(plan.new_missq_entries && !m_L2cache->miss_queue_has_slots(plan.new_missq_entries))
+        if(plan.new_missq_entries && !m_L2cache->miss_queue_has_slots(plan.new_missq_entries)) {
           o->record_stage(ep_l2_life::L2_MISSQ_BLOCK);
+        }
       }
       // An exact preview that is not admissible is a real controller stall,
       // even though access() is intentionally not called.  Record it here so
@@ -1718,6 +1728,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       mf->set_status(IN_PARTITION_L2_TO_DRAM_QUEUE,
                      m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
       m_L2_dram_queue->push(mf);
+      ep_et::packet(ep_et::LOWER_ENQUEUE,ep_et::L2_DOMAIN,mf);
       // A real bypass commit also needs its request token. Its later lower
       // return uses the same exact-once response accounting as cache misses.
       ft_record_admission(mf);
@@ -1777,6 +1788,7 @@ class mem_fetch *memory_sub_partition::L2_dram_queue_top() const {
 void memory_sub_partition::L2_dram_queue_pop() {
   mem_fetch *mf = m_L2_dram_queue->top();
   l2_char_record_l2dram_pop(mf);
+  ep_et::packet(ep_et::LOWER_DEQUEUE,ep_et::DRAM_DOMAIN,mf);
   m_L2_dram_queue->pop();
 }
 
@@ -1841,6 +1853,7 @@ bool memory_sub_partition::dram_L2_queue_empty() const {
 void memory_sub_partition::dram_L2_queue_push(class mem_fetch *mf) {
   ep_l2_life::stage_record(m_id,ep_l2_life::DRAM_RETURN);
   m_dram_L2_queue->push(mf);
+  ep_et::packet(ep_et::DRAM_RETURN,ep_et::DRAM_DOMAIN,mf);
 }
 
 void memory_sub_partition::l2_char_hold_returnq(unsigned cycles) {
@@ -2624,6 +2637,7 @@ memory_sub_partition::breakdown_request_to_sector_requests(mem_fetch *mf) {
           mf->get_sid(), mf->get_tpc(), mf, mf->get_streamID());
 
       result.push_back(n_mf);
+      ep_et::packet(ep_et::PACKET_SPLIT,ep_et::L2_DOMAIN,n_mf,ep_et::U64,mf->get_request_uid());
     }
     // This is for constant cache
   } else if (mf->get_data_size() == 64 &&
@@ -2647,6 +2661,7 @@ memory_sub_partition::breakdown_request_to_sector_requests(mem_fetch *mf) {
           mf->get_sid(), mf->get_tpc(), mf, mf->get_streamID());
 
       result.push_back(n_mf);
+      ep_et::packet(ep_et::PACKET_SPLIT,ep_et::L2_DOMAIN,n_mf,ep_et::U64,mf->get_request_uid());
     }
   } else {
     for (unsigned i = 0; i < SECTOR_CHUNCK_SIZE; i++) {
@@ -2664,6 +2679,7 @@ memory_sub_partition::breakdown_request_to_sector_requests(mem_fetch *mf) {
             mf->get_streamID());
 
         result.push_back(n_mf);
+      ep_et::packet(ep_et::PACKET_SPLIT,ep_et::L2_DOMAIN,n_mf,ep_et::U64,mf->get_request_uid());
       }
     }
   }
@@ -2672,6 +2688,7 @@ memory_sub_partition::breakdown_request_to_sector_requests(mem_fetch *mf) {
 }
 
 void memory_sub_partition::push(mem_fetch *m_req, unsigned long long cycle) {
+  ep_et::packet(ep_et::L2_INGRESS,ep_et::L2_DOMAIN,m_req);
   if (m_req) {
     m_stats->memlatstat_icnt2mem_pop(m_req);
     std::vector<mem_fetch *> reqs;
@@ -2798,6 +2815,7 @@ void memory_sub_partition::ft_record_admission(const mem_fetch *mf) {
   ++m_ft_unique_requesters;
 }
 void memory_sub_partition::ft_record_response(const mem_fetch *mf) {
+  ep_et::packet(ep_et::RESPONSE_ACCEPT,ep_et::L2_DOMAIN,mf);
   if (m_config->m_L2_config.disabled() || !m_L2cache->ft_enabled()) return;
   assert(m_ft_live_requesters.erase(mf->get_request_uid()) == 1);
   ++m_ft_response_count;

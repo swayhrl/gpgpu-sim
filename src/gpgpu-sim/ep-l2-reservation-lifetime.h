@@ -1,4 +1,5 @@
 #ifndef EP_L2_RESERVATION_LIFETIME_H
+#include "ep-l2-event-timeline.h"
 #define EP_L2_RESERVATION_LIFETIME_H
 // Host-only passive observer. Never supplies a cache decision or model resource.
 #include <array>
@@ -11,6 +12,14 @@
 #include <limits>
 #include <string>
 namespace ep_l2_life {
+// Passive wire-size selection only; all accumulation/reset paths remain identical.
+// 0 FULL is the historical byte format;1 SUMMARY_STAGE omits WINDOW_SET only.
+inline unsigned wire_mode() {
+ static const unsigned value=[](){const char *p=std::getenv("EPL2_LIFE_WIRE");
+  if(!p||std::strcmp(p,"FULL")==0)return 0u;
+  if(std::strcmp(p,"SUMMARY_STAGE")==0)return 1u;return 2u;}();return value;
+}
+
 constexpr unsigned SETS=64, WAYS=16, SECTORS=4, PAYLOADS=1168, BINS=33;
 // Maximum storage is fixed; active Tag geometry is independent of physical payloads.
 inline bool supported_geometry(unsigned sets,unsigned ways) {
@@ -199,6 +208,9 @@ class observer {
    if(!valid && v.incarnation)incarnation_close(index);
    s.c[EVENT_PEAK]=std::max<uint64_t>(s.c[EVENT_PEAK],s.occupancy);
    unsigned cause=why==GENERIC?operation:why;
+   if(ep_et::enabled())ep_et::emit(ep_et::TAG_MUTATION,ep_et::L2_DOMAIN,slice,si,index%active_ways,reserved,
+       ep_et::U64,ep_et::U64,address,v.generation,
+       uint64_t(oldmask)|(uint64_t(valid)<<8)|(uint64_t(cause)<<16)|(uint64_t(new_incarnation)<<32));
    if(examples_count<examples.size() &&
       (s.occupancy>=4 || (!reserved && oldmask && v.begin==tick) || cause==DETACH)) {
      examples[examples_count++]={tick,gpu,ordinal,v.generation,address,index,oldmask,reserved,cause};
@@ -249,13 +261,14 @@ class observer {
    add(set[si].c[REQUESTER]);
    if(merge){add(set[si].c[MERGE]);add(window[si].c[7]);}
  }
- void frontend(unsigned si,uint64_t uid,bool new_tag,bool raw_fail,bool admitted) {
+ void frontend(unsigned si,uint64_t uid,bool new_tag,bool raw_fail,bool admitted,uint64_t event_address=ep_et::U64) {
    if(!active || closed || si>=active_sets)return;
    record_stage(FRONTEND_HEAD);
    if(last_head_uid!=uid)last_head_uid=uid; // FIFO head, never a global UID set.
    if(!admitted)record_stage(FRONTEND_DENY);
    if(!new_tag)return;
-   auto &s=set[si];auto &w=window[si];
+   auto &s=set[si];
+   ep_et::pressure(slice,si,active_ways,s.occupancy,uid,event_address);auto &w=window[si];
    add(s.c[NEW_HEAD]);add(w.c[5]);
    add(s.new_head_reserved[s.occupancy]);
    if(raw_fail){add(s.c[RAW_FAIL_HEAD]);add(w.c[6]);}
@@ -287,7 +300,8 @@ class observer {
    if(end<=window_begin)return;
    for(unsigned i=0;i<active_sets;++i){
      accumulate(i,end);auto &w=window[i];
-     emit(f,"EPL2LIFEV1|WINDOW_SET|slice=%u|set=%u|begin=%llu|end=%llu|area=%s|c=%s|invalid=%llu\n",
+     if(wire_mode()==2)invalid|=33554432;
+     if(wire_mode()!=1)emit(f,"EPL2LIFEV1|WINDOW_SET|slice=%u|set=%u|begin=%llu|end=%llu|area=%s|c=%s|invalid=%llu\n",
        slice,i,(unsigned long long)window_begin,(unsigned long long)end,
        array_text(w.area).c_str(),array_text(w.c).c_str(),(unsigned long long)invalid);
      w=window_set();w.last=end;
@@ -330,9 +344,16 @@ class observer {
  }
  void print(FILE *f=stdout) {
    if(printed)return;printed=true;
+   if(wire_mode()==2)invalid|=33554432;
+   if(wire_mode()==1) {
+   emit(f,"EPL2LIFEV1|META|slice=%u|sets=%u|ways=%u|sectors=4|window=8192|unit=L2_tick|gpu_unit=core_cycle|begin=0|end=%llu|begin_gpu=%llu|end_gpu=%llu|closed=%u|state_bytes=%llu|bins=33|bin32=ge2pow31|scope=timed_L2_only|wire_mode=SUMMARY_STAGE|window_set_emission=0|invalid=%llu\n",
+     slice,active_sets,active_ways,(unsigned long long)ticks,(unsigned long long)begin_gpu,(unsigned long long)end_gpu,unsigned(closed),
+     (unsigned long long)observed_state_bytes,(unsigned long long)invalid);
+   } else {
    emit(f,"EPL2LIFEV1|META|slice=%u|sets=%u|ways=%u|sectors=4|window=8192|unit=L2_tick|gpu_unit=core_cycle|begin=0|end=%llu|begin_gpu=%llu|end_gpu=%llu|closed=%u|state_bytes=%llu|bins=33|bin32=ge2pow31|scope=timed_L2_only|invalid=%llu\n",
      slice,active_sets,active_ways,(unsigned long long)ticks,(unsigned long long)begin_gpu,(unsigned long long)end_gpu,unsigned(closed),
      (unsigned long long)observed_state_bytes,(unsigned long long)invalid);
+   }
    for(unsigned i=0;i<active_sets;++i){const auto &s=set[i];
      emit(f,"EPL2LIFEV1|SET|slice=%u|set=%u|area=%s|c=%s|new_hist=%s|re_hist=%s|pending=%u|eligible=%u|invalid=%llu\n",
        slice,i,array_text(s.area).c_str(),array_text(s.c).c_str(),

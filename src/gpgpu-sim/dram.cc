@@ -1,3 +1,4 @@
+#include "ep-l2-event-timeline.h"
 // Copyright (c) 2009-2021, Tor M. Aamodt, Wilson W.L. Fung, Ali Bakhoda,
 // Ivan Sham, George L. Yuan, Vijay Kandiah, Nikos Hardavellas,
 // Mahmoud Khairy, Junrui Pan, Timothy G. Rogers
@@ -571,6 +572,7 @@ bool dram_t::issue_col_command(int j) {
         rwq->set_min_length(m_config->CL);
       }
       rwq->push(bk[j]->mrq);
+      ep_et::packet(ep_et::DRAM_COLUMN,ep_et::DRAM_DOMAIN,bk[j]->mrq->data,(uint64_t(m_config->dram_atom_size)<<1)|uint64_t(bk[j]->mrq->rw==WRITE));
       bk[j]->mrq->txbytes += m_config->dram_atom_size;
       CCDc = m_config->tCCD;
       bkgrp[grp]->CCDLc = m_config->tCCDL;
@@ -606,6 +608,7 @@ bool dram_t::issue_col_command(int j) {
           rwq->set_min_length(m_config->WL);
         }
         rwq->push(bk[j]->mrq);
+      ep_et::packet(ep_et::DRAM_COLUMN,ep_et::DRAM_DOMAIN,bk[j]->mrq->data,(uint64_t(m_config->dram_atom_size)<<1)|uint64_t(bk[j]->mrq->rw==WRITE));
 
         bk[j]->mrq->txbytes += m_config->dram_atom_size;
         CCDc = m_config->tCCD;

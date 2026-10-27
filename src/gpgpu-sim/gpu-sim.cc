@@ -1,3 +1,4 @@
+#include "ep-l2-event-timeline.h"
 // Copyright (c) 2009-2021, Tor M. Aamodt, Wilson W.L. Fung, George L. Yuan,
 // Ali Bakhoda, Andrew Turner, Ivan Sham, Vijay Kandiah, Nikos Hardavellas,
 // Mahmoud Khairy, Junrui Pan, Timothy G. Rogers
@@ -931,6 +932,7 @@ void increment_x_then_y_then_z(dim3 &i, const dim3 &bound) {
 }
 
 void gpgpu_sim::launch(kernel_info_t *kinfo) {
+  if(ep_et::enabled())ep_et::kernel_launch(kinfo->get_uid(),kinfo->name().c_str(),gpu_sim_cycle+gpu_tot_sim_cycle);
   unsigned kernelID = kinfo->get_uid();
   unsigned long long streamID = kinfo->get_streamID();
 
@@ -1070,6 +1072,7 @@ unsigned gpgpu_sim::finished_kernel() {
 }
 
 void gpgpu_sim::set_kernel_done(kernel_info_t *kernel) {
+  ep_et::kernel_finish(kernel->get_uid(),gpu_sim_cycle+gpu_tot_sim_cycle);
   unsigned uid = kernel->get_uid();
   last_uid = uid;
   unsigned long long streamID = kernel->get_streamID();
@@ -1438,6 +1441,16 @@ void gpgpu_sim::print_stats(unsigned long long streamID) {
     printf(
         "----------------------------END-of-Interconnect-DETAILS---------------"
         "----------\n");
+  }
+  // Exact Framework9dd final backend-drained commandlist sentinel only.
+  // No early per-kernel stats finalize; OFF does not invoke extra drain queries.
+  if(ep_et::enabled() && streamID==~0ULL && !active() && !cycle_insn_cta_max_hit()) {
+    if(!m_memory_config->m_L2_config.disabled())for(unsigned i=0;i<m_memory_config->m_n_mem_sub_partition;++i)
+      if(auto *o=m_memory_sub_partition[i]->ft_cache_for_test()->lifetime()) {
+        if(!o->closed)o->finish(gpu_sim_cycle+gpu_tot_sim_cycle);
+        o->print(stdout);
+      }
+    ep_et::finish(stdout,gpu_sim_cycle+gpu_tot_sim_cycle,true);
   }
 }
 
@@ -2137,6 +2150,10 @@ unsigned long long g_single_step =
 
 void gpgpu_sim::cycle() {
   int clock_mask = next_clock_domain();
+  if(ep_et::enabled()) {
+    ep_et::geometry(m_memory_config->m_n_mem_sub_partition,m_memory_config->m_L2_config.get_assoc()?m_memory_config->m_L2_config.get_num_lines()/m_memory_config->m_L2_config.get_assoc():0,m_memory_config->m_L2_config.get_assoc());
+    ep_et::clock(gpu_sim_cycle+gpu_tot_sim_cycle,clock_mask);
+  }
   // Observer clock only: establish the same L2 interval before all co-timed domains.
   if(clock_mask & L2)for(unsigned i=0;i<m_memory_config->m_n_mem_sub_partition;++i)
     m_memory_sub_partition[i]->lifetime_prepare_tick(gpu_sim_cycle+gpu_tot_sim_cycle);

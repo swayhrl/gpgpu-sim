@@ -1,4 +1,5 @@
 #ifndef EP_L2_RO_TRANSACTIONS_H
+#include "ep-l2-event-timeline.h"
 #define EP_L2_RO_TRANSACTIONS_H
 
 #include <stdint.h>
@@ -361,8 +362,16 @@ class transactions {
       required(0), issued(0), ready(0), prepared_index(0), line(0), epoch(0), prepared_cycle(0) {}
   };
   void observe_lifetime(const entry &e,bool retiring=false) {
-    if(!lifetime_observer)return;
     const bool eligible=m_features.tag_detach && e.attached && !e.reuse_seen && (e.required&~e.ready);
+    if(ep_et::enabled()) {
+      unsigned si=lifetime_observer?lifetime_observer->slice:ep_et::U16;
+      unsigned st=lifetime_observer?lifetime_observer->set_of(e.tag.index):ep_et::U16;
+      unsigned way=lifetime_observer?e.tag.index%lifetime_observer->active_ways:ep_et::U8;
+      uint64_t aux=uint64_t(e.h.payload_id)|(uint64_t(e.required)<<11)|(uint64_t(e.issued)<<15)|(uint64_t(e.ready)<<19)|(uint64_t(e.waiters.size())<<23)|(uint64_t(e.attached)<<33)|(uint64_t(e.reuse_seen)<<34)|(uint64_t(eligible)<<35)|(uint64_t(retiring)<<36);
+      ep_et::emit(retiring?ep_et::RO_RETIRE:ep_et::RO_STATE,ep_et::L2_DOMAIN,si,st,way,e.ready,
+          ep_et::U64,ep_et::U64,e.line,e.h.generation,aux);
+    }
+    if(!lifetime_observer)return;
     lifetime_observer->ro_update(e.h.payload_id,e.h.generation,lifetime_observer->set_of(e.tag.index),e.tag.index,
       e.required,e.issued,e.ready,e.waiters.size(),e.attached,eligible,retiring);
   }

@@ -1,0 +1,228 @@
+{
+  "schema": "EP_L2_ENDPOINT_TIMELINE_V1",
+  "prefix": "EPETV1|",
+  "record_bytes": 80,
+  "endian": "little",
+  "uint64_fields": [
+    "ordinal",
+    "core_cycle",
+    "L2_edge",
+    "DRAM_edge",
+    "address",
+    "generation",
+    "aux",
+    "packet_or_requester_uid",
+    "parent_uid"
+  ],
+  "tail_fields": [
+    [
+      "slice",
+      "uint16"
+    ],
+    [
+      "set",
+      "uint16"
+    ],
+    [
+      "kind",
+      "uint8"
+    ],
+    [
+      "domain",
+      "uint8"
+    ],
+    [
+      "way",
+      "uint8"
+    ],
+    [
+      "sector_mask",
+      "uint8"
+    ]
+  ],
+  "unknown": {
+    "uint64": "18446744073709551615",
+    "uint16": 65535,
+    "uint8": 255,
+    "domain": 0
+  },
+  "domains": {
+    "0": "UNKNOWN",
+    "1": "CORE",
+    "2": "L2",
+    "3": "DRAM",
+    "4": "ICNT",
+    "5": "UNTIMED"
+  },
+  "kinds": {
+    "1": "L1_SEND",
+    "2": "L1_SEND_DENY",
+    "3": "L2_INGRESS",
+    "4": "FRONTEND_WAIT",
+    "5": "FRONTEND_ADMIT_DECISION",
+    "6": "TAG_MUTATION",
+    "7": "RO_STATE",
+    "8": "RO_RETIRE",
+    "9": "RO_LOWER_CREATE",
+    "10": "RO_BIND",
+    "11": "MISSQ_ENQUEUE",
+    "12": "MISSQ_DEQUEUE",
+    "13": "LOWER_ENQUEUE",
+    "14": "LOWER_DEQUEUE",
+    "15": "LOWER_REJECT",
+    "16": "DRAM_DELAY_ENQUEUE",
+    "17": "DRAM_MC_PUSH",
+    "18": "SCHEDULER_ACCEPT",
+    "19": "DRAM_RETURN",
+    "20": "RO_READY",
+    "21": "RESPONSE_ACCEPT",
+    "22": "ICNT_INJECT",
+    "23": "PACKET_SPLIT",
+    "24": "PRESSURE_NEW",
+    "25": "PRODUCTION_TAGFAIL",
+    "26": "DRAM_COLUMN",
+    "27": "RO_DETACH",
+    "28": "MISSQ_REJECT",
+    "29": "FRONTEND_COMMIT"
+  },
+  "geometry": {
+    "slices": 64,
+    "sets_supported": [
+      32,
+      64
+    ],
+    "ways_supported": [
+      8,
+      16
+    ],
+    "line_bytes": 128,
+    "sectors": 4
+  },
+  "limits": {
+    "state_cap_bytes": 8388608,
+    "compressed_cap_bytes": 16777216,
+    "wire_cap_bytes": 16777216,
+    "compressed_and_wire_target_bytes": 2097152,
+    "target_is_not_measured_guarantee": true,
+    "slice_ring_events": 512,
+    "pre_events": 512,
+    "post_events_including_trigger": 1536,
+    "snapshot_slots": 4,
+    "kernel_catalog": 64,
+    "kernel_name_bytes": 256,
+    "zlib_arena_bytes": 524288,
+    "fixed_aux_state_bound_bytes": 8192,
+    "state_bytes_definition": "sizeof(observer)+8192 conservative bound for mutex/pointer/cache flags/serialization stack; object includes all rings/captures/zlibarena"
+  },
+  "trigger": {
+    "ordinary_slots": [
+      0,
+      1,
+      2
+    ],
+    "threshold_at_actual_new_head": {
+      "8way": 4,
+      "16way": 8
+    },
+    "critical_slot": 3,
+    "critical_rank": {
+      "1": "all ways reserved at actual NEW head",
+      "2": "real production Tag probe RESERVATION_FAIL"
+    },
+    "rank2_may_replace_rank1": true,
+    "capacity_misses_counted": true,
+    "no_trigger_is_not_global_event_absence": true,
+    "ordinary_uniqueness": "within slots0..2 only; critical slot may independently recapture the same physical set",
+    "explicit_missed_event_counts": [
+      "full_trigger_not_captured",
+      "production_fail_not_captured"
+    ],
+    "dependency": "ordinary highR capture and Tag mutation rely on original LIFE plus detach diagnostic preview; absent means NOT_INSTRUMENTED; no forced enabling or added probe",
+    "replacement_loss_counters": [
+      "replacement_events_discarded",
+      "replacement_full_new_discarded"
+    ],
+    "missed_count_semantics": "not captured at notification time; replaced rank1 snapshot losses are separately explicit",
+    "new_head_seen": "all actual LIFE frontend NEW notifications including lowR; join against full LIFE NEW_HEAD population, not only selected/highR snapshots",
+    "frontend_notifications": "all timed actual frontend wait/admit-decision notifications, excluding early TVD-handled/ideal/bypass branches",
+    "frontend_meta_separate_counts": [
+      "frontend_wait_notifications",
+      "frontend_admit_decisions",
+      "frontend_commit_events"
+    ]
+  },
+  "clocks": {
+    "core": "gpu_sim_cycle+gpu_tot_sim_cycle before co-timed CORE increment",
+    "L2_edge": "zero-based global L2 clock edge counter; UNKNOWN before first L2 edge",
+    "DRAM_edge": "zero-based global DRAM edge counter; UNKNOWN before first DRAM edge",
+    "ordinal": "global notification/metadata order; selected windows need not be contiguous; no same-tick sorting by guessed ancestry",
+    "outside_clock": "ignored and counted; initial host-prefill is not a timed Tag-allocation event"
+  },
+  "identity": {
+    "uid": "full uint64 wire; original source getter width retained by widening, never narrow",
+    "parent": "only actual live creation/split source links; otherwise UNKNOWN",
+    "generation": "TAG_MUTATION uses LIFE Tag incarnation; RO state/bind/create/ready/retire/detach and packet endpoints use payload generation. RO_DETACH aux is original RO tag_binding generation, a third distinct namespace. No equality between these three namespaces may be assumed.",
+    "unknown_set": "no extra probe, directory lookup or CAM to reconstruct missing identity"
+  },
+  "aux": {
+    "TAG_MUTATION": "old reserved mask bits0..3, new valid mask bits8..11, operation bits16..31; new incarnation bit32",
+    "RO_STATE": "payload slot bits0..10|required11..14|issued15..18|ready19..22|waiters23..32|attached33|reuse34|eligible35|retiring36",
+    "RO_RETIRE": "same RO_STATE layout",
+    "RO_LOWER_CREATE": "payload slot",
+    "RO_BIND": "payload slot; known set/way",
+    "DRAM_DELAY_ENQUEUE": "ready_cycle CORE counter deadline",
+    "DRAM_MC_PUSH": "stored ready_cycle CORE deadline",
+    "PRESSURE_NEW": "ways in high32 and reserved count in low32",
+    "PRODUCTION_TAGFAIL": "same; unknown R encoded65535",
+    "DRAM_COLUMN": "dram_atom_size shifted1 | write_bit",
+    "RO_DETACH": "original RO tag_binding generation t.generation before generations[index] increment; primary generation remains payload h.generation; payload slot is UNKNOWN in this event",
+    "FRONTEND_WAIT": "existing MS observer blockers bitmask",
+    "L1_SEND": "SM shader id (existing mf.sid)",
+    "ICNT_INJECT": "packet bytes; injection function executes in CORE stage, not ICNT transfer clock",
+    "MISSQ_REJECT": "actual plan new_missq_entries needed",
+    "FRONTEND_ADMIT_DECISION": "existing diagnostic raw status at controller admit decision, before actual access",
+    "FRONTEND_COMMIT": "existing ft_access return status!=RESERVATION_FAIL, still-live actual requester; common FT1/FT2 access path only"
+  },
+  "wire": {
+    "records": [
+      "META",
+      "KERNEL",
+      "SNAP",
+      "DATA",
+      "SNAP_END",
+      "END"
+    ],
+    "codec": "one zlib stream per snapshot, base64 chunked",
+    "raw_crc32": "CRC32 of serialized uncompressed80-byte events per snapshot; SHA authority remains source/raw external",
+    "terminal": "END completed only at explicit full-stream final stats sentinel and source drain/cap guard",
+    "truncation": [
+      "pre_lost",
+      "post_complete",
+      "trigger_capacity_miss",
+      "critical_replaced",
+      "quiesced",
+      "unmapped",
+      "untimed_ignored",
+      "invalid",
+      "output_overflow",
+      "output_error"
+    ],
+    "no_silent_fallback": true,
+    "scope": "timed kernel/backend endpoint windows; host prefill before clock ignored; no commandlist copy-event completeness claim"
+  },
+  "science": {
+    "authority": false,
+    "default_env": "EP_L2_EVENT_TIMELINE=0",
+    "enabled_env": "EP_L2_EVENT_TIMELINE=1",
+    "production_source_identity_external": true,
+    "source_body_unchanged_model_semantics_requirement": true,
+    "observer_NI_and_host_overhead_required": true,
+    "host_overhead_limit_fraction": 0.05,
+    "overhead_pass_not_claimed_by_source_review": true,
+    "no_full_trace_or_cycle_all_set_capture": true,
+    "legacy_R4_R5_kernel_cap": 16,
+    "legacy_phase_cap": 18,
+    "supported_first_batch_legacy_kernel_count_max": 16,
+    "frontend_commit_scope": "common FT1/FT2 cache::access ft_access result!=RESERVATION_FAIL; not an assertion that every early TVD/ideal/bypass admission traverses this hook"
+  }
+}

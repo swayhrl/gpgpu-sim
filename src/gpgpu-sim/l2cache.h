@@ -1,4 +1,5 @@
 // Copyright (c) 2009-2021, Tor M. Aamodt, Vijay Kandiah, Nikos Hardavellas,
+#include "ep-l2-event-timeline.h"
 // Mahmoud Khairy, Junrui Pan, Timothy G. Rogers
 // The University of British Columbia, Northwestern University, Purdue
 // University All rights reserved.
@@ -680,6 +681,7 @@ class L2interface : public mem_fetch_interface {
   virtual void push(mem_fetch *mf) {
     mf->set_status(IN_PARTITION_L2_TO_DRAM_QUEUE, 0 /*FIXME*/);
     m_unit->m_L2_dram_queue->push(mf);
+    ep_et::packet(ep_et::LOWER_ENQUEUE,ep_et::L2_DOMAIN,mf);
     m_unit->l2_char_record_l2dram_push(mf);
     m_unit->ep_l2_record_lower_issue(mf);
   }

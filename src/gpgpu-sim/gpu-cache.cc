@@ -1,3 +1,4 @@
+#include "ep-l2-event-timeline.h"
 #include "ep-l2-detach-diag.h"
 ep_l2_detach_diag::registry ep_l2_detach_diag::state;
 ep_l2_tagpressure::registry ep_l2_tagpressure::state;
@@ -1626,11 +1627,14 @@ void baseline_cache::cycle() {
       }
     } else if(m_miss_queue_status==IN_L1D_MISS_QUEUE) {
       ep_l2_life::stage_record(mf->get_sub_partition_id(),ep_l2_life::ICNT_INJECT_DENY);
+      ep_et::packet(ep_et::L1_SEND_DENY,ep_et::CORE_DOMAIN,mf);
     }
     if (ready) {
       m_miss_queue.erase(selected);
       if(m_miss_queue_status==IN_L1D_MISS_QUEUE)
         ep_l2_life::stage_record(mf->get_sub_partition_id(),ep_l2_life::L1_SEND);
+      if(m_miss_queue_status==IN_L1D_MISS_QUEUE)ep_et::packet(ep_et::L1_SEND,ep_et::CORE_DOMAIN,mf,mf->get_sid());
+      if(m_miss_queue_status==IN_PARTITION_L2_MISS_QUEUE)ep_et::packet(ep_et::MISSQ_DEQUEUE,ep_et::L2_DOMAIN,mf);
       m_memport->push(mf);
       lower_accepted(mf, m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
     }
@@ -1837,6 +1841,7 @@ void baseline_cache::send_read_request(new_addr_type addr,
       if (!m_config.ep_l2_descriptor_mode()) mf->set_addr(mshr_addr);
       lower_read_enqueued(mf, cache_index);
       m_miss_queue.push_back(mf);
+      if(m_miss_queue_status==IN_PARTITION_L2_MISS_QUEUE)ep_et::packet(ep_et::MISSQ_ENQUEUE,ep_et::L2_DOMAIN,mf);
       mf->set_status(m_miss_queue_status, time);
       if (!wa) events.push_back(cache_event(READ_REQUEST_SENT));
     }
@@ -1857,6 +1862,7 @@ void baseline_cache::send_read_request(new_addr_type addr,
     if (!m_config.ep_l2_descriptor_mode()) mf->set_addr(mshr_addr);
     lower_read_enqueued(mf, cache_index);
     m_miss_queue.push_back(mf);
+    if(m_miss_queue_status==IN_PARTITION_L2_MISS_QUEUE)ep_et::packet(ep_et::MISSQ_ENQUEUE,ep_et::L2_DOMAIN,mf);
     mf->set_status(m_miss_queue_status, time);
     if (!wa) events.push_back(cache_event(READ_REQUEST_SENT));
 
@@ -1881,6 +1887,7 @@ void data_cache::send_write_request(mem_fetch *mf, cache_event request,
                                     std::list<cache_event> &events) {
   events.push_back(request);
   m_miss_queue.push_back(mf);
+  if(m_miss_queue_status==IN_PARTITION_L2_MISS_QUEUE)ep_et::packet(ep_et::MISSQ_ENQUEUE,ep_et::L2_DOMAIN,mf);
   mf->set_status(m_miss_queue_status, time);
 }
 
@@ -2560,7 +2567,14 @@ enum cache_request_status l2_cache::access(new_addr_type addr, mem_fetch *mf,
                                            unsigned time,
                                            std::list<cache_event> &events) {
   if(m_ro)m_ro->check_access(mf);
-  if(ft_enabled()) {if(m_ro && !m_ro->query_admissible(mf))return RESERVATION_FAIL;auto result=ft_access(addr,mf,time,events);if(m_ro && result!=RESERVATION_FAIL)m_ro->record_accepted(mf);return result;}
+  if(ft_enabled()) {
+    if(m_ro && !m_ro->query_admissible(mf))return RESERVATION_FAIL;
+    auto result=ft_access(addr,mf,time,events);
+    // Existing access result and still-live requester only; no second lookup.
+    if(result!=RESERVATION_FAIL)ep_et::packet(ep_et::FRONTEND_COMMIT,ep_et::L2_DOMAIN,mf,uint64_t(result));
+    if(m_ro && result!=RESERVATION_FAIL)m_ro->record_accepted(mf);
+    return result;
+  }
   m_ep_l2_last_payload_request_result = ep_l2_payload_store::GRANTED;
   unsigned payload_index = (unsigned)-1;
   bool payload_reserved = false;

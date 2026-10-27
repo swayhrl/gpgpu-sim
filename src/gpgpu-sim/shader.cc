@@ -1,3 +1,4 @@
+#include "ep-l2-event-timeline.h"
 // Copyright (c) 2009-2021, Tor M. Aamodt, Wilson W.L. Fung, Ali Bakhoda,
 // George L. Yuan, Andrew Turner, Inderpreet Singh, Vijay Kandiah, Nikos
 // Hardavellas, Mahmoud Khairy, Junrui Pan, Timothy G. Rogers The University of
@@ -4720,6 +4721,7 @@ void simt_core_cluster::icnt_inject_request_packet(class mem_fetch *mf) {
   m_stats->m_outgoing_traffic_stats->record_traffic(mf, packet_size);
   unsigned destination = mf->get_sub_partition_id();
   ep_l2_life::stage_record(destination,ep_l2_life::ICNT_INJECT_ACCEPT);
+  ep_et::packet(ep_et::ICNT_INJECT,ep_et::CORE_DOMAIN,mf,packet_size);
   mf->set_status(IN_ICNT_TO_MEM,
                  m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
   if (!mf->get_is_write() && !mf->isatomic())

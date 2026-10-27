@@ -326,8 +326,15 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
   unsigned index = (unsigned)-1;
   cache_request_status probe = m_tag_array->probe(owner, index, mf, mf->is_write(), true);
   if(diagnostic.d){diagnostic.d->add(commit_raw_probe_reached);if(probe==RESERVATION_FAIL)diagnostic.d->add(raw_tag_fail_commit);}
-  if(probe==RESERVATION_FAIL)if(auto *o=m_tag_array->lifetime())
-    o->add(o->set[m_config.set_index(addr)].c[ep_l2_life::PROD_TAGFAIL]);
+  if(probe==RESERVATION_FAIL) {
+    auto *o=m_tag_array->lifetime();
+    if(o || ep_et::enabled()) {
+      const unsigned failed_set=m_config.set_index(addr);
+      if(o)o->add(o->set[failed_set].c[ep_l2_life::PROD_TAGFAIL]);
+      ep_et::pressure(mf->get_sub_partition_id(),failed_set,m_config.get_assoc(),
+         o?o->set[failed_set].occupancy:ep_et::U16,mf->get_request_uid(),addr,true);
+    }
+  }
   if(probe==RESERVATION_FAIL && m_ro){m_ro->relieve(addr);probe=m_tag_array->probe(owner,index,mf,mf->is_write(),true);if(diagnostic.d)diagnostic.d->add(probe>=0&&probe<=WRITE_ALLOCATED?field(post_relief_hit+probe):post_relief_unknown);}
   if (probe == RESERVATION_FAIL) return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_tag));
   if (m_tvd && probe == MISS &&

@@ -170,9 +170,16 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
   }
   void detach(ep_l2_ro::tag_binding t,handle h) override {
     ep_l2_life::reason_scope lifetime_reason(c.m_tag_array->lifetime(),ep_l2_life::DETACH);
-    if(!matches(t,h,c.m_ep_l2_payload.inspect(h).owner))throw std::logic_error("RO detach stale Tag");
+    const auto observed_owner=c.m_ep_l2_payload.inspect(h).owner;
+    if(!matches(t,h,observed_owner))throw std::logic_error("RO detach stale Tag");
     for(unsigned n=0;n<4;++n)c.m_tag_array->lifetime_set_status(t.index,INVALID,mem_access_sector_mask_t(1<<n));
     c.set_tag_payload_handle(t.index,handle());++generations[t.index];
+    if(ep_et::enabled()) {
+      auto *o=c.m_tag_array->lifetime();
+      ep_et::emit(ep_et::RO_DETACH,ep_et::L2_DOMAIN,o?o->slice:ep_et::U16,
+         t.index/c.m_config.get_assoc(),t.index%c.m_config.get_assoc(),0,
+         ep_et::U64,ep_et::U64,observed_owner,h.generation,t.generation);
+    }
     c.m_tag_array->l2_char_tracking_refresh_line(t.index);
   }
   void read(handle h,unsigned,const std::array<unsigned long long,4>&v) override {
@@ -308,6 +315,8 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
       packet->set_ft_wb_data(c.m_ep_l2_payload.inspect(h).versions);
       packet->set_ro_lower_packet();packet->set_ep_l2_payload_identity(h.payload_id,h.generation);
       packet->set_status(c.m_miss_queue_status,cycle);c.m_miss_queue.push_back(packet);
+      ep_et::packet(ep_et::RO_LOWER_CREATE,ep_et::L2_DOMAIN,packet,h.payload_id,m->get_request_uid());
+      ep_et::packet(ep_et::MISSQ_ENQUEUE,ep_et::L2_DOMAIN,packet);
       events.push_back(cache_event(READ_REQUEST_SENT));
     }
   }
@@ -323,6 +332,7 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
       c.m_tag_array->access(c.m_config.block_addr(m->get_addr()),time,i,wb,ev,m);assert(!wb);
     }
     m->set_ep_l2_payload_identity(h.payload_id,h.generation);
+    ep_et::packet(ep_et::RO_BIND,ep_et::L2_DOMAIN,m,h.payload_id);
     issue(m,h,missing,time,events);++accepted_ro;r=MISS;return true;
   }
   cache_request_status accept_new(mem_fetch *m,unsigned index,cache_request_status probe,unsigned time,std::list<cache_event>&events) {
@@ -400,8 +410,10 @@ bool l2_cache::ro_return(mem_fetch *m,unsigned long long cycle) {
   if(!m_ro||!m->ro_lower_packet())throw std::logic_error("RO return without runtime");
   if(!m->has_ft_wb_data())throw std::logic_error("RO return lacks reference versions");
   if(cycle!=m_ro->physical_cycle())throw std::logic_error("RO return bank cycle must be physical GPU time");
-  return m_ro->port.accept_return(*m_ro->tx,ep_l2::PayloadHandle(m->get_ep_l2_payload_id(),m->get_ep_l2_payload_generation()),
+  const bool accepted=m_ro->port.accept_return(*m_ro->tx,ep_l2::PayloadHandle(m->get_ep_l2_payload_id(),m->get_ep_l2_payload_generation()),
     m->get_access_sector_mask().to_ulong(),cycle,m->get_ft_wb_data(),m->get_request_uid());
+  if(accepted)ep_et::packet(ep_et::RO_READY,ep_et::L2_DOMAIN,m);
+  return accepted;
 }
 void l2_cache::ro_print(FILE *f,unsigned slice) const {
   if(auto *o=m_tag_array->lifetime())if(o->closed)o->print(f);

@@ -1,3 +1,4 @@
+#include "ep-l2-event-timeline.h"
 // Copyright (c) 2009-2011, Tor M. Aamodt, Ali Bakhoda, George L. Yuan,
 // The University of British Columbia
 // All rights reserved.
@@ -224,6 +225,7 @@ void dram_t::scheduler_frfcfs() {
     req->data->set_status(IN_PARTITION_MC_INPUT_QUEUE,
                           m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
     sched->add_req(req);
+    ep_et::packet(ep_et::SCHEDULER_ACCEPT,ep_et::DRAM_DOMAIN,req->data);
   }
 
   dram_req_t *req;
