@@ -26,6 +26,10 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
   mutable uint64_t query_uid=~uint64_t(0),query_ready_at=0,query_count=0;
   mutable uint64_t query_issue_cycle=~uint64_t(0),query_port_waits=0;
   mutable uint64_t query_last_wait=~uint64_t(0),query_wait_cycles=0;
+  // Extension opcode on the existing one-query frontend metadata port.
+  // Tag-set read is already supplied by the ordinary raw-fail preview.
+  mutable uint64_t ordinary_query_count=0,ordinary_query_wait_cycles=0;
+  mutable uint64_t ordinary_query_port_waits=0,ordinary_query_last_wait=~uint64_t(0);
   mutable uint64_t observed_uid=~uint64_t(0),blocked_mask=0;
   mutable std::array<uint64_t,6> first_wait{},unique_blocks{},wait_cycles{};
   mutable std::array<std::array<uint64_t,16>,6> wait_hist{};
@@ -101,6 +105,22 @@ class ep_l2_ro_runtime : public ep_l2_ro::tag_port {
     return m->get_access_type()==GLOBAL_ACC_R && !m->get_is_write() && !m->isatomic() && !m->ro_lower_packet();
   }
   bool candidate(const mem_fetch *m) const { return demand(m)&&cert->contains(c.m_config.block_addr(m->get_addr())); }
+  bool ordinary_query_ready(const mem_fetch *m) const {
+    return query_uid==m->get_request_uid() && physical_cycle()>=query_ready_at;
+  }
+  void ordinary_frontend_cycle(mem_fetch *m,const l2_access_plan &p) {
+    if(!c.m_config.m_ordinary_ro_tag_relief || !c.m_config.m_ro_tag_detach ||
+       !p.exact || !p.ep_l2_tag_set_all_reserved || !p.ep_l2_ro_lookup_wait) return;
+    const auto now=physical_cycle();
+    if(query_uid!=m->get_request_uid()) {
+      if(query_issue_cycle==now){++query_port_waits;++ordinary_query_port_waits;return;}
+      query_issue_cycle=now;query_uid=m->get_request_uid();query_ready_at=now+1;
+      ++query_count;++ordinary_query_count;ordinary_query_last_wait=~uint64_t(0);
+    }
+    if(now<query_ready_at && ordinary_query_last_wait!=now) {
+      ++query_wait_cycles;++ordinary_query_wait_cycles;ordinary_query_last_wait=now;
+    }
+  }
   bool query_admissible(mem_fetch *m) const {
     return !new_request(m) || (query_uid==m->get_request_uid() && physical_cycle()>=query_ready_at);
   }
@@ -447,6 +467,10 @@ void l2_cache::ro_print(FILE *f,unsigned slice) const {
     slice,m_ft_stats.descriptor_responses,(unsigned long long)s.responses,
     m_mshrs.descriptor_count_used(),m_mshrs.num_entries_used(),m_ro->tx->live_transactions(),
     unsigned(m_ro->ever_open&&!m_ro->open));
+  fprintf(f,"EPL2P1V2|SET_ELIGIBILITY_QUERY|slice=%u|enabled=%u|T=%u|issued=%llu|paid_wait_gpu_cycles=%llu|port_wait_attempts=%llu|query_ports_per_slice=1|query_latency_gpu_cycles=1|population=ordinary_raw_full_frontend_head|shared_with=RO_frontend_query|physical_timing_and_PPA=UNKNOWN\n",
+    slice,m_config.m_ordinary_ro_tag_relief,m_config.m_ro_tag_detach,
+    (unsigned long long)m_ro->ordinary_query_count,(unsigned long long)m_ro->ordinary_query_wait_cycles,
+    (unsigned long long)m_ro->ordinary_query_port_waits);
   fprintf(f,"EPL2ROC1|RESOURCE|slice=%u|normal_line_allocations=%llu|avoided_line_allocations=%llu|peak_transactions=%u|peak_shared_descriptors=%u|peak_shared_lines=%u|lower_read_bytes=%llu|concurrent_duplicate_read_bytes=%llu|query_count=%llu|query_latency_gpu_cycles=1|query_ports_per_slice=1|query_wait_cycles=%llu|query_port_wait_attempts=%llu|shared_descriptor_capacity=512|payload_capacity=1168|line_capacity=128|oracle=%s\n",
     slice,(unsigned long long)s.normal_line_allocations,(unsigned long long)s.avoided_line_allocations,
     s.peak_transactions,s.peak_shared_descriptors,s.peak_shared_lines,
@@ -478,3 +502,7 @@ void l2_cache::ro_frontend_cycle(mem_fetch *mf) {if(m_ro){
   // behind an RO owner before access() gets a chance to reject the violation.
   m_ro->check_access(mf);m_ro->frontend_cycle(mf);
 }}
+
+void l2_cache::ordinary_ro_relief_frontend_cycle(mem_fetch *mf,const l2_access_plan &p) {
+  if(m_ro)m_ro->ordinary_frontend_cycle(mf,p);
+}

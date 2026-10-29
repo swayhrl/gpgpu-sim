@@ -1360,6 +1360,8 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       ep_l2_detach_diag::preview diagnostic_preview;
       m_L2cache->detach_diag_snapshot(mf,diagnostic_preview);
       m_L2cache->preview_access(mf->get_addr(), mf, plan,&diagnostic_preview);
+      // Timed side effect belongs to the real frontend, never preview.
+      m_L2cache->ordinary_ro_relief_frontend_cycle(mf,plan);
       unsigned long long ms_known = 0;
       const unsigned long long ms_blockers = m_L2cache->ms_frontend_blockers(
           mf, plan, m_L2_icnt_queue->full(), ms_known);

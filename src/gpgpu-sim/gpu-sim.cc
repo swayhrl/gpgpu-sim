@@ -298,6 +298,9 @@ void memory_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_ep_l2_rg1", OPT_BOOL,
                          &m_L2_config.m_ep_l2_rg1,
                          "Explicit-ready bank selection (not yet qualified)", "0");
+  option_parser_register(opp, "-gpgpu_ep_l2_ordinary_ro_tag_relief", OPT_BOOL,
+                         &m_L2_config.m_ordinary_ro_tag_relief,
+                         "Costed ordinary full-Tag RO relief; default legacy, inert if T OFF", "0");
   option_parser_register(opp, "-gpgpu_ep_l2_ro_tag_detach", OPT_BOOL,
                          &m_L2_config.m_ro_tag_detach,
                          "Certified whole-commandlist RO pending Tag detach", "0");

@@ -624,6 +624,7 @@ class cache_config {
     m_ep_l2_payload_policy = 0;
     m_ep_l2_feature_unified_payload = false;
     m_ro_tag_detach=m_ro_line_mshr_bypass=false;
+    m_ordinary_ro_tag_relief=false;
     m_ro_ranges=m_ro_ranges_sha256=m_ro_manifest_sha256=m_ro_scope=m_ro_manifest=nullptr;
     m_ep_l2_feature_ro_pending_state = false;
     m_ep_l2_feature_tvd = false;
@@ -1013,6 +1014,7 @@ class cache_config {
   unsigned m_ep_l2_payload_policy;
   bool m_ep_l2_feature_unified_payload;
   bool m_ro_tag_detach,m_ro_line_mshr_bypass;
+  bool m_ordinary_ro_tag_relief;
   char *m_ro_ranges,*m_ro_ranges_sha256,*m_ro_manifest_sha256,*m_ro_scope,*m_ro_manifest;
   bool m_ep_l2_feature_ro_pending_state;
   bool m_ep_l2_feature_tvd;
@@ -3099,6 +3101,7 @@ class l2_cache : public data_cache {
   bool ro_tag_detach_enabled_for_test() const {return m_config.m_ro_tag_detach;}
   bool access_ready() const;
   void ro_frontend_cycle(mem_fetch *);
+  void ordinary_ro_relief_frontend_cycle(mem_fetch *,const l2_access_plan &);
   void ro_bind_commandlist(const char *);
   void ro_begin_epoch();
   void ro_end_epoch();

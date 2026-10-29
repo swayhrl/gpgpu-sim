@@ -335,6 +335,10 @@ enum cache_request_status l2_cache::ft_access(new_addr_type addr, mem_fetch *mf,
          o?o->set[failed_set].occupancy:ep_et::U16,mf->get_request_uid(),addr,true);
     }
   }
+  // Direct callers cannot bypass the corrected frontend's paid metadata query.
+  if(probe==RESERVATION_FAIL && m_ro && m_config.m_ordinary_ro_tag_relief &&
+     m_config.m_ro_tag_detach && !ro_new && !m_ro->ordinary_query_ready(mf))
+    return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_tag));
   if(probe==RESERVATION_FAIL && m_ro){m_ro->relieve(addr);probe=m_tag_array->probe(owner,index,mf,mf->is_write(),true);if(diagnostic.d)diagnostic.d->add(probe>=0&&probe<=WRITE_ALLOCATED?field(post_relief_hit+probe):post_relief_unknown);}
   if (probe == RESERVATION_FAIL) return cache_request_status(diagnostic.finish(RESERVATION_FAIL,false,denied_tag));
   if (m_tvd && probe == MISS &&

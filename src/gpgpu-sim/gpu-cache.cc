@@ -2818,6 +2818,21 @@ void l2_cache::preview_access(new_addr_type addr,mem_fetch *mf,l2_access_plan &p
       m_tag_array->probe(block_addr, cache_index, mf, mf->is_write(), true);
   plan.cache_index = cache_index;
   if(o){o->production_reached=true;o->production_raw=plan.probe_status;o->intermediate=plan.probe_status;}
+  // Pure consumer of a timed set-eligibility lookup. The initial raw Tag
+  // probe above supplies the set; this does not add a second Tag lookup.
+  if (plan.probe_status == RESERVATION_FAIL && m_ro &&
+      m_config.m_ordinary_ro_tag_relief && m_config.m_ro_tag_detach) {
+    if (!m_ro->ordinary_query_ready(mf)) {
+      plan.ep_l2_ro_lookup_wait = true;
+    } else {
+      if (o) o->consulted = true;
+      if (m_ro->detachable(addr, cache_index)) {
+        plan.probe_status = MISS;
+        plan.cache_index = cache_index;
+      }
+      if (o) o->intermediate = plan.probe_status;
+    }
+  }
   if (plan.probe_status == RESERVATION_FAIL) {
     plan.ep_l2_tag_set_all_reserved = true;
     return;
