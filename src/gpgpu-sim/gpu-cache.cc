@@ -2824,6 +2824,7 @@ void l2_cache::preview_access(new_addr_type addr,mem_fetch *mf,l2_access_plan &p
       m_config.m_ordinary_ro_tag_relief && m_config.m_ro_tag_detach) {
     if (!m_ro->ordinary_query_ready(mf)) {
       plan.ep_l2_ro_lookup_wait = true;
+      if (o) o->early = 3;  // Paid query wait, same diagnostic class as RO.
     } else {
       if (o) o->consulted = true;
       if (m_ro->detachable(addr, cache_index)) {
