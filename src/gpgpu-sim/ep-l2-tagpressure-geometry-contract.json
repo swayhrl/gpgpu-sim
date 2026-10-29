@@ -1,5 +1,32 @@
 {
+  "allowed_set_way_pairs": [
+    [
+      16,
+      8
+    ],
+    [
+      32,
+      4
+    ],
+    [
+      32,
+      8
+    ],
+    [
+      32,
+      16
+    ],
+    [
+      64,
+      8
+    ],
+    [
+      64,
+      16
+    ]
+  ],
   "assoc": [
+    4,
     8,
     16
   ],
@@ -8,11 +35,13 @@
   "histogram_reserved_extent": 17,
   "inactive_reserved_eligible_invalid_bins": "indices above assoc must be zero",
   "line_bytes": 128,
+  "new_source_only": "ENGINEERING_CANDIDATE_NEW_SOURCE_ONLY; APPLICATION_NI_REQUIRED",
   "same_raw_and_route_axes_as_base": true,
-  "sampling": "existing r4 snapshot only; no additional modeled probe/CAM",
-  "schema_id": "EPL2_TAGPRESSURE_GEOMETRY_V1",
+  "sampling": "existing r4 snapshot only; reuse exact snapshot, no new probe/CAM; captured target set before aggregation",
+  "schema_id": "EPL2_TAGPRESSURE_GEOMETRY_V2_CANDIDATE",
   "scope": "FRONTEND_HEAD_CYCLE_SAME_TARGET_SET",
   "sets": [
+    16,
     32,
     64
   ],

@@ -3078,7 +3078,7 @@ void l2_cache::detach_diag_snapshot(mem_fetch*m,ep_l2_detach_diag::preview&o) co
     s.ro_runtime=o.runtime;s.T=o.T;
     s.requester=!o.runtime?ep_l2_tagpressure::RUNTIME_OFF:o.candidate?
       ep_l2_tagpressure::CERTIFIED_RO_CANDIDATE:ep_l2_tagpressure::NONRO_NATIVE_PATH;
-    if(ep_l2_life::supported_geometry(s.sets,s.assoc))for(unsigned way=0;way<s.assoc;++way) {
+    if(ep_l2_tagpressure::supported_geometry(s.sets,s.assoc))for(unsigned way=0;way<s.assoc;++way) {
       const unsigned index=o.set*s.assoc+way;auto &w=s.ways[way];
       w.kind=static_cast<ep_l2_tagpressure::way_kind>(m_tag_array->diagnostic_way_class(index));
       w.live=false;w.attached=false;w.reuse=false;w.required=0;w.ready=0;
