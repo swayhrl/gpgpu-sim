@@ -342,6 +342,8 @@ void memory_config::reg_options(class OptionParser *opp) {
                          "EP-L2 future RO pending-state feature (unsupported in M1)", "0");
   option_parser_register(opp,"-gpgpu_ep_l2_tvd_fixed_entries",OPT_UINT32,
       &m_L2_config.m_ep_l2_tvd_fixed_entries,"Fixed victim/non-victim bank quotas:0 dynamic,64 fixed (1168 total)","0");
+  option_parser_register(opp,"-gpgpu_ep_l2_tvd_clean_limit",OPT_UINT32,
+      &m_L2_config.m_ep_l2_tvd_clean_limit,"Optional CLEAN directory admission cap0..128 (default128 legacy); mandatory WB remains128", "128");
   option_parser_register(opp,"-gpgpu_ep_l2_tvd_clean",OPT_BOOL,&m_L2_config.m_ep_l2_tvd_clean,"study CLEAN_ONLY", "0");
   option_parser_register(opp,"-gpgpu_ep_l2_tvd_dirty",OPT_BOOL,&m_L2_config.m_ep_l2_tvd_dirty,"study DIRTY_PENDING_INFLIGHT (new source, native qualification required)", "0");
   option_parser_register(opp, "-gpgpu_ep_l2_feature_tvd", OPT_BOOL,

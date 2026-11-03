@@ -244,9 +244,10 @@ void l2_cache::tvd_epoch_cleanup(unsigned long long now) {
 
 void l2_cache::tvd_print(FILE *fp, unsigned slice) {
   m_tvd->advance(m_gpu_cycle_for_tvd()); const auto &s = m_tvd->stats();
-  fprintf(fp,"EPL2TVDV3|METADATA_COST|slice=%u|frontend_cam_queries=%llu|frontend_cam_ports=1|completion_cam_queries=%llu|completion_cam_ports=1|indexed_wb_accept=%llu|indexed_rollback=%llu|native_install_commits=%llu|native_promotion_commits=%llu|extra_packet_identity_bits=0|directory_bound_wb_uid_bits=32|indexed_control_read_views=3|indexed_control_update_lanes=3|metadata_PPA=UNKNOWN|metadata_clock_closure=UNKNOWN\n",
+  fprintf(fp,"EPL2TVDV3|METADATA_COST|slice=%u|frontend_cam_queries=%llu|frontend_cam_ports=1|completion_cam_queries=%llu|completion_cam_ports=1|indexed_wb_accept=%llu|indexed_rollback=%llu|native_install_commits=%llu|native_promotion_commits=%llu|extra_packet_identity_bits=0|directory_bound_wb_uid_bits=32|indexed_control_read_views=3|indexed_control_update_lanes=3|clean_limit=%u|clean_live=%u|clean_limit_counter_bits=8|metadata_PPA=UNKNOWN|metadata_clock_closure=UNKNOWN\n",
       slice,m_tvd_lookup_queries,m_tvd_indexed_completions,m_tvd_indexed_accepts,
-      m_tvd_indexed_rollbacks,m_tvd_native_installs,m_tvd_native_promotions);
+      m_tvd_indexed_rollbacks,m_tvd_native_installs,m_tvd_native_promotions,
+      m_tvd->clean_limit(),m_tvd->clean_occupancy());
   fprintf(fp, "EPL2TVDV2|SUMMARY|slice=%u|clean_installs=%llu|dirty_installs=%llu|"
       "read_responses=%llu|dirty_forward_responses=%llu|served_sectors=%llu|served_sector_bytes=%llu|"
       "promotions=%llu|live=%u|mandatory=%u|role_tvd=%u|retention_slot_cycles=%llu|"

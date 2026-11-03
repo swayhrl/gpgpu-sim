@@ -113,14 +113,19 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
   };
 
   explicit ep_l2_tvd_directory(unsigned capacity = 128, bool clean = false,
-                               bool dirty = false)
-      : m_capacity(capacity), m_clean(clean), m_dirty(dirty), m_revision(0),
+                               bool dirty = false,
+                                unsigned clean_limit = std::numeric_limits<unsigned>::max())
+      : m_capacity(capacity),
+        m_clean_limit(clean_limit==std::numeric_limits<unsigned>::max()?capacity:clean_limit),
+        m_clean_count(0), m_clean(clean), m_dirty(dirty), m_revision(0),
         m_clock(0), m_age(0) {
-    if (!capacity || capacity > 128) throw std::invalid_argument("WAD/TVD capacity");
+    if (!capacity || capacity > 128 || m_clean_limit > capacity) throw std::invalid_argument("WAD/TVD capacity");
   }
   ep_l2_tvd_directory(const ep_l2_tvd_directory &) = delete;
   ep_l2_tvd_directory &operator=(const ep_l2_tvd_directory &) = delete;
   unsigned capacity() const { return m_capacity; }
+  unsigned clean_limit() const { return m_clean_limit; }
+  unsigned clean_occupancy() const { return m_clean_count; }
   unsigned occupied() const {
     unsigned n = 0;
     for (unsigned i = 0; i < m_capacity; ++i) n += m_entries[i].status != EMPTY;
@@ -157,12 +162,15 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
       assert(!live(find(line)));
     } else if (live(find(line))) { p.status = INVALID_INPUT; return p; }
     if (!dirty && !m_clean) { p.status = DISABLED; return p; }
+    if (!dirty && !m_clean_limit) { p.status = DISABLED; return p; }
+    const bool clean_limited = !dirty && m_clean_count >= m_clean_limit;
     for (unsigned i = 0; i < m_capacity; ++i)
-      if (m_entries[i].status == EMPTY) {
+      if (!clean_limited && m_entries[i].status == EMPTY) {
         p.status = OK; p.index = i; return p;
       }
     for (unsigned i = 0; i < m_capacity; ++i) {
-      if (!m_entries[i].reclaimable()) continue;
+      if (!m_entries[i].reclaimable() ||
+          (clean_limited && m_entries[i].status != CLEAN)) continue;
       if (p.index == 128 ||
           (dirty && m_entries[i].status == CLEAN && m_entries[p.index].status != CLEAN) ||
           ((!dirty || m_entries[i].status == m_entries[p.index].status) &&
@@ -199,7 +207,10 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     assert(e.status == EMPTY || e.reclaimable());
     if (e.status != EMPTY) ++m_stats.reclaimed;
     bump(e.incarnation);
+    if (e.status == CLEAN) { assert(m_clean_count); --m_clean_count; }
     e.status = writeback ? WB_STAGED : CLEAN;
+    if (e.status == CLEAN) ++m_clean_count;
+    assert(m_clean_count <= m_clean_limit);
     e.line = line; e.payload = handle;
     e.valid_sectors = valid; e.dirty_sectors = dirty; e.readers = 0;
     e.wb_request_uid = 0; e.wb_uid_bound = false;
@@ -313,6 +324,7 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     entry &e = m_entries[p.source.index];
     assert(!e.mandatory() && !e.readers);
     advance(now); promoted = e.payload;
+    if (e.status == CLEAN) { assert(m_clean_count); --m_clean_count; }
     bump(e.incarnation); e.status = WB_STAGED; e.line = p.victim_line;
     e.payload = p.retain_payload ? p.victim : Handle(); e.valid_sectors = p.valid; e.dirty_sectors = p.dirty;
     e.wb_request_uid = 0; e.wb_uid_bound = false;
@@ -393,11 +405,13 @@ template <class Handle = ep_l2::PayloadHandle> class ep_l2_tvd_directory {
     ++v;
   }
   void erase(entry &e) {
-    assert(!e.readers); bump(e.incarnation); e.status = EMPTY;
+    assert(!e.readers);
+    if (e.status == CLEAN) { assert(m_clean_count); --m_clean_count; }
+    bump(e.incarnation); e.status = EMPTY;
     e.payload = Handle(); e.valid_sectors = e.dirty_sectors = 0; ++m_revision;
     e.wb_uid_bound = false;
   }
-  unsigned m_capacity;
+  unsigned m_capacity, m_clean_limit, m_clean_count;
   bool m_clean, m_dirty;
   std::uint64_t m_revision;
   cycle_type m_clock;

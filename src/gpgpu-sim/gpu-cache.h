@@ -629,6 +629,7 @@ class cache_config {
     m_ep_l2_feature_tvd = false;
     m_ep_l2_tvd_clean = m_ep_l2_tvd_dirty = false;
     m_ep_l2_tvd_fixed_entries=0;
+    m_ep_l2_tvd_clean_limit=128;
     m_ep_l2_feature_adaptive_policy = false;
     m_ep_l2_b0_stats = true;
     // M0a is deliberately opt-in.  It is a telemetry sidecar and is never
@@ -1018,6 +1019,7 @@ class cache_config {
   bool m_ep_l2_feature_tvd;
   bool m_ep_l2_tvd_clean, m_ep_l2_tvd_dirty;
   unsigned m_ep_l2_tvd_fixed_entries;
+  unsigned m_ep_l2_tvd_clean_limit;
   bool m_ep_l2_feature_adaptive_policy;
   // Observational only. Disabling it must not change simulator timing.
   bool m_ep_l2_b0_stats;
@@ -2959,7 +2961,7 @@ class l2_cache : public data_cache {
     m_tvd_query_cycle = (unsigned long long)-1; m_tvd_lookup_done = false;
     m_tvd_lookup_wait = m_tvd_wb_wait = m_tvd_bank_wait = m_tvd_resp_wait = m_tvd_lookup_queries = 0;
     if (config.m_ep_l2_tvd_clean || config.m_ep_l2_tvd_dirty)
-      m_tvd.reset(new ep_l2_tvd_directory<>(128, config.m_ep_l2_tvd_clean, config.m_ep_l2_tvd_dirty));
+      m_tvd.reset(new ep_l2_tvd_directory<>(128, config.m_ep_l2_tvd_clean, config.m_ep_l2_tvd_dirty, config.m_ep_l2_tvd_clean_limit));
     if (ft_enabled()) m_tag_array->bind_ft_replacement(&m_ft_pending.request, &m_ft_pending.tag_index);
   }
 
@@ -3335,6 +3337,11 @@ class l2_cache : public data_cache {
   ep_l2_ro_runtime *m_ro;
   void ro_init();
   void validate_ep_l2_mode_config() const {
+    if (m_config.m_ep_l2_tvd_clean_limit > 128 ||
+        (m_config.m_ep_l2_tvd_clean_limit != 128 &&
+         (!m_config.m_ep_l2_tvd_clean || !m_config.m_ep_l2_tvd_dirty || m_config.ro_requested()))) {
+      fprintf(stderr,"CLEAN optional cap requires finite W+V both classes, RO disabled, limit0..128; default128 preserves other modes\n"); abort();
+    }
     if ((m_config.m_ep_l2_tvd_clean || m_config.m_ep_l2_tvd_dirty) &&
         (m_config.m_ep_l2_diag_copy_free || m_config.m_ep_l2_payload_mode != 2 ||
          m_config.m_ep_l2_descriptor_pool_size != 512 || m_config.m_mshr_entries != 128 ||
