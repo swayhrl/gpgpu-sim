@@ -3201,6 +3201,12 @@ class l2_cache : public data_cache {
   // C4 WAD ownership is intentionally address-indexed. A reservation must
   // exist before tag_array::access can evict a dirty victim; release happens
   // only when the corresponding no-return writeback reaches set_done().
+  // Ready/valid handshake for the finite completion-address CAM. Inspect its
+  // one-bit current-core-cycle availability only; no address/directory lookup,
+  // reservation, timestamp or ownership mutation is allowed in this preview.
+  bool ep_l2_wad_completion_ready(unsigned long long cycle) const {
+    return !ep_l2_wad_enabled() || !m_tvd || m_tvd_completion_cam_cycle != cycle;
+  }
   void ep_l2_wad_complete(new_addr_type block_addr, unsigned long long cycle,
       unsigned completing_request_uid = (unsigned)-1);
   unsigned ep_l2_wad_occupancy() const { return m_tvd ? m_tvd->mandatory() : m_ep_l2_wad_entries_live.size(); }

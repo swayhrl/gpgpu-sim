@@ -293,7 +293,18 @@ void dram_t::scheduler_fifo() {
   a ^= b;
 
 void dram_t::cycle() {
-  if (!returnq->full()) {
+  // The finite rwq already reserves a slot for each issued data beat. A final
+  // L2-WB beat is the completion ready/valid boundary: retain it at the head
+  // while its destination slice's single completion CAM is busy. Never pop or
+  // advance dqbytes/status/credit/free before that handshake. Subsequent issued
+  // beats remain bounded by rwq's existing CL+1 slots and block column issue
+  // when full; DRAM bank timing/scheduling below still advances normally.
+  const dram_req_t *head = rwq->top();
+  const bool completion_blocked = head &&
+      head->data->get_access_type() == L2_WRBK_ACC &&
+      head->dqbytes + m_config->dram_atom_size >= head->nbytes &&
+      !m_memory_partition_unit->can_complete_writeback(head->data);
+  if (!returnq->full() && !completion_blocked) {
     dram_req_t *cmd = rwq->pop();
     if (cmd) {
 #ifdef DRAM_VIEWCMD

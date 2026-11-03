@@ -149,6 +149,7 @@ class memory_partition_unit {
   void dram_cycle();
   void simple_dram_model_cycle();
 
+  bool can_complete_writeback(const mem_fetch *mf) const;
   void set_done(mem_fetch *mf);
 
   void visualizer_print(gzFile visualizer_file) const;
@@ -319,6 +320,7 @@ class memory_sub_partition {
   void push(class mem_fetch *mf, unsigned long long clock_cycle);
   class mem_fetch *pop();
   class mem_fetch *top();
+  bool can_set_done(const mem_fetch *mf) const;
   void set_done(mem_fetch *mf);
 
   unsigned flushL2();

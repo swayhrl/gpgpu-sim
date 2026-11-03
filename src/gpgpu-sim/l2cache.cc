@@ -677,9 +677,13 @@ void memory_partition_unit::simple_dram_model_cycle() {
       }
 
     } else {
-      this->set_done(mf_return);
-      delete mf_return;
-      m_dram_latency_queue.pop_front();
+      // Keep the original no-return WB and its credit in the finite lower
+      // path until the one-query-per-core-cycle completion CAM is available.
+      if (can_complete_writeback(mf_return)) {
+        this->set_done(mf_return);
+        delete mf_return;
+        m_dram_latency_queue.pop_front();
+      }
     }
   }
 
@@ -855,10 +859,25 @@ void memory_partition_unit::dram_cycle() {
   }
 }
 
+bool memory_partition_unit::can_complete_writeback(const mem_fetch *mf) const {
+  if (mf->get_access_type() != L2_WRBK_ACC) return true;
+  const unsigned global_spid = mf->get_sub_partition_id();
+  const int spid = global_spid -
+      m_id * m_config->m_n_sub_partition_per_memory_channel;
+  assert(spid >= 0 && static_cast<unsigned>(spid) <
+         m_config->m_n_sub_partition_per_memory_channel);
+  assert(m_sub_partition[spid]->get_id() == global_spid);
+  return m_sub_partition[spid]->can_set_done(mf);
+}
+
 void memory_partition_unit::set_done(mem_fetch *mf) {
   unsigned global_spid = mf->get_sub_partition_id();
   int spid = global_sub_partition_id_to_local_id(global_spid);
   assert(m_sub_partition[spid]->get_id() == global_spid);
+  // Validate and retire the matching WAD/TVD owner before returning credit.
+  // A rejected stale UID must not release resources it does not own. Valid
+  // callbacks remain in this same timestamp; no arbitration re-enters here.
+  m_sub_partition[spid]->set_done(mf);
   if (mf->get_access_type() == L1_WRBK_ACC ||
       mf->get_access_type() == L2_WRBK_ACC) {
     m_arbitration_metadata.return_credit(spid, mf);
@@ -866,7 +885,7 @@ void memory_partition_unit::set_done(mem_fetch *mf) {
         "mem_fetch request %p return from dram to sub partition %d\n", mf,
         spid);
   }
-  m_sub_partition[spid]->set_done(mf);
+
 }
 
 void memory_partition_unit::set_dram_power_stats(
@@ -2750,6 +2769,12 @@ mem_fetch *memory_sub_partition::top() {
     mf = NULL;
   }
   return mf;
+}
+
+bool memory_sub_partition::can_set_done(const mem_fetch *mf) const {
+  return mf->get_access_type() != L2_WRBK_ACC ||
+      m_L2cache->ep_l2_wad_completion_ready(
+          m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
 }
 
 void memory_sub_partition::set_done(mem_fetch *mf) {
