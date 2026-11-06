@@ -3556,8 +3556,13 @@ void ldst_unit::dtc_l1_oo_issue_lower_requests() {
 
 bool ldst_unit::dtc_l1_oo_consume_response(mem_fetch *mf) {
   if (!dtc_l1_paper_oo_active()) return false;
-  auto it = m_dtc_l1_oo_inflight.find(mf->get_request_uid());
-  if (it == m_dtc_l1_oo_inflight.end() && mf->get_original_mf())
+  // Explicit parent identity avoids dereferencing a stale original pointer
+  // when rejecting a duplicate child after its completed parent was released.
+  auto it = m_dtc_l1_oo_inflight.find(mf->dtc_oracle_eligible()
+                                       ? mf->dtc_oracle_parent_uid()
+                                       : mf->get_request_uid());
+  if (it == m_dtc_l1_oo_inflight.end() && !mf->dtc_oracle_eligible() &&
+      mf->get_original_mf())
     it = m_dtc_l1_oo_inflight.find(
         mf->get_original_mf()->get_request_uid());
   if (it == m_dtc_l1_oo_inflight.end()) {
@@ -3570,6 +3575,8 @@ bool ldst_unit::dtc_l1_oo_consume_response(mem_fetch *mf) {
   dtc_l1_oo_inflight &record = it->second;
   if (mf->dtc_oracle_eligible()) {
     if (mf->get_type() != READ_REPLY ||
+        mf->get_access_type() != GLOBAL_ACC_R || mf->get_is_write() ||
+        mf->isatomic() ||
         mf->dtc_oracle_parent_uid() != it->first ||
         mf->dtc_oracle_physical_id() != record.physical.id ||
         mf->dtc_oracle_physical_generation() != record.physical.generation ||
@@ -8044,7 +8051,11 @@ void simt_core_cluster::icnt_cycle() {
       // data response
       if (!m_core[cid]->ldst_unit_response_buffer_full()) {
         m_response_fifo.pop_front();
-        m_memory_stats->memlatstat_read_done(mf);
+        // Virtual M returns did not traverse ICNT/L2/DRAM and must not be
+        // inserted into ordinary measured-memory-latency histograms.
+        if (!(m_mem_config->m_dtc_oracle_mode == 1 &&
+              mf->dtc_oracle_eligible()))
+          m_memory_stats->memlatstat_read_done(mf);
         m_core[cid]->accept_ldst_unit_response(mf);
       }
     }
@@ -8084,6 +8095,9 @@ void simt_core_cluster::icnt_cycle() {
     m_response_fifo.push_back(mf);
     m_stats->n_mem_to_simt[m_cluster_id] += mf->get_num_flits(false);
   } else {
+    if (m_mem_config->m_dtc_oracle_mode == 1 &&
+        m_dtc_oracle_m.ready(m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle))
+      ++m_dtc_oracle_m_fifo_stalls;
     m_gpu->gpu_stall_icnt2core++;
   }
 }
