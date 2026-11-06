@@ -2239,6 +2239,11 @@ void ldst_unit::get_dtc_l1_stats(
       oo.sector_physical_allocated =
           m_dtc_l1_sector_frontend->allocated_lines();
     } else {
+      m_dtc_l1_oracle_events.assert_conservation();
+      oo.oracle_l1_eligible_admitted = m_dtc_l1_oracle_eligible_admitted;
+      oo.oracle_l1_events_enqueued = m_dtc_l1_oracle_events.enqueued();
+      oo.oracle_l1_events_delivered = m_dtc_l1_oracle_events.delivered();
+      oo.oracle_l1_events_pending = m_dtc_l1_oracle_events.size();
       oo.oo_lower_created = m_dtc_l1_oo_lower_created;
       oo.oo_lower_issued = m_dtc_l1_oo_lower_issued;
       oo.oo_lower_responses = m_dtc_l1_oo_lower_responses;
@@ -2723,7 +2728,18 @@ void ldst_unit::dtc_l1_m4_atomic_response(
     consume(dtc_l1_oo_find_entry(inst.get_uid()));
 }
 
+// A virtual event and its finite notification/collection/WB owners remain a
+// real outstanding data operation. Do not clear MEMBAR on a no-destination
+// load merely because the ordinary scoreboard has no destination register.
+bool ldst_unit::dtc_l1_oracle_pending_warp(unsigned warp_id) const {
+  if (m_memory_config->m_dtc_oracle_mode != 3) return false;
+  for (const auto &entry : m_dtc_l1_oo_pib)
+    if (entry.oracle_eligible && entry.inst.warp_id() == warp_id) return true;
+  return false;
+}
+
 bool ldst_unit::dtc_l1_pending_work(unsigned kernel_uid) const {
+  if (m_dtc_l1_oracle_events.pending(kernel_uid)) return true;
   if (kernel_uid) {
     for (const auto &entry : m_dtc_l1_io_pib)
       if (entry.owner_kernel_uid == kernel_uid) return true;
@@ -3362,10 +3378,13 @@ bool ldst_unit::dtc_l1_oo_memory_cycle(
     }
     m_dtc_l1_oo_pib.push_back({inst, dtc_l1_io_line_references(inst), 0});
     m_dtc_l1_oo_pib.back().owner_kernel_uid = dtc_l1_owner_kernel_uid();
-    m_dtc_l1_oo_pib.back().oracle_eligible =
-        m_memory_config->m_dtc_oracle_mode && inst.is_load() &&
-        !inst.isatomic() && inst.space.get_type() == global_space;
     entry = &m_dtc_l1_oo_pib.back();
+    entry->oracle_eligible = m_memory_config->m_dtc_oracle_mode != 0 &&
+        inst.space.get_type() == global_space &&
+        inst.is_load() && !inst.isatomic() && inst.cache_op != CACHE_GLOBAL &&
+        !(m_core->get_config()->gmem_skip_L1D && inst.cache_op != CACHE_L1);
+    if (m_memory_config->m_dtc_oracle_mode == 3 && entry->oracle_eligible)
+      ++m_dtc_l1_oracle_eligible_admitted;
     assert(!entry->references.empty());
     dtc_l1_r4c0_record_pib(entry->inst, entry->references, "OO");
   }
@@ -3384,8 +3403,11 @@ bool ldst_unit::dtc_l1_oo_memory_cycle(
             : (m_dtc_l1_oo_frontend->will_new_miss(reference.line_address)
                    ? 1
                    : 0);
+    const bool virtual_data = m_memory_config->m_dtc_oracle_mode == 3 &&
+                              entry->oracle_eligible;
+    assert(!virtual_data || !dtc_l1_sector_oo_active());
     if (m_dtc_l1_oo_lower_create_queue.size() +
-            lower_candidate_reservation >
+            (virtual_data ? 0 : lower_candidate_reservation) >
         m_config->dtc_l1_oo_pib_entries) {
       ++m_dtc_l1_oo_lower_create_queue_full_stalls;
       stall_reason = BK_CONF;
@@ -3438,10 +3460,17 @@ bool ldst_unit::dtc_l1_oo_memory_cycle(
         return false;
       }
       if (result.kind == dtc_l1::io_access_kind::NEW_MISS) {
-        assert(m_dtc_l1_oo_lower_create_queue.size() <
-               m_config->dtc_l1_oo_pib_entries);
-        m_dtc_l1_oo_lower_create_queue.push_back(
-            {uid, result.physical, reference.line_address, 0xF});
+        if (virtual_data) {
+          // Original admission/Tag/physical allocation and full Ref ownership
+          // have happened. The event is not a lower request or fake response.
+          m_dtc_l1_oracle_events.enqueue(cycle, result.physical,
+              reference.line_address, entry->owner_kernel_uid);
+        } else {
+          assert(m_dtc_l1_oo_lower_create_queue.size() <
+                 m_config->dtc_l1_oo_pib_entries);
+          m_dtc_l1_oo_lower_create_queue.push_back(
+              {uid, result.physical, reference.line_address, 0xF});
+        }
       }
     }
     ++entry->next_reference;
@@ -5166,6 +5195,11 @@ void ldst_unit::cycle() {
       }
     }
   }
+  if (m_memory_config->m_dtc_oracle_mode == 3 && dtc_l1_paper_oo_active()) {
+    assert(!dtc_l1_sector_oo_active() && dtc_l1_finite_service_active());
+    m_dtc_l1_oracle_events.deliver(
+        m_core->get_gpu()->global_cycle(), *m_dtc_l1_oo_frontend);
+  }
   if (dtc_l1_paper_base_active()) {
     m_dtc_l1_frontend->sample_cycle(m_core->get_gpu()->gpu_sim_cycle +
                                     m_core->get_gpu()->gpu_tot_sim_cycle);
@@ -6128,6 +6162,18 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
     return;
   }
   if (mode == static_cast<unsigned>(dtc_l1::mode::PAPER_OO)) {
+    assert(total.oracle_l1_events_pending == 0);
+    assert(total.oracle_l1_events_enqueued == total.oracle_l1_events_delivered);
+    assert(total.oo_new_misses ==
+           total.oo_lower_created + total.oracle_l1_events_enqueued);
+    fprintf(fout, "DTC_ORACLE_L1_eligible_admitted = %llu\n",
+            static_cast<unsigned long long>(total.oracle_l1_eligible_admitted));
+    fprintf(fout, "DTC_ORACLE_L1_events_enqueued = %llu\n",
+            static_cast<unsigned long long>(total.oracle_l1_events_enqueued));
+    fprintf(fout, "DTC_ORACLE_L1_events_delivered = %llu\n",
+            static_cast<unsigned long long>(total.oracle_l1_events_delivered));
+    fprintf(fout, "DTC_ORACLE_L1_events_pending = %llu\n",
+            static_cast<unsigned long long>(total.oracle_l1_events_pending));
     assert(total.oo_inflight_current == 0);
     assert(total.oo_pib_occupancy == 0);
     assert(total.oo_lower_created == total.oo_lower_issued);
@@ -7092,6 +7138,7 @@ bool shader_core_ctx::warp_waiting_at_barrier(unsigned warp_id) const {
 
 bool shader_core_ctx::warp_waiting_at_mem_barrier(unsigned warp_id) {
   if (!m_warp[warp_id]->get_membar()) return false;
+  if (m_ldst_unit->dtc_l1_oracle_pending_warp(warp_id)) return true;
   if (!m_scoreboard->pendingWrites(warp_id)) {
     m_warp[warp_id]->clear_membar();
     if (m_gpu->get_config().flush_l1()) {

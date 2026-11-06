@@ -1761,6 +1761,10 @@ struct paper_frontend_stats {
   uint64_t io_tag_requests = 0;
   uint64_t io_tag_conflicts = 0;
   std::vector<uint64_t> io_tag_requests_per_bank;
+  uint64_t oracle_l1_eligible_admitted = 0;
+  uint64_t oracle_l1_events_enqueued = 0;
+  uint64_t oracle_l1_events_delivered = 0;
+  uint64_t oracle_l1_events_pending = 0;
   uint64_t oo_lower_created = 0;
   uint64_t oo_lower_issued = 0;
   uint64_t oo_lower_responses = 0;
@@ -1886,6 +1890,10 @@ struct paper_frontend_stats {
       io_tag_requests_per_bank.resize(other.io_tag_requests_per_bank.size(), 0);
     for (size_t bank = 0; bank < other.io_tag_requests_per_bank.size(); ++bank)
       io_tag_requests_per_bank[bank] += other.io_tag_requests_per_bank[bank];
+    oracle_l1_eligible_admitted += other.oracle_l1_eligible_admitted;
+    oracle_l1_events_enqueued += other.oracle_l1_events_enqueued;
+    oracle_l1_events_delivered += other.oracle_l1_events_delivered;
+    oracle_l1_events_pending += other.oracle_l1_events_pending;
     oo_lower_created += other.oo_lower_created;
     oo_lower_issued += other.oo_lower_issued;
     oo_lower_responses += other.oo_lower_responses;

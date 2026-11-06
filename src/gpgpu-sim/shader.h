@@ -59,6 +59,7 @@
 #include "addrdec.h"
 #include "delayqueue.h"
 #include "dtc-l1-common.h"
+#include "dtc-oracle-l1.h"
 #include "dtc-l1-invalidation.h"
 #include "dram.h"
 #include "gpu-cache.h"
@@ -1994,6 +1995,7 @@ class ldst_unit : public pipelined_simd_unit {
   bool response_buffer_full() const;
   // Outstanding lifecycle work, excluding reusable valid Ref0 cache lines.
   bool dtc_l1_pending_work(unsigned kernel_uid = 0) const;
+  bool dtc_l1_oracle_pending_warp(unsigned warp_id) const;
   void print(FILE *fout) const;
   void print_cache_stats(FILE *fp, unsigned &dl1_accesses,
                          unsigned &dl1_misses);
@@ -2296,6 +2298,7 @@ class ldst_unit : public pipelined_simd_unit {
     dtc_l1::service_entry service;
     active_mask_t pending_atomic_lanes;
     unsigned owner_kernel_uid = 0;
+    // Frozen at original logical admission; local/noneligible reads stay real.
     bool oracle_eligible = false;
   };
   struct dtc_l1_oo_lower_candidate {
@@ -2313,6 +2316,8 @@ class ldst_unit : public pipelined_simd_unit {
   };
   dtc_l1_oo_pib_entry *dtc_l1_oo_find_entry(unsigned uid);
   std::list<dtc_l1_oo_pib_entry> m_dtc_l1_oo_pib;
+  dtc_l1::oracle_l1_events m_dtc_l1_oracle_events;
+  uint64_t m_dtc_l1_oracle_eligible_admitted = 0;
   std::deque<dtc_l1_oo_lower_candidate> m_dtc_l1_oo_lower_create_queue;
   std::deque<mem_fetch *> m_dtc_l1_oo_lower_issue_queue;
   std::unordered_map<unsigned, dtc_l1_oo_inflight> m_dtc_l1_oo_inflight;
