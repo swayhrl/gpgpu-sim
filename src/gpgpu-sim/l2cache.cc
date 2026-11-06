@@ -613,11 +613,40 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
       if (!output_full && port_free && interchip_free) {
         bool accepted = false;
         std::list<cache_event> events;
-        enum cache_request_status status =
-            m_L2cache->access(mf->get_addr(), mf,
-                              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
-                                  m_memcpy_cycle_offset,
-                              events);
+        enum cache_request_status status;
+        if (m_config->m_dtc_oracle_mode == 2 && mf->dtc_oracle_eligible()) {
+          // This is the original post-ROP, post-sector-breakdown L2 bank
+          // admission.  No real cache access/miss/MSHR/DRAM reservation occurs.
+          assert(mf->get_type() == READ_REQUEST && !mf->get_is_write());
+          assert(mf->get_access_type() == GLOBAL_ACC_R && !mf->isatomic());
+          assert(mf->get_data_size() == SECTOR_SIZE);
+          const mem_access_sector_mask_t sectors = mf->get_access_sector_mask();
+          assert(sectors.count() == 1);
+          assert((sectors.to_ulong() &
+                  mf->dtc_oracle_required_sector_mask()) == sectors.to_ulong());
+          assert(sectors.test((mf->get_addr() % MAX_MEMORY_ACCESS_SIZE) /
+                              SECTOR_SIZE));
+          mem_fetch *parent = mf->get_original_mf();
+          assert((parent ? parent->get_request_uid() : mf->get_request_uid()) ==
+                 mf->dtc_oracle_parent_uid());
+          assert(!parent ||
+                 (parent->dtc_oracle_physical_generation() ==
+                      mf->dtc_oracle_physical_generation() &&
+                  parent->dtc_oracle_required_sector_mask() ==
+                      mf->dtc_oracle_required_sector_mask()));
+          assert(m_request_tracker.count(mf) == 1);
+          assert(m_dtc_oracle_l2_inflight.insert(mf).second);
+          m_L2cache->dtc_oracle_virtual_read_hit(mf);
+          ++m_dtc_oracle_l2_eligible_seen;
+          ++m_dtc_oracle_l2_virtual_hit_served;
+          status = HIT;
+        } else {
+          status = m_L2cache->access(
+              mf->get_addr(), mf,
+              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle +
+                  m_memcpy_cycle_offset,
+              events);
+        }
         bool write_sent = was_write_sent(events);
         bool read_sent = was_read_sent(events);
         MEM_SUBPART_DPRINTF("Probing L2 cache Address=%llx, status=%u\n",
@@ -738,6 +767,15 @@ void memory_sub_partition::print_cache_stat(unsigned &accesses,
 }
 
 void memory_sub_partition::print(FILE *fp) const {
+  fprintf(fp, "dtc_oracle_l2 sub_partition=%u eligible_seen=%llu "
+              "virtual_hit_served=%llu returned=%llu outstanding=%zu\n",
+          m_id, m_dtc_oracle_l2_eligible_seen,
+          m_dtc_oracle_l2_virtual_hit_served, m_dtc_oracle_l2_returned,
+          m_dtc_oracle_l2_inflight.size());
+  assert(m_dtc_oracle_l2_eligible_seen ==
+         m_dtc_oracle_l2_virtual_hit_served);
+  assert(m_dtc_oracle_l2_virtual_hit_served ==
+         m_dtc_oracle_l2_returned + m_dtc_oracle_l2_inflight.size());
   if (!m_request_tracker.empty()) {
     fprintf(fp, "Memory Sub Parition %u: pending memory requests:\n", m_id);
     for (auto r = m_request_tracker.begin(); r != m_request_tracker.end();
@@ -967,6 +1005,11 @@ void memory_sub_partition::push_direct(mem_fetch *m_req,
 
 mem_fetch *memory_sub_partition::pop() {
   mem_fetch *mf = m_L2_icnt_queue->pop();
+  if (mf && m_config->m_dtc_oracle_mode == 2 && mf->dtc_oracle_eligible()) {
+    assert(mf->is_read_reply());
+    assert(m_dtc_oracle_l2_inflight.erase(mf) == 1);
+    ++m_dtc_oracle_l2_returned;
+  }
   m_request_tracker.erase(mf);
   if (mf && mf->isatomic()) mf->do_atomic();
   if (mf && (mf->get_access_type() == L2_WRBK_ACC ||

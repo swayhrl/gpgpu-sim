@@ -1400,6 +1400,19 @@ class baseline_cache : public cache_t {
   bool fill_port_free() const {
     return m_bandwidth_management.fill_port_free();
   }
+  // Controlled L2 read counterfactual.  Called only after the original bank
+  // admission gates; consume exactly the normal HIT data-port occupancy,
+  // without probing/warming tags or allocating MSHRs/miss/DRAM metadata.
+  void dtc_oracle_virtual_read_hit(mem_fetch *mf) {
+    assert(m_level == L2_GPU_CACHE);
+    assert(mf->dtc_oracle_eligible());
+    assert(mf->get_type() == READ_REQUEST && !mf->get_is_write());
+    assert(mf->get_access_type() == GLOBAL_ACC_R && !mf->isatomic());
+    assert(data_port_free());
+    std::list<cache_event> no_events;
+    m_bandwidth_management.use_data_port(mf, HIT, no_events);
+  }
+
   void inc_aggregated_stats(cache_request_status status,
                             cache_request_status cache_status, mem_fetch *mf,
                             enum cache_gpu_level level);

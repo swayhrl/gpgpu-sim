@@ -426,6 +426,14 @@ class memory_sub_partition {
 
   std::unordered_set<mem_fetch *> m_request_tracker;
 
+  // Source-derived cumulative sector counters, separate from physical cache
+  // hit/miss statistics.  In-flight ownership is bounded by L2 return FIFO.
+  unsigned long long m_dtc_oracle_l2_eligible_seen = 0;
+  unsigned long long m_dtc_oracle_l2_virtual_hit_served = 0;
+  unsigned long long m_dtc_oracle_l2_returned = 0;
+  std::unordered_set<mem_fetch *> m_dtc_oracle_l2_inflight;
+
+
   friend class L2interface;
   friend class Chipletinterface;
 
