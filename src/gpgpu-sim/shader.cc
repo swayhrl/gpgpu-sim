@@ -3362,6 +3362,9 @@ bool ldst_unit::dtc_l1_oo_memory_cycle(
     }
     m_dtc_l1_oo_pib.push_back({inst, dtc_l1_io_line_references(inst), 0});
     m_dtc_l1_oo_pib.back().owner_kernel_uid = dtc_l1_owner_kernel_uid();
+    m_dtc_l1_oo_pib.back().oracle_eligible =
+        m_memory_config->m_dtc_oracle_mode && inst.is_load() &&
+        !inst.isatomic() && inst.space.get_type() == global_space;
     entry = &m_dtc_l1_oo_pib.back();
     assert(!entry->references.empty());
     dtc_l1_r4c0_record_pib(entry->inst, entry->references, "OO");
@@ -3492,6 +3495,10 @@ void ldst_unit::dtc_l1_oo_issue_lower_requests() {
                             entry->inst.get_warp_active_mask(), byte_mask,
                             sector_mask, m_memory_config->gpgpu_ctx);
     mem_fetch *mf = m_mf_allocator->alloc(entry->inst, lower_read, cycle);
+    if (entry->oracle_eligible)
+      mf->set_dtc_oracle_admission(mf->get_request_uid(),
+          candidate.physical.generation, candidate.sector_mask,
+          candidate.physical.id);
     const bool inserted = m_dtc_l1_oo_inflight
                               .emplace(mf->get_request_uid(),
                                        dtc_l1_oo_inflight{candidate.physical,
@@ -3524,8 +3531,24 @@ bool ldst_unit::dtc_l1_oo_consume_response(mem_fetch *mf) {
   if (it == m_dtc_l1_oo_inflight.end() && mf->get_original_mf())
     it = m_dtc_l1_oo_inflight.find(
         mf->get_original_mf()->get_request_uid());
-  if (it == m_dtc_l1_oo_inflight.end()) return false;
+  if (it == m_dtc_l1_oo_inflight.end()) {
+    if (mf->dtc_oracle_eligible()) {
+      fprintf(stderr, "DTC_ORACLE_UNKNOWN_PARENT_RESPONSE_STOP\n");
+      abort();
+    }
+    return false;
+  }
   dtc_l1_oo_inflight &record = it->second;
+  if (mf->dtc_oracle_eligible()) {
+    if (mf->get_type() != READ_REPLY ||
+        mf->dtc_oracle_parent_uid() != it->first ||
+        mf->dtc_oracle_physical_id() != record.physical.id ||
+        mf->dtc_oracle_physical_generation() != record.physical.generation ||
+        mf->dtc_oracle_required_sector_mask() != record.expected_sector_mask) {
+      fprintf(stderr, "DTC_ORACLE_RESPONSE_GENERATION_IDENTITY_STOP\n");
+      abort();
+    }
+  }
   const uint64_t aligned_address =
       mf->get_addr() & ~(dtc_l1::kLogicalLineBytes - 1);
   const unsigned sector =
@@ -3548,6 +3571,8 @@ bool ldst_unit::dtc_l1_oo_consume_response(mem_fetch *mf) {
     m_dtc_l1_oo_inflight.erase(it);
     ++m_dtc_l1_oo_lower_responses;
   }
+  if (m_memory_config->m_dtc_oracle_mode == 1 && mf->dtc_oracle_eligible())
+    m_core->get_simt_core_cluster()->dtc_oracle_m_note_response(request_complete);
   delete mf;
   if (original && request_complete) delete original;
   return true;
@@ -5852,6 +5877,8 @@ void gpgpu_sim::shader_print_cache_stats(FILE *fout) const {
 }
 
 void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
+  for (unsigned i = 0; i < m_shader_config->n_simt_clusters; ++i)
+    m_cluster[i]->print_dtc_oracle_stats(fout);
   const unsigned mode = m_shader_config->dtc_l1_mode;
   if (mode != static_cast<unsigned>(dtc_l1::mode::PAPER_BASE) &&
       mode != static_cast<unsigned>(dtc_l1::mode::PAPER_IO) &&
@@ -7644,6 +7671,8 @@ simt_core_cluster::simt_core_cluster(class gpgpu_sim *gpu, unsigned cluster_id,
   m_stats = stats;
   m_memory_stats = mstats;
   m_mem_config = mem_config;
+  if (mem_config->m_dtc_oracle_mode == 1)
+    m_dtc_oracle_m.set_capacity(config->dtc_l1_lower_outstanding_cap);
 }
 
 void simt_core_cluster::core_cycle() {
@@ -7668,6 +7697,7 @@ unsigned simt_core_cluster::max_cta(const kernel_info_t &kernel) {
 }
 
 bool simt_core_cluster::dtc_l1_pending_work(unsigned kernel_uid) const {
+  if (!kernel_uid && !m_dtc_oracle_m.empty()) return true;
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i)
     if (m_core[i]->dtc_l1_pending_work(kernel_uid)) return true;
   return false;
@@ -7786,7 +7816,24 @@ bool sst_simt_core_cluster::SST_injection_buffer_full(unsigned size, bool write,
   }
 }
 
+bool simt_core_cluster::dtc_oracle_m_intercepts(const mem_fetch *mf) const {
+  return m_mem_config->m_dtc_oracle_mode == 1 && mf->dtc_oracle_eligible();
+}
+
 void simt_core_cluster::icnt_inject_request_packet(class mem_fetch *mf) {
+  if (dtc_oracle_m_intercepts(mf)) {
+    assert(mf->get_type() == READ_REQUEST && !mf->get_is_write() &&
+           !mf->isatomic() && mf->get_access_type() == GLOBAL_ACC_R);
+    assert(mf->dtc_oracle_parent_uid() == mf->get_request_uid());
+    // Lower-create/inject and original global credit have already succeeded.
+    // This descriptor cannot admit work beyond that unchanged credit cap.
+    mf->set_status(IN_DTC_ORACLE_M_PENDING,
+        m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+    m_dtc_oracle_m.enqueue(mf, mf->get_request_uid(),
+        mf->dtc_oracle_required_sector_mask(),
+        m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+    return;
+  }
   // Update stats based on mf type
   update_icnt_stats(mf);
 
@@ -7892,6 +7939,50 @@ void sst_simt_core_cluster::icnt_inject_request_packet_to_SST(
   }
 }
 
+bool simt_core_cluster::dtc_oracle_m_enqueue_reply(uint64_t core_tick) {
+  if (!m_dtc_oracle_m.ready(core_tick)) return false;
+  if (m_response_fifo.size() >= m_config->n_simt_ejection_buffer_size) {
+    ++m_dtc_oracle_m_fifo_stalls;
+    return false;
+  }
+  const auto selected = m_dtc_oracle_m.next(core_tick);
+  mem_fetch *parent = selected.request;
+  mem_access_byte_mask_t bytes;
+  mem_access_sector_mask_t mask;
+  mask.set(selected.index);
+  for (unsigned byte = selected.index * 32; byte < (selected.index + 1) * 32;
+       ++byte) bytes.set(byte);
+  const uint64_t line = parent->get_addr() & ~uint64_t(127);
+  mem_access_t access(GLOBAL_ACC_R, line + selected.index * 32, 32, false,
+      parent->get_access_warp_mask(), bytes, mask, m_mem_config->gpgpu_ctx);
+  mem_fetch *child = new mem_fetch(access, &parent->get_inst(),
+      parent->get_streamID(), parent->get_ctrl_size(), parent->get_wid(),
+      parent->get_sid(), parent->get_tpc(), m_mem_config, core_tick, parent);
+  child->set_reply();
+  child->set_return_timestamp(core_tick);
+  child->set_status(IN_CLUSTER_TO_SHADER_QUEUE, core_tick);
+  m_response_fifo.push_back(child);
+  m_dtc_oracle_m.commit(core_tick, selected);
+  return true;
+}
+
+void simt_core_cluster::print_dtc_oracle_stats(FILE *fp) const {
+  fprintf(fp, "DTC_ORACLE_M_V1 mode=%u cluster=%u parents_enqueued=%llu "
+      "required_sectors=%llu sectors_enqueued=%llu parents_transferred=%llu "
+      "sectors_received=%llu parents_closed=%llu pending_parents=%zu "
+      "peak_parents=%zu fifo_stalls=%llu normal_grants=%llu\n",
+      m_mem_config->m_dtc_oracle_mode, m_cluster_id,
+      (unsigned long long)m_dtc_oracle_m.parents_enqueued,
+      (unsigned long long)m_dtc_oracle_m.required_sectors,
+      (unsigned long long)m_dtc_oracle_m.sectors_enqueued,
+      (unsigned long long)m_dtc_oracle_m.parents_transferred,
+      (unsigned long long)m_dtc_oracle_m_sectors_received,
+      (unsigned long long)m_dtc_oracle_m_parents_closed,
+      m_dtc_oracle_m.size(), m_dtc_oracle_m.peak_parents,
+      (unsigned long long)m_dtc_oracle_m_fifo_stalls,
+      (unsigned long long)m_dtc_oracle_m_normal_grants);
+}
+
 void simt_core_cluster::icnt_cycle() {
   if (!m_response_fifo.empty()) {
     mem_fetch *mf = m_response_fifo.front();
@@ -7912,8 +8003,25 @@ void simt_core_cluster::icnt_cycle() {
     }
   }
   if (m_response_fifo.size() < m_config->n_simt_ejection_buffer_size) {
+    const uint64_t core_tick = m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
+    const bool oracle_m = m_mem_config->m_dtc_oracle_mode == 1;
+    // Preserve the original one-entry ingress and all normal packet handling.
+    // When both streams can progress, alternate the shared finite FIFO slot.
+    if (oracle_m && m_dtc_oracle_m_turn &&
+        dtc_oracle_m_enqueue_reply(core_tick)) {
+      m_dtc_oracle_m_turn = false;
+      return;
+    }
     mem_fetch *mf = (mem_fetch *)::icnt_pop(m_cluster_id);
-    if (!mf) return;
+    if (!mf) {
+      if (oracle_m && dtc_oracle_m_enqueue_reply(core_tick))
+        m_dtc_oracle_m_turn = false;
+      return;
+    }
+    if (oracle_m) {
+      m_dtc_oracle_m_turn = true;
+      ++m_dtc_oracle_m_normal_grants;
+    }
     assert(mf->get_tpc() == m_cluster_id);
     assert(mf->get_type() == READ_REPLY || mf->get_type() == WRITE_ACK);
 

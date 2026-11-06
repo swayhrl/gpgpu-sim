@@ -237,6 +237,10 @@ void power_config::reg_options(class OptionParser *opp) {
 }
 
 void memory_config::reg_options(class OptionParser *opp) {
+  option_parser_register(opp, "-gpgpu_dtc_oracle_mode", OPT_UINT32,
+                         &m_dtc_oracle_mode,
+                         "Controlled DTC oracle 0=OFF 1=M_DATAREAD "
+                         "2=L2_DATAREAD 3=L1_DATAREADY", "0");
   option_parser_register(opp, "-gpgpu_perf_sim_memcpy", OPT_BOOL,
                          &m_perf_sim_memcpy, "Fill the L2 cache on memcpy",
                          "1");

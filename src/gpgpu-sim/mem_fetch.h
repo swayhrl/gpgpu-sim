@@ -68,6 +68,29 @@ class mem_fetch {
             mem_fetch *original_wr_mf = NULL);
   ~mem_fetch();
 
+  // Set only from the original logical DTC admission, never carrier type alone.
+  void set_dtc_oracle_admission(unsigned parent_uid,
+                                uint64_t physical_generation,
+                                uint8_t required_sector_mask,
+                                unsigned physical_id = ~0U) {
+    assert(!m_dtc_oracle_eligible && required_sector_mask &&
+           !(required_sector_mask & ~0xFU) && physical_generation);
+    m_dtc_oracle_eligible = true;
+    m_dtc_oracle_parent_uid = parent_uid;
+    m_dtc_oracle_physical_generation = physical_generation;
+    m_dtc_oracle_required_sector_mask = required_sector_mask;
+    m_dtc_oracle_physical_id = physical_id;
+  }
+  bool dtc_oracle_eligible() const { return m_dtc_oracle_eligible; }
+  unsigned dtc_oracle_parent_uid() const { return m_dtc_oracle_parent_uid; }
+  uint64_t dtc_oracle_physical_generation() const {
+    return m_dtc_oracle_physical_generation;
+  }
+  uint8_t dtc_oracle_required_sector_mask() const {
+    return m_dtc_oracle_required_sector_mask;
+  }
+  unsigned dtc_oracle_physical_id() const { return m_dtc_oracle_physical_id; }
+
   void set_status(enum mem_fetch_status status, unsigned long long cycle);
   void set_reply() {
     assert(m_access.get_type() != L1_WRBK_ACC &&
@@ -154,6 +177,11 @@ class mem_fetch {
 
  private:
   static std::vector<void *> s_free_list;
+  bool m_dtc_oracle_eligible = false;
+  unsigned m_dtc_oracle_parent_uid = 0;
+  uint64_t m_dtc_oracle_physical_generation = 0;
+  uint8_t m_dtc_oracle_required_sector_mask = 0;
+  unsigned m_dtc_oracle_physical_id = ~0U;
   // request source information
   unsigned m_request_uid;
   unsigned m_sid;

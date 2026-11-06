@@ -32,6 +32,7 @@
 
 #ifndef SHADER_H
 #define SHADER_H
+#include "dtc-oracle-m.h"
 
 #include <assert.h>
 #include <math.h>
@@ -2295,6 +2296,7 @@ class ldst_unit : public pipelined_simd_unit {
     dtc_l1::service_entry service;
     active_mask_t pending_atomic_lanes;
     unsigned owner_kernel_uid = 0;
+    bool oracle_eligible = false;
   };
   struct dtc_l1_oo_lower_candidate {
     unsigned inst_uid = 0;
@@ -3587,6 +3589,13 @@ class simt_core_cluster {
                             dtc_l1::invalidation_source::UNSPECIFIED);
   bool icnt_injection_buffer_full(unsigned size, bool write);
   void icnt_inject_request_packet(class mem_fetch *mf);
+  bool dtc_oracle_m_enqueue_reply(uint64_t core_tick);
+  bool dtc_oracle_m_intercepts(const mem_fetch *mf) const;
+  void dtc_oracle_m_note_response(bool parent_closed) {
+    ++m_dtc_oracle_m_sectors_received;
+    m_dtc_oracle_m_parents_closed += parent_closed;
+  }
+  void print_dtc_oracle_stats(FILE *fp) const;
   void update_icnt_stats(class mem_fetch *mf);
 
   // for perfect memory interface
@@ -3645,6 +3654,12 @@ class simt_core_cluster {
   unsigned m_cta_issue_next_core;
   std::list<unsigned> m_core_sim_order;
   std::deque<mem_fetch *> m_response_fifo;
+  dtc_oracle::finite_read_sequencer<mem_fetch> m_dtc_oracle_m;
+  bool m_dtc_oracle_m_turn = true;
+  uint64_t m_dtc_oracle_m_fifo_stalls = 0;
+  uint64_t m_dtc_oracle_m_normal_grants = 0;
+  uint64_t m_dtc_oracle_m_sectors_received = 0;
+  uint64_t m_dtc_oracle_m_parents_closed = 0;
 };
 
 class exec_simt_core_cluster : public simt_core_cluster {
@@ -3715,7 +3730,8 @@ class shader_memory_interface : public mem_fetch_interface {
     return m_cluster->icnt_injection_buffer_full(size, write);
   }
   virtual void push(mem_fetch *mf) {
-    m_core->inc_simt_to_mem(mf->get_num_flits(true));
+    if (!m_cluster->dtc_oracle_m_intercepts(mf))
+      m_core->inc_simt_to_mem(mf->get_num_flits(true));
     m_cluster->icnt_inject_request_packet(mf);
   }
 

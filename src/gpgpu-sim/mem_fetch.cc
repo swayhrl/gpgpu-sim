@@ -96,6 +96,12 @@ mem_fetch::mem_fetch(const mem_access_t &access, const warp_inst_t *inst,
   original_mf = m_original_mf;
   original_wr_mf = m_original_wr_mf;
   if (m_original_mf) {
+    if (m_original_mf->dtc_oracle_eligible())
+      set_dtc_oracle_admission(
+          m_original_mf->dtc_oracle_parent_uid(),
+          m_original_mf->dtc_oracle_physical_generation(),
+          m_original_mf->dtc_oracle_required_sector_mask(),
+          m_original_mf->dtc_oracle_physical_id());
     m_raw_addr.chip = m_original_mf->get_tlx_addr().chip;
     m_raw_addr.sub_partition = m_original_mf->get_tlx_addr().sub_partition;
   }
@@ -143,6 +149,12 @@ mem_fetch::mem_fetch(const mem_access_t &access,
   original_mf = m_original_mf;
   original_wr_mf = m_original_wr_mf;
   if (m_original_mf) {
+    if (m_original_mf->dtc_oracle_eligible())
+      set_dtc_oracle_admission(
+          m_original_mf->dtc_oracle_parent_uid(),
+          m_original_mf->dtc_oracle_physical_generation(),
+          m_original_mf->dtc_oracle_required_sector_mask(),
+          m_original_mf->dtc_oracle_physical_id());
     m_raw_addr.chip = m_original_mf->get_tlx_addr().chip;
     m_raw_addr.sub_partition = m_original_mf->get_tlx_addr().sub_partition;
   }

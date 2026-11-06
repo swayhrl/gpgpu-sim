@@ -220,6 +220,10 @@ class memory_config {
     gpgpu_ctx = ctx;
   }
   void init(const shader_core_config *shader_config = nullptr) {
+    if (m_dtc_oracle_mode > 3 || (m_dtc_oracle_mode && l2_ideal)) {
+      fprintf(stderr, "DTC_ORACLE_INVALID_MODE_OR_STOCK_L2_STOP\n");
+      abort();
+    }
     assert(gpgpu_dram_timing_opt);
     if (strchr(gpgpu_dram_timing_opt, '=') == NULL) {
       // dram timing option in ordered variables (legacy)
@@ -347,6 +351,8 @@ class memory_config {
   char *gpgpu_dram_timing_opt;
   char *gpgpu_L2_queue_config;
   bool l2_ideal;
+  // Isolated controlled counterfactual: 0=OFF, 1=M, 2=L2, 3=L1.
+  unsigned m_dtc_oracle_mode = 0;
   unsigned gpgpu_frfcfs_dram_sched_queue_size;
   unsigned gpgpu_dram_return_queue_size;
   enum dram_ctrl_t scheduler_type;
