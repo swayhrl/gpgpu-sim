@@ -2212,6 +2212,9 @@ void ldst_unit::get_dtc_l1_stats(
   }
   if (dtc_l1_paper_oo_active()) {
     dtc_l1::paper_frontend_stats oo;
+    if (dtc_l1_finite_service_active())
+      oo.short_collect = {m_dtc_short_collect_choice_decisions,
+                          m_dtc_short_collect_retire_granted};
     oo.m4_store_admits = m_dtc_l1_m4_store_admits;
     oo.m4_atomic_admits = m_dtc_l1_m4_atomic_admits;
     oo.m4_bypass_load_admits = m_dtc_l1_m4_bypass_load_admits;
@@ -2742,31 +2745,52 @@ bool ldst_unit::dtc_l1_pending_work(unsigned kernel_uid) const {
   return !m_response_fifo.empty() || !m_next_global.empty() || !m_next_wb.empty();
 }
 
-bool ldst_unit::dtc_l1_oo_select_ready(uint64_t *uid) const {
-  for (auto candidate = m_dtc_l1_oo_pib.begin();
-       candidate != m_dtc_l1_oo_pib.end(); ++candidate) {
+bool ldst_unit::dtc_l1_oo_select_ready(uint64_t *uid, bool *different) {
+  // The OFF path keeps the frozen oldest-ready choice exactly. ON inspects
+  // only a four-position prefix after that same choice, and never changes
+  // non-load sidecar completion or the frontend's readiness/fence checks.
+  auto eligible = [this](std::list<dtc_l1_oo_pib_entry>::const_iterator candidate) {
     if (candidate->operation == dtc_l1_m4_operation::CACHEABLE_LOAD &&
         candidate->next_reference != candidate->references.size())
-      continue;
+      return false;
     const uint64_t candidate_uid = candidate->inst.get_uid();
     const bool ready = dtc_l1_sector_oo_active()
                            ? m_dtc_l1_sector_frontend->entry_ready_for(candidate_uid)
                            : m_dtc_l1_oo_frontend->entry_ready_for(candidate_uid);
-    if (!ready) continue;
-    bool older_same_warp_fence = false;
-    for (auto older = m_dtc_l1_oo_pib.begin(); older != candidate; ++older) {
+    if (!ready) return false;
+    for (auto older = m_dtc_l1_oo_pib.cbegin(); older != candidate; ++older)
       if (older->inst.warp_id() == candidate->inst.warp_id() &&
-          older->operation == dtc_l1_m4_operation::PROXY_FENCE) {
-        older_same_warp_fence = true;
+          older->operation == dtc_l1_m4_operation::PROXY_FENCE)
+        return false;
+    return true;
+  };
+  auto first = m_dtc_l1_oo_pib.cbegin();
+  for (; first != m_dtc_l1_oo_pib.cend(); ++first)
+    if (eligible(first)) break;
+  if (first == m_dtc_l1_oo_pib.cend()) return false;
+  auto selected = first;
+  if (m_config->dtc_l1_short_collect_first &&
+      dtc_l1_finite_service_active() &&
+      first->operation == dtc_l1_m4_operation::CACHEABLE_LOAD) {
+    const uint64_t cycle = m_core->get_gpu()->global_cycle();
+    auto younger = first;
+    for (unsigned position = 1;
+         position < dtc_l1::kShortCollectWindow &&
+         ++younger != m_dtc_l1_oo_pib.cend(); ++position) {
+      // A noneligible sidecar is an ordering boundary for this policy.
+      if (younger->operation != dtc_l1_m4_operation::CACHEABLE_LOAD) break;
+      if (eligible(younger) &&
+          dtc_l1::prefer_short_collect(
+              first->service, younger->service, cycle, true)) {
+        selected = younger;
+        ++m_dtc_short_collect_choice_decisions;
         break;
       }
     }
-    if (!older_same_warp_fence) {
-      if (uid) *uid = candidate_uid;
-      return true;
-    }
   }
-  return false;
+  if (uid) *uid = selected->inst.get_uid();
+  if (different) *different = selected != first;
+  return true;
 }
 
 std::vector<dtc_l1::line_reference> ldst_unit::dtc_l1_io_line_references(
@@ -3596,7 +3620,8 @@ bool ldst_unit::dtc_l1_oo_writeback_ready() {
       !m_dtc_service_retire.available(service_cycle)) return false;
   if (!dtc_l1_paper_oo_active()) return false;
   uint64_t uid = 0;
-  const bool ready = dtc_l1_oo_select_ready(&uid);
+  bool choice_different = false;
+  const bool ready = dtc_l1_oo_select_ready(&uid, &choice_different);
   if (!ready) return false;
   dtc_l1_oo_pib_entry *entry = dtc_l1_oo_find_entry(static_cast<unsigned>(uid));
   assert(entry);
@@ -3646,6 +3671,7 @@ bool ldst_unit::dtc_l1_oo_writeback_ready() {
                               : m_dtc_l1_oo_frontend->retire_ready_uid(cycle,
                                                                        uid);
   assert(retired_ok);
+  if (choice_different) ++m_dtc_short_collect_retire_granted;
   for (auto it = m_dtc_l1_oo_pib.begin(); it != m_dtc_l1_oo_pib.end(); ++it) {
     if (it->inst.get_uid() == uid) {
       m_dtc_l1_oo_pib.erase(it);
@@ -3751,6 +3777,12 @@ void ldst_unit::print_dtc_l1_invalidation_summary(FILE *fp) const {
 void ldst_unit::print_dtc_l1_stats(FILE *fp) const {
   if (m_config->dtc_l1_invalidate_on_source_event)
     m_dtc_invalidation.print(fp);
+  if (dtc_l1_paper_oo_active() && dtc_l1_finite_service_active())
+    fprintf(fp, "DTC_SHORT_COLLECT_V1 sm=%u enabled=%u "
+                "choice_decision_different=%llu eligible_choice_different=%llu\n",
+            m_sid, static_cast<unsigned>(m_config->dtc_l1_short_collect_first),
+            static_cast<unsigned long long>(m_dtc_short_collect_choice_decisions),
+            static_cast<unsigned long long>(m_dtc_short_collect_retire_granted));
   if (dtc_l1_finite_service_active()) {
     fprintf(fp, "DTC_SERVICE_V1 sm=%u samples=%llu pib_integral=%llu "
                 "physical_integral=%llu collected_sectors=%llu "
@@ -4406,6 +4438,12 @@ ldst_unit::ldst_unit(mem_fetch_interface *icnt,
       m_config->dtc_l1_invalidate_on_source_event, m_config->dtc_l1_mode);
   dtc_l1::check_progressive_wakeup_mode(m_config->dtc_l1_progressive_wakeup,
       m_config->dtc_l1_mode, m_config->dtc_l1_finite_service);
+  if (m_config->dtc_l1_short_collect_first &&
+      (!m_config->dtc_l1_finite_service ||
+       m_config->dtc_l1_mode != static_cast<unsigned>(dtc_l1::mode::PAPER_OO))) {
+    fprintf(stderr, "DTC_SHORT_COLLECT_UNSUPPORTED_MODE_STOP\n");
+    abort();
+  }
   if (m_config->dtc_l1_invalidate_on_source_event &&
       m_config->m_L1D_config.disabled()) {
     fprintf(stderr, "OO_K1_REQUIRES_ORDINARY_L1D_STOP\n");
@@ -5925,6 +5963,14 @@ void gpgpu_sim::shader_print_dtc_l1_stats(FILE *fout) const {
     for (size_t i = 0; i < total.finite_service.size(); ++i)
       fprintf(fout, "DTC_SERVICE_V1_%s = %llu\n", names[i],
               (unsigned long long)total.finite_service[i]);
+  }
+  if (mode == static_cast<unsigned>(dtc_l1::mode::PAPER_OO) &&
+      m_shader_config->dtc_l1_finite_service) {
+    fprintf(fout, "DTC_SHORT_COLLECT_V1 enabled=%u "
+                  "choice_decision_different=%llu eligible_choice_different=%llu\n",
+            static_cast<unsigned>(m_shader_config->dtc_l1_short_collect_first),
+            static_cast<unsigned long long>(total.short_collect[0]),
+            static_cast<unsigned long long>(total.short_collect[1]));
   }
   if (mode == static_cast<unsigned>(dtc_l1::mode::PAPER_IO)) {
     assert(total.io_inflight_current == 0);

@@ -71,6 +71,44 @@ int main() {
   assert(a.collect(5, collection));  // retry after collector denial
   assert(a.collect_done_cycle == 3 && a.collect_start_cycle == 2);
 
+  // Two actual coalesced 128B references can require six sector transfers,
+  // so a single ready instruction can exceed the frozen four-sector quota.
+  const auto long_refs = dtc_l1::group_128b_references(
+      {{0, 0xF}, {128, 0x3}});
+  const auto short_refs = dtc_l1::group_128b_references({{256, 0x1}});
+  assert(long_refs.size() == 2 && short_refs.size() == 1);
+  unsigned long_sectors = 0, short_sectors = 0;
+  for (const auto &ref : long_refs)
+    long_sectors += __builtin_popcount(ref.sector_mask);
+  for (const auto &ref : short_refs)
+    short_sectors += __builtin_popcount(ref.sector_mask);
+  assert(long_sectors == 6 && short_sectors == 1);
+  dtc_l1::service_entry old_ready, young_ready;
+  old_ready.observe_ready(1, long_sectors);
+  young_ready.observe_ready(1, short_sectors);
+  // The production predicate makes the fixed OFF selection A and ON B.
+  assert(!dtc_l1::prefer_short_collect(old_ready, young_ready, 2, false));
+  assert(dtc_l1::prefer_short_collect(old_ready, young_ready, 2, true));
+  assert(!dtc_l1::prefer_short_collect(old_ready, young_ready, 1, true));
+  assert(!dtc_l1::prefer_short_collect(old_ready, young_ready, 9, true));
+  // Once A has begun collecting, it cannot be preempted by B.
+  old_ready.collect_start_cycle = 2;
+  assert(!dtc_l1::prefer_short_collect(old_ready, young_ready, 3, true));
+  old_ready.collect_start_cycle = UINT64_MAX;
+  young_ready.sectors_left = 5;
+  assert(!dtc_l1::prefer_short_collect(old_ready, young_ready, 2, true));
+  young_ready.sectors_left = short_sectors;
+  // Same finite quota and one-cycle collect-to-retire separation.
+  dtc_l1::service_quota off_quota(4), on_quota(4);
+  dtc_l1::service_entry off_a = old_ready, off_b = young_ready;
+  dtc_l1::service_entry on_a = old_ready, on_b = young_ready;
+  assert(!off_a.collect(2, off_quota) && off_a.sectors_left == 2);
+  assert(!on_b.collect(2, on_quota) && on_b.sectors_left == 0);
+  assert(!off_a.collect(3, off_quota) && off_a.sectors_left == 0);
+  assert(on_b.collect(3, on_quota));
+  assert(off_a.collect(4, off_quota));
+  assert(off_b.sectors_left == 1 && on_a.sectors_left == 6);
+
   dtc_l1::config cfg;
   cfg.finite_service = true;
   cfg.logical_sets = cfg.logical_ways = 1;

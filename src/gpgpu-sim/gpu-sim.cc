@@ -412,6 +412,9 @@ void shader_core_config::reg_options(class OptionParser *opp) {
                          &dtc_l1_progressive_wakeup,
                          "Progressive own-waiter wakeup (finite PAPER_OO only)",
                          "0");
+  option_parser_register(opp, "-gpgpu_dtc_l1_short_collect_first", OPT_BOOL,
+                         &dtc_l1_short_collect_first,
+                         "Bounded OO short-collection ready arbitration", "0");
   option_parser_register(opp, "-gpgpu_dtc_l1_finite_service", OPT_BOOL,
                          &dtc_l1_finite_service,
                          "Opt-in preregistered whole-line DTC finite service V1", "0");

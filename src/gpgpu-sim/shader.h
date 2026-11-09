@@ -2124,7 +2124,7 @@ class ldst_unit : public pipelined_simd_unit {
   void dtc_l1_m4_atomic_response(const warp_inst_t &inst,
                                   const active_mask_t &returned_lanes);
   unsigned dtc_l1_owner_kernel_uid() const;
-  bool dtc_l1_oo_select_ready(uint64_t *uid) const;
+  bool dtc_l1_oo_select_ready(uint64_t *uid, bool *different = nullptr);
   bool dtc_l1_finite_service_active() const;
   bool dtc_l1_service_collect(dtc_l1::service_entry &service,
                             const std::vector<dtc_l1::line_reference> &references);
@@ -2171,6 +2171,8 @@ class ldst_unit : public pipelined_simd_unit {
   uint64_t m_dtc_progressive_collectable_entries = 0;
   uint64_t m_dtc_progressive_returns_to_retire_sum = 0;
   uint64_t m_dtc_service_collected_sectors = 0;
+  uint64_t m_dtc_short_collect_choice_decisions = 0;
+  uint64_t m_dtc_short_collect_retire_granted = 0;
   warp_inst_t m_next_wb;
   unsigned m_writeback_arb;  // round-robin arbiter for writeback contention
                              // between L1T, L1C, shared
@@ -2516,6 +2518,7 @@ class shader_core_config : public core_config {
   bool dtc_l1_finite_service;
   bool dtc_l1_tag_hash_bankrow;
   bool dtc_l1_progressive_wakeup;
+  bool dtc_l1_short_collect_first;
   bool dtc_l1_invalidate_on_source_event;
   unsigned dtc_l1_pib_entries;
   unsigned dtc_l1_mshr_entries;

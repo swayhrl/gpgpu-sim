@@ -112,6 +112,27 @@ struct service_entry {
   }
 };
 
+// Bound the extra OO ready arbitration to four PIB positions. This changes
+// only the winner between two already-ready cacheable loads, never service
+// width or completion ownership. Existing per-entry service timestamps supply
+// the age limit, so the policy adds no per-entry state.
+constexpr unsigned kShortCollectWindow = 4;
+constexpr unsigned kShortCollectAgeLimit = 8;
+constexpr unsigned kShortCollectQuota = 4;
+inline bool prefer_short_collect(const service_entry &older,
+                                 const service_entry &younger,
+                                 uint64_t cycle, bool enabled) {
+  if (!enabled || older.ready_cycle == UINT64_MAX ||
+      younger.ready_cycle == UINT64_MAX ||
+      cycle <= older.ready_cycle || cycle <= younger.ready_cycle ||
+      older.collect_start_cycle != UINT64_MAX ||
+      older.sectors_left <= kShortCollectQuota ||
+      younger.sectors_left > kShortCollectQuota ||
+      cycle - older.ready_cycle >= kShortCollectAgeLimit)
+    return false;
+  return true;
+}
+
 inline bool response_sector_is_new(uint8_t expected, uint8_t received,
                                    unsigned sector) {
   return sector < kSectorsPerLogicalLine && (expected & (1U << sector)) &&
@@ -1704,6 +1725,7 @@ class sector_oo_frontend {
 // kernel summary without exposing mutable front-end state.
 struct paper_frontend_stats {
   std::array<uint64_t, 11> finite_service = {};
+  std::array<uint64_t, 2> short_collect = {};
   uint64_t admits = 0;
   uint64_t retires = 0;
   uint64_t tag_requests = 0;
@@ -1812,6 +1834,8 @@ struct paper_frontend_stats {
   void add(const paper_frontend_stats &other) {
     for (size_t i = 0; i < finite_service.size(); ++i)
       finite_service[i] += other.finite_service[i];
+    for (size_t i = 0; i < short_collect.size(); ++i)
+      short_collect[i] += other.short_collect[i];
     admits += other.admits;
     retires += other.retires;
     tag_requests += other.tag_requests;

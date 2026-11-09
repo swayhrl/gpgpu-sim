@@ -11,6 +11,8 @@
 #include <csignal>
 #include <functional>
 #include <ctime>
+#include <cstring>
+#include <string>
 #include <sys/resource.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -21,7 +23,34 @@ static void rejects(const std::function<void()> &f) {
   assert(WIFSIGNALED(status) && WTERMSIG(status)==SIGABRT);
 }
 int main(int argc, const char **argv) {
-  assert(argc==2); rlimit limit{0,0}; setrlimit(RLIMIT_CORE,&limit);
+  assert(argc==2 || argc==3);
+  if(argc==2) {
+    for(const char *mode: {"off", "on"}) {
+      auto pid=fork(); assert(pid>=0);
+      if(!pid) { execl(argv[0],argv[0],argv[1],mode,(char *)nullptr); _exit(127); }
+      int status; assert(waitpid(pid,&status,0)==pid);
+      assert(WIFEXITED(status) && WEXITSTATUS(status)==0);
+    }
+    int pipefd[2]; assert(pipe(pipefd)==0);
+    auto pid=fork(); assert(pid>=0);
+    if(!pid) {
+      close(pipefd[0]); assert(dup2(pipefd[1],STDERR_FILENO)>=0); close(pipefd[1]);
+      execl(argv[0],argv[0],argv[1],"invalid",(char *)nullptr); _exit(127);
+    }
+    close(pipefd[1]); std::string error; char chunk[1024]; ssize_t n;
+    while((n=read(pipefd[0],chunk,sizeof(chunk)))>0) error.append(chunk,n);
+    close(pipefd[0]);
+    int status; assert(waitpid(pid,&status,0)==pid);
+    assert((WIFSIGNALED(status) || (WIFEXITED(status) && WEXITSTATUS(status)!=0)) &&
+           error.find("DTC_SHORT_COLLECT_UNSUPPORTED_MODE_STOP")!=std::string::npos);
+    std::puts("PASS unsupported_mode_rejected");
+    std::puts("PASS same_binary_independent_OFF_ON_processes");
+    return 0;
+  }
+  const bool invalid_mode=std::strcmp(argv[2],"invalid")==0;
+  const bool short_on=std::strcmp(argv[2],"on")==0 || invalid_mode;
+  assert(short_on || std::strcmp(argv[2],"off")==0);
+  rlimit limit{0,0}; setrlimit(RLIMIT_CORE,&limit);
   gpgpu_context ctx; gpgpu_sim_config cfg(&ctx);
   auto parser=option_parser_create(); cfg.reg_options(parser); icnt_reg_options(parser);
   ctx.ptx_reg_options(parser); ctx.func_sim->ptx_opcocde_latency_options(parser);
@@ -37,7 +66,18 @@ int main(int argc, const char **argv) {
     "-enable_ptx_file_line_stats","0", "-gpgpu_dtc_l1_debug_event_limit","0",
     "-power_simulation_enabled","0", "-visualizer_enabled","0",
     "-gpgpu_clock_domains","1410.0:1410.0:1410.0:850.0"};
-  option_parser_cmdline(parser,sizeof(opts)/sizeof(opts[0]),opts); cfg.init();
+  option_parser_cmdline(parser,sizeof(opts)/sizeof(opts[0]),opts);
+  const char *short_option[]={"AD_CPU", "-gpgpu_dtc_l1_short_collect_first",
+                              short_on ? "1" : "0"};
+  option_parser_cmdline(parser,3,short_option);
+  if(invalid_mode) {
+    const char *invalid_options[]={"AD_CPU", "-gpgpu_dtc_l1_mode", "2",
+                                   "-gpgpu_dtc_l1_progressive_wakeup", "0",
+                                   "-gpgpu_dtc_l1_invalidate_on_source_event", "0"};
+    option_parser_cmdline(parser,7,invalid_options);
+  }
+  cfg.init();
+  assert(cfg.m_shader_config.dtc_l1_short_collect_first==short_on);
   ctx.the_gpgpusim->g_simulation_starttime=std::time(nullptr);
   auto *gpu=new exec_gpgpu_sim(cfg,&ctx); gpu->init();
   auto *core=gpu->get_simt_core_clusters()[0]->get_shader_cores()[0];
@@ -134,6 +174,102 @@ int main(int argc, const char **argv) {
   assert(!f.is_allocated(id) && f.active_refs()==0 && f.final_ref_reclaims()==1);
   assert(gpu->dtc_l1_lower_outstanding()==0 && ld->m_dtc_service_retired==10);
   assert(ld->m_dtc_progressive_collectable_entries==10);
+  // Real LDST selector positive fixture: both ordinary OO loads have all
+  // references admitted and actual finite frontend readiness. The older load
+  // owns two line references / six sectors; the younger owns one sector.
+  gpu->gpu_sim_cycle=40; f.advance_service(40);
+  auto add_short_case=[&](unsigned uid, unsigned reg,
+                          std::vector<dtc_l1::line_reference> refs) {
+    auto i=inst(uid,true); i.out[0]=reg; i.arch_reg.dst[0]=reg;
+    ld->m_pending_writes[0][reg]=refs.size();
+    ld->m_scoreboard->reserveRegisters(&i);
+    assert(f.admit(uid));
+    ld->dtc_l1_r4c0_record_issue(i,refs,refs.size());
+    ld->m_dtc_l1_oo_completion_dependencies+=refs.size();
+    ld->m_dtc_l1_oo_pib.push_back({i,refs,refs.size()});
+    ld->dtc_l1_r4c0_record_pib(i,refs,"OO");
+    for(const auto &ref:refs) {
+      const auto result=f.access(gpu->global_cycle(),uid,ref.line_address);
+      assert(result.kind==dtc_l1::io_access_kind::NEW_MISS);
+      f.complete(result.physical);
+    }
+  };
+  add_short_case(201,1,{{8192,0xF},{8320,0x3}});
+  add_short_case(202,2,{{8448,0x1}});
+  while(!f.entry_ready_for(201) || !f.entry_ready_for(202)) {
+    ++gpu->gpu_sim_cycle; assert(gpu->gpu_sim_cycle<100);
+    f.advance_service(gpu->global_cycle());
+  }
+  auto *long_entry=ld->dtc_l1_oo_find_entry(201);
+  auto *short_entry=ld->dtc_l1_oo_find_entry(202);
+  assert(long_entry && short_entry);
+  bool different=false;
+  assert(ld->dtc_l1_oo_select_ready(&selected,&different) && selected==201 && !different);
+  ld->cycle(); // production LDST samples both ready timestamps and return ages
+  assert(long_entry->service.ready_cycle==gpu->global_cycle());
+  assert(short_entry->service.ready_cycle==gpu->global_cycle());
+  assert(long_entry->service.admitted_returns_cycle<=long_entry->service.ready_cycle);
+  assert(short_entry->service.admitted_returns_cycle<=short_entry->service.ready_cycle);
+  assert(long_entry->service.sectors_left==6 && short_entry->service.sectors_left==1);
+  ++gpu->gpu_sim_cycle;
+  assert(ld->dtc_l1_oo_select_ready(&selected,&different));
+  assert(selected==(short_on ? 202U : 201U) && different==short_on);
+  const auto before_grant=ld->m_dtc_short_collect_retire_granted;
+  assert(!ld->dtc_l1_oo_writeback_ready()); // finite collect; no early WB
+  assert((short_on ? short_entry->service.sectors_left==0
+                   : long_entry->service.sectors_left==2) && f.active_refs()==3);
+  assert(ld->m_dtc_short_collect_retire_granted==before_grant);
+  ++gpu->gpu_sim_cycle; rf->process_banks();
+  if(short_on) {
+    auto competing_short=inst(999,true); competing_short.out[0]=2;
+    competing_short.arch_reg.dst[0]=2;
+    assert(rf->writeback(competing_short));
+    assert(!ld->dtc_l1_oo_writeback_ready()); // RF backpressure retains Ref/ledger
+    assert(ld->m_dtc_l1_oo_ready_but_wb_blocked_cycles>=2);
+  } else {
+    assert(!ld->dtc_l1_oo_writeback_ready()); // older load collects final two sectors
+    assert(long_entry->service.sectors_left==0);
+  }
+  assert(f.active_refs()==3 && ld->m_dtc_short_collect_retire_granted==before_grant);
+  ++gpu->gpu_sim_cycle; rf->process_banks();
+  assert(ld->dtc_l1_oo_writeback_ready());
+  assert(ld->m_dtc_short_collect_retire_granted==before_grant+(short_on ? 1 : 0));
+  const unsigned first_retired=short_on ? 202 : 201;
+  const unsigned later_retired=short_on ? 201 : 202;
+  assert(!ld->dtc_l1_oo_find_entry(first_retired) && ld->dtc_l1_oo_find_entry(later_retired));
+  assert(f.active_refs()==(short_on ? 2U : 1U));
+  assert(ld->m_dtc_l1_r4c1_retired_history.at(first_retired).closed_dependencies==
+         (short_on ? 1U : 2U));
+  for(unsigned i=0;ld->dtc_l1_oo_find_entry(later_retired);++i) {
+    assert(i<20); ++gpu->gpu_sim_cycle; rf->process_banks();
+    ld->dtc_l1_oo_writeback_ready();
+  }
+  assert(ld->m_dtc_l1_r4c1_retired_history.at(201).closed_dependencies==2);
+  assert(ld->m_dtc_l1_r4c1_retired_history.at(202).closed_dependencies==1);
+  assert(f.active_refs()==0);
+  // With both loads genuinely ready but the older one already eight cycles
+  // old, ON must serve the older entry. This bounds repeated short arrivals.
+  gpu->gpu_sim_cycle=60; f.advance_service(60);
+  add_short_case(301,3,{{12288,0xF},{12416,0x3}});
+  add_short_case(302,4,{{12544,0x1}});
+  while(!f.entry_ready_for(301) || !f.entry_ready_for(302)) {
+    ++gpu->gpu_sim_cycle; assert(gpu->gpu_sim_cycle<100);
+    f.advance_service(gpu->global_cycle());
+  }
+  ld->cycle();
+  auto *aged=ld->dtc_l1_oo_find_entry(301);
+  assert(aged && aged->service.ready_cycle==gpu->global_cycle());
+  gpu->gpu_sim_cycle+=dtc_l1::kShortCollectAgeLimit;
+  assert(ld->dtc_l1_oo_select_ready(&selected,&different) && selected==301 && !different);
+  const auto age_grants=ld->m_dtc_short_collect_retire_granted;
+  for(unsigned i=0;!ld->m_dtc_l1_oo_pib.empty();++i) {
+    assert(i<20); rf->process_banks(); ld->dtc_l1_oo_writeback_ready();
+    ++gpu->gpu_sim_cycle;
+  }
+  assert(ld->m_dtc_short_collect_retire_granted==age_grants);
+  assert(ld->m_dtc_l1_r4c1_retired_history.at(301).closed_dependencies==2);
+  assert(ld->m_dtc_l1_r4c1_retired_history.at(302).closed_dependencies==1);
+  assert(f.active_refs()==0);
   // Stale physical/generation via actual LDST complete after four legal sectors.
   rejects([&]{auto *stale=root(id); for(unsigned s=0;s<4;++s) sector(stale,s);});
   f.assert_shadow_refs();
